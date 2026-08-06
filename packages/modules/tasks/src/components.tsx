@@ -179,7 +179,7 @@ export function TasksApp({
         key={taskDialog && "task" in taskDialog ? taskDialog.task.id : taskDialog?.listId ?? "none"}
         open={taskDialog !== null}
         listId={taskDialog?.listId ?? ""}
-        task={"task" in (taskDialog ?? {}) ? taskDialog.task : null}
+        task={taskDialog && "task" in taskDialog ? taskDialog.task : null}
         members={members}
         actions={actions}
         onClose={() => {

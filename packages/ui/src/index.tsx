@@ -172,12 +172,36 @@ export function TableRow({ children }: { children: ReactNode }) {
   return <tr>{children}</tr>;
 }
 
-export function TableHeaderCell({ children }: { children: ReactNode }) {
-  return <th>{children}</th>;
+export function TableHeaderCell({
+  children,
+  className,
+  style,
+}: {
+  children?: ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <th className={className} style={style}>
+      {children}
+    </th>
+  );
 }
 
-export function TableCell({ children }: { children: ReactNode }) {
-  return <td>{children}</td>;
+export function TableCell({
+  children,
+  className,
+  style,
+}: {
+  children?: ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <td className={className} style={style}>
+      {children}
+    </td>
+  );
 }
 
 /* ---------- Tabs ---------- */

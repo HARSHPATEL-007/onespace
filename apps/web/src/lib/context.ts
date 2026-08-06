@@ -24,6 +24,9 @@ export async function getWorkspaceContext() {
     user: session.user,
     memberships,
     workspace: active.workspace,
+    workspaceId: active.workspaceId,
+    userId: session.user.id,
+    role: active.role,
     memberRole: active.role,
   };
 }

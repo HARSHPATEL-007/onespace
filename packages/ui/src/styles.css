@@ -548,3 +548,58 @@
 .nv-link:hover {
   text-decoration: underline;
 }
+
+/* ---- DOCS (tiptap) ---- */
+.nv-doc-editor {
+  outline: none;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--nv-color-text);
+}
+.nv-doc-editor p {
+  margin: 0 0 0.75em;
+}
+.nv-doc-editor h1,
+.nv-doc-editor h2,
+.nv-doc-editor h3 {
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.2em 0 0.5em;
+}
+.nv-doc-editor h1 { font-size: 1.7em; }
+.nv-doc-editor h2 { font-size: 1.4em; }
+.nv-doc-editor h3 { font-size: 1.15em; }
+.nv-doc-editor ul,
+.nv-doc-editor ol {
+  padding-left: 1.4em;
+  margin: 0 0 0.75em;
+}
+.nv-doc-editor ul { list-style: disc; }
+.nv-doc-editor ol { list-style: decimal; }
+.nv-doc-editor blockquote {
+  border-left: 3px solid var(--nv-color-border-strong);
+  padding-left: 1em;
+  margin: 0 0 0.75em;
+  color: var(--nv-color-text-muted);
+  font-style: italic;
+}
+.nv-doc-editor code {
+  background: var(--nv-color-surface-2);
+  border: 1px solid var(--nv-color-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.9em;
+}
+.nv-doc-editor hr {
+  border: none;
+  border-top: 1px solid var(--nv-color-border);
+  margin: 1.2em 0;
+}
+.nv-doc-editor .is-editor-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--nv-color-text-faint);
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}

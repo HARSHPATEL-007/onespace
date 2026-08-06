@@ -9,7 +9,7 @@ async function svc() {
 }
 
 export async function createListAction(formData: FormData) {
-  await (await svc()).createList({ name: String(formData.get("name") ?? "") });
+  await (await svc()).createList({ name: String(formData.get("name") ?? ""), color: "default" });
 }
 
 export async function renameListAction(formData: FormData) {

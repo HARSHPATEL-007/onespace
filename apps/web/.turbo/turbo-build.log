@@ -10,36 +10,45 @@ $ next build
    - Environments: .env
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 9.2s
+ ✓ Compiled successfully in 11.1s
    Linting and checking validity of types ...
-
-   We detected TypeScript in your project and reconfigured your tsconfig.json file for you. Strict-mode is set to false by default.
-   The following suggested values were added to your tsconfig.json. These values can be changed to fit your project's needs:
-
-   	- allowJs was set to true
-   	- incremental was set to true
-
    Collecting page data ...
-   Generating static pages (0/7) ...
-   Generating static pages (1/7) 
-   Generating static pages (3/7) 
-   Generating static pages (5/7) 
- ✓ Generating static pages (7/7)
+   Generating static pages (0/12) ...
+   Generating static pages (3/12) 
+   Generating static pages (6/12) 
+   Generating static pages (9/12) 
+ ✓ Generating static pages (12/12)
    Finalizing page optimization ...
    Collecting build traces ...
 
 Route (app)                                 Size  First Load JS
-┌ ○ /                                      129 B         103 kB
+┌ ○ /                                      138 B         103 kB
 ├ ○ /_not-found                            995 B         103 kB
-├ ƒ /api/auth/[...nextauth]                129 B         103 kB
+├ ƒ /api/auth/[...nextauth]                138 B         103 kB
+├ ƒ /api/chat/stream                     2.24 kB         109 kB
+├ ƒ /api/forms/[id]/responses              138 B         103 kB
+├ ƒ /api/storage/download                  138 B         103 kB
+├ ƒ /api/storage/upload                    138 B         103 kB
 ├ ƒ /launcher                            3.56 kB         110 kB
 ├ ƒ /m/[module]                            158 B         107 kB
-├ ○ /signin                                933 B         107 kB
-└ ○ /signup                                988 B         107 kB
+├ ƒ /m/calendar                          2.17 kB         109 kB
+├ ƒ /m/chat                              2.24 kB         109 kB
+├ ƒ /m/cloud-storage                     2.14 kB         109 kB
+├ ƒ /m/contacts                          1.91 kB         109 kB
+├ ƒ /m/docs                                171 B         202 kB
+├ ƒ /m/docs/[id]                           171 B         202 kB
+├ ƒ /m/forms                             2.37 kB         273 kB
+├ ƒ /m/keep                              2.08 kB         273 kB
+├ ƒ /m/mail                              2.68 kB         109 kB
+├ ƒ /m/sheets                              161 B         111 kB
+├ ƒ /m/sheets/[id]                         161 B         111 kB
+├ ƒ /m/tasks                             2.37 kB         109 kB
+├ ○ /signin                                933 B         108 kB
+└ ○ /signup                                988 B         108 kB
 + First Load JS shared by all             102 kB
   ├ chunks/8b9e9954-3986a01948abc0a0.js  54.2 kB
   ├ chunks/994-992a2c0195eb27bd.js       46.2 kB
-  └ other shared chunks (total)          1.97 kB
+  └ other shared chunks (total)          1.99 kB
 
 
 ƒ Middleware                             34.4 kB
