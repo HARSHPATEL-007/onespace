@@ -22,6 +22,7 @@ async function main() {
   await seedMember(workspace.id, admin.id, Role.ADMIN);
 
   await seedMailDemo(workspace.id);
+  await seedSheetsDemo(workspace.id);
 
   const coreModules = [
     "mail",
@@ -81,6 +82,43 @@ async function seedMember(workspaceId: string, userId: string, role: Role) {
     where: { workspaceId_userId: { workspaceId, userId } },
     update: { role, status: "ACTIVE" },
     create: { workspaceId, userId, role, status: "ACTIVE" },
+  });
+}
+
+async function seedSheetsDemo(workspaceId: string) {
+  const existing = await prisma.sheetWorkbook.count({ where: { workspaceId } });
+  if (existing > 0) return;
+
+  const rows: string[][] = [
+    ["Item", "Q1", "Q2", "Q3", "Q4", "Total"],
+    ["Product revenue", "12000", "14500", "16800", "19000", "=SUM(B2:E2)"],
+    ["Services", "5400", "6200", "6800", "7300", "=SUM(B3:E3)"],
+    ["Licensing", "3100", "3500", "4000", "4600", "=SUM(B4:E4)"],
+    ["", "", "", "", "", ""],
+    ["Total revenue", "=SUM(B2:B4)", "=SUM(C2:C4)", "=SUM(D2:D4)", "=SUM(E2:E4)", "=SUM(B6:F6)"],
+    ["Costs", "-4100", "-4400", "-4800", "-5200", "=SUM(B7:E7)"],
+    ["", "", "", "", "", ""],
+    ["Net margin", "=B6-B7", "=C6-C7", "=D6-D7", "=E6-E7", "=F6-F7"],
+    ["Margin %", "=F6/F9*100", "", "", "", ""],
+    ["", "", "", "", "", ""],
+    ["Average Q revenue", "=AVERAGE(B6:E6)", "", "", "", ""],
+    ["Best quarter", "=MAX(B6:E6)", "", "", "", ""],
+    ["Worst quarter", "=MIN(B6:E6)", "", "", "", ""],
+  ];
+  const wide = rows.map((r) => {
+    const out = Array.from({ length: 26 }, () => "");
+    r.forEach((v, i) => (out[i] = v));
+    return out;
+  });
+
+  await prisma.sheetWorkbook.create({
+    data: {
+      workspaceId,
+      name: "Q3 Budget",
+      sheets: {
+        create: { workspaceId, name: "Revenue", rows: wide },
+      },
+    },
   });
 }
 

@@ -9,7 +9,12 @@ export default async function DocPage({ params, searchParams }: { params: Promis
   const { view } = await searchParams;
   const { workspaceId, userId, role } = await requireWorkspace();
   const svc = new DocsService(workspaceId, userId, role);
-  const doc = await svc.get(id);
+  let doc;
+  try {
+    doc = await svc.get(id);
+  } catch {
+    notFound();
+  }
   if (!doc) notFound();
 
   if (view === "history") {

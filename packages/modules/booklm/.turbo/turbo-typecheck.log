@@ -1,0 +1,8 @@
+$ tsc --noEmit
+src/components.tsx(49,19): error TS2322: Type '{ items: { label: string; danger: boolean; onSelect: () => void; }[]; }' is not assignable to type 'IntrinsicAttributes & { trigger: ReactNode; children: ReactNode; align?: "start" | "end" | undefined; }'.
+  Property 'items' does not exist on type 'IntrinsicAttributes & { trigger: ReactNode; children: ReactNode; align?: "start" | "end" | undefined; }'.
+src/components.tsx(83,19): error TS1345: An expression of type 'void' cannot be tested for truthiness.
+src/server.ts(92,78): error TS2532: Object is possibly 'undefined'.
+src/server.ts(93,49): error TS2532: Object is possibly 'undefined'.
+src/server.ts(93,83): error TS2532: Object is possibly 'undefined'.
+[ELIFECYCLE] Command failed with exit code 2.
