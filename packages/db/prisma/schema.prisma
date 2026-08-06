@@ -58,6 +58,19 @@ model Workspace {
   scripts         Script[]
   scriptRuns      ScriptRun[]
   endpointDevices EndpointDevice[]
+  invoices        Invoice[]
+  employees       Employee[]
+  leaveRequests   LeaveRequest[]
+  legalDocuments  LegalDocument[]
+  opsRunbooks     OpsRunbook[]
+  incidents       Incident[]
+  tickets         Ticket[]
+  ticketReplies   TicketReply[]
+  deals           Deal[]
+  subscriptions   Subscription[]
+  payments        Payment[]
+  campaigns       Campaign[]
+  healthCheckins  HealthCheckin[]
 }
 
 /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -100,6 +113,17 @@ createdCalendarEvents CalendarEvent[]
   createdAniConversations AniConversation[]
   createdScripts       Script[]
   devices              EndpointDevice[]
+  createdInvoices      Invoice[]
+  createdLegalDocuments LegalDocument[]
+  createdRunbooks      OpsRunbook[]
+  createdIncidents     Incident[]
+  createdTickets       Ticket[]
+  ticketReplies        TicketReply[]
+  createdDeals         Deal[]
+  createdSubscriptions Subscription[]
+  createdPayments      Payment[]
+  createdCampaigns     Campaign[]
+  healthCheckins       HealthCheckin[]
 }
 
 /// Seat within a workspace + assigned role.
@@ -1062,4 +1086,375 @@ enum DeviceStatus {
   ACTIVE
   INACTIVE
   REVOKED
+}
+
+/// N0VA FINANCE - invoices.
+model Invoice {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  number      String
+  customer    String
+  amountCents Int
+  currency    String   @default("USD")
+  status      InvoiceStatus @default(DRAFT)
+  dueDate     DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+}
+
+/// N0VA HR - employees and leave.
+model Employee {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  email       String
+  department  String   @default("Engineering")
+  title       String   @default("Individual Contributor")
+  status      EmployeeStatus @default(ACTIVE)
+  joinedAt    DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leaveRequests LeaveRequest[]
+
+  @@index([workspaceId, status])
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INVITED
+  OFFBOARDED
+}
+
+/// A single employee's time-off request.
+model LeaveRequest {
+  id          String      @id @default(uuid())
+  workspaceId String
+  employeeId  String
+  kind        LeaveKind   @default(VACATION)
+  status      LeaveStatus @default(PENDING)
+  startDate   DateTime
+  endDate     DateTime
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}
+
+enum LeaveKind {
+  VACATION
+  SICK
+  PERSONAL
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// N0VA LEGAL - contracts and policies.
+model LegalDocument {
+  id            String       @id @default(uuid())
+  workspaceId   String
+  createdById   String?
+  title         String
+  kind          LegalKind    @default(CONTRACT)
+  status        LegalStatus  @default(DRAFT)
+  content       String       @default("")
+  effectiveDate DateTime?
+  reviewDate    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+enum LegalKind {
+  CONTRACT
+  POLICY
+  COMPLIANCE
+  OTHER
+}
+
+enum LegalStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  ACTIVE
+}
+
+/// N0VA OPERATIONS - runbooks and incidents.
+model OpsRunbook {
+  id          String       @id @default(uuid())
+  workspaceId String
+  createdById String?
+  title       String
+  description String       @default("")
+  steps       Json
+  status      RunbookStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+enum RunbookStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+/// A tracked operational incident.
+model Incident {
+  id          String         @id @default(uuid())
+  workspaceId String
+  createdById String?
+  title       String
+  severity    IncidentSeverity @default(SEV3)
+  status      IncidentStatus @default(OPEN)
+  summary     String         @default("")
+  resolvedAt  DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+enum IncidentSeverity {
+  SEV1
+  SEV2
+  SEV3
+  SEV4
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+}
+
+/// N0VA CUSTOMER EXPERIENCE - support tickets.
+model Ticket {
+  id             String         @id @default(uuid())
+  workspaceId    String
+  createdById    String?
+  requesterName  String
+  requesterEmail String
+  subject        String
+  description    String         @default("")
+  status         TicketStatus   @default(OPEN)
+  priority       TicketPriority @default(MEDIUM)
+  assigneeId     String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  replies   TicketReply[]
+
+  @@index([workspaceId, status])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING
+  RESOLVED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/// A reply on a support ticket.
+model TicketReply {
+  id          String   @id @default(uuid())
+  ticketId    String
+  workspaceId String
+  authorId    String?
+  body        String
+  createdAt   DateTime @default(now())
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author   User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId])
+}
+
+/// N0VA SALES - pipeline deals.
+model Deal {
+  id          String      @id @default(uuid())
+  workspaceId String
+  createdById String?
+  title       String
+  company     String      @default("")
+  stage       DealStage   @default(LEAD)
+  valueCents  Int         @default(0)
+  closeDate   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, stage])
+}
+
+enum DealStage {
+  LEAD
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+}
+
+/// N0VA REVENUE - subscriptions and payments.
+model Subscription {
+  id          String           @id @default(uuid())
+  workspaceId String
+  createdById String?
+  plan        String           @default("Starter")
+  mrrCents    Int              @default(0)
+  status      SubscriptionStatus @default(TRIAL)
+  startedAt   DateTime         @default(now())
+  canceledAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  payments  Payment[]
+
+  @@index([workspaceId, status])
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  CHURNED
+}
+
+/// A single money movement.
+model Payment {
+  id             String        @id @default(uuid())
+  workspaceId    String
+  subscriptionId String?
+  createdById    String?
+  amountCents    Int
+  method         String        @default("card")
+  status         PaymentStatus @default(SUCCEEDED)
+  occurredAt     DateTime      @default(now())
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+}
+
+enum PaymentStatus {
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+/// N0VA ADS & MARKETING - campaigns.
+model Campaign {
+  id           String         @id @default(uuid())
+  workspaceId  String
+  createdById  String?
+  name         String
+  channel      CampaignChannel @default(SOCIAL)
+  budgetCents  Int            @default(0)
+  spentCents   Int            @default(0)
+  impressions  Int            @default(0)
+  clicks       Int            @default(0)
+  conversions  Int            @default(0)
+  status       CampaignStatus @default(DRAFT)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+enum CampaignChannel {
+  SOCIAL
+  SEARCH
+  EMAIL
+  DISPLAY
+}
+
+enum CampaignStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+}
+
+/// N0VA HEALTH - wellness check-ins.
+model HealthCheckin {
+  id          String       @id @default(uuid())
+  workspaceId String
+  createdById String?
+  mood        MoodLevel    @default(OK)
+  energy      EnergyLevel  @default(OK)
+  sleepHours  Float        @default(7)
+  note        String       @default("")
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+enum MoodLevel {
+  LOW
+  OK
+  GOOD
+  GREAT
+}
+
+enum EnergyLevel {
+  LOW
+  OK
+  HIGH
 }
