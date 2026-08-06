@@ -41,6 +41,9 @@ importers:
       '@n0va/modules-admin-console':
         specifier: workspace:*
         version: link:../../packages/modules/admin-console
+      '@n0va/modules-ads-marketing':
+        specifier: workspace:*
+        version: link:../../packages/modules/ads-marketing
       '@n0va/modules-ani':
         specifier: workspace:*
         version: link:../../packages/modules/ani
@@ -65,6 +68,9 @@ importers:
       '@n0va/modules-contacts':
         specifier: workspace:*
         version: link:../../packages/modules/contacts
+      '@n0va/modules-customer-experience':
+        specifier: workspace:*
+        version: link:../../packages/modules/customer-experience
       '@n0va/modules-docs':
         specifier: workspace:*
         version: link:../../packages/modules/docs
@@ -74,18 +80,30 @@ importers:
       '@n0va/modules-endpoint-management':
         specifier: workspace:*
         version: link:../../packages/modules/endpoint-management
+      '@n0va/modules-finance':
+        specifier: workspace:*
+        version: link:../../packages/modules/finance
       '@n0va/modules-forms':
         specifier: workspace:*
         version: link:../../packages/modules/forms
       '@n0va/modules-groups':
         specifier: workspace:*
         version: link:../../packages/modules/groups
+      '@n0va/modules-health':
+        specifier: workspace:*
+        version: link:../../packages/modules/health
+      '@n0va/modules-hr':
+        specifier: workspace:*
+        version: link:../../packages/modules/hr
       '@n0va/modules-insights':
         specifier: workspace:*
         version: link:../../packages/modules/insights
       '@n0va/modules-keep':
         specifier: workspace:*
         version: link:../../packages/modules/keep
+      '@n0va/modules-legal':
+        specifier: workspace:*
+        version: link:../../packages/modules/legal
       '@n0va/modules-mail':
         specifier: workspace:*
         version: link:../../packages/modules/mail
@@ -95,9 +113,18 @@ importers:
       '@n0va/modules-n0va1o':
         specifier: workspace:*
         version: link:../../packages/modules/n0va1o
+      '@n0va/modules-operations-teams':
+        specifier: workspace:*
+        version: link:../../packages/modules/operations-teams
       '@n0va/modules-pics':
         specifier: workspace:*
         version: link:../../packages/modules/pics
+      '@n0va/modules-revenue':
+        specifier: workspace:*
+        version: link:../../packages/modules/revenue
+      '@n0va/modules-sales':
+        specifier: workspace:*
+        version: link:../../packages/modules/sales
       '@n0va/modules-sheets':
         specifier: workspace:*
         version: link:../../packages/modules/sheets
@@ -280,6 +307,37 @@ importers:
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/ads-marketing:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
       next:
         specifier: ^15.3.0
         version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -548,6 +606,37 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/customer-experience:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/docs:
     dependencies:
       '@n0va/authz':
@@ -647,6 +736,37 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/finance:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/forms:
     dependencies:
       '@n0va/authz':
@@ -709,6 +829,68 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/health:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/hr:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/insights:
     dependencies:
       '@n0va/authz':
@@ -741,6 +923,37 @@ importers:
         version: 5.9.3
 
   packages/modules/keep:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/legal:
     dependencies:
       '@n0va/authz':
         specifier: workspace:*
@@ -864,6 +1077,37 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/operations-teams:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/pics:
     dependencies:
       '@n0va/authz':
@@ -891,6 +1135,68 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.1
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/revenue:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/sales:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.18

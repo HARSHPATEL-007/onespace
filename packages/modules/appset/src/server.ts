@@ -39,6 +39,15 @@ export const CATALOG: CatalogApp[] = [
   { id: "insights", name: "Insights", description: "Usage analytics across the workspace.", category: "Analytics", url: "/m/insights", accent: "#0ea5e9", badge: "v3" },
   { id: "endpoint-management", name: "Endpoint Management", description: "Enrolled device inventory and compliance.", category: "Security", url: "/m/endpoint-management", accent: "#059669", badge: "v3" },
   { id: "appset", name: "AppSet", description: "This catalog — every N0VA module in one place.", category: "Core", url: "/m/appset", accent: "#7c5cff", badge: "v3" },
+  { id: "finance", name: "Finance", description: "Invoice ledger — send, track and collect.", category: "Business", url: "/m/finance", accent: "#0f9d58", badge: "v4" },
+  { id: "legal", name: "Legal", description: "Contracts and policies with review flow.", category: "Business", url: "/m/legal", accent: "#7c5cff", badge: "v4" },
+  { id: "hr", name: "HR", description: "Employee directory, leave and approvals.", category: "Business", url: "/m/hr", accent: "#0ea5e9", badge: "v4" },
+  { id: "revenue", name: "Revenue", description: "Subscriptions, MRR and payment records.", category: "Business", url: "/m/revenue", accent: "#0f9d58", badge: "v4" },
+  { id: "sales", name: "Sales", description: "Pipeline CRM with stage kanban.", category: "Business", url: "/m/sales", accent: "#f4b400", badge: "v4" },
+  { id: "ads-marketing", name: "Ads & Marketing", description: "Campaigns with delivery simulation.", category: "Business", url: "/m/ads-marketing", accent: "#ea4335", badge: "v4" },
+  { id: "operations-teams", name: "Operations & Teams", description: "Runbooks, incidents and workflows.", category: "Business", url: "/m/operations-teams", accent: "#f59e0b", badge: "v4" },
+  { id: "customer-experience", name: "Customer Experience", description: "Support desk with replies and priorities.", category: "Business", url: "/m/customer-experience", accent: "#4285f4", badge: "v4" },
+  { id: "health", name: "Health", description: "Wellness check-ins and team mood.", category: "Business", url: "/m/health", accent: "#059669", badge: "v4" },
 ];
 
 export class AppSetService {

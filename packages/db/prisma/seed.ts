@@ -25,6 +25,7 @@ async function main() {
   await seedSheetsDemo(workspace.id);
   await seedPhase2Demo(workspace.id, owner.id, admin.id);
   await seedPhase3Demo(workspace.id, owner.id, admin.id);
+  await seedPhase4Demo(workspace.id, owner.id, admin.id);
 
   const coreModules = [
     "mail",
@@ -488,6 +489,138 @@ async function seedPhase3Demo(workspaceId: string, ownerId: string, adminId: str
         { workspaceId, ownerId, name: "Founder laptop", type: "LAPTOP", os: "macOS 15", status: "ACTIVE", compliant: true, lastSeenAt: new Date(Date.now() - 3600_000 * 1), enrolledAt: new Date(Date.now() - 86400_000 * 90) },
         { workspaceId, ownerId: adminId, name: "Admin workstation", type: "LAPTOP", os: "Windows 11 Pro", status: "ACTIVE", compliant: true, lastSeenAt: new Date(Date.now() - 3600_000 * 6), enrolledAt: new Date(Date.now() - 86400_000 * 80) },
         { workspaceId, ownerId, name: "Old test phone", type: "MOBILE", os: "Android 15", status: "REVOKED", compliant: false, lastSeenAt: new Date(Date.now() - 86400_000 * 12), enrolledAt: new Date(Date.now() - 86400_000 * 60) },
+      ],
+    });
+  }
+}
+
+async function seedPhase4Demo(workspaceId: string, ownerId: string, adminId: string) {
+  // FINANCE — invoices
+  const invoiceCount = await prisma.invoice.count({ where: { workspaceId } });
+  if (invoiceCount === 0) {
+    await prisma.invoice.createMany({
+      data: [
+        { workspaceId, createdById: ownerId, number: "INV-0001", customer: "Acme Corp", amountCents: 24_000_00, status: "PAID", dueDate: new Date(Date.now() - 30 * 86_400_000), paidAt: new Date(Date.now() - 25 * 86_400_000) },
+        { workspaceId, createdById: ownerId, number: "INV-0002", customer: "Globex Inc", amountCents: 8_500_00, status: "SENT", dueDate: new Date(Date.now() + 7 * 86_400_000) },
+        { workspaceId, createdById: adminId, number: "INV-0003", customer: "Initech", amountCents: 3_200_00, status: "OVERDUE", dueDate: new Date(Date.now() - 5 * 86_400_000) },
+        { workspaceId, createdById: adminId, number: "INV-0004", customer: "Stark Industries", amountCents: 15_000_00, status: "DRAFT" },
+      ],
+    });
+  }
+
+  // HR — employees and leave
+  const employeeCount = await prisma.employee.count({ where: { workspaceId } });
+  if (employeeCount === 0) {
+    const ava = await prisma.employee.create({ data: { workspaceId, name: "Ava Chen", email: "ava@n0va.workspace", department: "Design", title: "Head of Design", joinedAt: new Date(Date.now() - 400 * 86_400_000) } });
+    const marcus = await prisma.employee.create({ data: { workspaceId, name: "Marcus Lee", email: "marcus@n0va.workspace", department: "Engineering", title: "Staff Engineer", joinedAt: new Date(Date.now() - 320 * 86_400_000) } });
+    await prisma.employee.create({ data: { workspaceId, name: "Priya Sharma", email: "priya@n0va.workspace", department: "Sales", title: "Account Executive", joinedAt: new Date(Date.now() - 90 * 86_400_000) } });
+    await prisma.employee.create({ data: { workspaceId, name: "Tom Okafor", email: "tom@n0va.workspace", department: "Support", title: "CX Lead", status: "INVITED", joinedAt: new Date(Date.now() - 14 * 86_400_000) } });
+    await prisma.leaveRequest.createMany({
+      data: [
+        { workspaceId, employeeId: ava.id, kind: "VACATION", status: "APPROVED", startDate: new Date(Date.now() + 10 * 86_400_000), endDate: new Date(Date.now() + 14 * 86_400_000) },
+        { workspaceId, employeeId: marcus.id, kind: "SICK", status: "PENDING", startDate: new Date(Date.now() + 3 * 86_400_000), endDate: new Date(Date.now() + 4 * 86_400_000) },
+      ],
+    });
+  }
+
+  // LEGAL — contracts and policies
+  const legalCount = await prisma.legalDocument.count({ where: { workspaceId } });
+  if (legalCount === 0) {
+    await prisma.legalDocument.createMany({
+      data: [
+        { workspaceId, createdById: ownerId, title: "Master Services Agreement", kind: "CONTRACT", status: "ACTIVE", content: "1. Services. Provider will deliver the N0VA modules in the order agreed.\n2. Term. 12 months from the effective date.\n3. Fees. Invoiced monthly per the pricing schedule.\n4. Confidentiality. Both parties hold all non-public information in confidence.", effectiveDate: new Date(Date.now() - 200 * 86_400_000), reviewDate: new Date(Date.now() + 165 * 86_400_000) },
+        { workspaceId, createdById: adminId, title: "Acceptable Use Policy", kind: "POLICY", status: "IN_REVIEW", content: "Users may not upload illegal content, attempt unauthorized access to other tenants, or resell access to the platform without written consent." },
+        { workspaceId, createdById: adminId, title: "SOC 2 readiness checklist", kind: "COMPLIANCE", status: "DRAFT", content: "- Access control review\n- Encryption at rest audit\n- Backup restore test\n- Vendor risk assessment" },
+      ],
+    });
+  }
+
+  // OPERATIONS & TEAMS — runbooks and incidents
+  const runbookCount = await prisma.opsRunbook.count({ where: { workspaceId } });
+  if (runbookCount === 0) {
+    await prisma.opsRunbook.createMany({
+      data: [
+        { workspaceId, createdById: adminId, title: "Database failover", description: "Checklist when the primary DB degrades", steps: ["Check p95 latency on the dashboard", "Verify replica lag under 5s", "Promote replica", "Point apps at new primary", "Post update in Chat #ops"], status: "ACTIVE" },
+        { workspaceId, createdById: adminId, title: "New hire onboarding", description: "Day-one setup for a new teammate", steps: ["Add to Groups", "Create mailbox + labels", "Assign onboarding tasks", "Schedule intro meet", "Enroll laptop in Endpoint Management"], status: "ACTIVE" },
+      ],
+    });
+    await prisma.incident.createMany({
+      data: [
+        { workspaceId, createdById: adminId, title: "Search index lagging", severity: "SEV3", status: "OPEN", summary: "Cloud Search indexing 40% slower since the last schema change" },
+        { workspaceId, createdById: ownerId, title: "Meeting stream dropouts", severity: "SEV2", status: "INVESTIGATING", summary: "Intermittent SSE disconnects on Meet for long rooms" },
+      ],
+    });
+  }
+
+  // CUSTOMER EXPERIENCE — tickets
+  const ticketCount = await prisma.ticket.count({ where: { workspaceId } });
+  if (ticketCount === 0) {
+    const t1 = await prisma.ticket.create({
+      data: { workspaceId, createdById: ownerId, requesterName: "Dana Vogel", requesterEmail: "dana@acme.corp", subject: "Can't export sheets to CSV", description: "The export button on the Q3 budget sheet does nothing in Firefox.", priority: "HIGH", status: "OPEN" },
+    });
+    await prisma.ticket.create({
+      data: { workspaceId, createdById: ownerId, requesterName: "Ravi Patel", requesterEmail: "ravi@globex.io", subject: "Billing question — annual plan", description: "We'd like to move to annual billing; can you quote the discount?", priority: "LOW", status: "WAITING" },
+    });
+    await prisma.ticket.create({
+      data: { workspaceId, createdById: adminId, requesterName: "Nina Torres", requesterEmail: "nina@initech.co", subject: "Vault reveal is blank", description: "Revealing a vault entry shows empty value.", priority: "URGENT", status: "RESOLVED" },
+    });
+    await prisma.ticketReply.create({
+      data: { ticketId: t1.id, workspaceId, authorId: ownerId, body: "Thanks Dana — we're on it. Can you share the browser console output? We suspect a Firefox-specific event handler." },
+    });
+  }
+
+  // SALES — pipeline deals
+  const dealCount = await prisma.deal.count({ where: { workspaceId } });
+  if (dealCount === 0) {
+    await prisma.deal.createMany({
+      data: [
+        { workspaceId, createdById: ownerId, title: "Acme expansion — 200 seats", company: "Acme Corp", stage: "NEGOTIATION", valueCents: 96_000_00, closeDate: new Date(Date.now() + 12 * 86_400_000) },
+        { workspaceId, createdById: ownerId, title: "Globex pilot", company: "Globex Inc", stage: "PROPOSAL", valueCents: 12_000_00 },
+        { workspaceId, createdById: ownerId, title: "Initech annual renewal", company: "Initech", stage: "WON", valueCents: 30_000_00, closeDate: new Date(Date.now() - 20 * 86_400_000) },
+        { workspaceId, createdById: adminId, title: "Stark enterprise bundle", company: "Stark Industries", stage: "QUALIFIED", valueCents: 240_000_00 },
+        { workspaceId, createdById: adminId, title: "Hooli logo deal", company: "Hooli", stage: "LOST", valueCents: 60_000_00, closeDate: new Date(Date.now() - 45 * 86_400_000) },
+      ],
+    });
+  }
+
+  // REVENUE — subscriptions and payments
+  const subCount = await prisma.subscription.count({ where: { workspaceId } });
+  if (subCount === 0) {
+    const pro = await prisma.subscription.create({ data: { workspaceId, createdById: ownerId, plan: "Pro annual", mrrCents: 4_200_00, status: "ACTIVE", startedAt: new Date(Date.now() - 180 * 86_400_000) } });
+    await prisma.subscription.create({ data: { workspaceId, createdById: ownerId, plan: "Starter trial", mrrCents: 0, status: "TRIAL", startedAt: new Date(Date.now() - 6 * 86_400_000) } });
+    await prisma.subscription.create({ data: { workspaceId, createdById: adminId, plan: "Legacy", mrrCents: 1_000_00, status: "CHURNED", startedAt: new Date(Date.now() - 400 * 86_400_000), canceledAt: new Date(Date.now() - 60 * 86_400_000) } });
+    await prisma.payment.createMany({
+      data: [
+        { workspaceId, subscriptionId: pro.id, createdById: ownerId, amountCents: 4_200_00, method: "card", status: "SUCCEEDED", occurredAt: new Date(Date.now() - 30 * 86_400_000) },
+        { workspaceId, subscriptionId: pro.id, createdById: ownerId, amountCents: 4_200_00, method: "card", status: "SUCCEEDED", occurredAt: new Date(Date.now() - 60 * 86_400_000) },
+        { workspaceId, createdById: ownerId, amountCents: 8_500_00, method: "wire", status: "SUCCEEDED", occurredAt: new Date(Date.now() - 3 * 86_400_000) },
+        { workspaceId, createdById: adminId, amountCents: 500_00, method: "card", status: "FAILED", occurredAt: new Date(Date.now() - 1 * 86_400_000) },
+      ],
+    });
+  }
+
+  // ADS & MARKETING — campaigns
+  const campaignCount = await prisma.campaign.count({ where: { workspaceId } });
+  if (campaignCount === 0) {
+    await prisma.campaign.createMany({
+      data: [
+        { workspaceId, createdById: ownerId, name: "Q3 launch push", channel: "SOCIAL", budgetCents: 50_000_00, spentCents: 18_400_00, impressions: 84_200, clicks: 2_130, conversions: 128, status: "RUNNING", startsAt: new Date(Date.now() - 12 * 86_400_000), endsAt: new Date(Date.now() + 18 * 86_400_000) },
+        { workspaceId, createdById: ownerId, name: "Search — enterprise keywords", channel: "SEARCH", budgetCents: 30_000_00, spentCents: 30_000_00, impressions: 61_500, clicks: 1_890, conversions: 74, status: "COMPLETED" },
+        { workspaceId, createdById: adminId, name: "Retention emails", channel: "EMAIL", budgetCents: 8_000_00, spentCents: 1_100_00, impressions: 12_000, clicks: 240, conversions: 11, status: "PAUSED" },
+        { workspaceId, createdById: adminId, name: "Display retargeting", channel: "DISPLAY", budgetCents: 20_000_00, spentCents: 0, impressions: 0, clicks: 0, conversions: 0, status: "DRAFT" },
+      ],
+    });
+  }
+
+  // HEALTH — check-ins
+  const healthCount = await prisma.healthCheckin.count({ where: { workspaceId } });
+  if (healthCount === 0) {
+    await prisma.healthCheckin.createMany({
+      data: [
+        { workspaceId, createdById: ownerId, mood: "GOOD", energy: "HIGH", sleepHours: 7.5, note: "Shipping phase 4 modules", createdAt: new Date(Date.now() - 20 * 3600_000) },
+        { workspaceId, createdById: adminId, mood: "OK", energy: "OK", sleepHours: 6.5, note: "Late night on migrations", createdAt: new Date(Date.now() - 26 * 3600_000) },
+        { workspaceId, createdById: ownerId, mood: "GREAT", energy: "HIGH", sleepHours: 8, note: "", createdAt: new Date(Date.now() - 44 * 3600_000) },
+        { workspaceId, createdById: ownerId, mood: "OK", energy: "LOW", sleepHours: 5.5, note: "Rough Monday", createdAt: new Date(Date.now() - 68 * 3600_000) },
       ],
     });
   }
