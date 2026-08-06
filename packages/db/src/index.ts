@@ -50,3 +50,4 @@ export async function logAudit(input: {
 }
 
 export * from "./client";
+export * from "@prisma/client";

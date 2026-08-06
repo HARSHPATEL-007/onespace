@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: n0va-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n0va
+      POSTGRES_PASSWORD: n0va
+      POSTGRES_DB: n0va
+    ports:
+      - "5433:5432"
+    volumes:
+      - n0va_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n0va -d n0va"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  n0va_pgdata:

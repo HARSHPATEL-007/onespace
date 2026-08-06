@@ -1,3 +1,5 @@
+"use client";
+
 import {
   useEffect,
   useId,
@@ -346,20 +348,8 @@ export function ModuleIcon({
 
 /* ---------- Launcher grid ---------- */
 
-export function LauncherGrid({
-  modules,
-  render,
-}: {
-  modules: N0vaModule[];
-  render: (module: N0vaModule) => ReactNode;
-}) {
-  return (
-    <div className="nv-launcher">
-      {modules.map((module) => (
-        <div key={module.id}>{render(module)}</div>
-      ))}
-    </div>
-  );
+export function LauncherGrid({ children }: { children: ReactNode }) {
+  return <div className="nv-launcher">{children}</div>;
 }
 
 /* ---------- Command palette (Cmd+K) ---------- */
@@ -374,13 +364,9 @@ export function CommandPalette({
   onSelect: (module: N0vaModule) => void;
 }) {
   const [query, setQuery] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
+    if (open) setQuery("");
   }, [open]);
 
   const results = useMemo(
@@ -406,7 +392,6 @@ export function CommandPalette({
       <div className="nv-dialog" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "var(--nv-space-4)" }}>
           <Input
-            ref={inputRef as never}
             placeholder="Jump to a module…"
             autoFocus
             value={query}

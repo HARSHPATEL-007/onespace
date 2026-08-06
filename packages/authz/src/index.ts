@@ -1,4 +1,4 @@
-import { Role, PermissionAction } from "@prisma/client";
+import { Role, PermissionAction } from "@n0va/db";
 import { prisma } from "@n0va/db";
 
 export { Role, PermissionAction };
@@ -30,7 +30,7 @@ export function canSync(role: Role, action: PermissionActionName): boolean {
 }
 
 export function rankOf(role: Role): number {
-  return { OWNER: 4, ADMIN: 3, MEMBER: 2, VIEWER: 1 }[role] ?? 0;
+  return ({ OWNER: 4, ADMIN: 3, MEMBER: 2, VIEWER: 1 } as Record<Role, number>)[role] ?? 0;
 }
 
 /**
@@ -56,5 +56,5 @@ export async function can(
     return rows.some((r) => r.action === action);
   }
 
-  return DEFAULT_ROLE_PERMISSIONS[role].includes(action);
+  return DEFAULT_ROLE_PERMISSIONS[role]?.includes(action) ?? false;
 }
