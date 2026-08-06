@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
 }
 
 datasource db {
@@ -21,6 +22,12 @@ model Workspace {
   auditLogs    AuditLog[]
   attachments  Attachment[]
   notifications Notification[]
+  contacts     Contact[]
+  storageItems StorageItem[]
+  notes        Note[]
+  taskLists    TaskList[]
+  calendarEvents CalendarEvent[]
+  forms        Form[]
 }
 
 /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -37,6 +44,12 @@ model User {
   auditLogs     AuditLog[]
   attachments   Attachment[]
   notifications Notification[]
+  createdContacts Contact[]
+  createdStorageItems StorageItem[]
+  createdNotes Note[]
+  createdTaskLists TaskList[]
+  createdCalendarEvents CalendarEvent[]
+  createdForms Form[]
 }
 
 /// Seat within a workspace + assigned role.

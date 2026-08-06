@@ -1,0 +1,38 @@
+/// N0VA CLOUD STORAGE — files, folders, versions.
+model StorageItem {
+  id          String    @id @default(uuid())
+  workspaceId String
+  createdById String?
+  name        String
+  isFolder    Boolean   @default(false)
+  parentId    String?
+  mimeType    String    @default("application/octet-stream")
+  sizeBytes   Int       @default(0)
+  storageKey  String?
+  checksum    String?
+  version     Int       @default(1)
+  trashedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  parent    StorageItem? @relation("StorageFolder", fields: [parentId], references: [id], onDelete: Cascade)
+  children  StorageItem[] @relation("StorageFolder")
+  versions  StorageFileVersion[]
+
+  @@index([workspaceId, parentId, trashedAt])
+}
+
+model StorageFileVersion {
+  id          String   @id @default(uuid())
+  itemId      String
+  workspaceId String
+  sizeBytes   Int      @default(0)
+  storageKey  String
+  createdAt   DateTime @default(now())
+
+  item StorageItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+}
