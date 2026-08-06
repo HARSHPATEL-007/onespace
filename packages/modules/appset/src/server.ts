@@ -48,6 +48,8 @@ export const CATALOG: CatalogApp[] = [
   { id: "operations-teams", name: "Operations & Teams", description: "Runbooks, incidents and workflows.", category: "Business", url: "/m/operations-teams", accent: "#f59e0b", badge: "v4" },
   { id: "customer-experience", name: "Customer Experience", description: "Support desk with replies and priorities.", category: "Business", url: "/m/customer-experience", accent: "#4285f4", badge: "v4" },
   { id: "health", name: "Health", description: "Wellness check-ins and team mood.", category: "Business", url: "/m/health", accent: "#059669", badge: "v4" },
+  { id: "founder-dashboard", name: "Founder Dashboard", description: "Company KPIs across every module.", category: "Leadership", url: "/m/founder-dashboard", accent: "#7c5cff", badge: "v5" },
+  { id: "business-dashboard", name: "Business Dashboard", description: "Department views over ops data.", category: "Leadership", url: "/m/business-dashboard", accent: "#0ea5e9", badge: "v5" },
 ];
 
 export class AppSetService {

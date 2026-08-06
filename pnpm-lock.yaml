@@ -56,6 +56,9 @@ importers:
       '@n0va/modules-booklm':
         specifier: workspace:*
         version: link:../../packages/modules/booklm
+      '@n0va/modules-business-dashboard':
+        specifier: workspace:*
+        version: link:../../packages/modules/business-dashboard
       '@n0va/modules-calendar':
         specifier: workspace:*
         version: link:../../packages/modules/calendar
@@ -86,6 +89,9 @@ importers:
       '@n0va/modules-forms':
         specifier: workspace:*
         version: link:../../packages/modules/forms
+      '@n0va/modules-founder-dashboard':
+        specifier: workspace:*
+        version: link:../../packages/modules/founder-dashboard
       '@n0va/modules-groups':
         specifier: workspace:*
         version: link:../../packages/modules/groups
@@ -482,6 +488,37 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/business-dashboard:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/calendar:
     dependencies:
       '@n0va/authz':
@@ -768,6 +805,37 @@ importers:
         version: 5.9.3
 
   packages/modules/forms:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/founder-dashboard:
     dependencies:
       '@n0va/authz':
         specifier: workspace:*

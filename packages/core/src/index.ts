@@ -11,7 +11,7 @@ export type N0vaLayer =
   | "L5 Leadership"
   | "L6 Platform / Admin";
 
-export type N0vaPhase = 0 | 1 | 2 | 3 | 4;
+export type N0vaPhase = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface N0vaModule {
   id: ModuleId;
@@ -45,8 +45,8 @@ export const N0VA_MODULES: N0vaModule[] = [
   { id: "operations-teams", name: "N0VA OPERATIONS & TEAMS", codename: "Project Helm", layer: "L4 Business Ops", phase: 4, status: "live", description: "Projects and workflows" },
   { id: "hr", name: "N0VA HR", codename: "Project People", layer: "L4 Business Ops", phase: 4, status: "live", description: "People operations" },
   { id: "admin", name: "N0VA ADMIN", codename: "Project Sovereign", layer: "L6 Platform / Admin", phase: 3, status: "live", description: "Module policies and governance" },
-  { id: "founder-dashboard", name: "N0VA FOUNDER DASHBOARD", codename: "Project Helios", layer: "L5 Leadership", phase: 4, status: "planned", description: "Company-level KPIs" },
-  { id: "business-dashboard", name: "N0VA BUSINESS DASHBOARD", codename: "Project Atlas", layer: "L5 Leadership", phase: 4, status: "planned", description: "Department views over ops data" },
+  { id: "founder-dashboard", name: "N0VA FOUNDER DASHBOARD", codename: "Project Helios", layer: "L5 Leadership", phase: 5, status: "live", description: "Company-level KPIs" },
+  { id: "business-dashboard", name: "N0VA BUSINESS DASHBOARD", codename: "Project Atlas", layer: "L5 Leadership", phase: 5, status: "live", description: "Department views over ops data" },
   { id: "drawings", name: "N0VA DRAWINGS", codename: "Project Canvas", layer: "L2 Content & Creation", phase: 2, status: "live", description: "Diagrams and drawings" },
   { id: "booklm", name: "N0VA BOOKLM EDUCATION", codename: "Project Scholar", layer: "L2 Content & Creation", phase: 2, status: "live", description: "Learning sets over DOCS and VIDEOS" },
   { id: "groups", name: "N0VA GROUPS", codename: "Project Collective", layer: "L1 Communication", phase: 2, status: "live", description: "Distribution lists and team spaces" },

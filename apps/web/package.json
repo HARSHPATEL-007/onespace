@@ -51,6 +51,8 @@
     "@n0va/modules-revenue": "workspace:*",
     "@n0va/modules-sales": "workspace:*",
     "@n0va/modules-vault": "workspace:*",
+    "@n0va/modules-founder-dashboard": "workspace:*",
+    "@n0va/modules-business-dashboard": "workspace:*",
     "@n0va/modules-workspace-studio": "workspace:*",
     "@n0va/ui": "workspace:*",
     "@prisma/client": "^6.12.0",
