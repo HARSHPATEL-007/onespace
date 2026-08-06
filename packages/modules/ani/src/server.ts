@@ -82,6 +82,17 @@ export class AniService {
     await this.audit("ani.conversation.deleted", id);
   }
 
+  private audit(action: string, targetId: string) {
+    return logAudit({
+      workspaceId: this.workspaceId,
+      actorId: this.userId,
+      module: MODULE,
+      action,
+      targetType: "AniConversation",
+      targetId,
+    });
+  }
+
   private composeReply(userContent: string, title: string): string {
     const lower = userContent.toLowerCase();
     if (lower.includes("schedule") || lower.includes("meeting")) {

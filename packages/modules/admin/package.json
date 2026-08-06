@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "@n0va/modules-admin",
   "version": "0.1.0",
   "private": true,
@@ -9,6 +9,7 @@
     "./components": "./src/components.tsx"
   },
   "dependencies": {
+    "@n0va/core": "workspace:*",
     "@n0va/db": "workspace:*",
     "@n0va/authz": "workspace:*",
     "@n0va/ui": "workspace:*",

@@ -8,14 +8,5 @@ export default async function AppSetPage() {
   const svc = new AppSetService(workspaceId, userId, role);
   const apps = await svc.list();
 
-  return (
-    <AppCatalog
-      apps={apps}
-      onLaunch={(id) => {
-        const fd = new FormData();
-        fd.set("id", id);
-        void logLaunchAction(fd);
-      }}
-    />
-  );
+  return <AppCatalog apps={apps} onLaunch={logLaunchAction} />;
 }

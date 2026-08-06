@@ -48,11 +48,11 @@ export class InsightsService {
     ] = await Promise.all([
       prisma.doc.count({ where: { workspaceId: w } }),
       prisma.presentation.count({ where: { workspaceId: w } }),
-      prisma.spreadsheet.count({ where: { workspaceId: w } }),
+      prisma.sheetWorkbook.count({ where: { workspaceId: w } }),
       prisma.task.count({ where: { workspaceId: w } }),
       prisma.meetRoom.count({ where: { workspaceId: w } }),
       prisma.meetMessage.count({ where: { workspaceId: w } }),
-      prisma.file.count({ where: { workspaceId: w } }),
+      prisma.storageItem.count({ where: { workspaceId: w } }),
       prisma.site.count({ where: { workspaceId: w } }),
       prisma.learningSet.count({ where: { workspaceId: w } }),
       prisma.callLog.count({ where: { workspaceId: w } }),

@@ -44,7 +44,7 @@ export class StudioService {
       config = { raw: input.config };
     }
     await prisma.automation.create({
-      data: { workspaceId: this.workspaceId, createdById: this.userId, name: input.name, trigger: input.trigger, action: input.action, config },
+      data: { workspaceId: this.workspaceId, createdById: this.userId, name: input.name, trigger: input.trigger, action: input.action, config: config as never },
     });
     await this.audit("automation.created", input.name);
   }

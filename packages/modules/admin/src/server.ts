@@ -1,4 +1,4 @@
-import { prisma, logAudit } from "@n0va/db";
+import { prisma, logAudit, type PermissionAction } from "@n0va/db";
 import { can, rankOf, type Role } from "@n0va/authz";
 import { N0VA_MODULES, type N0vaModule } from "@n0va/core";
 
@@ -37,15 +37,16 @@ export class AdminService {
 
   async setPolicy(module: string, role: Role, action: string, allowed: boolean): Promise<void> {
     await this.assert();
+    const permissionAction = action as PermissionAction;
     if (allowed) {
       await prisma.workspacePermission.upsert({
-        where: { workspaceId_role_module_action: { workspaceId: this.workspaceId, role, module, action } },
+        where: { workspaceId_role_module_action: { workspaceId: this.workspaceId, role, module, action: permissionAction } },
         update: {},
-        create: { workspaceId: this.workspaceId, role, module, action: action as never },
+        create: { workspaceId: this.workspaceId, role, module, action: permissionAction },
       });
     } else {
       await prisma.workspacePermission.deleteMany({
-        where: { workspaceId: this.workspaceId, role, module, action },
+        where: { workspaceId: this.workspaceId, role, module, action: permissionAction },
       });
     }
     await this.audit("admin.policy.updated", module);

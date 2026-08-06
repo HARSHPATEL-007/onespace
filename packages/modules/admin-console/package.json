@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "@n0va/modules-admin-console",
   "version": "0.1.0",
   "private": true,
@@ -12,6 +12,7 @@
     "@n0va/db": "workspace:*",
     "@n0va/authz": "workspace:*",
     "@n0va/ui": "workspace:*",
+    "bcryptjs": "^3.0.2",
     "next": "^15.3.0",
     "zod": "^3.24.0"
   },

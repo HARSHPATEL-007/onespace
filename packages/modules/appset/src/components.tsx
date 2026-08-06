@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import type { CatalogApp } from "./server";
 
-export function AppCatalog({ apps, onLaunch }: { apps: CatalogApp[]; onLaunch?: (id: string) => void }) {
+export function AppCatalog({ apps, onLaunch }: { apps: CatalogApp[]; onLaunch?: (formData: FormData) => void }) {
   const router = useRouter();
 
   return (
@@ -18,7 +18,9 @@ export function AppCatalog({ apps, onLaunch }: { apps: CatalogApp[]; onLaunch?: 
           <button
             key={app.id}
             onClick={() => {
-              onLaunch?.(app.id);
+              const fd = new FormData();
+              fd.set("id", app.id);
+              onLaunch?.(fd);
               router.push(app.url);
             }}
             className="nv-card"

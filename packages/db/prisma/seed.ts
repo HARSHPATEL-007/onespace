@@ -24,6 +24,7 @@ async function main() {
   await seedMailDemo(workspace.id);
   await seedSheetsDemo(workspace.id);
   await seedPhase2Demo(workspace.id, owner.id, admin.id);
+  await seedPhase3Demo(workspace.id, owner.id, admin.id);
 
   const coreModules = [
     "mail",
@@ -392,6 +393,101 @@ async function seedPhase2Demo(workspaceId: string, ownerId: string, adminId: str
         { workspaceId, direction: "OUT", number: "+1 555 010 0110", contactName: "Ava Chen", durationSec: 84, status: "completed", startedAt: new Date(Date.now() - 3600_000 * 5) },
         { workspaceId, direction: "IN", number: "+1 555 010 0119", contactName: "Marcus Lee", durationSec: 152, status: "completed", startedAt: new Date(Date.now() - 3600_000 * 26) },
         { workspaceId, direction: "IN", number: "+1 555 010 0199", contactName: "Unknown", durationSec: 0, status: "missed", startedAt: new Date(Date.now() - 3600_000 * 49) },
+      ],
+    });
+  }
+}
+
+async function seedPhase3Demo(workspaceId: string, ownerId: string, adminId: string) {
+  // VAULT — encrypted secret store
+  const vaultCount = await prisma.vaultEntry.count({ where: { workspaceId } });
+  if (vaultCount === 0) {
+    const crypto = await import("node:crypto");
+    const key = crypto.createHash("sha256").update("n0va-dev-vault-key-change-me").digest();
+    const makeEntry = (value: string, hint: string) => {
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+      const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+      return `${iv.toString("base64")}.${cipher.getAuthTag().toString("base64")}.${encrypted.toString("base64")}`;
+    };
+    await prisma.vaultEntry.createMany({
+      data: [
+        { workspaceId, createdById: ownerId, name: "Staging API token", encryptedValue: makeEntry("sk-staging-7f3a9c", "Rotate monthly"), hint: "Used by the sync worker" },
+        { workspaceId, createdById: ownerId, name: "AWS access key", encryptedValue: makeEntry("AKIA2Z5N7Q8W1D4F6H", "Key for S3 backups"), hint: "IAM user: n0va-backup" },
+        { workspaceId, createdById: adminId, name: "Demo billing webhook", encryptedValue: makeEntry("whsec_n0va_demo_9d31", "Stripe test mode"), hint: "Endpoint /api/billing/hooks" },
+      ],
+    });
+  }
+
+  // WORKSPACE STUDIO — automations
+  const automationCount = await prisma.automation.count({ where: { workspaceId } });
+  if (automationCount === 0) {
+    await prisma.automation.createMany({
+      data: [
+        { workspaceId, createdById: adminId, name: "Weekly digest", trigger: "SCHEDULE", action: "LOG", config: { cron: "0 9 * * 1" }, enabled: true, lastRunAt: new Date(Date.now() - 3600_000 * 72) },
+        { workspaceId, createdById: ownerId, name: "Q3 report draft", trigger: "MANUAL", action: "CREATE_DOC", config: { title: "Q3 weekly report" }, enabled: true, lastRunAt: new Date(Date.now() - 3600_000 * 5) },
+        { workspaceId, createdById: adminId, name: "New member welcome", trigger: "EVENT", action: "NOTIFY", config: { channel: "chat" }, enabled: false },
+      ],
+    });
+  }
+
+  // N0VA1O — integrations
+  const integrationCount = await prisma.integration.count({ where: { workspaceId } });
+  if (integrationCount === 0) {
+    const slack = await prisma.integration.create({
+      data: { workspaceId, createdById: adminId, provider: "slack", name: "Design channel", status: "connected", config: { token: "xoxb-demo" }, enabled: true, lastSyncAt: new Date(Date.now() - 3600_000 * 2) },
+    });
+    await prisma.integration.create({
+      data: { workspaceId, createdById: ownerId, provider: "gdrive", name: "Marketing assets", status: "connected", config: {}, enabled: true, lastSyncAt: new Date(Date.now() - 3600_000 * 20) },
+    });
+    await prisma.integrationLog.createMany({
+      data: [
+        { workspaceId, integrationId: slack.id, level: "info", message: "Synced slack — 12 items pulled", createdAt: new Date(Date.now() - 3600_000 * 2) },
+        { workspaceId, integrationId: slack.id, level: "info", message: "Connected slack", createdAt: new Date(Date.now() - 3600_000 * 3) },
+      ],
+    });
+  }
+
+  // ANI — assistant conversations
+  const aniCount = await prisma.aniConversation.count({ where: { workspaceId } });
+  if (aniCount === 0) {
+    const convo = await prisma.aniConversation.create({
+      data: { workspaceId, createdById: ownerId, title: "Q3 planning" },
+    });
+    await prisma.aniMessage.createMany({
+      data: [
+        { conversationId: convo.id, workspaceId, role: "user", content: "Can you draft an agenda for our Q3 planning offsite?" },
+        { conversationId: convo.id, workspaceId, role: "assistant", content: "Sure — I'd suggest: (1) OKR review, (2) module demos, (3) dogfooding retro, (4) roadmap next-quarter. Want me to turn this into a doc?", createdAt: new Date(Date.now() - 3600_000 * 6) },
+      ],
+    });
+  }
+
+  // APPSCRIPT — scripts
+  const scriptCount = await prisma.script.count({ where: { workspaceId } });
+  if (scriptCount === 0) {
+    const script = await prisma.script.create({
+      data: {
+        workspaceId,
+        createdById: adminId,
+        name: "Usage stats",
+        language: "js",
+        code: "const totals = [12, 45, 23, 67];\nconsole.log(\"Docs opened this week:\", totals.reduce((a, b) => a + b, 0));\nconsole.log(\"Average per day:\", (totals.reduce((a, b) => a + b, 0) / totals.length).toFixed(1));",
+        lastRunAt: new Date(Date.now() - 3600_000 * 24),
+      },
+    });
+    await prisma.scriptRun.create({
+      data: { scriptId: script.id, workspaceId, status: "success", output: "Docs opened this week: 147\nAverage per day: 36.8", durationMs: 42, startedAt: new Date(Date.now() - 3600_000 * 24) },
+    });
+  }
+
+  // ENDPOINT MANAGEMENT — devices
+  const deviceCount = await prisma.endpointDevice.count({ where: { workspaceId } });
+  if (deviceCount === 0) {
+    await prisma.endpointDevice.createMany({
+      data: [
+        { workspaceId, ownerId, name: "Founder laptop", type: "LAPTOP", os: "macOS 15", status: "ACTIVE", compliant: true, lastSeenAt: new Date(Date.now() - 3600_000 * 1), enrolledAt: new Date(Date.now() - 86400_000 * 90) },
+        { workspaceId, ownerId: adminId, name: "Admin workstation", type: "LAPTOP", os: "Windows 11 Pro", status: "ACTIVE", compliant: true, lastSeenAt: new Date(Date.now() - 3600_000 * 6), enrolledAt: new Date(Date.now() - 86400_000 * 80) },
+        { workspaceId, ownerId, name: "Old test phone", type: "MOBILE", os: "Android 15", status: "REVOKED", compliant: false, lastSeenAt: new Date(Date.now() - 86400_000 * 12), enrolledAt: new Date(Date.now() - 86400_000 * 60) },
       ],
     });
   }

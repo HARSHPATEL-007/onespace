@@ -162,7 +162,7 @@ export function ScriptRunner({ scripts, actions }: { scripts: ScriptWithRuns[]; 
             </pre>
             {selected.runs.length > 0 && (
               <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)" }}>
-                {selected.runs.length} previous run{selected.runs.length === 1 ? "" : "s"} (latest {selected.runs[0].durationMs}ms)
+                {selected.runs.length} previous run{selected.runs.length === 1 ? "" : "s"} (latest {selected.runs[0]?.durationMs}ms)
               </div>
             )}
           </div>

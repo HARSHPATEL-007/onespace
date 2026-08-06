@@ -25,7 +25,7 @@ export class EndpointService {
     }
   }
 
-  async list(): Promise<EndpointDevice[]> {
+  async list(): Promise<Array<EndpointDevice & { owner: { id: string; name: string | null; email: string } | null }>> {
     await this.assert("READ");
     return prisma.endpointDevice.findMany({
       where: { workspaceId: this.workspaceId },
@@ -42,7 +42,7 @@ export class EndpointService {
         ownerId: this.userId,
         name: input.name,
         type: input.type,
-        os: input.os || OS_POOL[Math.floor(Math.random() * OS_POOL.length)] ?? "Windows 11 Pro",
+        os: input.os || (OS_POOL[Math.floor(Math.random() * OS_POOL.length)] ?? "Windows 11 Pro"),
         status: "ACTIVE",
         compliant: true,
         lastSeenAt: new Date(),

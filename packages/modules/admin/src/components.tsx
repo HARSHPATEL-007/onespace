@@ -12,9 +12,10 @@ export interface AdminActions {
 }
 
 const ROLES = ["VIEWER", "MEMBER", "ADMIN", "OWNER"] as const;
+type RoleLiteral = (typeof ROLES)[number];
 const ACTIONS = ["READ", "CREATE", "UPDATE", "DELETE", "ADMIN"] as const;
 
-const DEFAULTS: Record<string, string[]> = {
+const DEFAULTS: Record<RoleLiteral, string[]> = {
   VIEWER: ["READ"],
   MEMBER: ["READ", "CREATE", "UPDATE"],
   ADMIN: ["READ", "CREATE", "UPDATE", "DELETE"],
