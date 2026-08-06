@@ -43,9 +43,21 @@ model Workspace {
   meetMessages   MeetMessage[]
   sites          Site[]
   sitePages      SitePage[]
+  mfaEnabled     Boolean       @default(false)
+  sessionTimeoutMin Int       @default(60)
   learningSets   LearningSet[]
   learningItems  LearningItem[]
   callLogs       CallLog[]
+  vaultEntries    VaultEntry[]
+  automations     Automation[]
+  automationRuns  AutomationRun[]
+  integrations    Integration[]
+  integrationLogs IntegrationLog[]
+  aniConversations AniConversation[]
+  aniMessages     AniMessage[]
+  scripts         Script[]
+  scriptRuns      ScriptRun[]
+  endpointDevices EndpointDevice[]
 }
 
 /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -82,6 +94,12 @@ createdCalendarEvents CalendarEvent[]
   createdMeetRooms   MeetRoom[]
   createdSites       Site[]
   createdLearningSets LearningSet[]
+  createdVaultEntries  VaultEntry[]
+  createdAutomations   Automation[]
+  createdIntegrations  Integration[]
+  createdAniConversations AniConversation[]
+  createdScripts       Script[]
+  devices              EndpointDevice[]
 }
 
 /// Seat within a workspace + assigned role.
@@ -846,4 +864,202 @@ model CallLog {
 enum CallDirection {
   IN
   OUT
+}
+
+/// N0VA VAULT - encrypted secrets.
+model VaultEntry {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  createdById    String?
+  name           String
+  encryptedValue String
+  hint           String   @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, updatedAt(sort: Desc)])
+}
+
+/// N0VA WORKSPACE STUDIO - automations.
+model Automation {
+  id          String        @id @default(uuid())
+  workspaceId String
+  createdById String?
+  name        String
+  trigger     AutomationTrigger @default(MANUAL)
+  action      AutomationAction  @default(LOG)
+  config      Json
+  enabled     Boolean       @default(true)
+  lastRunAt   DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  runs       AutomationRun[]
+
+  @@index([workspaceId, updatedAt(sort: Desc)])
+}
+
+enum AutomationTrigger {
+  MANUAL
+  SCHEDULE
+  EVENT
+}
+
+enum AutomationAction {
+  LOG
+  NOTIFY
+  CREATE_DOC
+}
+
+model AutomationRun {
+  id            String   @id @default(uuid())
+  automationId  String
+  workspaceId   String
+  status        String   @default("success")
+  detail        String   @default("")
+  durationMs    Int      @default(0)
+  startedAt     DateTime @default(now())
+
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([automationId, startedAt(sort: Desc)])
+}
+
+/// N0VA1O - integration gateway.
+model Integration {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  provider    String
+  name        String
+  status      String   @default("connected")
+  config      Json
+  enabled     Boolean  @default(true)
+  lastSyncAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  logs       IntegrationLog[]
+
+  @@index([workspaceId, updatedAt(sort: Desc)])
+}
+
+model IntegrationLog {
+  id            String      @id @default(uuid())
+  integrationId String
+  workspaceId   String
+  level         String      @default("info")
+  message       String
+  createdAt     DateTime    @default(now())
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId, createdAt(sort: Desc)])
+}
+
+/// N0VA ANI - assistant conversations.
+model AniConversation {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  title       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  messages   AniMessage[]
+
+  @@index([workspaceId, updatedAt(sort: Desc)])
+}
+
+model AniMessage {
+  id             String    @id @default(uuid())
+  conversationId String
+  workspaceId    String
+  role           String    @default("user")
+  content        String
+  createdAt      DateTime  @default(now())
+
+  conversation AniConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+/// N0VA APPSCRIPT - scripting runtime.
+model Script {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  name        String
+  language    String   @default("js")
+  code        String
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  runs       ScriptRun[]
+
+  @@index([workspaceId, updatedAt(sort: Desc)])
+}
+
+model ScriptRun {
+  id          String   @id @default(uuid())
+  scriptId    String
+  workspaceId String
+  status      String   @default("success")
+  output      String   @default("")
+  error       String   @default("")
+  durationMs  Int      @default(0)
+  startedAt   DateTime @default(now())
+
+  script    Script    @relation(fields: [scriptId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([scriptId, startedAt(sort: Desc)])
+}
+
+/// N0VA ENDPOINT MANAGEMENT - device registry.
+model EndpointDevice {
+  id          String        @id @default(uuid())
+  workspaceId String
+  ownerId     String?
+  name        String
+  type        DeviceType    @default(LAPTOP)
+  os          String        @default("Windows")
+  status      DeviceStatus  @default(ACTIVE)
+  compliant   Boolean       @default(true)
+  lastSeenAt  DateTime      @default(now())
+  enrolledAt  DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner     User?     @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+enum DeviceType {
+  LAPTOP
+  MOBILE
+  OTHER
+}
+
+enum DeviceStatus {
+  ACTIVE
+  INACTIVE
+  REVOKED
 }
