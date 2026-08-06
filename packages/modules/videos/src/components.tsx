@@ -11,6 +11,38 @@ export interface VideosActions {
   remove: (formData: FormData) => Promise<void>;
 }
 
+export function VideoDetail({ video }: { video: Video }) {
+  const embed = embedFor(video.url, video.provider);
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+      <a href="/m/videos" className="nv-link" style={{ fontSize: "var(--nv-font-sm)" }}>
+        ← Video library
+      </a>
+      <div style={{ aspectRatio: "16/9", borderRadius: "var(--nv-radius-lg)", overflow: "hidden", background: "#000", marginTop: "var(--nv-space-3)" }}>
+        {embed ? (
+          <iframe
+            src={embed}
+            title={video.title}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            style={{ width: "100%", height: "100%", border: "none" }}
+          />
+        ) : (
+          <a href={video.url} target="_blank" rel="noreferrer" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 15 }}>
+            Open external video ↗
+          </a>
+        )}
+      </div>
+      <h1 style={{ fontSize: "var(--nv-font-xl)", fontWeight: 800, marginTop: "var(--nv-space-4)" }}>{video.title}</h1>
+      {video.description && <p style={{ color: "var(--nv-color-text-muted)" }}>{video.description}</p>}
+      <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+        {video.provider} · added {video.uploadedAt.toLocaleDateString()}
+        {video.durationSec ? ` · ${Math.floor(video.durationSec / 60)}:${String(video.durationSec % 60).padStart(2, "0")}` : ""}
+      </div>
+    </div>
+  );
+}
+
 export function VideoLibrary({
   videos,
   actions,

@@ -6,7 +6,7 @@ import { Button, Dialog } from "@n0va/ui";
 import type { MeetMessage, MeetParticipant, MeetRoom, User } from "@n0va/db";
 
 export interface MeetActions {
-  createRoom: (formData: FormData) => Promise<void>;
+  createRoom?: (formData: FormData) => Promise<void>;
   join: (formData: FormData) => Promise<void>;
   leave: (formData: FormData) => Promise<void>;
   endRoom: (formData: FormData) => Promise<void>;
@@ -141,7 +141,7 @@ export function MeetRooms({
         <form
           id="create-room-form"
           action={(fd) => {
-            void actions.createRoom(fd).then(() => {
+            void actions.createRoom?.(fd).then(() => {
               setCreating(false);
               setTimeout(() => router.refresh(), 50);
             });

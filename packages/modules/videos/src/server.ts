@@ -44,6 +44,13 @@ export class VideosService {
     });
   }
 
+  async get(id: string) {
+    await this.assert("READ");
+    const video = await prisma.video.findFirst({ where: { id, workspaceId: this.workspaceId } });
+    if (!video) throw new Error("Video not found in this workspace");
+    return video;
+  }
+
   async create(input: z.infer<typeof videoSchema>) {
     await this.assert("CREATE");
     const video = await prisma.video.create({

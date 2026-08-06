@@ -13,7 +13,7 @@ export interface VoiceActions {
 export interface VoiceContact {
   id: string;
   firstName: string;
-  lastName: string;
+  lastName: string | null;
   phone: string | null;
 }
 
@@ -168,7 +168,7 @@ export function VoiceDialer({ logs, contacts, actions }: { logs: CallLog[]; cont
                 key={c.id}
                 className="nv-badge"
                 style={{ cursor: "pointer", background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)" }}
-                onClick={() => { setNumber(c.phone ?? ""); setContactName(`${c.firstName} ${c.lastName}`.trim()); }}
+                onClick={() => setNumber(c.phone ?? "")}
               >
                 {c.firstName} {c.lastName}
               </button>

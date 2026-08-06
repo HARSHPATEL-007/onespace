@@ -3,17 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog } from "@n0va/ui";
-import type { Group, GroupMember, User } from "@n0va/db";
+import type { Group, GroupMember } from "@n0va/db";
 
 export interface GroupsActions {
-  create: (formData: FormData) => Promise<void>;
-  remove: (formData: FormData) => Promise<void>;
+  create?: (formData: FormData) => Promise<void>;
+  remove?: (formData: FormData) => Promise<void>;
   addMember: (formData: FormData) => Promise<void>;
   removeMember: (formData: FormData) => Promise<void>;
 }
 
 type GroupWithCount = Group & { _count: { members: number } };
-type MemberWithUser = GroupMember & { user: User };
+type MemberWithUser = GroupMember & { user: { id: string; name: string | null; email: string } };
 
 export function GroupsList({
   groups,
@@ -88,7 +88,7 @@ export function GroupsList({
         <form
           id="create-group-form"
           action={(fd) => {
-            void actions.create(fd).then(() => {
+            void actions.create?.(fd).then(() => {
               setCreating(false);
               setTimeout(() => router.refresh(), 50);
             });

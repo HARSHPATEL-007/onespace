@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { prisma, type SitePage } from "@n0va/db";
+import { prisma, type Prisma, type SitePage } from "@n0va/db";
 
 export const siteSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
@@ -121,7 +121,7 @@ export class SiteService {
       where: { id: pageId },
       data: {
         title: input.title ?? page.title,
-        blocks: input.blocks ?? page.blocks,
+        blocks: (input.blocks ?? page.blocks) as unknown as Prisma.InputJsonValue,
         updatedAt: new Date(),
       },
     });
@@ -140,9 +140,11 @@ export class SiteService {
     const i = pages.findIndex((p) => p.id === pageId);
     const j = dir === "up" ? i - 1 : i + 1;
     if (i < 0 || j < 0 || j >= pages.length) return;
+    const a = pages[i]!;
+    const b = pages[j]!;
     await prisma.$transaction([
-      prisma.sitePage.update({ where: { id: pageId }, data: { sortOrder: pages[j].sortOrder } }),
-      prisma.sitePage.update({ where: { id: pages[j].id }, data: { sortOrder: pages[i].sortOrder } }),
+      prisma.sitePage.update({ where: { id: pageId }, data: { sortOrder: b.sortOrder } }),
+      prisma.sitePage.update({ where: { id: b.id }, data: { sortOrder: a.sortOrder } }),
     ]);
   }
 }

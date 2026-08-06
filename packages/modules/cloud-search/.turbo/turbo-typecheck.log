@@ -1,18 +1,1 @@
 $ tsc --noEmit
-src/server.ts(92,39): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-src/server.ts(94,56): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-src/server.ts(95,57): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-src/server.ts(98,35): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-src/server.ts(100,55): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-src/server.ts(101,65): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-src/server.ts(102,61): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-src/server.ts(103,58): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
-  Type 'undefined' is not assignable to type 'string'.
-[ELIFECYCLE] Command failed with exit code 2.

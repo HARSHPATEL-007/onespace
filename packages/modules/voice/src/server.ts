@@ -44,7 +44,7 @@ export class VoiceService {
   }
 
   /** Cross-module contact picker */
-  async contacts(): Promise<Array<{ id: string; firstName: string; lastName: string; phone: string | null }>> {
+  async contacts(): Promise<Array<{ id: string; firstName: string; lastName: string | null; phone: string | null }>> {
     return prisma.contact.findMany({
       where: { workspaceId: this.workspaceId, phone: { not: null } },
       select: { id: true, firstName: true, lastName: true, phone: true },

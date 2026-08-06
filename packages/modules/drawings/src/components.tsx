@@ -7,9 +7,9 @@ import type { Drawing } from "@n0va/db";
 import type { Shape } from "./server";
 
 export interface DrawingsActions {
-  create: (formData: FormData) => Promise<void>;
+  create?: (formData: FormData) => Promise<void>;
   rename: (formData: FormData) => Promise<void>;
-  remove: (formData: FormData) => Promise<void>;
+  remove?: (formData: FormData) => Promise<void>;
   saveCanvas: (formData: FormData) => Promise<void>;
 }
 
@@ -83,7 +83,7 @@ export function DrawingsList({
         <form
           id="create-drawing-form"
           action={(fd) => {
-            void actions.create(fd).then(() => {
+            void actions.create?.(fd).then(() => {
               setCreating(false);
               setTimeout(() => router.refresh(), 50);
             });

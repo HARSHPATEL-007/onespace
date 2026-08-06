@@ -1,15 +1,1 @@
 $ tsc --noEmit
-src/components.tsx(55,19): error TS2352: Conversion of type 'string | number | boolean | JsonObject | JsonArray | null' to type 'Shape[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
-  Type 'JsonArray' is not comparable to type 'Shape[]'.
-    Type 'JsonValue' is not comparable to type 'Shape'.
-      Type 'JsonValue[]' is missing the following properties from type 'Shape': id, type, x, y, and 3 more.
-src/components.tsx(59,51): error TS2322: Type '{ children: string; variant: "ghost"; size: "sm"; danger: true; }' is not assignable to type 'IntrinsicAttributes & ButtonProps'.
-  Property 'danger' does not exist on type 'IntrinsicAttributes & ButtonProps'.
-src/components.tsx(108,50): error TS2352: Conversion of type 'string | number | boolean | JsonObject | JsonArray | null' to type 'Shape[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
-  Type 'JsonArray' is not comparable to type 'Shape[]'.
-    Type 'JsonValue' is not comparable to type 'Shape'.
-      Type 'JsonValue[]' is missing the following properties from type 'Shape': id, type, x, y, and 3 more.
-src/server.ts(86,59): error TS2322: Type 'Shape[]' is not assignable to type 'JsonNull | InputJsonValue | undefined'.
-  Type 'Shape[]' is not assignable to type 'InputJsonObject'.
-    Index signature for type 'string' is missing in type 'Shape[]'.
-[ELIFECYCLE] Command failed with exit code 2.

@@ -7,9 +7,9 @@ import type { Presentation, Slide } from "@n0va/db";
 import type { Block } from "./server";
 
 export interface SlidesActions {
-  create: (formData: FormData) => Promise<void>;
+  create?: (formData: FormData) => Promise<void>;
   rename: (formData: FormData) => Promise<void>;
-  remove: (formData: FormData) => Promise<void>;
+  remove?: (formData: FormData) => Promise<void>;
   addSlide: (formData: FormData) => Promise<void>;
   saveBlocks: (formData: FormData) => Promise<void>;
   removeSlide: (formData: FormData) => Promise<void>;
@@ -110,7 +110,7 @@ export function SlidesList({
         <form
           id="create-pres-form"
           action={(fd) => {
-            void actions.create(fd).then(() => {
+            void actions.create?.(fd).then(() => {
               setCreating(false);
               setTimeout(() => router.refresh(), 50);
             });

@@ -2,15 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Dropdown } from "@n0va/ui";
+import { Button, Dialog, Dropdown, MenuItem } from "@n0va/ui";
 import type { SitePage } from "@n0va/db";
 import type { PageBlock } from "./server";
 
 export interface SiteActions {
-  create: (formData: FormData) => Promise<void>;
+  create?: (formData: FormData) => Promise<string | void>;
   rename: (formData: FormData) => Promise<void>;
   setPublished: (formData: FormData) => Promise<void>;
-  remove: (formData: FormData) => Promise<void>;
+  remove?: (formData: FormData) => Promise<void>;
   addPage: (formData: FormData) => Promise<void>;
   updatePage: (formData: FormData) => Promise<void>;
   removePage: (formData: FormData) => Promise<void>;
@@ -90,27 +90,31 @@ export function SitesList({ sites, actions }: { sites: SiteMeta[]; actions: Site
                   <Button style={{ width: "100%" }}>Edit</Button>
                 </a>
                 <Dropdown
-                  items={[
-                    {
-                      label: s.published ? "Unpublish" : "Publish",
-                      onSelect: () => {
-                        const fd = new FormData();
-                        fd.set("siteId", s.id);
-                        fd.set("published", s.published ? "false" : "true");
-                        void actions.setPublished(fd).then(() => router.refresh());
-                      },
-                    },
-                    {
-                      label: "Delete site",
-                      danger: true,
-                      onSelect: () => {
-                        const fd = new FormData();
-                        fd.set("siteId", s.id);
-                        void actions.remove(fd).then(() => router.refresh());
-                      },
-                    },
-                  ]}
-                />
+                  trigger={
+                    <Button variant="ghost" size="sm">⋯</Button>
+                  }
+                >
+                  <MenuItem
+                    onSelect={() => {
+                      const fd = new FormData();
+                      fd.set("siteId", s.id);
+                      fd.set("published", s.published ? "false" : "true");
+                      void actions.setPublished(fd).then(() => router.refresh());
+                    }}
+                  >
+                    {s.published ? "Unpublish" : "Publish"}
+                  </MenuItem>
+                  <MenuItem
+                    danger
+                    onSelect={() => {
+                      const fd = new FormData();
+                      fd.set("siteId", s.id);
+                        void actions.remove?.(fd).then(() => router.refresh());
+                    }}
+                  >
+                    Delete site
+                  </MenuItem>
+                </Dropdown>
               </div>
             </div>
           ))}
@@ -131,7 +135,7 @@ export function SitesList({ sites, actions }: { sites: SiteMeta[]; actions: Site
         <form
           id="create-site-form"
           action={(fd) => {
-            void actions.create(fd).then((id) => {
+            void actions.create?.(fd).then((id) => {
               setCreating(false);
               if (id) router.push(`/m/sites/${id}`);
             });
@@ -210,7 +214,10 @@ export function SiteBuilder({ site, actions }: { site: SiteMeta; actions: SiteAc
       const j = dir === "up" ? i - 1 : i + 1;
       if (i < 0 || j < 0 || j >= prev.length) return prev;
       const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
+      const a = next[i]!;
+      const b = next[j]!;
+      next[i] = b;
+      next[j] = a;
       return next;
     });
 
@@ -264,26 +271,60 @@ export function SiteBuilder({ site, actions }: { site: SiteMeta; actions: SiteAc
                 {p.title}
               </button>
               <Dropdown
-                size="sm"
-                items={[
-                  {
-                    label: "Rename…",
-                    onSelect: () => {
-                      const t = window.prompt("Page title", p.title);
-                      if (t?.trim()) {
-                        const fd = new FormData();
-                        fd.set("siteId", site.id);
-                        fd.set("pageId", p.id);
-                        fd.set("title", t.trim());
-                        void actions.updatePage(fd).then(() => router.refresh());
-                      }
-                    },
-                  },
-                  { label: "Move up", onSelect: () => { const fd = new FormData(); fd.set("siteId", site.id); fd.set("pageId", p.id); fd.set("dir", "up"); void actions.movePage(fd).then(() => router.refresh()); }, disabled: idx === 0 },
-                  { label: "Move down", onSelect: () => { const fd = new FormData(); fd.set("siteId", site.id); fd.set("pageId", p.id); fd.set("dir", "down"); void actions.movePage(fd).then(() => router.refresh()); }, disabled: idx === site.pages.length - 1 },
-                  { label: "Delete page", danger: true, onSelect: () => { const fd = new FormData(); fd.set("siteId", site.id); fd.set("pageId", p.id); void actions.removePage(fd).then(() => router.refresh()); } },
-                ]}
-              />
+                trigger={
+                  <Button variant="ghost" size="sm">⋯</Button>
+                }
+              >
+                <MenuItem
+                  onSelect={() => {
+                    const t = window.prompt("Page title", p.title);
+                    if (t?.trim()) {
+                      const fd = new FormData();
+                      fd.set("siteId", site.id);
+                      fd.set("pageId", p.id);
+                      fd.set("title", t.trim());
+                      void actions.updatePage(fd).then(() => router.refresh());
+                    }
+                  }}
+                >
+                  Rename…
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    if (idx === 0) return;
+                    const fd = new FormData();
+                    fd.set("siteId", site.id);
+                    fd.set("pageId", p.id);
+                    fd.set("dir", "up");
+                    void actions.movePage(fd).then(() => router.refresh());
+                  }}
+                >
+                  Move up
+                </MenuItem>
+                <MenuItem
+                  onSelect={() => {
+                    if (idx === site.pages.length - 1) return;
+                    const fd = new FormData();
+                    fd.set("siteId", site.id);
+                    fd.set("pageId", p.id);
+                    fd.set("dir", "down");
+                    void actions.movePage(fd).then(() => router.refresh());
+                  }}
+                >
+                  Move down
+                </MenuItem>
+                <MenuItem
+                  danger
+                  onSelect={() => {
+                    const fd = new FormData();
+                    fd.set("siteId", site.id);
+                    fd.set("pageId", p.id);
+                    void actions.removePage(fd).then(() => router.refresh());
+                  }}
+                >
+                  Delete page
+                </MenuItem>
+              </Dropdown>
             </div>
           ))}
           <Button variant="ghost" size="sm" onClick={() => { const fd = new FormData(); fd.set("siteId", site.id); void actions.addPage(fd).then(() => router.refresh()); }}>+ Add page</Button>
@@ -294,13 +335,15 @@ export function SiteBuilder({ site, actions }: { site: SiteMeta; actions: SiteAc
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <input className="nv-input" value={page.title} onChange={(e) => { const fd = new FormData(); fd.set("siteId", site.id); fd.set("pageId", page.id); fd.set("title", e.target.value); void actions.updatePage(fd); }} style={{ fontWeight: 800, fontSize: 16 }} />
             <Dropdown
-              items={[
-                { label: BLOCK_LABELS.heading, onSelect: () => addBlock("heading") },
-                { label: BLOCK_LABELS.text, onSelect: () => addBlock("text") },
-                { label: BLOCK_LABELS.quote, onSelect: () => addBlock("quote") },
-                { label: BLOCK_LABELS.bullets, onSelect: () => addBlock("bullets") },
-              ]}
-            />
+              trigger={
+                <Button variant="ghost" size="sm">+ Block</Button>
+              }
+            >
+              <MenuItem onSelect={() => addBlock("heading")}>{BLOCK_LABELS.heading}</MenuItem>
+              <MenuItem onSelect={() => addBlock("text")}>{BLOCK_LABELS.text}</MenuItem>
+              <MenuItem onSelect={() => addBlock("quote")}>{BLOCK_LABELS.quote}</MenuItem>
+              <MenuItem onSelect={() => addBlock("bullets")}>{BLOCK_LABELS.bullets}</MenuItem>
+            </Dropdown>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

@@ -63,13 +63,14 @@ export class GroupsService {
     await this.audit("group.deleted", id);
   }
 
-  async workspaceUsers() {
+  async workspaceUsers(): Promise<Array<{ id: string; name: string | null; email: string }>> {
     await this.assert("READ");
-    return prisma.workspaceMember.findMany({
+    const members = await prisma.workspaceMember.findMany({
       where: { workspaceId: this.workspaceId, status: "ACTIVE" },
       include: { user: { select: { id: true, name: true, email: true } } },
       orderBy: { joinedAt: "asc" },
     });
+    return members.map((m) => m.user);
   }
 
   async addMember(groupId: string, userId: string) {

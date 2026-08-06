@@ -1,4 +1,1 @@
 $ tsc --noEmit
-src/components.tsx(71,53): error TS2322: Type '{ children: string; variant: "ghost"; size: "sm"; danger: true; }' is not assignable to type 'IntrinsicAttributes & ButtonProps'.
-  Property 'danger' does not exist on type 'IntrinsicAttributes & ButtonProps'.
-[ELIFECYCLE] Command failed with exit code 2.

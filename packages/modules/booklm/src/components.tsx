@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Dropdown } from "@n0va/ui";
+import { Button, Dialog, Dropdown, MenuItem } from "@n0va/ui";
 import type { LearningItem } from "@n0va/db";
 import type { LearningSetWithItems, SourcePick } from "./server";
 
 export interface LearningActions {
-  create: (formData: FormData) => Promise<void>;
+  create?: (formData: FormData) => Promise<string | void>;
   updateMeta: (formData: FormData) => Promise<void>;
-  remove: (formData: FormData) => Promise<void>;
+  remove?: (formData: FormData) => Promise<void>;
   addItem: (formData: FormData) => Promise<void>;
   removeItem: (formData: FormData) => Promise<void>;
   moveItem: (formData: FormData) => Promise<void>;
@@ -46,18 +46,21 @@ export function LearningSets({ sets, actions }: { sets: LearningSetWithItems[]; 
                   <Button style={{ width: "100%" }}>Open</Button>
                 </a>
                 <Dropdown
-                  items={[
-                    {
-                      label: "Delete set",
-                      danger: true,
-                      onSelect: () => {
-                        const fd = new FormData();
-                        fd.set("setId", s.id);
-                        void actions.remove(fd).then(() => router.refresh());
-                      },
-                    },
-                  ]}
-                />
+                  trigger={
+                    <Button variant="ghost" size="sm">⋯</Button>
+                  }
+                >
+                  <MenuItem
+                    danger
+                    onSelect={() => {
+                      const fd = new FormData();
+                      fd.set("setId", s.id);
+                      void actions.remove?.(fd).then(() => router.refresh());
+                    }}
+                  >
+                    Delete set
+                  </MenuItem>
+                </Dropdown>
               </div>
             </div>
           ))}
@@ -78,7 +81,7 @@ export function LearningSets({ sets, actions }: { sets: LearningSetWithItems[]; 
         <form
           id="create-set-form"
           action={(fd) => {
-            void actions.create(fd).then((id) => {
+            void actions.create?.(fd).then((id) => {
               setCreating(false);
               if (id) router.push(`/m/booklm/${id}`);
             });

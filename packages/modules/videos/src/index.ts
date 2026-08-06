@@ -1,2 +1,2 @@
 export { VideosService, embedFor } from "./server";
-export { VideoLibrary } from "./components";
+export { VideoLibrary, VideoDetail } from "./components";
