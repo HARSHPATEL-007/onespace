@@ -1,0 +1,155 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A N0VA Workspace is the tenant boundary. Every business entity belongs to exactly one.
+model Workspace {
+  id        String  @id @default(uuid())
+  slug      String  @unique
+  name      String
+  plan      String  @default("free")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members      WorkspaceMember[]
+  permissions  WorkspacePermission[]
+  auditLogs    AuditLog[]
+  attachments  Attachment[]
+  notifications Notification[]
+}
+
+/// A user is global; they belong to workspaces via WorkspaceMember.
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  image        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships   WorkspaceMember[]
+  auditLogs     AuditLog[]
+  attachments   Attachment[]
+  notifications Notification[]
+}
+
+/// Seat within a workspace + assigned role.
+model WorkspaceMember {
+  id          String       @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        Role         @default(MEMBER)
+  status      MemberStatus @default(ACTIVE)
+  joinedAt    DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+/// Per-workspace RBAC matrix override per module + action.
+model WorkspacePermission {
+  id        String   @id @default(uuid())
+  workspaceId String
+  role      Role
+  module    String
+  action    PermissionAction
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, role, module, action])
+  @@index([workspaceId])
+}
+
+/// Immutable, tenant-scoped provenance trail.
+model AuditLog {
+  id          String    @id @default(uuid())
+  workspaceId String
+  actorId     String?
+  module      String
+  action      String
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  ip          String?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([actorId])
+}
+
+/// Shared asset references used by every content and communication module.
+model Attachment {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String
+  filename    String
+  mimeType    String
+  sizeBytes   Int      @default(0)
+  storageKey  String
+  kind        AttachmentKind @default(FILE)
+  checksum    String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdById])
+}
+
+/// Cross-module in-app notifications.
+model Notification {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  type        String?
+  title       String
+  body        String?
+  link        String?
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, readAt])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum MemberStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum PermissionAction {
+  READ
+  CREATE
+  UPDATE
+  DELETE
+  ADMIN
+}
+
+enum AttachmentKind {
+  FILE
+  LINK
+}

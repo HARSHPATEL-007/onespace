@@ -1,0 +1,68 @@
+:root {
+  --nv-font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --nv-font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+
+  --nv-radius-sm: 6px;
+  --nv-radius-md: 10px;
+  --nv-radius-lg: 16px;
+  --nv-radius-full: 999px;
+
+  --nv-space-1: 4px;
+  --nv-space-2: 8px;
+  --nv-space-3: 12px;
+  --nv-space-4: 16px;
+  --nv-space-5: 24px;
+  --nv-space-6: 32px;
+  --nv-space-8: 48px;
+
+  --nv-font-xs: 12px;
+  --nv-font-sm: 13px;
+  --nv-font-md: 15px;
+  --nv-font-lg: 18px;
+  --nv-font-xl: 24px;
+
+  --nv-ring: 0 0 0 2px var(--nv-color-primary-alpha);
+}
+
+[data-theme="light"],
+:root {
+  --nv-color-bg: #f6f7f9;
+  --nv-color-surface: #ffffff;
+  --nv-color-surface-2: #f1f3f6;
+  --nv-color-border: #e2e6ec;
+  --nv-color-text: #1a1d24;
+  --nv-color-text-muted: #5d6572;
+  --nv-color-text-faint: #8b93a1;
+  --nv-color-primary: #4f46e5;
+  --nv-color-primary-hover: #4338ca;
+  --nv-color-primary-alpha: rgba(79, 70, 229, 0.18);
+  --nv-color-accent: #0ea5e9;
+  --nv-color-success: #16a34a;
+  --nv-color-warning: #d97706;
+  --nv-color-danger: #dc2626;
+  --nv-color-danger-alpha: rgba(220, 38, 38, 0.12);
+  --nv-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --nv-shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --nv-shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.14);
+}
+
+[data-theme="dark"] {
+  --nv-color-bg: #0d0f14;
+  --nv-color-surface: #171a21;
+  --nv-color-surface-2: #1e222c;
+  --nv-color-border: #2a2f3b;
+  --nv-color-text: #e8eaf0;
+  --nv-color-text-muted: #9aa3b2;
+  --nv-color-text-faint: #6b7484;
+  --nv-color-primary: #818cf8;
+  --nv-color-primary-hover: #a5b4fc;
+  --nv-color-primary-alpha: rgba(129, 140, 248, 0.22);
+  --nv-color-accent: #38bdf8;
+  --nv-color-success: #4ade80;
+  --nv-color-warning: #fbbf24;
+  --nv-color-danger: #f87171;
+  --nv-color-danger-alpha: rgba(248, 113, 113, 0.16);
+  --nv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --nv-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --nv-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+}

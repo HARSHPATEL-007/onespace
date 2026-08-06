@@ -1,0 +1,25 @@
+{
+  "name": "@n0va/auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@n0va/db": "workspace:*",
+    "@n0va/authz": "workspace:*",
+    "bcryptjs": "^3.0.2",
+    "next-auth": "^5.0.0-beta.28",
+    "zod": "^3.24.0"
+  },
+  "peerDependencies": {
+    "next": "^15.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  }
+}

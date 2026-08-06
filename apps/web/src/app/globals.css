@@ -1,0 +1,26 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--nv-font-sans);
+  background: var(--nv-color-bg);
+  color: var(--nv-color-text);
+  font-size: var(--nv-font-md);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: var(--nv-color-primary-alpha);
+}
