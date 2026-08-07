@@ -21,11 +21,11 @@ A Turborepo + pnpm monorepo. Run everything from the repository root (`onespace/
 
 `packages/modules/n0va1o/src/` contains:
 
-- `catalog.ts` — 1000+ provider tool catalog, `scopeTools`, `isDestructiveTool`
-- `gateway.ts` — outbound/inbound engine (retry, rate-limit, idempotency, webhook ingest, audit logging)
+- `catalog.ts` — 1000+ provider tool catalog, `scopeTools`, `isDestructiveTool`, `discoverTools` (intent-driven relevance discovery, spec §3.4)
+- `gateway.ts` — outbound/inbound engine (retry, rate-limit, idempotency, webhook ingest, audit logging, JIT token lifecycle)
 - `adapters.ts` — real HTTPS connector adapters keyed `${provider}:${tool}`
-- `mcp.ts` — JSON-RPC 2.0 MCP core (initialize, tools/list, tools/call, resources, `n0va1o.approve_access`)
-- `server.ts` — `N0va1oService` with RBAC-gated connection/settings/compliance/access-request methods
+- `mcp.ts` — JSON-RPC 2.0 MCP core (initialize, tools/list, `tools/discover`, tools/call, resources, `n0va1o.approve_access`)
+- `server.ts` — `N0va1oService` with RBAC-gated connection/settings/compliance/access-request/discovery methods
 - `components.tsx` — client UI (Integrations view, Interrogation Room card, settings)
 
 Auth note: the MCP endpoint authenticates via `Authorization: Bearer <workspace.mcpKey>`.

@@ -11,7 +11,7 @@ import {
   clearRateBuckets,
   N0va1oGateway,
 } from "./gateway";
-import { scopeTools, providerTools, isDestructiveTool, findProvider, PROVIDERS } from "./catalog";
+import { scopeTools, providerTools, isDestructiveTool, findProvider, PROVIDERS, discoverTools } from "./catalog";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -119,4 +119,41 @@ test("JIT connection: token state lifecycle and expiry refresh", async () => {
   assert.ok(refreshed, "connection re-resolves after expiry");
   assert.equal(refreshed!.refreshed, true, "token was refreshed");
   assert.equal(refreshed!.tokenState, "ACTIVE", "state returned to ACTIVE after refresh");
+});
+
+test("intent-driven discovery: returns top-N relevant tools with scores and reasons", () => {
+  // A query about messaging should surface Slack/Discord post tools.
+  const found = discoverTools("send a message to the team channel", { maxTools: 5 });
+  assert.ok(found.length > 0, "discovered at least one tool");
+  assert.ok(found.length <= 5, "respects maxTools");
+  // Top result should be a messaging-related tool.
+  const top = found[0];
+  assert.ok(top, "a top result exists");
+  assert.ok(top!.relevance > 0, "relevance is positive");
+  assert.ok(top!.relevance <= 1, "relevance is normalized to <= 1");
+  assert.ok(top!.reason.length > 0, "a human-readable reason is provided");
+  const messaging = found.some(
+    (t) => t.name === "post_message" || t.name === "send_message" || t.name === "post_chat",
+  );
+  assert.ok(messaging, "messaging tools rank for a 'send a message' query");
+
+  // Scores are descending.
+  for (let i = 1; i < found.length; i++) {
+    const prev = found[i - 1]!;
+    const curr = found[i]!;
+    assert.ok(prev.relevance >= curr.relevance, "results are sorted by relevance desc");
+  }
+});
+
+test("intent-driven discovery: provider filter restricts results", () => {
+  const all = discoverTools("list issues", { maxTools: 20 });
+  const githubOnly = discoverTools("list issues", { maxTools: 20, providers: ["github"] });
+  assert.ok(githubOnly.length > 0, "github filter returns results");
+  assert.ok(githubOnly.every((t) => t.providerKey === "github"), "all results are from github");
+  assert.ok(githubOnly.length <= all.length, "filtering narrows the result set");
+});
+
+test("intent-driven discovery: empty or trivial query returns empty", () => {
+  assert.equal(discoverTools("").length, 0, "empty query returns nothing");
+  assert.equal(discoverTools("the and or").length, 0, "stopword-only query returns nothing");
 });

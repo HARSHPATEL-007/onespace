@@ -7,7 +7,7 @@
  */
 import type { Integration } from "@n0va/db";
 import { prisma, logAudit } from "@n0va/db";
-import { providerTools, scopeTools, isDestructiveTool } from "./catalog";
+import { providerTools, scopeTools, isDestructiveTool, discoverTools } from "./catalog";
 import { N0va1oGateway, GatewayError } from "./gateway";
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
@@ -79,6 +79,24 @@ export async function handleMcpMessage(message: McpMessage, ctx: McpContext): Pr
     case "tools/list": {
       const tools = effectiveTools(integration).map(mcpToolFormat);
       return rpc(id, { tools });
+    }
+
+    case "tools/discover": {
+      const query = typeof params.query === "string" ? params.query : "";
+      const max = typeof params.maxTools === "number" ? Math.max(1, Math.min(20, params.maxTools)) : 5;
+      const discovered = discoverTools(query, { providers: [integration.provider], maxTools: max });
+      const top = discovered[0];
+      return rpc(id, {
+        intent: query.toLowerCase().trim(),
+        confidence: top ? top.relevance : 0,
+        tools: discovered.map((d) => ({
+          provider: d.providerKey,
+          name: d.name,
+          relevance: d.relevance,
+          reason: d.reason,
+        })),
+        contextTokensSaved: Math.max(0, effectiveTools(integration).length - discovered.length),
+      });
     }
 
     case "tools/call": {

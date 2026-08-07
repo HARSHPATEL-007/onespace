@@ -235,3 +235,169 @@ export function scopeTools(
 export function isDestructiveTool(providerKey: string, tool: string): boolean {
   return findProvider(providerKey)?.tools.some((t_) => t_.name === tool && t_.destructive) ?? false;
 }
+
+/* ---------- intent-driven discovery (spec §3.4) ---------- */
+
+export interface DiscoveredTool {
+  providerKey: string;
+  providerName: string;
+  category: string;
+  name: string;
+  description: string;
+  /** Relevance score in [0, 1]; higher is more relevant to the query. */
+  relevance: number;
+  /** Human-readable explanation of why this tool matched. */
+  reason: string;
+}
+
+export interface DiscoverOptions {
+  /** Max number of tools to return (default 5). */
+  maxTools?: number;
+  /** Restrict discovery to these provider keys (default: all providers). */
+  providers?: string[];
+  /** If true, rank provider name matches slightly higher. */
+  providerBias?: boolean;
+}
+
+/**
+ * Intent-driven tool discovery — rank every catalog tool by relevance to a
+ * natural-language query using a lightweight TF-based cosine scorer over the
+ * tool name, description, provider name and category. Returns the top-N tools
+ * with normalized relevance scores.
+ *
+ * This is the catalog-side half of spec §3.4: instead of injecting all ~500
+ * tools into the agent context window, callers ask for the 3-4 most relevant.
+ */
+export function discoverTools(query: string, opts: DiscoverOptions = {}): DiscoveredTool[] {
+  const maxTools = Math.max(1, opts.maxTools ?? 5);
+  const providerFilter = opts.providers && opts.providers.length > 0 ? new Set(opts.providers) : null;
+
+  const terms = tokenize(query);
+  const idf = buildIdf();
+
+  const results: DiscoveredTool[] = [];
+  for (const provider of PROVIDERS) {
+    if (providerFilter && !providerFilter.has(provider.key)) continue;
+    const providerText = [provider.name, provider.category, provider.description].join(" ");
+    for (const tool of provider.tools) {
+      const toolText = `${tool.name.replace(/_/g, " ")} ${tool.description}`;
+      const score = scoreDoc(terms, idf, toolText, opts.providerBias ? providerText : undefined);
+      if (score <= 0) continue;
+      results.push({
+        providerKey: provider.key,
+        providerName: provider.name,
+        category: provider.category,
+        name: tool.name,
+        description: tool.description,
+        relevance: score,
+        reason: buildReason(terms, tool, provider),
+      });
+    }
+  }
+
+  results.sort((a, b) => b.relevance - a.relevance);
+
+  const top = results.slice(0, maxTools);
+  const first = top[0];
+  if (!first) return top;
+  const maxScore = first.relevance;
+  if (maxScore > 0) {
+    for (const t of top) t.relevance = Math.round((t.relevance / maxScore) * 100) / 100;
+  }
+  return top;
+}
+
+const STOP_WORDS = new Set([
+  "a", "an", "the", "and", "or", "but", "if", "i", "me", "my", "we", "our", "you", "your",
+  "it", "its", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+  "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall",
+  "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "about",
+  "between", "through", "during", "before", "after", "above", "below", "between",
+  "out", "off", "over", "under", "again", "further", "then", "once", "here", "there",
+  "when", "where", "why", "how", "all", "both", "each", "few", "more", "most", "other",
+  "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too",
+  "very", "s", "t", "can", "just", "don", "should", "now", "need", "like", "get",
+  "make", "want", "the", "that", "this", "these", "those",
+]);
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 2 && !STOP_WORDS.has(w));
+}
+
+function buildIdf(): Map<string, number> {
+  const docFreq = new Map<string, number>();
+  let n = 0;
+  for (const provider of PROVIDERS) {
+    for (const tool of provider.tools) {
+      n += 1;
+      const terms = new Set(tokenize(`${tool.name} ${tool.description}`));
+      for (const term of terms) {
+        docFreq.set(term, (docFreq.get(term) ?? 0) + 1);
+      }
+    }
+  }
+  const idf = new Map<string, number>();
+  for (const [term, df] of docFreq) {
+    idf.set(term, Math.log((n + 1) / (df + 1)));
+  }
+  return idf;
+}
+
+function termFreq(terms: string[]): Map<string, number> {
+  const tf = new Map<string, number>();
+  for (const t of terms) tf.set(t, (tf.get(t) ?? 0) + 1);
+  return tf;
+}
+
+function scoreDoc(
+  queryTerms: string[],
+  idf: Map<string, number>,
+  toolText: string,
+  providerText?: string,
+): number {
+  if (queryTerms.length === 0) return 0;
+  const toolTerms = tokenize(toolText);
+  const tf = termFreq(toolTerms);
+  let dot = 0;
+  let toolMag = 0;
+  let queryMag = 0;
+  const seen = new Set<string>();
+  for (const q of queryTerms) {
+    const w = idf.get(q) ?? 1;
+    queryMag += w * w;
+    if (seen.has(q)) continue;
+    seen.add(q);
+    const freq = tf.get(q) ?? 0;
+    if (freq > 0) dot += freq * w * w;
+  }
+  for (const [term, freq] of tf) {
+    const w = idf.get(term) ?? 1;
+    toolMag += freq * freq * w * w;
+  }
+  // Bonus: provider-level text match (category/name/description).
+  let providerBonus = 0;
+  if (providerText) {
+    const pt = tokenize(providerText);
+    const ptFreq = termFreq(pt);
+    for (const q of queryTerms) {
+      const w = idf.get(q) ?? 1;
+      if (ptFreq.has(q)) providerBonus += 0.5 * w;
+    }
+  }
+  const denom = Math.sqrt(queryMag) * Math.sqrt(toolMag) || 1;
+  return (dot / denom) + providerBonus;
+}
+
+function buildReason(terms: string[], tool: CatalogTool, provider: CatalogProvider): string {
+  const matched = terms.filter((t) =>
+    tool.name.toLowerCase().includes(t) || tool.description.toLowerCase().includes(t),
+  );
+  if (matched.length > 0) {
+    const uniq = [...new Set(matched)].slice(0, 3);
+    return `Matches "${uniq.join(", ")}" — ${provider.name} ${tool.name.replace(/_/g, " ")}`;
+  }
+  return `Related to ${provider.name} ${tool.name.replace(/_/g, " ")}`;
+}

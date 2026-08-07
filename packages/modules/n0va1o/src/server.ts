@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma, logAudit, type Integration, type IntegrationLog } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
-import { findProvider, categoryLabel } from "./catalog";
+import { findProvider, categoryLabel, discoverTools, type DiscoveredTool } from "./catalog";
 import { N0va1oGateway, GatewayError, newSecret, retentionExpiry } from "./gateway";
 
 const MODULE = "n0va1o";
@@ -45,6 +45,12 @@ export class N0va1oService {
 
   providers() {
     return import("./catalog").then((c) => c.PROVIDERS);
+  }
+
+  /** Intent-driven tool discovery (spec §3.4) — top-N relevant catalog tools. */
+  async discoverTools(query: string, maxTools = 5, providers?: string[]): Promise<DiscoveredTool[]> {
+    await this.assert("READ");
+    return discoverTools(query, { maxTools, providers });
   }
 
   /* ---------- connections ---------- */
