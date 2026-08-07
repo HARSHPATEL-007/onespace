@@ -14,7 +14,7 @@ A Turborepo + pnpm monorepo. Run everything from the repository root (`onespace/
 | Unit tests (N0VA1O gateway) | `pnpm --filter @n0va/db exec tsx --test "..\modules\n0va1o\src\gateway.test.ts"` |
 | Lint | `pnpm lint` |
 | Dev server (web on :3100) | `pnpm --filter web dev -p 3100` |
-| Seed DB | `pnpm --filter @n0va/db exec prisma db seed` |
+| Seed DB | `pnpm --filter @n0va/db exec tsx prisma/seed.ts` |
 | Regenerate Prisma client | `pnpm --filter @n0va/db exec prisma generate` |
 
 ## Module layout (N0VA1O)

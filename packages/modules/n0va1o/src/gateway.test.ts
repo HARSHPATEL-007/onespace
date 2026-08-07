@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { prisma } from "@n0va/db/src/client";
+import { prisma } from "@n0va/db";
 import {
   hmacHex,
   safeEqualHex,
