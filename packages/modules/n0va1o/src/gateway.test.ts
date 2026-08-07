@@ -48,6 +48,7 @@ import { compareToBaseline } from "./baseline";
 import { rankBacklog } from "./backlog";
 import { analyzeImpact, justifiesBuilding } from "./impact";
 import { transitionStatus } from "./transparency";
+import { ingestAsset, generateEmbedding, chunkContent, retrieve, buildContext, inferAction, governAsset, validateRetrieval, type IngestedAsset } from "./multimodal";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -975,4 +976,69 @@ test("transparency: transitionStatus validates allowed transitions", () => {
   assert.ok(good.valid, "valid transition");
   const bad = transitionStatus(record, "shipped", "pm", "Skip");
   assert.ok(!bad.valid, "invalid transition rejected");
+});
+
+test("multimodal: ingestAsset normalizes inputs with metadata", () => {
+  const asset = ingestAsset({ id: "doc1", modality: "document", content: "Invoice #123", tenantId: "t1", provenance: "upload", sensitivity: "confidential", pageNumbers: [1, 2] });
+  assert.equal(asset.modality, "document");
+  assert.equal(asset.metadata.tenantId, "t1");
+  assert.equal(asset.metadata.pageNumbers!.length, 2, "page numbers preserved");
+  assert.equal(asset.sensitivity, "confidential");
+});
+
+test("multimodal: generateEmbedding produces normalized vectors", () => {
+  const asset = ingestAsset({ id: "a1", modality: "text", content: "hello world", tenantId: "t1", provenance: "test" });
+  const emb = generateEmbedding(asset, 32);
+  assert.equal(emb.vector.length, 32, "correct dimensions");
+  const norm = Math.sqrt(emb.vector.reduce((s, v) => s + v * v, 0));
+  assert.ok(Math.abs(norm - 1) < 0.01, "vector is normalized");
+});
+
+test("multimodal: chunkContent splits long content with overlap", () => {
+  const content = "a".repeat(1000);
+  const chunks = chunkContent(content, 500, 50);
+  assert.ok(chunks.length >= 2, "split into multiple chunks");
+  assert.equal(chunks[0]!.text.length, 500, "first chunk full size");
+});
+
+test("multimodal: retrieve finds relevant assets across modalities", () => {
+  const corpus = [
+    generateEmbedding(ingestAsset({ id: "img1", modality: "image", content: "invoice screenshot", tenantId: "t1", provenance: "upload" })),
+    generateEmbedding(ingestAsset({ id: "txt1", modality: "text", content: "meeting notes", tenantId: "t1", provenance: "upload" })),
+  ];
+  const results = retrieve({ text: "invoice", tenantId: "t1" }, corpus);
+  assert.ok(results.length > 0, "retrieved results");
+  assert.ok(results[0]!.score > 0, "positive confidence score");
+});
+
+test("multimodal: buildContext structures evidence for agent reasoning", () => {
+  const asset = ingestAsset({ id: "a1", modality: "image", content: "chart", tenantId: "t1", provenance: "upload" });
+  const emb = generateEmbedding(asset);
+  const results = retrieve({ text: "chart", tenantId: "t1" }, [emb]);
+  const ctx = buildContext("summarize", results);
+  assert.equal(ctx.action, "summarize");
+  assert.ok(ctx.summary.includes("evidence"), "summary describes evidence");
+});
+
+test("multimodal: inferAction classifies intent into actions", () => {
+  assert.equal(inferAction("compare these two documents"), "compare");
+  assert.equal(inferAction("extract the data from this invoice"), "extract");
+  assert.equal(inferAction("transcribe this audio"), "transcribe");
+  assert.equal(inferAction("summarize the report"), "summarize");
+});
+
+test("multimodal: governAsset enforces governance on restricted assets", () => {
+  const restricted = ingestAsset({ id: "r1", modality: "document", content: "secret", tenantId: "t1", provenance: "upload", sensitivity: "restricted" });
+  const decision = governAsset(restricted, { provider: "x", tool: "read", actorLabel: "agent", isDestructive: true, tokenState: "ACTIVE", inAllowlist: false, healthScore: 1 });
+  assert.ok(!decision.allowed || decision.redacted, "restricted asset governed");
+});
+
+test("multimodal: validateRetrieval computes per-modality metrics", () => {
+  const corpus = [
+    generateEmbedding(ingestAsset({ id: "a1", modality: "text", content: "invoice total", tenantId: "t1", provenance: "test" })),
+    generateEmbedding(ingestAsset({ id: "a2", modality: "image", content: "invoice chart", tenantId: "t1", provenance: "test" })),
+  ];
+  const report = validateRetrieval([{ query: "invoice", expectedAssetId: "a1", modality: "text" }], corpus);
+  assert.ok(report.perModality.length > 0, "per-modality metrics computed");
+  assert.ok(report.overallGrounding >= 0, "overall grounding score");
 });
