@@ -30,6 +30,7 @@ import { explainStep, explainWorkflow, renderStepExplanation } from "./explainab
 import { selectProfile, checkResourceUsage, generateReplayId, buildTrace } from "./sandbox";
 import { evaluateRetention, computeExpiry, isExpired, DEFAULT_RETENTION as ARTIFACT_RETENTION } from "./artifact";
 import { buildPointer, readChunk, searchContent, categorize } from "./file-view";
+import { createPlan, selectTool, createStep, verifyStep, decideRetry, replanFromCheckpoint, assessRisk, auditAction, emitTrace, shouldPause, requestHumanApproval } from "./agentic";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1041,4 +1042,73 @@ test("multimodal: validateRetrieval computes per-modality metrics", () => {
   const report = validateRetrieval([{ query: "invoice", expectedAssetId: "a1", modality: "text" }], corpus);
   assert.ok(report.perModality.length > 0, "per-modality metrics computed");
   assert.ok(report.overallGrounding >= 0, "overall grounding score");
+});
+
+test("agentic: createPlan builds structured plan with subgoals", () => {
+  const plan = createPlan("Process Q3 invoices", [
+    { description: "Fetch invoices", dependencies: [], tools: ["list_files"], expectedOutput: "file list", acceptanceCriteria: ["not empty"], riskLevel: "low" },
+    { description: "Notify team", dependencies: ["sg_0"], tools: ["post_message"], expectedOutput: "sent", acceptanceCriteria: ["status success"], riskLevel: "medium" },
+  ]);
+  assert.equal(plan.subgoals.length, 2, "two subgoals");
+  assert.equal(plan.subgoals[1]!.dependencies.length, 1, "dependency set");
+  assert.equal(plan.status, "draft");
+});
+
+test("agentic: selectTool validates against registry and policy", () => {
+  const registry = [{ name: "post_message", provider: "slack", schema: { channel: "string" }, permissions: ["chat:write"], riskLabel: "low" as const }];
+  const good = selectTool({ toolName: "post_message", registry, policy: { provider: "slack", tool: "post_message", actorLabel: "agent", isDestructive: false, tokenState: "ACTIVE", inAllowlist: true, healthScore: 1 }, input: { channel: "#general" } });
+  assert.ok(good.validated, "valid tool selected");
+  const bad = selectTool({ toolName: "post_message", registry, policy: { provider: "slack", tool: "post_message", actorLabel: "agent", isDestructive: false, tokenState: "ACTIVE", inAllowlist: true, healthScore: 1 }, input: {} });
+  assert.ok(!bad.validated, "missing field rejected");
+});
+
+test("agentic: createStep records durable step with idempotency", () => {
+  const step = createStep("sg_0", "post_message", { channel: "#x" }, { state: "ready" });
+  assert.ok(step.idempotencyKey.includes("sg_0"), "idempotency key includes subgoal");
+  assert.deepEqual(step.stateSnapshot, { state: "ready" }, "state snapshotted");
+  assert.equal(step.status, "pending");
+});
+
+test("agentic: verifyStep checks acceptance criteria", () => {
+  const step = { ...createStep("sg_0", "post_message", {}, {}), status: "completed" as const, output: { status: "success", result: "sent" } };
+  const result = verifyStep(step, ["status success", "not empty"]);
+  assert.ok(result.passed, "verification passed");
+  assert.equal(result.criteriaMatched.length, 2, "both criteria matched");
+});
+
+test("agentic: decideRetry distinguishes failure types with backoff", () => {
+  const retryable = { ...createStep("sg_0", "x", {}, {}), output: { error: "rate_limited" } };
+  const retry = decideRetry(retryable, undefined, 1);
+  assert.ok(retry.shouldRetry, "rate limited is retryable");
+  assert.ok(retry.backoffMs > 0, "backoff applied");
+  const nonRetryable = { ...createStep("sg_0", "x", {}, {}), output: { error: "auth_failed" } };
+  const noretry = decideRetry(nonRetryable, undefined, 1);
+  assert.ok(!noretry.shouldRetry, "auth failed is non-retryable");
+  assert.ok(noretry.escalate, "escalated to human");
+});
+
+test("agentic: replanFromCheckpoint preserves evidence and re-plans", () => {
+  const plan = createPlan("Task", [{ description: "A", dependencies: [], tools: ["t1"], expectedOutput: "o", acceptanceCriteria: [], riskLevel: "low" }, { description: "B", dependencies: [], tools: ["t2"], expectedOutput: "o", acceptanceCriteria: [], riskLevel: "low" }]);
+  const completed = [{ ...createStep("sg_0", "t1", {}, {}), status: "completed" as const }];
+  const result = replanFromCheckpoint(plan, "step_failed", completed);
+  assert.ok(result.preservedEvidence.length > 0, "prior evidence preserved");
+  assert.equal(result.newPlan.status, "draft", "new plan drafted");
+});
+
+test("agentic: assessRisk and auditAction support governance", () => {
+  const plan = createPlan("Risky", [{ description: "Delete", dependencies: [], tools: ["delete"], expectedOutput: "", acceptanceCriteria: [], riskLevel: "high" }]);
+  const risk = assessRisk(plan);
+  assert.ok(risk.requiresPreApproval, "high-risk needs approval");
+  assert.ok(risk.stepRisks[0]!.requiresApproval, "step risk flagged");
+  const audit = auditAction("agent", "delete", { id: "1" }, "success");
+  assert.equal(audit.actor, "agent", "audit actor recorded");
+});
+
+test("agentic: shouldPause and emitTrace support observability and HITL", () => {
+  assert.ok(shouldPause({ confidence: 0.4, riskLevel: "low", consecutiveFailures: 0 }), "low confidence pauses");
+  assert.ok(shouldPause({ confidence: 0.9, riskLevel: "high", consecutiveFailures: 0 }), "high risk pauses");
+  const trace = emitTrace("execution", "step started", "sg_0");
+  assert.equal(trace.phase, "execution", "trace phase set");
+  const pause = requestHumanApproval(createPlan("P", []), [], "retry", "high_risk");
+  assert.equal(pause.reason, "high_risk", "pause reason set");
 });
