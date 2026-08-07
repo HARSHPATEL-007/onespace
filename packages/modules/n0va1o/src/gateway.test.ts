@@ -12,6 +12,7 @@ import {
   N0va1oGateway,
 } from "./gateway";
 import { scopeTools, providerTools, isDestructiveTool, findProvider, PROVIDERS, discoverTools } from "./catalog";
+import { GatewayError } from "./gateway";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -156,4 +157,64 @@ test("intent-driven discovery: provider filter restricts results", () => {
 test("intent-driven discovery: empty or trivial query returns empty", () => {
   assert.equal(discoverTools("").length, 0, "empty query returns nothing");
   assert.equal(discoverTools("the and or").length, 0, "stopword-only query returns nothing");
+});
+
+test("multi-account: setActiveConnection pins an ACTIVE connection and resolves it first", async () => {
+  const gw = new N0va1oGateway();
+  const workspace = await prisma.workspace.findUnique({ where: { slug: "n0va-demo" } });
+  assert.ok(workspace, "demo workspace exists");
+  const github = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "github" } });
+  assert.ok(github, "github integration exists");
+
+  // Create a second connection (simulating a second account).
+  const secondConn = await prisma.integrationConnection.create({
+    data: {
+      workspaceId: workspace!.id,
+      integrationId: github!.id,
+      accountLabel: "secondary-repo (demo)",
+      authType: "oauth2",
+      encryptedToken: "demo-token-envelope-second",
+      allowedScopes: ["repo"],
+      allowedActions: ["list_repos"],
+      blockedActions: ["delete_repo"],
+      status: "ACTIVE",
+      tokenState: "ACTIVE",
+      healthScore: 0.95,
+    },
+  });
+
+  // Resolve initially picks the most recently updated (the new one).
+  const initial = await gw.resolveConnection(github!.id, workspace!.id);
+  assert.ok(initial, "resolves a connection");
+  assert.equal(initial!.connectionId, secondConn.id, "initially resolves the newest connection");
+
+  // Pin the original (seeded) connection as active.
+  const seededConn = await prisma.integrationConnection.findFirst({
+    where: { integrationId: github!.id, accountLabel: "core-repo (demo)" },
+  });
+  assert.ok(seededConn, "seeded connection exists");
+  await gw.setActiveConnection({ integrationId: github!.id, workspaceId: workspace!.id, connectionId: seededConn!.id });
+
+  const pinned = await gw.resolveConnection(github!.id, workspace!.id);
+  assert.ok(pinned, "resolves after pinning");
+  assert.equal(pinned!.connectionId, seededConn!.id, "resolves the pinned active account");
+  assert.ok(pinned!.allowedActions.includes("list_repos"), "pinned connection carries its allowlist");
+
+  // Switching clears when passing null.
+  await gw.setActiveConnection({ integrationId: github!.id, workspaceId: workspace!.id, connectionId: null });
+  const cleared = await gw.resolveConnection(github!.id, workspace!.id);
+  assert.equal(cleared!.connectionId, secondConn.id, "falls back to newest after clearing active");
+});
+
+test("multi-account: setActiveConnection rejects foreign or non-ACTIVE connections", async () => {
+  const gw = new N0va1oGateway();
+  const workspace = await prisma.workspace.findUnique({ where: { slug: "n0va-demo" } });
+  const github = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "github" } });
+  assert.ok(github);
+
+  await assert.rejects(
+    () => gw.setActiveConnection({ integrationId: github!.id, workspaceId: workspace!.id, connectionId: "nonexistent-id" }),
+    (err: unknown) => err instanceof GatewayError && err.statusCode === 404,
+    "rejects a connection id that does not belong to the integration",
+  );
 });
