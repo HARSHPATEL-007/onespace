@@ -260,7 +260,13 @@ export class N0va1oService {
     reason: string;
     requesterLabel: string;
     status: string;
+    toolArguments: unknown | null;
+    reasoningChain: unknown[] | null;
+    sessionContext: unknown[] | null;
+    decidedById: string | null;
+    approvedSignature: string | null;
     createdAt: Date;
+    decidedAt: Date | null;
   }>> {
     await this.assert("READ");
     const rows = await prisma.integrationAccessRequest.findMany({
@@ -277,11 +283,17 @@ export class N0va1oService {
       reason: r.reason,
       requesterLabel: r.requesterLabel,
       status: r.status,
+      toolArguments: (r.toolArguments as unknown) ?? null,
+      reasoningChain: (r.reasoningChain as unknown[] | null) ?? null,
+      sessionContext: (r.sessionContext as unknown[] | null) ?? null,
+      decidedById: r.decidedById,
+      approvedSignature: r.approvedSignature,
       createdAt: r.createdAt,
+      decidedAt: r.decidedAt,
     }));
   }
 
-  async decideAccess(requestId: string, approve: boolean): Promise<void> {
+  async decideAccess(requestId: string, approve: boolean, signature?: string): Promise<void> {
     await this.assert("ADMIN");
     const request = await prisma.integrationAccessRequest.findFirst({
       where: { id: requestId, workspaceId: this.workspaceId },
@@ -303,9 +315,14 @@ export class N0va1oService {
 
     await prisma.integrationAccessRequest.update({
       where: { id: request.id },
-      data: { status: approve ? "APPROVED" : "DENIED", decidedById: this.userId, decidedAt: new Date() },
+      data: {
+        status: approve ? "APPROVED" : "DENIED",
+        decidedById: this.userId,
+        decidedAt: new Date(),
+        approvedSignature: approve && signature ? signature : null,
+      },
     });
-    await this.audit(approve ? "mcp.access_approved" : "mcp.access_denied", request.tool, { requestId: request.id });
+    await this.audit(approve ? "mcp.access_approved" : "mcp.access_denied", request.tool, { requestId: request.id, signature: Boolean(signature) });
   }
 
   /* ---------- helpers ---------- */

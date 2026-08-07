@@ -84,5 +84,9 @@ export async function accessRequestsAction(): Promise<AccessRequestView[]> {
 }
 
 export async function decideAccessAction(formData: FormData) {
-  await (await svc()).decideAccess(String(formData.get("id") ?? ""), formData.get("approve") === "true");
+  await (await svc()).decideAccess(
+    String(formData.get("id") ?? ""),
+    formData.get("approve") === "true",
+    String(formData.get("signature") || ""),
+  );
 }

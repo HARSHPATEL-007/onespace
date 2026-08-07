@@ -21,6 +21,10 @@ export interface AccessRequestView {
   reason: string;
   requesterLabel: string;
   status: string;
+  toolArguments: unknown | null;
+  reasoningChain: unknown[] | null;
+  sessionContext: unknown[] | null;
+  approvedSignature: string | null;
   createdAt: Date;
 }
 
@@ -626,6 +630,95 @@ function SettingsDialog({
   );
 }
 
+const prettyJson = (v: unknown) => (v === null || v === undefined ? "—" : JSON.stringify(v, null, 2));
+
+function AccessRequestCard({
+  request,
+  onDecide,
+}: {
+  request: AccessRequestView;
+  onDecide: (id: string, approve: boolean, signature?: string) => void;
+}) {
+  const pending = request.status === "PENDING";
+  const [showDetail, setShowDetail] = useState(false);
+  const [signature, setSignature] = useState("");
+
+  return (
+    <div className="nv-card" style={{ padding: 12, gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13 }}>
+        <span className={pending ? "nv-badge nv-badge-amber" : request.status === "APPROVED" ? "nv-badge nv-badge-green" : "nv-badge"}>
+          {pending ? "PENDING REVIEW" : request.status}
+        </span>
+        <span style={{ fontWeight: 600 }}>{t(request.tool)}</span>
+        <span style={{ color: "var(--nv-color-text-faint)" }}>on {request.integrationName}</span>
+        <span style={{ color: "var(--nv-color-text-faint)", fontSize: 12 }}>by {request.requesterLabel}</span>
+        {request.approvedSignature && <span className="nv-badge">signed</span>}
+        <div style={{ flex: 1 }} />
+        <Button variant="ghost" size="sm" onClick={() => setShowDetail((s) => !s)}>
+          {showDetail ? "▴" : "▾"} Inspect
+        </Button>
+        {pending && (
+          <>
+            <input
+              type="text"
+              placeholder="digital signature (optional)"
+              value={signature}
+              onChange={(e) => setSignature(e.target.value)}
+              style={{ width: 180, fontSize: 12, padding: "2px 6px", border: "1px solid var(--nv-color-border)", borderRadius: 4 }}
+            />
+            <Button variant="secondary" size="sm" onClick={() => onDecide(request.id, false)}>
+              Deny
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                onDecide(request.id, true, signature || undefined);
+                setSignature("");
+              }}
+            >
+              Approve
+            </Button>
+          </>
+        )}
+      </div>
+
+      {request.reason && <div style={{ marginTop: 4, fontSize: 12, color: "var(--nv-color-text-faint)" }}>— {request.reason}</div>}
+
+      {showDetail && (
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--nv-color-text-faint)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <div style={{ fontWeight: 600, color: "var(--nv-color-text-muted)", marginBottom: 2 }}>Arguments (what the agent intended)</div>
+            <pre style={{ margin: 0, padding: 8, borderRadius: 6, background: "color-mix(in srgb, var(--nv-color-surface-2, #000) 60%, transparent)", whiteSpace: "pre-wrap", overflowX: "auto" }}>
+              {prettyJson(request.toolArguments)}
+            </pre>
+          </div>
+          {request.reasoningChain && request.reasoningChain.length > 0 && (
+            <div>
+              <div style={{ fontWeight: 600, color: "var(--nv-color-text-muted)", marginBottom: 2 }}>Chain-of-thought (reasoning)</div>
+              <pre style={{ margin: 0, padding: 8, borderRadius: 6, background: "color-mix(in srgb, var(--nv-color-surface-2, #000) 60%, transparent)", whiteSpace: "pre-wrap", overflowX: "auto" }}>
+                {prettyJson(request.reasoningChain)}
+              </pre>
+            </div>
+          )}
+          {request.sessionContext && request.sessionContext.length > 0 && (
+            <div>
+              <div style={{ fontWeight: 600, color: "var(--nv-color-text-muted)", marginBottom: 2 }}>Session lineage (prior tool calls in this session)</div>
+              <pre style={{ margin: 0, padding: 8, borderRadius: 6, background: "color-mix(in srgb, var(--nv-color-surface-2, #000) 60%, transparent)", whiteSpace: "pre-wrap", overflowX: "auto" }}>
+                {prettyJson(request.sessionContext)}
+              </pre>
+            </div>
+          )}
+          {request.approvedSignature && (
+            <div style={{ fontSize: 11 }}>
+              Approved with signature: <code>{request.approvedSignature.slice(0, 16)}…</code>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ComplianceTab({
   settings,
   workspaceSlug,
@@ -651,7 +744,7 @@ function ComplianceTab({
   actions: N0va1oActions;
   requests: AccessRequestView[];
   onRefreshRequests: () => void;
-  onDecide: (id: string, approve: boolean) => void;
+  onDecide: (id: string, approve: boolean, signature?: string) => void;
 }) {
   const maskedKey = settings.mcpKey
     ? `${settings.mcpKey.slice(0, 8)}…${settings.mcpKey.slice(-4)}`
@@ -769,28 +862,7 @@ function ComplianceTab({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {requests.map((r) => (
-              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                <span className={r.status === "PENDING" ? "nv-badge nv-badge-amber" : r.status === "APPROVED" ? "nv-badge nv-badge-green" : "nv-badge"}>
-                  {r.status}
-                </span>
-                <span style={{ fontWeight: 600 }}>
-                  {t(r.tool)}
-                </span>
-                <span style={{ color: "var(--nv-color-text-faint)" }}>on {r.integrationName}</span>
-                <span style={{ color: "var(--nv-color-text-faint)", fontSize: 12 }}>by {r.requesterLabel}</span>
-                {r.reason && <span style={{ color: "var(--nv-color-text-faint)" }}>— {r.reason}</span>}
-                <div style={{ flex: 1 }} />
-                {r.status === "PENDING" && (
-                  <>
-                    <Button variant="secondary" size="sm" onClick={() => onDecide(r.id, true)}>
-                      Approve
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => onDecide(r.id, false)}>
-                      Deny
-                    </Button>
-                  </>
-                )}
-              </div>
+              <AccessRequestCard key={r.id} request={r} onDecide={onDecide} />
             ))}
           </div>
         )}

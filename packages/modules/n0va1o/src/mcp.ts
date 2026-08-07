@@ -92,7 +92,9 @@ export async function handleMcpMessage(message: McpMessage, ctx: McpContext): Pr
         let requestId: string | null = null;
         if (destructive) {
           const reason = typeof params.reason === "string" ? params.reason : "";
-          requestId = await ctxRequestAccess(ctx, toolName, reason);
+          const reasoningChain = Array.isArray(params.reasoningChain) ? params.reasoningChain : undefined;
+          const sessionContext = Array.isArray(params.sessionContext) ? params.sessionContext : undefined;
+          requestId = await ctxRequestAccess(ctx, toolName, reason, input, reasoningChain, sessionContext);
         }
         return rpc(
           id,
@@ -132,6 +134,24 @@ export async function handleMcpMessage(message: McpMessage, ctx: McpContext): Pr
       }
     }
 
+    case "n0va1o.approve_access": {
+      const requestId = typeof params.requestId === "string" ? params.requestId : "";
+      const approve = params.approve === true;
+      const signature = typeof params.signature === "string" ? params.signature : "";
+      if (!requestId) {
+        return rpc(id, undefined, { code: -32602, message: "n0va1o.approve_access requires requestId" });
+      }
+      const result = await approveAccessRequest({
+        workspaceId,
+        integrationId: integration.id,
+        requestId,
+        approve,
+        signature,
+        actorLabel,
+      });
+      return rpc(id, result);
+    }
+
     case "resources/list":
       return rpc(id, {
         resources: [
@@ -165,7 +185,75 @@ export async function handleMcpMessage(message: McpMessage, ctx: McpContext): Pr
   }
 }
 
-async function ctxRequestAccess(ctx: McpContext, tool: string, reason: string): Promise<string> {
+/** Resolve an access request — approve/deny with a digital signature (Interrogation Room). */
+async function approveAccessRequest(input: {
+  workspaceId: string;
+  integrationId: string;
+  requestId: string;
+  approve: boolean;
+  signature: string;
+  actorLabel: string;
+}): Promise<{ ok: boolean; status: string; message: string }> {
+  const request = await prisma.integrationAccessRequest.findFirst({
+    where: { id: input.requestId, workspaceId: input.workspaceId },
+    include: { integration: true },
+  });
+  if (!request) return { ok: false, status: "not_found", message: "Access request not found" };
+  if (request.status !== "PENDING") return { ok: false, status: String(request.status), message: "Access request already decided" };
+
+  if (input.approve) {
+    if (!input.signature) return { ok: false, status: "PENDING", message: "Approval requires a digital signature" };
+    const allowlist = Array.isArray((request.integration.allowlistTools as unknown) ?? [])
+      ? (request.integration.allowlistTools as unknown as string[])
+      : [];
+    if (!allowlist.includes(request.tool)) allowlist.push(request.tool);
+    await prisma.integration.update({
+      where: { id: request.integration.id },
+      data: { allowlistTools: allowlist },
+    });
+    await prisma.integrationAccessRequest.update({
+      where: { id: request.id },
+      data: {
+        status: "APPROVED",
+        decidedById: null,
+        decidedAt: new Date(),
+        approvedSignature: input.signature,
+      },
+    });
+    await logAudit({
+      workspaceId: input.workspaceId,
+      module: "n0va1o",
+      action: "mcp.access_approved",
+      targetType: "IntegrationAccessRequest",
+      targetId: request.id,
+      metadata: { tool: request.tool, requestId: request.id, signer: input.actorLabel, signature: input.signature },
+    });
+    return { ok: true, status: "APPROVED", message: `Access approved: ${request.tool} added to allowlist (signed: ${input.signature.slice(0, 16)}…)` };
+  } else {
+    await prisma.integrationAccessRequest.update({
+      where: { id: request.id },
+      data: { status: "DENIED", decidedById: null, decidedAt: new Date() },
+    });
+    await logAudit({
+      workspaceId: input.workspaceId,
+      module: "n0va1o",
+      action: "mcp.access_denied",
+      targetType: "IntegrationAccessRequest",
+      targetId: request.id,
+      metadata: { tool: request.tool, requester: input.actorLabel },
+    });
+    return { ok: true, status: "DENIED", message: `Access denied: ${request.tool} remains blocked` };
+  }
+}
+
+async function ctxRequestAccess(
+  ctx: McpContext,
+  tool: string,
+  reason: string,
+  args?: Record<string, unknown>,
+  reasoningChain?: unknown,
+  sessionContext?: unknown,
+): Promise<string> {
   const request = await prisma.integrationAccessRequest.create({
     data: {
       integrationId: ctx.integration.id,
@@ -173,6 +261,9 @@ async function ctxRequestAccess(ctx: McpContext, tool: string, reason: string): 
       requesterLabel: ctx.actorLabel,
       tool,
       reason: reason.slice(0, 500),
+      toolArguments: args as unknown as never,
+      reasoningChain: reasoningChain as unknown as never,
+      sessionContext: sessionContext as unknown as never,
       status: "PENDING",
     },
   });
@@ -182,7 +273,7 @@ async function ctxRequestAccess(ctx: McpContext, tool: string, reason: string): 
     action: "mcp.access_requested",
     targetType: "IntegrationAccessRequest",
     targetId: request.id,
-    metadata: { tool, requester: ctx.actorLabel },
+    metadata: { tool, actor: ctx.actorLabel, hasArguments: Boolean(args), arguments: args },
   });
   return request.id;
 }

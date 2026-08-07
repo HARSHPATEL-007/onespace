@@ -1060,18 +1060,37 @@ model IntegrationLog {
 }
 
 /// N0VA1O MCP - governed tool access requests (blocked destructive tools).
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+}
+
 model IntegrationAccessRequest {
-  id            String   @id @default(uuid())
-  integrationId String
-  workspaceId   String
-  requestedById String?
-  requesterLabel String  @default("mcp-agent")
-  tool          String
-  reason        String   @default("")
-  status        String   @default("PENDING")
-  decidedById   String?
-  decidedAt     DateTime?
-  createdAt     DateTime @default(now())
+  id               String    @id @default(uuid())
+  integrationId    String
+  workspaceId      String
+  requestedById    String?
+  requesterLabel   String    @default("mcp-agent")
+  tool             String
+  reason           String    @default("")
+  /// The exact arguments the agent passed (JSON object). Stored for review
+  /// so an approver can see the precise parameters that were blocked.
+  toolArguments    Json?
+  /// The agent's chain-of-thought / reasoning that led to the request,
+  /// if provided by the caller. Enables the Interrogation Room review panels.
+  reasoningChain   Json?
+  /// A compact lineage of prior tool calls in the same session, so reviewers
+  /// can see what data the agent accessed before requesting the action.
+  sessionContext   Json?
+  status           AccessRequestStatus @default(PENDING)
+  decidedById      String?
+  decidedAt        DateTime?
+  /// Cryptographic signature (base64) over the decision, applied at approval
+  /// time. Lets admins digitally sign off via the Interrogation Room.
+  approvedSignature String?
+  createdAt        DateTime  @default(now())
 
   integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
