@@ -36,6 +36,7 @@ import { planCodeExecution, gateExecution, runInSandbox, registerArtifact, creat
 import { emitPartialTranscript, detectEndpoint, recognizeSpeech, generateSpeech, createSession, addTurn, interruptTurn, confirmAction, degradeGracefully, auditVoiceAction } from "./voice";
 import { ingestSource, retrieveChunks, packageEvidence, generateGrounded, enforceAccess, measureRAG, logAction } from "./rag";
 import { createTenantProfile, applyTerminology, buildSFDDataset, splitDataset, validateSchema, gradeWithReward, buildDPODataset, recordLineage, redactDataset, requestDeployment, evaluateFineTuning } from "./finetuning";
+import { classifyRisk, makeDecision, canExecute, routeEscalation, applyTimeout, packageReviewEvidence, auditEscalation, measureEscalations } from "./escalation";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1323,4 +1324,51 @@ test("finetuning: evaluateFineTuning blocks unsafe deployments", () => {
   assert.ok(good.deploySafe, "improvement is safe");
   const bad = evaluateFineTuning({ tunedAccuracy: 0.7, baselineAccuracy: 0.85, formatErrors: 1, totalOutputs: 100, policyViolations: 10 });
   assert.ok(!bad.deploySafe, "regression blocked");
+});
+
+test("escalation: classifyRisk gates high-consequence irreversible actions", () => {
+  const critical = classifyRisk({ action: "delete production", risk: "critical", reversibility: "irreversible", businessImpact: "high" });
+  assert.equal(critical.mode, "pre_approval", "critical+irreversible needs pre-approval");
+  const low = classifyRisk({ action: "list issues", risk: "low", reversibility: "reversible", businessImpact: "low" });
+  assert.equal(low.mode, "automatic", "low risk is automatic");
+});
+
+test("escalation: makeDecision and canExecute enforce outcomes", () => {
+  const approve = makeDecision({ escalationId: "e1", outcome: "approve", reviewer: "admin", reason: "OK" });
+  assert.ok(canExecute(approve), "approve permits execution");
+  const reject = makeDecision({ escalationId: "e2", outcome: "reject", reviewer: "admin", reason: "Risky" });
+  assert.ok(!canExecute(reject), "reject blocks execution");
+});
+
+test("escalation: routeEscalation selects reviewer with fallback", () => {
+  const reviewers = [{ id: "r1", role: "security" as const, domains: ["infra"], authority: 5, available: true }, { id: "r2", role: "security" as const, domains: ["infra"], authority: 3, available: false }];
+  const result = routeEscalation({ domain: "infra", role: "security", reviewers });
+  assert.equal(result.primary, "r1", "available reviewer selected");
+  assert.ok(result.fallbacks.length <= 1, "fallback available");
+});
+
+test("escalation: applyTimeout defaults to no action and escalates on expiry", () => {
+  const timeout = applyTimeout({ decision: null, config: { windowMs: 1000, escalationOnTimeout: true }, elapsedMs: 1500 });
+  assert.ok(timeout.timedOut, "timed out");
+  assert.equal(timeout.action, "escalate", "escalates on timeout");
+  const pending = applyTimeout({ decision: null, config: { windowMs: 5000, escalationOnTimeout: false }, elapsedMs: 100 });
+  assert.equal(pending.action, "none", "pending waits for decision");
+});
+
+test("escalation: packageReviewEvidence and auditEscalation preserve review context", () => {
+  const evidence = packageReviewEvidence({ proposedAction: "delete", policyContext: "GDPR", expectedSideEffects: ["data loss"], sourceDocuments: ["doc1"], confidence: 0.8 });
+  assert.ok(evidence.version.startsWith("v"), "versioned");
+  const audit = auditEscalation({ escalationId: "e1", action: "delete", reviewer: "admin", decision: "modify", modifiedFrom: "delete", reason: "Safer" });
+  assert.equal(audit.modifiedFrom, "delete", "modification recorded");
+});
+
+test("escalation: measureEscalations computes governance metrics", () => {
+  const decisions = [
+    makeDecision({ escalationId: "e1", outcome: "approve", reviewer: "a", reason: "" }),
+    makeDecision({ escalationId: "e2", outcome: "modify", reviewer: "a", reason: "" }),
+    makeDecision({ escalationId: "e3", outcome: "reject", reviewer: "a", reason: "" }),
+  ];
+  const metrics = measureEscalations(decisions, 100);
+  assert.equal(metrics.overrideRate, 1 / 3, "override rate computed");
+  assert.equal(metrics.total, 100, "total actions tracked");
 });
