@@ -34,6 +34,10 @@ import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
 import { evaluateFlag, transitionFlag, emergencyDisable } from "./feature-flags";
+import { forecastUsage } from "./forecasting";
+import { checkFeature, withinQuota, nextTier } from "./tiers";
+import { recommendUpgrade } from "./addons";
+import { buildMigrationPlan, validateMigration } from "./migration";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -848,4 +852,40 @@ test("feature flags: transitionFlag and emergencyDisable produce audit records",
   const disabled = emergencyDisable(updated, "admin", "Incident in progress");
   assert.ok(disabled.flag.emergencyDisabled, "emergency disabled");
   assert.ok(disabled.change.reason.includes("EMERGENCY"), "emergency reason logged");
+});
+
+test("usage forecasting: forecasts trends and flags exhaustion", () => {
+  const history = { dailyApiCalls: [100, 120, 140, 160, 180], dailySandboxMinutes: [10, 12, 11, 13, 14], dailyActiveAccounts: [5, 5, 6, 6, 6], dailyRecipeExecutions: [1, 2, 1, 3, 2] };
+  const forecasts = forecastUsage(history, { apiCalls: 500, sandboxMinutes: 60, activeAccounts: 10, recipeExecutions: 10 });
+  assert.equal(forecasts.apiCalls.trend, "increasing", "trend detected as increasing");
+  assert.ok(forecasts.apiCalls.willExceedLimit, "will exhaust soon flagged");
+  assert.ok(forecasts.apiCalls.daysToExhaustion !== null, "days to exhaustion computed");
+});
+
+test("tier-aware gating: features map to tiers with clear status", () => {
+  assert.ok(checkFeature("free", "basic_integrations").included, "free includes basic");
+  assert.ok(checkFeature("free", "policy_engine").restricted, "free restricts policy engine");
+  assert.ok(checkFeature("pro", "policy_engine").included, "pro includes policy engine");
+  assert.equal(nextTier("growth"), "pro", "next tier from growth is pro");
+  assert.ok(!withinQuota("free", "apiCallsPerDay", 200), "exceeds free quota");
+});
+
+test("add-on recommendations: recommends upgrade based on usage", () => {
+  const rec = recommendUpgrade({ connectorCount: 10, monthlyApiCalls: 50_000, monthlyExecutions: 500, activeAccounts: 30, currentTier: "growth" });
+  assert.equal(rec.recommendedTier, "pro", "growth + volume -> pro");
+  assert.ok(rec.reasons.length > 0, "reasons provided");
+  assert.ok(rec.monthlyEstimate > 0, "pricing estimate included");
+});
+
+test("migration assistance: builds plan with mappings and effort", () => {
+  const plan = buildMigrationPlan("legacy_crm", [
+    { name: "old_zendesk", provider: "zendesk", toolCount: 5, authType: "oauth2" },
+    { name: "custom_api", provider: "unknown", toolCount: 3, authType: "basic" },
+  ]);
+  assert.ok(plan.mappings.some((m) => m.compatibility === "direct"), "zendesk direct mapped");
+  assert.ok(plan.mappings.some((m) => m.compatibility === "manual"), "unknown requires manual");
+  assert.ok(plan.estimatedEffortHours > 0, "effort estimated");
+  assert.ok(plan.cutoverSteps.length > 0, "cutover steps planned");
+  const validation = validateMigration([{ mapping: "zendesk", success: true, details: "OK" }]);
+  assert.equal(validation[0]!.passed, true, "validation passed");
 });
