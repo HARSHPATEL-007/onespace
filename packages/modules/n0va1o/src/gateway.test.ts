@@ -30,6 +30,10 @@ import { explainStep, explainWorkflow, renderStepExplanation } from "./explainab
 import { selectProfile, checkResourceUsage, generateReplayId, buildTrace } from "./sandbox";
 import { evaluateRetention, computeExpiry, isExpired, DEFAULT_RETENTION as ARTIFACT_RETENTION } from "./artifact";
 import { buildPointer, readChunk, searchContent, categorize } from "./file-view";
+import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
+import { selectTransport, canPreserveSession } from "./transport";
+import { buildDashboard, flagQuotaRisks } from "./dashboard";
+import { evaluateFlag, transitionFlag, emergencyDisable } from "./feature-flags";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -774,4 +778,74 @@ test("streaming file views: categorize maps content types", () => {
   assert.equal(categorize("text/csv"), "csv");
   assert.equal(categorize("application/json"), "json");
   assert.equal(categorize("image/png"), "image");
+});
+
+test("context minimization: selects minimum tools within budget", () => {
+  const candidates = [
+    { providerKey: "github", providerName: "GitHub", category: "devops", name: "list_issues", description: "", reason: "", relevance: 0.95 },
+    { providerKey: "github", providerName: "GitHub", category: "devops", name: "create_issue", description: "", reason: "", relevance: 0.8 },
+    { providerKey: "slack", providerName: "Slack", category: "communication", name: "post_message", description: "", reason: "", relevance: 0.7 },
+    { providerKey: "dropbox", providerName: "Dropbox", category: "documents", name: "list_files", description: "", reason: "", relevance: 0.2 },
+  ];
+  const result = minimizeContext(candidates, { maxTools: 2, maxTokens: 4000, minRelevance: 0.3 });
+  assert.equal(result.selected.length, 2, "capped at max tools");
+  assert.ok(result.selected[0]!.relevance >= result.selected[1]!.relevance, "sorted by relevance");
+  assert.ok(result.rationale.length >= 4, "rationale provided for all candidates");
+  assert.ok(result.excluded.some((e) => e.name === "list_files"), "low relevance excluded");
+});
+
+test("context minimization: diagnoseOverexposure flags issues", () => {
+  const candidates = Array.from({ length: 6 }, (_, i) => ({ providerKey: "x", providerName: "X", category: "c", name: `t${i}`, description: "", reason: "", relevance: 0.9 - i * 0.05 }));
+  const result = minimizeContext(candidates, { maxTools: 10, maxTokens: 50000, minRelevance: 0 });
+  const warnings = diagnoseOverexposure(result);
+  assert.ok(warnings.length > 0, "overexposure diagnosed");
+});
+
+test("transport fallback: selects preferred when available", () => {
+  const result = selectTransport({ preferred: "websocket", statuses: ["stdio", "websocket", "http_sse"], availability: { stdio: true, websocket: true, http_sse: true } });
+  assert.equal(result.selected, "websocket", "preferred selected");
+  assert.ok(result.sessionPreserved, "session preserved on preferred");
+});
+
+test("transport fallback: falls back when preferred unavailable", () => {
+  const result = selectTransport({ preferred: "stdio", statuses: ["stdio", "websocket", "http_sse"], availability: { stdio: false, websocket: true, http_sse: true } });
+  assert.equal(result.selected, "websocket", "fell back to websocket");
+  assert.ok(result.attempted.includes("stdio"), "attempted preferred first");
+});
+
+test("transport fallback: canPreserveSession across transports", () => {
+  assert.equal(canPreserveSession("websocket", "http_sse"), true, "websocket <-> sse preserved");
+  assert.equal(canPreserveSession("stdio", "websocket"), false, "stdio cannot migrate");
+});
+
+test("operator dashboard: buildDashboard and flagQuotaRisks work", () => {
+  const dashboard = buildDashboard({
+    health: [{ provider: "github", score: computeHealthScore({ avgLatencyMs: 200, errorRate: 0.01, authFreshness: 1, schemaDriftCount: 0, rateLimitPressure: 0, retryCount: 0, totalCalls: 50 }) }],
+    approvals: [],
+    failures: [],
+    latencies: [],
+    quotas: [{ provider: "github", used: 950, limit: 1000, percentUsed: 95 }],
+  });
+  assert.equal(dashboard.health.length, 1, "health included");
+  const risks = flagQuotaRisks(dashboard.quotaConsumption);
+  assert.equal(risks[0]!.risk, "critical", "95% usage flagged critical");
+});
+
+test("feature flags: evaluateFlag respects rollout stage and exclusions", () => {
+  const flag = { name: "new_tool", description: "", stage: "canary" as const, includeTenants: ["t1"], excludeTenants: ["t3"], emergencyDisabled: false, updatedAt: "", updatedBy: "" };
+  assert.equal(evaluateFlag(flag, "t1").enabled, true, "included tenant enabled");
+  assert.equal(evaluateFlag(flag, "t2").enabled, false, "non-included tenant disabled");
+  assert.equal(evaluateFlag(flag, "t3").enabled, false, "excluded tenant disabled");
+  assert.equal(evaluateFlag({ ...flag, stage: "full" }, "t2").enabled, true, "full rollout enables all");
+});
+
+test("feature flags: transitionFlag and emergencyDisable produce audit records", () => {
+  const flag = { name: "new_tool", description: "", stage: "off" as const, includeTenants: [], excludeTenants: [], emergencyDisabled: false, updatedAt: "", updatedBy: "" };
+  const { flag: updated, change } = transitionFlag(flag, "canary", "admin", "Start canary");
+  assert.equal(updated.stage, "canary", "stage transitioned");
+  assert.equal(change.previousStage, "off", "change records previous stage");
+
+  const disabled = emergencyDisable(updated, "admin", "Incident in progress");
+  assert.ok(disabled.flag.emergencyDisabled, "emergency disabled");
+  assert.ok(disabled.change.reason.includes("EMERGENCY"), "emergency reason logged");
 });
