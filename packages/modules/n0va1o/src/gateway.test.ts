@@ -37,6 +37,7 @@ import { emitPartialTranscript, detectEndpoint, recognizeSpeech, generateSpeech,
 import { ingestSource, retrieveChunks, packageEvidence, generateGrounded, enforceAccess, measureRAG, logAction } from "./rag";
 import { createTenantProfile, applyTerminology, buildSFDDataset, splitDataset, validateSchema, gradeWithReward, buildDPODataset, recordLineage, redactDataset, requestDeployment, evaluateFineTuning } from "./finetuning";
 import { classifyRisk, makeDecision, canExecute, routeEscalation, applyTimeout, packageReviewEvidence, auditEscalation, measureEscalations } from "./escalation";
+import { crossModalSearch, buildMixedQuery, planAction, attachProvenance, assessQuality, measureCrossModal } from "./cross-modal";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1371,4 +1372,33 @@ test("escalation: measureEscalations computes governance metrics", () => {
   const metrics = measureEscalations(decisions, 100);
   assert.equal(metrics.overrideRate, 1 / 3, "override rate computed");
   assert.equal(metrics.total, 100, "total actions tracked");
+});
+
+test("cross-modal: crossModalSearch retrieves across modalities", () => {
+  const corpus = [
+    { chunkId: "c1", sourceId: "img1", content: "invoice screenshot showing total $500", metadata: { sourceId: "img1", sourceType: "document" as const, version: "1", owner: "u1", tenantId: "t1", originSystem: "upload", createdAt: "", updatedAt: "2026-08-01", classification: "internal" as const }, freshness: 0.9 },
+    { chunkId: "c2", sourceId: "doc1", content: "meeting notes about budget", metadata: { sourceId: "doc1", sourceType: "document" as const, version: "1", owner: "u1", tenantId: "t1", originSystem: "wiki", createdAt: "", updatedAt: "2026-08-01", classification: "internal" as const }, freshness: 0.9 },
+  ];
+  const results = crossModalSearch({ text: "invoice total", tenantId: "t1" }, corpus);
+  assert.ok(results.length > 0, "results retrieved");
+  assert.ok(results[0]!.provenance.includes("upload") || results[0]!.provenance.includes("wiki"), "provenance preserved");
+});
+
+test("cross-modal: buildMixedQuery and planAction support mixed inputs", () => {
+  const query = buildMixedQuery({ text: "find this", fileRef: "doc1.pdf", fileModality: "document", tenantId: "t1" });
+  assert.equal(query.documentRef, "doc1.pdf", "document ref set");
+  const plan = planAction("summarize", [], true);
+  assert.ok(plan.approved, "non-side-effecting approved");
+  const sideEffect = planAction("trigger_workflow", [], false);
+  assert.ok(!sideEffect.approved, "side-effecting blocked without approval");
+});
+
+test("cross-modal: assessQuality and measureCrossModal evaluate evidence", () => {
+  const matches = [{ chunkId: "c1", modality: "document" as const, content: "x", score: 0.8, provenance: "s/1", sourceSystem: "s" }];
+  const quality = assessQuality(matches, 0.3);
+  assert.ok(!quality.shouldRefuse, "strong evidence not refused");
+  const weak = assessQuality([], 0.3);
+  assert.ok(weak.shouldRefuse, "no evidence refused");
+  const metrics = measureCrossModal({ trueRelevant: 10, retrievedRelevant: 8, totalRetrieved: 10, successfulActions: 9, totalActions: 10 });
+  assert.equal(metrics.retrievalRecall, 0.8, "recall computed");
 });
