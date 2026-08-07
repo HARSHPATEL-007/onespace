@@ -28,6 +28,10 @@ export async function removeMemberAction(formData: FormData) {
   await (await svc()).removeMember(String(formData.get("memberId") ?? ""));
 }
 
+export async function revokeInviteAction(formData: FormData) {
+  await (await svc()).revokeInvite(String(formData.get("inviteId") ?? ""));
+}
+
 export async function setSecurityAction(formData: FormData) {
   await (
     await svc()
