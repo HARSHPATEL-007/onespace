@@ -33,6 +33,7 @@ import { buildPointer, readChunk, searchContent, categorize } from "./file-view"
 import { createPlan, selectTool, createStep, verifyStep, decideRetry, replanFromCheckpoint, assessRisk, auditAction, emitTrace, shouldPause, requestHumanApproval } from "./agentic";
 import { retrieveEvidence, extractClaims, verifyClaims, enforceCitations, decideGrounding, gateHighStakes, rankSources, auditGrounding, measureGrounding, detectConflicts } from "./grounding";
 import { planCodeExecution, gateExecution, runInSandbox, registerArtifact, createAuditTrace, decideRecovery, measureExecution, DEFAULT_QUOTA } from "./code-exec";
+import { emitPartialTranscript, detectEndpoint, recognizeSpeech, generateSpeech, createSession, addTurn, interruptTurn, confirmAction, degradeGracefully, auditVoiceAction } from "./voice";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1200,4 +1201,47 @@ test("code execution: decideRecovery classifies failures and measureExecution tr
   assert.ok(timeout.rerunFromSnapshot, "rerun from snapshot");
   const metrics = measureExecution([{ exitCode: 0, stdout: "ok", stderr: "", durationMs: 50, timedOut: false, artifactRefs: [] }, { exitCode: 1, stdout: "", stderr: "err", durationMs: 10, timedOut: false, artifactRefs: [] }]);
   assert.equal(metrics.successRate, 0.5, "success rate computed");
+});
+
+test("voice: emitPartialTranscript and detectEndpoint handle streaming", () => {
+  const chunk = { chunkId: "c1", data: "hello world", timestamp: new Date().toISOString(), isFinal: false };
+  const partial = emitPartialTranscript(chunk, "previous");
+  assert.equal(partial.text, "previous hello world", "partial accumulated");
+  assert.ok(!partial.isFinal, "not final");
+  assert.ok(detectEndpoint(600), "endpoint detected after pause");
+  assert.ok(!detectEndpoint(200), "no endpoint during speech");
+});
+
+test("voice: recognizeSpeech produces segments with timestamps", () => {
+  const chunks = [{ chunkId: "c1", data: "list issues", timestamp: new Date().toISOString(), isFinal: true }];
+  const result = recognizeSpeech(chunks, { language: "en" });
+  assert.equal(result.fullText, "list issues", "full text assembled");
+  assert.equal(result.segments[0]!.confidence, 0.95, "final confidence high");
+  assert.equal(result.language, "en");
+});
+
+test("voice: generateSpeech blocks unapproved content", () => {
+  const approved = generateSpeech({ text: "Hello", style: { voice: "default", speed: 1, pitch: 1 }, approved: true });
+  assert.ok(approved.audioRef.length > 0, "approved speech generated");
+  const blocked = generateSpeech({ text: "Secret data", style: { voice: "default", speed: 1, pitch: 1 }, approved: false });
+  assert.equal(blocked.audioRef, "", "unapproved blocked");
+});
+
+test("voice: dialogue session handles turns and interruption", () => {
+  let session = createSession();
+  session = addTurn(session, "user", "list issues");
+  session = addTurn(session, "system", "Here are issues");
+  assert.equal(session.turns.length, 2, "two turns added");
+  session = interruptTurn(session);
+  assert.ok(session.turns[1]!.interrupted, "last turn interrupted");
+});
+
+test("voice: confirmAction gates high-risk and degradeGracefully handles quality", () => {
+  const high = confirmAction("delete all", "high", false);
+  assert.ok(!high.confirmed, "high-risk without confirmation blocked");
+  assert.ok(high.requiresExplicit, "requires explicit confirmation");
+  const degraded = degradeGracefully("poor", 1500, 1000);
+  assert.equal(degraded.mode, "text_only", "poor quality degrades to text");
+  const good = degradeGracefully("good", 200, 1000);
+  assert.equal(good.mode, "speech_to_speech", "good quality stays voice");
 });
