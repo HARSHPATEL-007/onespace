@@ -39,6 +39,11 @@ import { createTenantProfile, applyTerminology, buildSFDDataset, splitDataset, v
 import { classifyRisk, makeDecision, canExecute, routeEscalation, applyTimeout, packageReviewEvidence, auditEscalation, measureEscalations } from "./escalation";
 import { crossModalSearch, buildMixedQuery, planAction, attachProvenance, assessQuality, measureCrossModal } from "./cross-modal";
 import { computeDimensions, evaluateRun, buildEvalDataset, scoreCase, checkAlerts, decidePromotion } from "./eval";
+import { checkSubsystem, aggregateHealth } from "./system-health";
+import { loadConfig, validateConfig } from "./config";
+import { createLogger, generateCorrelationId } from "./logging";
+import { MetricsRegistry } from "./metrics";
+import { runIntegrationScenario } from "./integration";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1435,4 +1440,48 @@ test("eval: checkAlerts and decidePromotion monitor drift", () => {
   const good = computeDimensions({ tasksCompleted: 9, totalTasks: 10, correctToolCalls: 9, totalToolCalls: 10, successfulTools: 9, latenciesMs: [100], groundedClaims: 8, totalClaims: 10, unsupportedClaims: 1, citedClaims: 7, policyViolations: 0 });
   const promote = decidePromotion(good, dims, {});
   assert.ok(promote.promote, "improvement promotes");
+});
+
+test("practical: checkSubsystem and aggregateHealth report system status", () => {
+  const db = checkSubsystem("database", () => ({ ok: true, message: "connected" }));
+  assert.equal(db.status, "healthy", "healthy subsystem");
+  const agg = aggregateHealth([db, checkSubsystem("cache", () => ({ ok: false, message: "slow" }))], "1.0.0", 3600);
+  assert.equal(agg.status, "degraded", "aggregated status degraded");
+  assert.equal(agg.subsystems.length, 2, "all subsystems reported");
+});
+
+test("practical: loadConfig and validateConfig handle env overrides", () => {
+  const config = loadConfig({}, { N0VA1O_PORT: "4000", N0VA1O_ENV: "production" });
+  assert.equal(config.port, 4000, "port from env");
+  assert.equal(config.environment, "production", "env from env");
+  const validation = validateConfig(config);
+  assert.ok(validation.valid, "valid config");
+});
+
+test("practical: createLogger and generateCorrelationId support tracing", () => {
+  const logger = createLogger({ module: "test", level: "debug" });
+  assert.ok(logger, "logger created");
+  const child = logger.child("submodule");
+  assert.ok(child, "child logger created");
+  const id = generateCorrelationId();
+  assert.ok(id.startsWith("corr_"), "correlation id generated");
+});
+
+test("practical: MetricsRegistry tracks counters, histograms, gauges", () => {
+  const registry = new MetricsRegistry();
+  registry.incrementCounter("requests", { method: "GET" });
+  registry.incrementCounter("requests", { method: "GET" });
+  registry.recordHistogram("latency", 150);
+  registry.recordHistogram("latency", 300);
+  registry.setGauge("active_connections", 42);
+  const snapshot = registry.snapshot();
+  assert.equal(snapshot.counters.length, 1, "counter tracked");
+  assert.equal(snapshot.histograms.length, 1, "histogram tracked");
+  assert.equal(snapshot.gauges[0]!.value, 42, "gauge tracked");
+});
+
+test("practical: runIntegrationScenario wires modules end-to-end", () => {
+  const result = runIntegrationScenario("smoke_test", { provider: "github", tool: "list_issues", actorLabel: "agent", isDestructive: false, tokenState: "ACTIVE", inAllowlist: true, healthScore: 1 }, { avgLatencyMs: 200, errorRate: 0.01, authFreshness: 1, schemaDriftCount: 0, rateLimitPressure: 0, retryCount: 0, totalCalls: 50 });
+  assert.ok(result.passed, "integration scenario passed");
+  assert.ok(result.steps.length >= 4, "multiple steps executed");
 });
