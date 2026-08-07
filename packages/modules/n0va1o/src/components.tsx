@@ -28,6 +28,16 @@ export interface AccessRequestView {
   createdAt: Date;
 }
 
+export interface DiscoveredToolView {
+  providerKey: string;
+  providerName: string;
+  category: string;
+  name: string;
+  description: string;
+  relevance: number;
+  reason: string;
+}
+
 export interface N0va1oActions {
   connect: (formData: FormData) => Promise<void>;
   sync: (formData: FormData) => Promise<{ message: string; ok: boolean; statusCode: number }>;
@@ -41,6 +51,7 @@ export interface N0va1oActions {
   cleanup: (formData: FormData) => Promise<{ purged: number }>;
   accessRequests: (formData: FormData) => Promise<AccessRequestView[]>;
   decideAccess: (formData: FormData) => Promise<void>;
+  discoverTools: (formData: FormData) => Promise<DiscoveredToolView[]>;
 }
 
 const getOrigin = () => (typeof window !== "undefined" ? window.location.origin : "");
@@ -141,7 +152,7 @@ export function Integrations({
   role: string;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"connections" | "compliance">("connections");
+  const [tab, setTab] = useState<"dashboard" | "connections" | "discover" | "compliance">("dashboard");
   const [connecting, setConnecting] = useState(false);
   const [connectCategory, setConnectCategory] = useState("all");
   const [connectQuery, setConnectQuery] = useState("");
@@ -155,6 +166,9 @@ export function Integrations({
   const [localRetention, setLocalRetention] = useState(String(settings.retentionDays));
   const [liveRequests, setLiveRequests] = useState<AccessRequestView[]>(requests);
   const [showSecret, setShowSecret] = useState<Record<string, boolean>>({});
+  const [discoverQuery, setDiscoverQuery] = useState("");
+  const [discoverResults, setDiscoverResults] = useState<DiscoveredToolView[]>([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
 
   const providerOptions = useMemo(() => {
     const q = connectQuery.trim().toLowerCase();
@@ -203,15 +217,40 @@ export function Integrations({
       </div>
 
       <div style={{ display: "flex", gap: 4, marginBottom: "var(--nv-space-4)", borderBottom: "1px solid var(--nv-color-border)" }}>
+        <Tab active={tab === "dashboard"} onClick={() => setTab("dashboard")}>
+          Dashboard
+        </Tab>
         <Tab active={tab === "connections"} onClick={() => setTab("connections")}>
           Connections ({integrations.length})
+        </Tab>
+        <Tab active={tab === "discover"} onClick={() => setTab("discover")}>
+          Discover
         </Tab>
         <Tab active={tab === "compliance"} onClick={() => setTab("compliance")}>
           Compliance &amp; MCP {liveRequests.some((r) => r.status === "PENDING") ? "·" : ""}
         </Tab>
       </div>
 
-      {tab === "connections" ? (
+      {tab === "dashboard" ? (
+        <DashboardTab integrations={integrations} settings={settings} />
+      ) : tab === "discover" ? (
+        <DiscoverTab
+          query={discoverQuery}
+          setQuery={setDiscoverQuery}
+          results={discoverResults}
+          loading={discoverLoading}
+          onSearch={(q, max) => {
+            setDiscoverLoading(true);
+            const fd = new FormData();
+            fd.set("query", q);
+            fd.set("maxTools", String(max));
+            void actions.discoverTools(fd).then((r) => {
+              setDiscoverResults(r);
+              setDiscoverLoading(false);
+            });
+          }}
+        />
+      ) : tab === "connections" ? (
         integrations.length === 0 ? (
           <div className="nv-empty" style={{ minHeight: 280 }}>
             <div>No integrations connected</div>
@@ -860,13 +899,151 @@ function ComplianceTab({
             No access requests yet
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {requests.map((r) => (
               <AccessRequestCard key={r.id} request={r} onDecide={onDecide} />
             ))}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function DashboardTab({ integrations, settings }: { integrations: IntegrationWithLogs[]; settings: McpSettings }): React.ReactNode {
+  const connected = integrations.filter((i) => i.enabled).length;
+  const paused = integrations.filter((i) => !i.enabled).length;
+  const mcpEnabled = integrations.filter((i) => i.mcpEnabled).length;
+  const withWebhooks = integrations.filter((i) => i.webhookEnabled && i.webhookPath).length;
+  const totalTools = integrations.reduce((sum, i) => {
+    const allowlist = ((i.allowlistTools as unknown) ?? []) as string[];
+    return sum + (allowlist.length > 0 ? allowlist.length : (findProvider(i.provider)?.tools.length ?? 1));
+  }, 0);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+        <StatCard label="Connected" value={String(connected)} tone="success" />
+        <StatCard label="Paused" value={String(paused)} tone="warning" />
+        <StatCard label="MCP Enabled" value={String(mcpEnabled)} tone="primary" />
+        <StatCard label="Webhooks" value={String(withWebhooks)} tone="primary" />
+        <StatCard label="Total Tools" value={String(totalTools)} tone="neutral" />
+        <StatCard label="Retention" value={`${settings.retentionDays}d`} tone="neutral" />
+      </div>
+
+      {integrations.length > 0 && (
+        <div className="nv-card" style={{ padding: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>Connector Health</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {integrations.map((i) => {
+              const provider = findProvider(i.provider);
+              const health = i.enabled ? "healthy" : "paused";
+              return (
+                <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600, minWidth: 140 }}>{i.name}</span>
+                  <span className="nv-badge">{provider?.name ?? i.provider}</span>
+                  <span className={i.enabled ? "nv-badge nv-badge-green" : "nv-badge nv-badge-amber"}>{health}</span>
+                  <span style={{ color: "var(--nv-color-text-faint)", fontSize: 11 }}>
+                    {provider?.tools.length ?? 0} tools · {i.rateLimitPerMin}/min
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="nv-card" style={{ padding: 16 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Quick Actions</div>
+        <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", marginBottom: 10 }}>
+          Jump to a section to manage your integrations.
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <a href="#connect"><Button size="sm">+ Connect app</Button></a>
+          <a href="/api/n0va1o/export" download><Button variant="secondary" size="sm">Export audit CSV</Button></a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, tone }: { label: string; value: string; tone: "success" | "warning" | "primary" | "neutral" }) {
+  const colors: Record<string, string> = {
+    success: "color-mix(in srgb, var(--nv-color-success) 12%, transparent)",
+    warning: "color-mix(in srgb, var(--nv-color-warning) 12%, transparent)",
+    primary: "color-mix(in srgb, var(--nv-color-primary) 12%, transparent)",
+    neutral: "var(--nv-color-surface-2, rgba(127,127,127,.06))",
+  };
+  return (
+    <div className="nv-card" style={{ padding: 14, background: colors[tone] }}>
+      <div style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+function DiscoverTab({
+  query,
+  setQuery,
+  results,
+  loading,
+  onSearch,
+}: {
+  query: string;
+  setQuery: (q: string) => void;
+  results: DiscoveredToolView[];
+  loading: boolean;
+  onSearch: (query: string, maxTools: number) => void;
+}): React.ReactNode {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="nv-card" style={{ padding: 16 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>Intent-Driven Tool Discovery</div>
+        <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", marginBottom: 12 }}>
+          Describe what you need in natural language — N0VA1O finds the most relevant tools across its 1,000+ provider catalog.
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (query.trim()) onSearch(query, 5);
+          }}
+          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
+        >
+          <Input
+            placeholder="e.g. Find Q3 invoices in Dropbox and notify Slack"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{ flex: 1, minWidth: 280 }}
+          />
+          <Button type="submit" disabled={loading || !query.trim()}>
+            {loading ? "Searching…" : "Discover"}
+          </Button>
+        </form>
+      </div>
+
+      {results.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>Top {results.length} tools for your intent</div>
+          {results.map((tool, idx) => (
+            <div key={idx} className="nv-card" style={{ padding: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 700 }}>{tool.providerName}:{tool.name}</span>
+                <span className="nv-badge nv-badge-green">{(tool.relevance * 100).toFixed(0)}% match</span>
+                <span className="nv-badge">{tool.category}</span>
+                <div style={{ flex: 1 }} />
+              </div>
+              <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", marginTop: 4 }}>{tool.reason}</div>
+              <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", marginTop: 2 }}>{tool.description}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {results.length === 0 && !loading && (
+        <div className="nv-empty" style={{ padding: "24px 0" }}>
+          Enter a query above to discover relevant tools.
+        </div>
+      )}
     </div>
   );
 }

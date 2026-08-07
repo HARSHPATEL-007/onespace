@@ -90,3 +90,8 @@ export async function decideAccessAction(formData: FormData) {
     String(formData.get("signature") || ""),
   );
 }
+
+export async function discoverToolsAction(formData: FormData) {
+  const service = await svc();
+  return service.discoverTools(String(formData.get("query") ?? ""), parseInt(String(formData.get("maxTools") ?? "5"), 10));
+}

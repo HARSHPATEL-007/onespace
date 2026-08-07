@@ -14,6 +14,7 @@ import {
   cleanupLogsAction,
   accessRequestsAction,
   decideAccessAction,
+  discoverToolsAction,
 } from "./actions";
 
 export default async function N0va1oPage() {
@@ -45,6 +46,7 @@ export default async function N0va1oPage() {
         cleanup: cleanupLogsAction,
         accessRequests: accessRequestsAction,
         decideAccess: decideAccessAction,
+        discoverTools: discoverToolsAction,
       }}
     />
   );
