@@ -31,5 +31,5 @@ export function phaseComplete(gate: PhaseGate): boolean {
 export function advancePhase(gate: PhaseGate): ReleaseStage | null {
   if (!phaseComplete(gate)) return null;
   const idx = RELEASE_STAGES.indexOf(gate.stage);
-  return idx < RELEASE_STAGES.length - 1 ? RELEASE_STAGES[idx + 1] : null;
+  return idx >= 0 && idx < RELEASE_STAGES.length - 1 ? RELEASE_STAGES[idx + 1]! : null;
 }

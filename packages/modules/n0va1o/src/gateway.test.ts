@@ -38,6 +38,16 @@ import { forecastUsage } from "./forecasting";
 import { checkFeature, withinQuota, nextTier } from "./tiers";
 import { recommendUpgrade } from "./addons";
 import { buildMigrationPlan, validateMigration } from "./migration";
+import { evaluateCriterion } from "./acceptance";
+import { buildMatrix, findGaps, coverageSummary } from "./traceability";
+import { scopeEnhancement } from "./scoping";
+import { validateIntake, createRequest } from "./intake";
+import { checkGates, requiresReview } from "./gates";
+import { phaseComplete, advancePhase } from "./phases";
+import { compareToBaseline } from "./baseline";
+import { rankBacklog } from "./backlog";
+import { analyzeImpact, justifiesBuilding } from "./impact";
+import { transitionStatus } from "./transparency";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -888,4 +898,81 @@ test("migration assistance: builds plan with mappings and effort", () => {
   assert.ok(plan.cutoverSteps.length > 0, "cutover steps planned");
   const validation = validateMigration([{ mapping: "zendesk", success: true, details: "OK" }]);
   assert.equal(validation[0]!.passed, true, "validation passed");
+});
+
+test("acceptance criteria: evaluateCriterion passes or fails by threshold", () => {
+  const latencyCriterion = { id: "lat1", capability: "gateway", metric: "latency" as const, target: 500, unit: "ms" };
+  assert.equal(evaluateCriterion(latencyCriterion, 400).passed, true, "under target passes");
+  assert.equal(evaluateCriterion(latencyCriterion, 600).passed, false, "over target fails");
+});
+
+test("traceability: buildMatrix finds gaps and summarizes coverage", () => {
+  const matrix = buildMatrix([
+    { id: "r1", requirement: "Auth", description: "", architectureRef: "arch-1", implementationRef: "impl-1", testRef: "test-1" },
+    { id: "r2", requirement: "Logging", description: "", architectureRef: "arch-2", implementationRef: "", testRef: "" },
+  ]);
+  const gaps = findGaps(matrix);
+  assert.equal(gaps.length, 1, "one gap found");
+  const summary = coverageSummary(matrix);
+  assert.equal(summary.covered, 1, "one covered");
+  assert.equal(summary.partial, 1, "one partial");
+});
+
+test("scoping: scopeEnhancement classifies by keywords and effort", () => {
+  assert.equal(scopeEnhancement({ title: "Fix typo", description: "Text change", estimatedEffort: 2 }), "minor");
+  assert.equal(scopeEnhancement({ title: "New engine", description: "Build policy engine", estimatedEffort: 15 }), "major");
+  assert.equal(scopeEnhancement({ title: "Add connector", description: "New integration", estimatedEffort: 8, integrationCount: 3 }), "integration_expansion");
+});
+
+test("intake: validateIntake requires all fields", () => {
+  const good = validateIntake({ title: "X", problemStatement: "This is a detailed problem statement", businessValue: "High", affectedUsers: ["ops"], suggestedAcceptanceCriteria: ["fast"] });
+  assert.ok(good.complete, "complete request passes");
+  const bad = validateIntake({ title: "X" });
+  assert.ok(!bad.complete, "incomplete request fails");
+  assert.ok(bad.missingFields.includes("problemStatement"), "missing field identified");
+});
+
+test("review gates: checkGates passes only when all approved", () => {
+  const gates = [{ role: "security" as const, reviewer: "sec1", status: "approved" as const, comments: "" }, { role: "operations" as const, reviewer: "ops1", status: "pending" as const, comments: "" }];
+  const result = checkGates(gates);
+  assert.ok(!result.passed, "not passed with pending");
+  assert.equal(result.pending.length, 1, "one pending");
+  assert.equal(requiresReview("high").length, 4, "high impact needs 4 reviewers");
+});
+
+test("release phases: phaseComplete and advancePhase enforce exit criteria", () => {
+  const gate = { stage: "build" as const, owner: "eng", artifacts: ["code"], exitCriteria: ["tests pass"], approved: true };
+  assert.ok(phaseComplete(gate), "complete phase");
+  assert.equal(advancePhase(gate), "validation", "advances to validation");
+  assert.equal(advancePhase({ ...gate, approved: false }), null, "cannot advance unapproved");
+});
+
+test("performance baselining: compareToBaseline measures improvement", () => {
+  const baseline = { metric: "latency", current: 500, target: 200, unit: "ms", measuredAt: "" };
+  const result = compareToBaseline(baseline, 150);
+  assert.ok(result.targetMet, "target met");
+  assert.ok(result.improvement < 0, "improvement is positive for lower-is-better");
+});
+
+test("risk-ranked backlog: rankBacklog orders by weighted score", () => {
+  const items = [
+    { id: "a", title: "Low", businessValue: 2, userReach: 2, technicalFeasibility: 5, complianceRisk: 1, implementationEffort: 10 },
+    { id: "b", title: "High", businessValue: 9, userReach: 9, technicalFeasibility: 8, complianceRisk: 8, implementationEffort: 3 },
+  ];
+  const ranked = rankBacklog(items);
+  assert.equal(ranked[0]!.id, "b", "highest scored first");
+});
+
+test("user-impact analysis: analyzeImpact computes reach and weighted impact", () => {
+  const analysis = analyzeImpact("New Dashboard", [{ userSegment: "ops", usageFrequency: "daily" as const, painSeverity: 8, description: "Saves time" }]);
+  assert.ok(analysis.weightedImpact > 0, "weighted impact computed");
+  assert.ok(justifiesBuilding(analysis), "justifies building");
+});
+
+test("transparency: transitionStatus validates allowed transitions", () => {
+  const record = { requestId: "r1", title: "X", currentStatus: "received" as const, history: [] };
+  const good = transitionStatus(record, "under_review", "pm", "Reviewing");
+  assert.ok(good.valid, "valid transition");
+  const bad = transitionStatus(record, "shipped", "pm", "Skip");
+  assert.ok(!bad.valid, "invalid transition rejected");
 });
