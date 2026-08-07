@@ -211,7 +211,9 @@ export class N0va1oGateway {
     const config = (integration.config as Record<string, unknown> | null) ?? {};
     const provider = findProvider(integration.provider);
     const isReal = provider?.auth === "rest" || (config && typeof config.baseUrl === "string");
-    const adapter = ADAPTERS[`${integration.provider}:${tool}`];
+    // Adapter keys are `${provider}:${tool}`; MCP exposes bare tool names, so look up
+    // both forms (namespaced then bare) to match real connectors.
+    const adapter = ADAPTERS[`${integration.provider}:${tool}`] ?? ADAPTERS[tool as `${string}:${string}`];
 
     let attempt = 0;
     let result: TransportResult | null = null;

@@ -444,7 +444,7 @@ async function seedPhase3Demo(workspaceId: string, ownerId: string, adminId: str
       name: c.name,
       category: c.category,
       status: "connected",
-      config: c.config,
+       config: c.config as never,
       mcpEnabled: c.mcp,
       webhookEnabled: c.wh,
       webhookSecret: c.secret,
