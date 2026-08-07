@@ -422,11 +422,14 @@ export class N0va1oGateway {
    * account (multi-account switching, spec §3.6), then falls back to the most
    * recently updated ACTIVE connection. Returns the token + action allow/block
    * lists plus refresh metadata. The LLM never sees the token.
+   *
+   * When the token is expired and a refresh token exists, this transparently
+   * calls the provider's OAuth refresh endpoint (real HTTP) before returning.
    */
-  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; allowedActions: string[]; blockedActions: string[]; refreshed: boolean; tokenState: string; connectionId: string; healthScore: number } | null> {
+  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; allowedActions: string[]; blockedActions: string[]; refreshed: boolean; tokenState: string; connectionId: string; healthScore: number; authType: string } | null> {
     // Prefer the explicitly-selected active connection for this integration.
     const integration = await prisma.integration.findUnique({ where: { id: integrationId } });
-    let conn: { id: string; encryptedToken: string; allowedScopes: unknown; allowedActions: unknown; blockedActions: unknown; tokenState: string; healthScore: number | null; expiresAt: Date | null } | null = null;
+    let conn: { id: string; encryptedToken: string; refreshToken: string | null; allowedScopes: unknown; allowedActions: unknown; blockedActions: unknown; tokenState: string; healthScore: number | null; expiresAt: Date | null; authType: string } | null = null;
     if (integration?.activeConnectionId) {
       conn = await prisma.integrationConnection.findFirst({
         where: { id: integration.activeConnectionId, integrationId, workspaceId, status: "ACTIVE" },
@@ -449,7 +452,35 @@ export class N0va1oGateway {
         where: { id: conn.id },
         data: { tokenState: "REFRESHING" },
       });
-      const refreshed = await prisma.integrationConnection.update({
+
+      // Real token refresh: call the provider's OAuth endpoint if we have
+      // a stored refresh token and the provider is configured for OAuth.
+      let refreshedToken: string | undefined;
+      if (conn.refreshToken && integration?.provider && OAUTH_PROVIDERS[integration.provider]) {
+        try {
+          const refreshed = await this.refreshAccessToken(integration.provider, conn.refreshToken, integration.id, workspaceId);
+          if (refreshed) {
+            refreshedToken = refreshed.accessToken;
+            await prisma.integrationConnection.update({
+              where: { id: conn.id },
+              data: {
+                encryptedToken: refreshed.accessToken,
+                refreshToken: refreshed.refreshToken ?? conn.refreshToken,
+                expiresAt: refreshed.expiresAt ?? null,
+              },
+            });
+          }
+        } catch (err) {
+          // Refresh failed — mark DEGRADED but still return the stale token
+          // so callers can attempt a re-auth flow.
+          await prisma.integrationConnection.update({
+            where: { id: conn.id },
+            data: { tokenState: "DEGRADED" as const },
+          });
+        }
+      }
+
+      const updated = await prisma.integrationConnection.update({
         where: { id: conn.id },
         data: {
           lastRefreshed: new Date(),
@@ -459,14 +490,15 @@ export class N0va1oGateway {
         },
       });
       return {
-        token: conn.encryptedToken,
-        scopes: arrayFromJson(refreshed.allowedScopes),
-        allowedActions: arrayFromJson(refreshed.allowedActions),
-        blockedActions: arrayFromJson(refreshed.blockedActions),
+        token: refreshedToken ?? conn.encryptedToken,
+        scopes: arrayFromJson(updated.allowedScopes),
+        allowedActions: arrayFromJson(updated.allowedActions),
+        blockedActions: arrayFromJson(updated.blockedActions),
         refreshed: true,
-        tokenState: refreshed.tokenState,
+        tokenState: updated.tokenState,
         connectionId: conn.id,
-        healthScore: conn.healthScore ?? 1,
+        healthScore: updated.healthScore ?? 1,
+        authType: conn.authType,
       };
     }
 
@@ -479,6 +511,48 @@ export class N0va1oGateway {
       tokenState: conn.tokenState,
       connectionId: conn.id,
       healthScore: conn.healthScore ?? 1,
+      authType: conn.authType,
+    };
+  }
+
+  /**
+   * Refresh an OAuth access token via the provider's real token endpoint.
+   * Returns the new access token (and optionally a rotated refresh token).
+   */
+  async refreshAccessToken(provider: string, refreshToken: string, integrationId: string, workspaceId: string): Promise<{ accessToken: string; refreshToken?: string; expiresAt?: Date } | null> {
+    const cfg = OAUTH_PROVIDERS[provider];
+    if (!cfg) return null;
+
+    // Try to get client secret from the integration config (stored at connect time);
+    // fall back to env-loaded secret from OAUTH_PROVIDERS.
+    const integration = await prisma.integration.findUnique({ where: { id: integrationId } });
+    const config = (integration?.config as Record<string, unknown> | null) ?? {};
+    const clientSecret = typeof config?.clientSecret === "string" ? config.clientSecret : cfg("").clientSecret;
+
+    const params: Record<string, string> = {
+      client_id: cfg("").clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    };
+
+    const res = await fetch(cfg("").tokenUrl, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(params).toString(),
+    });
+
+    if (!res.ok) return null;
+
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const accessToken = data["access_token"];
+    if (typeof accessToken !== "string") return null;
+
+    const expiresIn = typeof data["expires_in"] === "number" ? data.expires_in : undefined;
+    return {
+      accessToken,
+      refreshToken: typeof data["refresh_token"] === "string" ? data["refresh_token"] : undefined,
+      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : undefined,
     };
   }
 
@@ -537,7 +611,7 @@ export class N0va1oGateway {
    * tenant-isolated KMS key. For the gateway layer we store the opaque
    * envelope reference and never expose plaintext to the LLM context.
    */
-  async upsertConnection(input: {
+   async upsertConnection(input: {
     integrationId: string;
     workspaceId: string;
     authType: string;
@@ -547,6 +621,7 @@ export class N0va1oGateway {
     blockedActions?: string[];
     expiresAt?: Date | null;
     accountLabel?: string;
+    refreshToken?: string | null;
   }): Promise<string> {
     const existing = await prisma.integrationConnection.findFirst({
       where: { integrationId: input.integrationId, workspaceId: input.workspaceId },
@@ -557,6 +632,7 @@ export class N0va1oGateway {
       integrationId: input.integrationId,
       authType: input.authType,
       encryptedToken: input.encryptedToken,
+      refreshToken: input.refreshToken ?? null,
       allowedScopes: input.allowedScopes ?? [],
       allowedActions: input.allowedActions ?? [],
       blockedActions: input.blockedActions ?? [],
@@ -617,6 +693,13 @@ export interface ConnectLinkResult {
   expiresIn: number;
 }
 
+export interface TokenResponse {
+  accessToken: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  scope?: string;
+}
+
 /** Registered OAuth providers. In production these come from env/config. */
 export const OAUTH_PROVIDERS: Record<string, (redirectUri: string) => OAuthProviderConfig> = {
   github: (redirectUri) => ({
@@ -635,7 +718,105 @@ export const OAUTH_PROVIDERS: Record<string, (redirectUri: string) => OAuthProvi
     scopes: ["chat:write", "channels:read", "users:read"],
     redirectUri,
   }),
+  notion: (redirectUri) => ({
+    clientId: process.env["NOTION_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["NOTION_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://api.notion.com/v1/oauth/authorize",
+    tokenUrl: "https://api.notion.com/v1/oauth/token",
+    scopes: ["readOnly", "update", "insert"],
+    redirectUri,
+  }),
+  asana: (redirectUri) => ({
+    clientId: process.env["ASANA_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["ASANA_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://app.asana.com/-/oauth_authorize",
+    tokenUrl: "https://app.asana.com/-/oauth_token",
+    scopes: ["default"],
+    redirectUri,
+  }),
+  linear: (redirectUri) => ({
+    clientId: process.env["LINEAR_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["LINEAR_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://linear.app/linear.app/settings/sso?client_id=",
+    tokenUrl: "https://api.linear.app/graphql",
+    scopes: ["read", "write"],
+    redirectUri,
+  }),
+  clickup: (redirectUri) => ({
+    clientId: process.env["CLICKUP_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["CLICKUP_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://app.clickup.com/t",
+    tokenUrl: "https://api.clickup.com/api/v2/oauth/token",
+    scopes: ["tasks:read", "tasks:write", "lists:read"],
+    redirectUri,
+  }),
+  airtable: (redirectUri) => ({
+    clientId: process.env["AIRTABLE_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["AIRTABLE_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://airtable.com/oauth2/v1/authorize",
+    tokenUrl: "https://airtable.com/oauth2/v1/token",
+    scopes: ["data.records:read", "data.records:write"],
+    redirectUri,
+  }),
+  gitlab: (redirectUri) => ({
+    clientId: process.env["GITLAB_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["GITLAB_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://gitlab.com/oauth/authorize",
+    tokenUrl: "https://gitlab.com/oauth/token",
+    scopes: ["read_api", "read_repository", "write_repository"],
+    redirectUri,
+  }),
+  google: (redirectUri) => ({
+    clientId: process.env["GOOGLE_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["GOOGLE_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://accounts.google.com/o/oauth2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: ["https://www.googleapis.com/auth/drive.readonly", "https://www.googleapis.com/auth/calendar.readonly"],
+    redirectUri,
+  }),
 };
+
+/**
+ * Exchange an OAuth authorization code for access + refresh tokens.
+ * Makes a real HTTP POST to the provider's token endpoint.
+ */
+export async function exchangeCodeForToken(provider: string, code: string, redirectUri: string): Promise<TokenResponse> {
+  const cfg = OAUTH_PROVIDERS[provider];
+  if (!cfg) throw new Error(`No OAuth config for provider: ${provider}`);
+  const oauth = cfg(redirectUri);
+
+  const params: Record<string, string> = {
+    client_id: oauth.clientId,
+    client_secret: oauth.clientSecret,
+    code,
+    redirect_uri: oauth.redirectUri,
+    grant_type: "authorization_code",
+  };
+
+  const res = await fetch(oauth.tokenUrl, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(params).toString(),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new GatewayError(`OAuth token exchange failed for ${provider}: ${res.status} ${txt.slice(0, 200)}`, 401);
+  }
+
+  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+  const accessToken = data["access_token"] ?? data["token"];
+  if (!accessToken || typeof accessToken !== "string") {
+    throw new GatewayError(`OAuth token exchange returned no access_token for ${provider}`, 502);
+  }
+
+  return {
+    accessToken,
+    refreshToken: typeof data["refresh_token"] === "string" ? data["refresh_token"] : undefined,
+    expiresIn: typeof data["expires_in"] === "number" ? data.expires_in : undefined,
+    scope: typeof data["scope"] === "string" ? data.scope : undefined,
+  };
+}
 
 /**
  * Generate a real OAuth authorization URL so a user can connect their account.

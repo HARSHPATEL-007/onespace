@@ -40,6 +40,7 @@ export interface DiscoveredToolView {
 
 export interface N0va1oActions {
   connect: (formData: FormData) => Promise<void>;
+  connectOAuth: (formData: FormData) => Promise<{ integrationId: string; authUrl: string; state: string }>;
   sync: (formData: FormData) => Promise<{ message: string; ok: boolean; statusCode: number }>;
   toggle: (formData: FormData) => Promise<void>;
   remove: (formData: FormData) => Promise<void>;
@@ -402,6 +403,14 @@ export function Integrations({
               router.refresh();
             });
           }}
+          onConnectOAuth={(p: string) => {
+            const fd = new FormData();
+            fd.set("provider", p);
+            void actions.connectOAuth(fd).then((res) => {
+              setConnecting(false);
+              window.location.href = res.authUrl;
+            });
+          }}
         />
       )}
 
@@ -459,6 +468,7 @@ function ConnectDialog({
   setProvider,
   options,
   onConnect,
+  onConnectOAuth,
 }: {
   onClose: () => void;
   category: string;
@@ -469,6 +479,7 @@ function ConnectDialog({
   setProvider: (p: string) => void;
   options: typeof PROVIDERS;
   onConnect: (fd: FormData) => void;
+  onConnectOAuth: (provider: string) => void;
 }) {
   return (
     <Dialog
@@ -479,6 +490,21 @@ function ConnectDialog({
         <>
           <Button variant="secondary" onClick={onClose}>
             Cancel
+          </Button>
+          <Button
+            variant="secondary"
+            style={{ fontSize: 12 }}
+            onClick={() => {
+              const p = findProvider(provider);
+              if (p?.auth === "oauth2") {
+                onConnectOAuth(provider);
+              } else {
+                // API-key based providers use the manual form
+                onClose();
+              }
+            }}
+          >
+            {findProvider(provider)?.auth === "oauth2" ? "Connect with OAuth" : "Connect (API key)"}
           </Button>
           <Button type="submit" form="connect-integration-form">
             Connect

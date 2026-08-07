@@ -1112,9 +1112,13 @@ model IntegrationConnection {
   accountLabel    String?
   /// OAuth2 / apiKey / basic / webhook — mirrors the catalog auth type.
   authType        String
-  /// Encrypted token envelope (AES-256-GCM per tenant key). Never plaintext.
-  encryptedToken  String
-  /// The plaintext scopes this connection is authorized for (scope pruning).
+   /// Encrypted token envelope (AES-256-GCM per tenant key). Never plaintext.
+   encryptedToken  String
+   /// OAuth2 refresh token (encrypted). Enables transparent token refresh.
+   refreshToken    String?
+   /// When the refresh token itself expires (if the provider rotates it).
+   refreshTokenExpiresAt DateTime?
+   /// The plaintext scopes this connection is authorized for (scope pruning).
   allowedScopes  Json?    @default("[]")
   /// Action-level allowlist from the catalog (e.g. ["read_campaigns", "update_budget"]).
   allowedActions Json?    @default("[]")

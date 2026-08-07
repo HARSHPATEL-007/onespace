@@ -1506,12 +1506,29 @@ test("orchestrate: createRuntime initializes config, logger, metrics", () => {
   assert.ok(runtime.metrics, "metrics initialized");
 });
 
-test("orchestrate: invokeTool runs policy + observability pipeline", () => {
+test("orchestrate: invokeTool runs policy + observability pipeline", async () => {
   const runtime = createRuntime();
-  const result = invokeTool(runtime, { provider: "github", tool: "list_issues", input: {}, actorLabel: "agent" });
+  const result = await invokeTool(runtime, { provider: "github", tool: "list_issues", input: {}, actorLabel: "agent" });
   assert.ok(result.ok, "allowed tool succeeds");
   assert.equal(result.policyVersion.length > 0, true, "policy version set");
   assert.equal(result.correlationId, runtime.correlationId, "correlation propagated");
+});
+
+test("orchestrate: invokeTool executes real gateway call when integration provided", async () => {
+  const runtime = createRuntime();
+  const integration = await prisma.integration.findFirst({ where: { provider: "github", workspaceId: workspace!.id } });
+  assert.ok(integration, "github integration exists");
+  const result = await invokeTool(runtime, {
+    provider: "github",
+    tool: "list_issues",
+    input: { owner: "octocat", repo: "Hello-World" },
+    actorLabel: "agent",
+    integration: integration!,
+    workspaceId: workspace!.id,
+  });
+  assert.ok(result.ok, "gateway call succeeds");
+  assert.ok(result.gatewayResult, "gateway result returned");
+  assert.equal(result.gatewayResult!.ok, true, "gateway reports ok");
 });
 
 test("orchestrate: getSystemHealth aggregates subsystem checks", () => {

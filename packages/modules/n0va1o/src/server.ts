@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma, logAudit, type Integration, type IntegrationLog } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 import { findProvider, categoryLabel, discoverTools, type DiscoveredTool } from "./catalog";
-import { N0va1oGateway, GatewayError, newSecret, retentionExpiry, arrayFromJson } from "./gateway";
+import { N0va1oGateway, GatewayError, newSecret, retentionExpiry, arrayFromJson, OAUTH_PROVIDERS, generateConnectLink, exchangeCodeForToken, type ConnectLinkResult } from "./gateway";
 
 const MODULE = "n0va1o";
 
@@ -100,6 +100,83 @@ export class N0va1oService {
       },
     });
     await this.audit("integration.connected", input.provider, { provider: input.provider, mcpEnabled: input.mcpEnabled });
+  }
+
+  /**
+   * Initiate an OAuth connection flow for an OAuth2 provider.
+   * Creates (or reuses) an integration row, then returns a redirect URL to the
+   * provider's authorization endpoint. The redirect URI points to our callback
+   * route at /api/n0va1o/callback/[provider].
+   */
+  async connectOAuth(provider: string, mcpEnabled = true): Promise<{ integrationId: string; authUrl: string; state: string }> {
+    await this.assert("CREATE");
+    const p = findProvider(provider);
+    if (!p) throw new Error(`Unknown provider: ${provider}`);
+    if (p.auth !== "oauth2") throw new Error(`Provider ${provider} does not support OAuth (${p.auth})`);
+
+    // Reuse existing integration or create a new one.
+    let integration = await prisma.integration.findFirst({ where: { workspaceId: this.workspaceId, provider } });
+    if (!integration) {
+      integration = await prisma.integration.create({
+        data: {
+          workspaceId: this.workspaceId,
+          createdById: this.userId,
+          provider,
+          name: p.name,
+          category: p.category ?? "other",
+          status: "connected",
+          config: { authType: "oauth2" },
+          enabled: true,
+          mcpEnabled,
+          webhookEnabled: false,
+          webhookSecret: newSecret(24),
+          webhookPath: newSecret(12),
+          allowlistTools: [],
+          blocklistTools: [],
+        },
+      });
+    }
+
+    const redirectUri = `${(process.env["N0VA1O_PUBLIC_URL"] ?? "http://localhost:3100")}/api/n0va1o/callback/${provider}`;
+    // Persist the integration ID and workspace ID in the OAuth state so the
+    // callback can verify the round-trip and link the connection.
+    const link = generateConnectLink(provider, redirectUri, `${this.workspaceId}|${integration.id}`);
+    return { integrationId: integration.id, authUrl: link.authUrl, state: link.state };
+  }
+
+  /**
+   * Handle the OAuth callback: exchange the authorization code for tokens,
+   * then store the credential envelope via upsertConnection.
+   */
+  async handleOAuthCallback(provider: string, code: string, state: string): Promise<{ connectionId: string; accountId: string; scopes: string[] }> {
+    await this.assert("CREATE");
+    // Verify the state parameter contains our workspace|integration pair.
+    const parts = state.split("|");
+    if (parts.length < 2) throw new GatewayError("Invalid OAuth state parameter", 400);
+    const workspaceId = parts[0]!;
+    const integrationId = parts[1]!;
+    if (workspaceId !== this.workspaceId) throw new GatewayError("OAuth state workspace mismatch", 403);
+
+    const integration = await prisma.integration.findFirst({ where: { id: integrationId, workspaceId: this.workspaceId, provider } });
+    if (!integration) throw new GatewayError("Integration not found for OAuth callback", 404);
+
+    const redirectUri = `${(process.env["N0VA1O_PUBLIC_URL"] ?? "http://localhost:3100")}/api/n0va1o/callback/${provider}`;
+    const tokenResp = await exchangeCodeForToken(provider, code, redirectUri);
+
+    const connId = await this.upsertConnection(integration.id, {
+      encryptedToken: tokenResp.accessToken,
+      authType: "oauth2",
+      allowedScopes: tokenResp.scope ? tokenResp.scope.split(" ") : [],
+      expiresAt: tokenResp.expiresIn ? new Date(Date.now() + tokenResp.expiresIn * 1000) : null,
+      accountLabel: `${provider} account`,
+      refreshToken: tokenResp.refreshToken ?? null,
+    });
+
+    // Set as active connection
+    await gateway.setActiveConnection({ integrationId: integration.id, workspaceId: this.workspaceId, connectionId: connId });
+
+    await this.audit("integration.oauth_connected", integration.id, { provider, hasRefresh: Boolean(tokenResp.refreshToken) });
+    return { connectionId: connId, accountId: "oauth-account", scopes: tokenResp.scope ? tokenResp.scope.split(" ") : [] };
   }
 
   async update(id: string, patch: {
@@ -211,7 +288,7 @@ export class N0va1oService {
     return gateway.connectionHealth(id, this.workspaceId);
   }
 
-  async upsertConnection(id: string, input: { encryptedToken: string; authType: string; allowedScopes?: string[]; allowedActions?: string[]; blockedActions?: string[]; expiresAt?: Date | null; accountLabel?: string }) {
+  async upsertConnection(id: string, input: { encryptedToken: string; authType: string; allowedScopes?: string[]; allowedActions?: string[]; blockedActions?: string[]; expiresAt?: Date | null; accountLabel?: string; refreshToken?: string | null }) {
     await this.assert("UPDATE");
     await this.getIntegration(id);
     const connId = await gateway.upsertConnection({
@@ -219,6 +296,7 @@ export class N0va1oService {
       workspaceId: this.workspaceId,
       authType: input.authType,
       encryptedToken: input.encryptedToken,
+      refreshToken: input.refreshToken ?? null,
       allowedScopes: input.allowedScopes,
       allowedActions: input.allowedActions,
       blockedActions: input.blockedActions,

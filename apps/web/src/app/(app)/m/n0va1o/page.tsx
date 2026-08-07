@@ -3,6 +3,7 @@ import { Integrations } from "@n0va/modules-n0va1o/components";
 import { requireWorkspace } from "@/lib/context";
 import {
   connectIntegrationAction,
+  connectOAuthAction,
   syncIntegrationAction,
   toggleIntegrationAction,
   removeIntegrationAction,
@@ -35,6 +36,7 @@ export default async function N0va1oPage() {
       role={role}
       actions={{
         connect: connectIntegrationAction,
+        connectOAuth: connectOAuthAction,
         sync: syncIntegrationAction,
         toggle: toggleIntegrationAction,
         remove: removeIntegrationAction,

@@ -21,6 +21,12 @@ export async function connectIntegrationAction(formData: FormData) {
   await (await svc()).connect(parsed);
 }
 
+export async function connectOAuthAction(formData: FormData): Promise<{ integrationId: string; authUrl: string; state: string }> {
+  const provider = String(formData.get("provider") ?? "");
+  const mcpEnabled = formData.get("mcpEnabled") === "1";
+  return (await svc()).connectOAuth(provider, mcpEnabled);
+}
+
 export async function syncIntegrationAction(formData: FormData) {
   const service = await svc();
   const tool = String(formData.get("tool") ?? "sync");
