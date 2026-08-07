@@ -19,6 +19,10 @@ import { redact, applyRetention, canReplay, DEFAULT_RETENTION } from "./session"
 import { scrubSecrets, scrubString, containsSecret, redactSecretFields, rotationStatus } from "./secrets";
 import { classifyContent, canReachLLM, canReachExternal, normalizeLabel } from "./privacy";
 import { IncidentManager } from "./incident";
+import { computeHealthScore } from "./health";
+import { detectSchemaDrift, applySafeMappings } from "./schema-drift";
+import { bulkProcess, chunkRecords } from "./bulk";
+import { DependencyMapper } from "./dependency";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -497,4 +501,92 @@ test("incident response: resolve restores sessions and preserves bundle", () => 
   assert.equal(resolved?.status, "resolved", "incident resolved");
   assert.ok(!mgr.isSessionSuspended("sess-1"), "session restored after resolve");
   assert.equal(mgr.listActive().length, 0, "no active incidents after resolve");
+});
+
+test("connector health scoring: healthy connector scores high", () => {
+  const score = computeHealthScore({ avgLatencyMs: 200, errorRate: 0.01, authFreshness: 1, schemaDriftCount: 0, rateLimitPressure: 0, retryCount: 0, totalCalls: 100 });
+  assert.ok(score.score >= 0.8, "healthy connector scores >= 0.8");
+  assert.equal(score.grade, "healthy");
+  assert.ok(score.confidence > 0.5, "confident with enough calls");
+});
+
+test("connector health scoring: failing connector scores low", () => {
+  const score = computeHealthScore({ avgLatencyMs: 5000, errorRate: 0.95, authFreshness: 0, schemaDriftCount: 5, rateLimitPressure: 1, retryCount: 10, totalCalls: 100 });
+  assert.ok(score.score < 0.2, "failing connector scores < 0.2");
+  assert.equal(score.grade, "failing");
+  assert.ok(score.recommendation.length > 0, "recommendation provided");
+});
+
+test("adaptive schema drift: detects removed and renamed fields", () => {
+  const report = detectSchemaDrift({
+    provider: "github",
+    expectedFields: ["id", "title", "body", "assignee"],
+    observedFields: ["id", "name", "body"],
+    renamedPairs: [{ from: "title", to: "name" }],
+    deprecatedFields: ["assignee"],
+  });
+  assert.ok(report.breaking, "removed field makes it breaking");
+  assert.ok(report.requiresReview, "breaking drift requires review");
+  assert.ok(report.changes.some((c) => c.type === "renamed" && c.field === "title"), "rename detected");
+  assert.ok(report.suggestedMappings.some((m) => m.from === "title" && m.to === "name"), "mapping suggested");
+});
+
+test("adaptive schema drift: applySafeMappings renames fields", () => {
+  const { result, applied } = applySafeMappings({ title: "Bug", body: "desc" }, [{ from: "title", to: "name", reason: "", safe: true }]);
+  assert.equal((result as Record<string, unknown>).name, "Bug", "field renamed");
+  assert.ok(!("title" in (result as Record<string, unknown>)), "old field removed");
+  assert.equal(applied.length, 1, "one mapping applied");
+});
+
+test("bulk import: chunks records and reports progress", async () => {
+  const records = Array.from({ length: 25 }, (_, i) => ({ id: `r${i}`, data: { n: i } }));
+  const chunks = chunkRecords(records, 10);
+  assert.equal(chunks.length, 3, "25 records in chunks of 10 = 3 chunks");
+  let progressCalls = 0;
+  const summary = await bulkProcess({
+    records,
+    process: async () => {},
+    onProgress: () => progressCalls++,
+    options: { chunkSize: 10 },
+  });
+  assert.equal(summary.succeeded, 25, "all records succeeded");
+  assert.equal(progressCalls, 3, "progress fired per chunk");
+});
+
+test("bulk import: retry backoff on failure then records failure", async () => {
+  let attempts = 0;
+  const summary = await bulkProcess({
+    records: [{ id: "r1", data: {} }],
+    process: async () => {
+      attempts++;
+      throw new Error("boom");
+    },
+    options: { maxRetries: 2, backoffMs: 10 },
+  });
+  assert.equal(summary.failed, 1, "record failed after retries");
+  assert.equal(attempts, 3, "initial + 2 retries");
+  assert.equal(summary.failures[0]!.error, "boom", "error captured");
+});
+
+test("dependency mapping: topological sort and blocked detection", () => {
+  const mapper = new DependencyMapper();
+  mapper.addTool("auth", "oauth");
+  mapper.addTool("list", "github");
+  mapper.addTool("create", "github");
+  mapper.addDependency({ upstream: "auth", downstream: "list" });
+  mapper.addDependency({ upstream: "list", downstream: "create" });
+  const plan = mapper.resolve();
+  assert.ok(plan.executable, "plan fully executable");
+  assert.deepEqual(plan.order, ["auth", "list", "create"], "correct topological order");
+});
+
+test("dependency mapping: reports blocked steps for missing prerequisites", () => {
+  const mapper = new DependencyMapper();
+  mapper.addTool("auth", "oauth");
+  mapper.addTool("list", "github");
+  mapper.addDependency({ upstream: "auth", downstream: "list" });
+  const plan = mapper.resolve(new Set(["list"]));
+  assert.ok(!plan.executable, "plan not executable without prereq");
+  assert.equal(plan.blocked.length, 1, "one blocked step");
+  assert.equal(plan.blocked[0]!.missingPrerequisite, "auth", "blocked by missing auth");
 });
