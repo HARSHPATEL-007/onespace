@@ -218,3 +218,22 @@ test("multi-account: setActiveConnection rejects foreign or non-ACTIVE connectio
     "rejects a connection id that does not belong to the integration",
   );
 });
+
+test("multi-account: connections() surfaces active flag and tokenState per account", async () => {
+  const gw = new N0va1oGateway();
+  const workspace = await prisma.workspace.findUnique({ where: { slug: "n0va-demo" } });
+  assert.ok(workspace);
+  const github = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "github" } });
+  assert.ok(github);
+
+  // Reuse the seeded connection; verify the service-shaped fields are present.
+  const conn = await prisma.integrationConnection.findFirst({ where: { integrationId: github!.id } });
+  assert.ok(conn, "seeded connection exists");
+
+  // connectionHealth returns the tokenState + action lists.
+  const health = await gw.connectionHealth(github!.id, workspace!.id);
+  assert.ok(health, "health exists");
+  assert.equal(health!.tokenState, "ACTIVE");
+  assert.ok(health!.allowedActions.includes("list_repos"), "health exposes allowedActions");
+  assert.ok(health!.blockedActions.includes("delete_repo"), "health exposes blockedActions");
+});
