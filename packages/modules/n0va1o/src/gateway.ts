@@ -599,6 +599,63 @@ export class N0va1oGateway {
   }
 }
 
+/* ---------- OAuth connect (real auth links) ---------- */
+
+export interface OAuthProviderConfig {
+  clientId: string;
+  clientSecret: string;
+  authorizeUrl: string;
+  tokenUrl: string;
+  scopes: string[];
+  redirectUri: string;
+}
+
+export interface ConnectLinkResult {
+  authUrl: string;
+  state: string;
+  provider: string;
+  expiresIn: number;
+}
+
+/** Registered OAuth providers. In production these come from env/config. */
+export const OAUTH_PROVIDERS: Record<string, (redirectUri: string) => OAuthProviderConfig> = {
+  github: (redirectUri) => ({
+    clientId: process.env["GITHUB_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["GITHUB_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://github.com/login/oauth/authorize",
+    tokenUrl: "https://github.com/login/oauth/access_token",
+    scopes: ["repo", "read:org", "read:user"],
+    redirectUri,
+  }),
+  slack: (redirectUri) => ({
+    clientId: process.env["SLACK_CLIENT_ID"] ?? "demo-client-id",
+    clientSecret: process.env["SLACK_CLIENT_SECRET"] ?? "demo-client-secret",
+    authorizeUrl: "https://slack.com/oauth/v2/authorize",
+    tokenUrl: "https://slack.com/api/oauth.v2.access",
+    scopes: ["chat:write", "channels:read", "users:read"],
+    redirectUri,
+  }),
+};
+
+/**
+ * Generate a real OAuth authorization URL so a user can connect their account.
+ * Pure function — returns the URL and state; the caller persists state.
+ */
+export function generateConnectLink(provider: string, redirectUri: string, workspaceId: string): ConnectLinkResult {
+  const cfg = OAUTH_PROVIDERS[provider];
+  if (!cfg) throw new Error(`No OAuth config for provider: ${provider}`);
+  const oauth = cfg(redirectUri);
+  const state = createHash("sha256").update(`${workspaceId}|${provider}|${Date.now()}`).digest("hex").slice(0, 24);
+  const params = new URLSearchParams({
+    client_id: oauth.clientId,
+    redirect_uri: oauth.redirectUri,
+    scope: oauth.scopes.join(" "),
+    state,
+    response_type: "code",
+  });
+  return { authUrl: `${oauth.authorizeUrl}?${params.toString()}`, state, provider, expiresIn: 600 };
+}
+
 /** Normalize a Json field that may be an array or a JSON string. */
 export function arrayFromJson(v: unknown): string[] {
   if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
