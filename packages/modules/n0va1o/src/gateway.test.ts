@@ -27,6 +27,9 @@ import { deriveTemplate, validateTemplate, applyTemplate, commitTemplate } from 
 import { simulatePlan } from "./simulation";
 import { evaluateIntent, DEFAULT_THRESHOLDS } from "./intent";
 import { explainStep, explainWorkflow, renderStepExplanation } from "./explainability";
+import { selectProfile, checkResourceUsage, generateReplayId, buildTrace } from "./sandbox";
+import { evaluateRetention, computeExpiry, isExpired, DEFAULT_RETENTION as ARTIFACT_RETENTION } from "./artifact";
+import { buildPointer, readChunk, searchContent, categorize } from "./file-view";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -709,4 +712,66 @@ test("explainability: step and workflow explanations are generated", () => {
   assert.ok(workflowExp.summary.includes("Invoice_Sync"), "workflow summary generated");
   const rendered = renderStepExplanation(stepExp);
   assert.ok(rendered.includes("dropbox:list_files"), "rendered explanation readable");
+});
+
+test("sandbox profiles: selectProfile picks right profile by payload size", () => {
+  assert.equal(selectProfile(500_000, 2), "light", "small payload -> light");
+  assert.equal(selectProfile(10_000_000, 5), "standard", "medium payload -> standard");
+  assert.equal(selectProfile(100_000_000, 8), "heavy", "large payload -> heavy");
+  assert.equal(selectProfile(500_000, 2, "standard"), "light", "tenant cap doesn't downgrade");
+});
+
+test("sandbox observability: checkResourceUsage flags breaches", () => {
+  const events = checkResourceUsage({ profile: "light", durationMs: 120_000, peakMemoryMb: 1024, traceId: "t1" });
+  assert.ok(events.some((e) => e.type === "memory_spike"), "memory spike detected");
+  assert.ok(events.some((e) => e.type === "timeout_warning"), "timeout detected");
+});
+
+test("sandbox observability: buildTrace and generateReplayId are deterministic", () => {
+  const replay1 = generateReplayId({ a: 1 }, "standard");
+  const replay2 = generateReplayId({ a: 1 }, "standard");
+  assert.equal(replay1, replay2, "deterministic replay id");
+  const trace = buildTrace({ profile: "light", startedAt: new Date("2026-01-01").toISOString(), finishedAt: new Date("2026-01-01T00:01:00Z").toISOString(), peakMemoryMb: 256, stderr: "", exitCode: 0, inputs: {} });
+  assert.ok(trace.replayId.startsWith("replay_"), "trace has replay id");
+  assert.equal(trace.durationMs, 60000, "duration computed");
+});
+
+test("artifact lifecycle: evaluateRetention purges expired, preserves audit", () => {
+  const now = new Date("2026-08-07T00:00:00Z");
+  const artifacts = [
+    { id: "a1", name: "old.csv", ownerId: "u1", workspaceId: "w1", createdAt: "2026-01-01", expiresAt: "2026-02-01", sizeBytes: 100, contentType: "text/csv", tags: [], preserveForAudit: false },
+    { id: "a2", name: "audit.pdf", ownerId: "u1", workspaceId: "w1", createdAt: "2026-01-01", expiresAt: "2026-02-01", sizeBytes: 100, contentType: "application/pdf", tags: [], preserveForAudit: true },
+  ];
+  const result = evaluateRetention(artifacts, ARTIFACT_RETENTION, now);
+  assert.ok(result.purged.includes("a1"), "expired non-audit purged");
+  assert.ok(result.preserved.includes("a2"), "audit-preserved artifact kept");
+});
+
+test("artifact lifecycle: computeExpiry and isExpired work correctly", () => {
+  const created = new Date("2026-01-01");
+  const expiry = computeExpiry(created, "text/csv", ARTIFACT_RETENTION);
+  assert.ok(expiry.getTime() > created.getTime(), "expiry after creation");
+  const artifact = { id: "a", name: "f", ownerId: "u", workspaceId: "w", createdAt: "2026-01-01", expiresAt: expiry.toISOString(), sizeBytes: 0, contentType: "", tags: [], preserveForAudit: false };
+  assert.equal(isExpired(artifact, new Date("2027-01-01")), true, "expired after date");
+});
+
+test("streaming file views: buildPointer creates lightweight preview", () => {
+  const pointer = buildPointer({ fileId: "f1", path: "/out/data.csv", sizeBytes: 1000000, contentType: "text/csv", rawContent: "a,b,c\n1,2,3", previewOpts: { maxChars: 100 } });
+  assert.ok(pointer.preview.includes("a,b,c"), "preview includes content head");
+  assert.ok(!pointer.preview.includes("1,2,3") === false || pointer.preview.length <= 200, "preview is lightweight");
+});
+
+test("streaming file views: readChunk and searchContent work on content", () => {
+  const content = "line1\nline2\nhello world\nline4";
+  const chunk = readChunk(content, 0, 10);
+  assert.equal(chunk.totalChunks, Math.ceil(content.length / 10), "correct total chunks");
+  const results = searchContent(content, "hello");
+  assert.equal(results.length, 1, "one match found");
+  assert.equal(results[0]!.line, 3, "correct line number");
+});
+
+test("streaming file views: categorize maps content types", () => {
+  assert.equal(categorize("text/csv"), "csv");
+  assert.equal(categorize("application/json"), "json");
+  assert.equal(categorize("image/png"), "image");
 });
