@@ -44,6 +44,7 @@ import { loadConfig, validateConfig } from "./config";
 import { createLogger, generateCorrelationId } from "./logging";
 import { MetricsRegistry } from "./metrics";
 import { runIntegrationScenario } from "./integration";
+import { createRuntime, invokeTool, getSystemHealth } from "./orchestrate";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1484,4 +1485,28 @@ test("practical: runIntegrationScenario wires modules end-to-end", () => {
   const result = runIntegrationScenario("smoke_test", { provider: "github", tool: "list_issues", actorLabel: "agent", isDestructive: false, tokenState: "ACTIVE", inAllowlist: true, healthScore: 1 }, { avgLatencyMs: 200, errorRate: 0.01, authFreshness: 1, schemaDriftCount: 0, rateLimitPressure: 0, retryCount: 0, totalCalls: 50 });
   assert.ok(result.passed, "integration scenario passed");
   assert.ok(result.steps.length >= 4, "multiple steps executed");
+});
+
+test("orchestrate: createRuntime initializes config, logger, metrics", () => {
+  const runtime = createRuntime({ port: 4000, environment: "production" });
+  assert.equal(runtime.config.port, 4000, "config applied");
+  assert.equal(runtime.config.environment, "production", "env applied");
+  assert.ok(runtime.correlationId.startsWith("corr_"), "correlation id set");
+  assert.ok(runtime.logger, "logger initialized");
+  assert.ok(runtime.metrics, "metrics initialized");
+});
+
+test("orchestrate: invokeTool runs policy + observability pipeline", () => {
+  const runtime = createRuntime();
+  const result = invokeTool(runtime, { provider: "github", tool: "list_issues", input: {}, actorLabel: "agent" });
+  assert.ok(result.ok, "allowed tool succeeds");
+  assert.equal(result.policyVersion.length > 0, true, "policy version set");
+  assert.equal(result.correlationId, runtime.correlationId, "correlation propagated");
+});
+
+test("orchestrate: getSystemHealth aggregates subsystem checks", () => {
+  const runtime = createRuntime();
+  const health = getSystemHealth(runtime, { database: () => ({ ok: true, message: "up" }), cache: () => ({ ok: false, message: "down" }) });
+  assert.equal(health.status, "degraded", "degraded when one subsystem down");
+  assert.equal(health.subsystems.length, 2, "both subsystems reported");
 });
