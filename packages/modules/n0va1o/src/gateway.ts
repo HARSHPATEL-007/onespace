@@ -9,6 +9,9 @@ import { createHmac, createHash, randomBytes, timingSafeEqual } from "node:crypt
 import { prisma, type Integration } from "@n0va/db";
 import { findProvider } from "./catalog";
 import { ADAPTERS } from "./adapters";
+import { evaluatePolicy, type PolicyContext, type PolicyDecision } from "./policy";
+import { isDestructiveTool } from "./catalog";
+import { logAudit } from "@n0va/db";
 
 export class GatewayError extends Error {
   constructor(
@@ -165,6 +168,10 @@ export interface GatewayCallInput {
   tool: string;
   input: Record<string, unknown>;
   idempotencyKey?: string;
+  /** When true, skips policy evaluation (caller already authorized). */
+  skipPolicyCheck?: boolean;
+  /** Override the connection token state for policy evaluation. */
+  connectionTokenState?: string;
 }
 
 export interface GatewayCallResult {
@@ -177,6 +184,8 @@ export interface GatewayCallResult {
   replayed: boolean;
 }
 
+export { type PolicyDecision, type PolicyContext } from "./policy";
+
 export class N0va1oGateway {
   async call(input: GatewayCallInput): Promise<GatewayCallResult> {
     const { integration, workspaceId, userId, actorLabel, tool, input: payload } = input;
@@ -184,6 +193,31 @@ export class N0va1oGateway {
     if (!integration.enabled) throw new GatewayError("Integration is paused", 409);
     if (rateLimitHit(integration.id, integration.rateLimitPerMin)) {
       throw new GatewayError("Rate limit exceeded for this integration", 429);
+    }
+
+    // Resolve the active connection for policy + auth context (multi-account).
+    const connection = await this.resolveConnection(integration.id, workspaceId);
+    const tokenState = input.connectionTokenState ?? connection?.tokenState ?? "ACTIVE";
+
+    // Unified Policy Engine: evaluate before any tool invocation (spec §4.1).
+    if (!input.skipPolicyCheck) {
+      const decision = evaluatePolicy({
+        provider: integration.provider,
+        tool,
+        actorLabel,
+        isDestructive: isDestructiveTool(integration.provider, tool),
+        tokenState,
+        inAllowlist: true,
+        healthScore: connection?.healthScore ?? 1,
+        targetCount: payload && typeof payload.count === "number" ? payload.count : undefined,
+      });
+      await this.auditPolicy(input, decision);
+      if (decision.outcome === "DENY") {
+        throw new GatewayError(`Policy denied: ${decision.disposition}`, 403);
+      }
+      if (decision.outcome === "REQUIRE_APPROVAL") {
+        throw new GatewayError(`Policy requires approval: ${decision.disposition}`, 409);
+      }
     }
 
     const key = input.idempotencyKey ?? idempotencyKeyFor(integration.id, tool, hashInput(payload));
@@ -219,13 +253,13 @@ export class N0va1oGateway {
     // integration before invoking the adapter. Tokens are stored AES-256-GCM
     // encrypted per-tenant; this method transparently refreshes expired
     // credentials (spec §3.1 Just-In-Time Authentication).
-    const connection = await this.resolveConnection(integration.id, integration.workspaceId);
+    const authConnection = await this.resolveConnection(integration.id, integration.workspaceId);
     // Build a config view that prefers the JIT connection token over any
     // static token stored on the integration row. The LLM never sees this —
     // only the adapter receives it at call time.
     const cfg = (integration.config ?? {}) as Record<string, unknown>;
-    const resolvedConfig: Record<string, unknown> = connection
-      ? { ...cfg, token: connection.token, allowedScopes: connection.scopes }
+    const resolvedConfig: Record<string, unknown> = authConnection
+      ? { ...cfg, token: authConnection.token, allowedScopes: authConnection.scopes }
       : cfg;
     const resolvedIntegration: Integration = { ...integration, config: resolvedConfig as Integration["config"] };
 
@@ -389,7 +423,7 @@ export class N0va1oGateway {
    * recently updated ACTIVE connection. Returns the token + action allow/block
    * lists plus refresh metadata. The LLM never sees the token.
    */
-  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; allowedActions: string[]; blockedActions: string[]; refreshed: boolean; tokenState: string; connectionId: string } | null> {
+  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; allowedActions: string[]; blockedActions: string[]; refreshed: boolean; tokenState: string; connectionId: string; healthScore: number } | null> {
     // Prefer the explicitly-selected active connection for this integration.
     const integration = await prisma.integration.findUnique({ where: { id: integrationId } });
     let conn: { id: string; encryptedToken: string; allowedScopes: unknown; allowedActions: unknown; blockedActions: unknown; tokenState: string; healthScore: number | null; expiresAt: Date | null } | null = null;
@@ -432,6 +466,7 @@ export class N0va1oGateway {
         refreshed: true,
         tokenState: refreshed.tokenState,
         connectionId: conn.id,
+        healthScore: conn.healthScore ?? 1,
       };
     }
 
@@ -443,7 +478,34 @@ export class N0va1oGateway {
       refreshed: false,
       tokenState: conn.tokenState,
       connectionId: conn.id,
+      healthScore: conn.healthScore ?? 1,
     };
+  }
+
+  /** Persist a policy decision to the audit log (spec §4.1). */
+  async auditPolicy(input: GatewayCallInput, decision: PolicyDecision): Promise<void> {
+    try {
+      await logAudit({
+        workspaceId: input.workspaceId,
+        actorId: input.userId ?? null,
+        module: "n0va1o",
+        action: `policy.${decision.outcome.toLowerCase()}`,
+        targetType: "Integration",
+        targetId: input.integration.id,
+        metadata: {
+          tool: input.tool,
+          actor: input.actorLabel,
+          riskLevel: decision.riskLevel,
+          riskScore: decision.riskScore,
+          matchedRules: decision.matchedRules,
+          disposition: decision.disposition,
+          policyVersion: decision.policyVersion,
+          approvalReason: decision.approvalReason ?? null,
+        },
+      });
+    } catch {
+      // Audit failures must not block the enforcement decision.
+    }
   }
 
   /**

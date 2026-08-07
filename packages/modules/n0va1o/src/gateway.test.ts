@@ -13,6 +13,9 @@ import {
 } from "./gateway";
 import { scopeTools, providerTools, isDestructiveTool, findProvider, PROVIDERS, discoverTools } from "./catalog";
 import { GatewayError } from "./gateway";
+import { evaluatePolicy, DEFAULT_POLICY, type PolicyContext } from "./policy";
+import { InMemoryWorkflowStore } from "./versioning";
+import { redact, applyRetention, canReplay, DEFAULT_RETENTION } from "./session";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -236,4 +239,168 @@ test("multi-account: connections() surfaces active flag and tokenState per accou
   assert.equal(health!.tokenState, "ACTIVE");
   assert.ok(health!.allowedActions.includes("list_repos"), "health exposes allowedActions");
   assert.ok(health!.blockedActions.includes("delete_repo"), "health exposes blockedActions");
+});
+
+test("policy engine: allows read operations with low risk", () => {
+  const decision = evaluatePolicy({
+    provider: "github",
+    tool: "list_issues",
+    actorLabel: "agent",
+    isDestructive: false,
+    tokenState: "ACTIVE",
+    inAllowlist: true,
+    healthScore: 0.98,
+  });
+  assert.equal(decision.outcome, "ALLOW");
+  assert.ok(decision.riskScore < 25, "read op has low risk score");
+  assert.ok(decision.matchedRules.length > 0, "matched at least one rule");
+});
+
+test("policy engine: denies destructive blocked actions", () => {
+  const decision = evaluatePolicy({
+    provider: "github",
+    tool: "delete_repo",
+    actorLabel: "agent",
+    isDestructive: true,
+    tokenState: "ACTIVE",
+    inAllowlist: false,
+    healthScore: 0.98,
+  });
+  assert.equal(decision.outcome, "DENY", "blocked action is denied");
+  assert.ok(decision.matchedRules.includes("blocked-action"), "blocked-action rule matched");
+});
+
+test("policy engine: requires approval for destructive off-hours", () => {
+  const decision = evaluatePolicy({
+    provider: "github",
+    tool: "merge_pr",
+    actorLabel: "agent",
+    isDestructive: true,
+    tokenState: "ACTIVE",
+    inAllowlist: false,
+    healthScore: 0.98,
+    hour: 23,
+  });
+  assert.equal(decision.outcome, "REQUIRE_APPROVAL", "destructive off-hours requires approval");
+  assert.ok(decision.approvalReason, "approval reason provided");
+});
+
+test("policy engine: denies when connection FAILED", () => {
+  const decision = evaluatePolicy({
+    provider: "slack",
+    tool: "post_message",
+    actorLabel: "agent",
+    isDestructive: false,
+    tokenState: "FAILED",
+    inAllowlist: true,
+    healthScore: 0,
+  });
+  assert.equal(decision.outcome, "DENY", "failed connection denies all");
+  assert.equal(decision.riskLevel, "critical");
+});
+
+test("policy: empty/default policy always evaluates", () => {
+  const decision = evaluatePolicy({
+    provider: "github",
+    tool: "list_issues",
+    actorLabel: "agent",
+    isDestructive: false,
+    tokenState: "ACTIVE",
+    inAllowlist: true,
+    healthScore: 1,
+  }, DEFAULT_POLICY);
+  assert.ok(["ALLOW", "DENY", "REQUIRE_APPROVAL"].includes(decision.outcome));
+  assert.ok(decision.policyVersion.length > 0, "policy version recorded");
+});
+
+test("workflow versioning: commits produce immutable version ids and preserve history", () => {
+  const store = new InMemoryWorkflowStore();
+  const v1 = store.commit({
+    workflowName: "Q3_Invoice_Sync",
+    version: 0,
+    description: "Import invoices",
+    steps: [{ provider: "dropbox", tool: "list_files", input: {} }],
+    parentVersionId: null,
+    policyVersion: "2026.07.1",
+  });
+  assert.equal(v1.version, 1);
+  assert.ok(v1.versionId.length > 0, "version id assigned");
+
+  const v2 = store.commit({
+    workflowName: "Q3_Invoice_Sync",
+    description: "Import invoices + notify",
+    steps: [
+      { provider: "dropbox", tool: "list_files", input: {} },
+      { provider: "slack", tool: "post_message", input: {} },
+    ],
+    parentVersionId: v1.versionId,
+    policyVersion: "2026.07.1",
+  });
+  assert.equal(v2.version, 2);
+  assert.notEqual(v2.versionId, v1.versionId, "versions have distinct ids");
+  assert.equal(store.list("Q3_Invoice_Sync").length, 2, "history preserved");
+});
+
+test("workflow versioning: diff and rollback preserve all history", () => {
+  const store = new InMemoryWorkflowStore();
+  const v1 = store.commit({
+    workflowName: "Campaign_Sync",
+    description: "Initial",
+    steps: [{ provider: "slack", tool: "post_message", input: {} }],
+    parentVersionId: null,
+    policyVersion: "2026.07.1",
+  });
+  store.commit({
+    workflowName: "Campaign_Sync",
+    description: "Add email",
+    steps: [
+      { provider: "slack", tool: "post_message", input: {} },
+      { provider: "mailchimp", tool: "send_campaign", input: {} },
+    ],
+    parentVersionId: v1.versionId,
+    policyVersion: "2026.07.1",
+  });
+
+  const diff = store.diff(v1.versionId, store.latest("Campaign_Sync")!.versionId);
+  assert.ok(diff, "diff computed");
+  assert.equal(diff!.added.length, 1, "one step added");
+
+  const rollback = store.rollback("Campaign_Sync", v1.versionId);
+  assert.ok(rollback, "rollback succeeded");
+  assert.equal(rollback!.steps.length, 1, "rolled back to single step");
+  assert.equal(rollback!.rolledBackFrom, v1.versionId, "rollback records source");
+  assert.equal(store.list("Campaign_Sync").length, 3, "rollback added a version without erasing history");
+  assert.equal(rollback!.version, 3, "rollback is a new version");
+});
+
+test("session memory: redacts tokens and emails from confidential content", () => {
+  const raw = "Call using token=abc123secret456 and email admin@example.com";
+  const redacted = redact(raw, "confidential");
+  assert.ok(!redacted.includes("abc123secret456"), "token redacted");
+  assert.ok(!redacted.includes("admin@example.com"), "email redacted");
+  assert.ok(redacted.includes("<redacted>"), "replaced with redacted marker");
+});
+
+test("session memory: public content is not redacted", () => {
+  const raw = "Listed 5 issues on the project board";
+  assert.equal(redact(raw, "public"), raw, "public content unchanged");
+});
+
+test("session memory: applyRetention separates ephemeral from durable", () => {
+  const now = Date.now();
+  const entries = [
+    { id: "1", sessionId: "s1", content: "recent", sensitivity: "internal" as const, replayable: true, createdAt: new Date(now - 1000).toISOString(), ttlMs: 60000 },
+    { id: "2", sessionId: "s1", content: "old", sensitivity: "internal" as const, replayable: true, createdAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(), ttlMs: 60000 },
+    { id: "3", sessionId: "s1", content: "secret", sensitivity: "restricted" as const, replayable: false, createdAt: new Date(now - 1000).toISOString(), ttlMs: 60000 },
+  ];
+  const { ephemeral, durable } = applyRetention(entries, DEFAULT_RETENTION);
+  assert.equal(ephemeral.length, 2, "expired entry dropped from ephemeral");
+  assert.ok(durable.every((e) => e.sensitivity !== "restricted"), "restricted excluded from durable");
+});
+
+test("session memory: replay requires approval for confidential entries", () => {
+  const entry = { id: "1", sessionId: "s1", content: "data", sensitivity: "confidential" as const, replayable: true, createdAt: new Date().toISOString(), ttlMs: 60000 };
+  assert.equal(canReplay(entry, DEFAULT_RETENTION), false, "confidential blocked from replay");
+  const pub = { ...entry, sensitivity: "public" as const };
+  assert.equal(canReplay(pub, DEFAULT_RETENTION), true, "public replay allowed");
 });

@@ -148,7 +148,13 @@ export async function handleMcpMessage(message: McpMessage, ctx: McpContext): Pr
         });
       } catch (err) {
         const status = err instanceof GatewayError ? err.statusCode : 500;
-        return rpc(id, undefined, { code: -32002, message: err instanceof Error ? err.message : "Tool call failed", data: { statusCode: status } });
+        const message = err instanceof Error ? err.message : "Tool call failed";
+        // Policy denials escalate as access requests so humans can approve.
+        if (status === 403 || status === 409) {
+          const requestId = await ctxRequestAccess(ctx, toolName, message, input);
+          return rpc(id, undefined, { code: -32003, message, data: { statusCode: status, policy: true, accessRequestId: requestId } });
+        }
+        return rpc(id, undefined, { code: -32002, message, data: { statusCode: status } });
       }
     }
 
