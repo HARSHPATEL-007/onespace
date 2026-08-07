@@ -38,6 +38,7 @@ import { ingestSource, retrieveChunks, packageEvidence, generateGrounded, enforc
 import { createTenantProfile, applyTerminology, buildSFDDataset, splitDataset, validateSchema, gradeWithReward, buildDPODataset, recordLineage, redactDataset, requestDeployment, evaluateFineTuning } from "./finetuning";
 import { classifyRisk, makeDecision, canExecute, routeEscalation, applyTimeout, packageReviewEvidence, auditEscalation, measureEscalations } from "./escalation";
 import { crossModalSearch, buildMixedQuery, planAction, attachProvenance, assessQuality, measureCrossModal } from "./cross-modal";
+import { computeDimensions, evaluateRun, buildEvalDataset, scoreCase, checkAlerts, decidePromotion } from "./eval";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1401,4 +1402,37 @@ test("cross-modal: assessQuality and measureCrossModal evaluate evidence", () =>
   assert.ok(weak.shouldRefuse, "no evidence refused");
   const metrics = measureCrossModal({ trueRelevant: 10, retrievedRelevant: 8, totalRetrieved: 10, successfulActions: 9, totalActions: 10 });
   assert.equal(metrics.retrievalRecall, 0.8, "recall computed");
+});
+
+test("eval: computeDimensions aggregates all quality dimensions", () => {
+  const dims = computeDimensions({ tasksCompleted: 8, totalTasks: 10, correctToolCalls: 9, totalToolCalls: 10, successfulTools: 8, latenciesMs: [100, 200, 300, 400, 500], groundedClaims: 7, totalClaims: 10, unsupportedClaims: 2, citedClaims: 6, policyViolations: 1 });
+  assert.equal(dims.taskCompletionRate, 0.8, "task completion computed");
+  assert.equal(dims.groundingQuality, 0.7, "grounding computed");
+  assert.ok(dims.p99LatencyMs > 0, "p99 latency computed");
+});
+
+test("eval: evaluateRun passes or blocks by mode thresholds", () => {
+  const dims = computeDimensions({ tasksCompleted: 9, totalTasks: 10, correctToolCalls: 9, totalToolCalls: 10, successfulTools: 9, latenciesMs: [100], groundedClaims: 8, totalClaims: 10, unsupportedClaims: 1, citedClaims: 7, policyViolations: 0 });
+  const preDeploy = evaluateRun(dims, "pre_deployment");
+  assert.ok(preDeploy.passed, "strong results pass pre-deployment");
+  const weakDims = computeDimensions({ tasksCompleted: 5, totalTasks: 10, correctToolCalls: 5, totalToolCalls: 10, successfulTools: 4, latenciesMs: [100], groundedClaims: 3, totalClaims: 10, unsupportedClaims: 5, citedClaims: 2, policyViolations: 2 });
+  const failed = evaluateRun(weakDims, "pre_deployment");
+  assert.ok(!failed.passed, "weak results fail");
+  assert.ok(failed.blockPromotion, "safety violations block promotion");
+});
+
+test("eval: buildEvalDataset and scoreCase support scoring", () => {
+  const ds = buildEvalDataset("Smoke", [{ id: "c1", input: "Q", expectedOutput: "A", category: "common" }], [{ dimension: "taskCompletionRate", weight: 1 }]);
+  assert.ok(ds.version.startsWith("v"), "versioned");
+  const score = scoreCase({ caseId: "c1", automated: 0.8, judge: 0.9, human: 0.85 });
+  assert.ok(score.final > 0.8, "final score averaged");
+});
+
+test("eval: checkAlerts and decidePromotion monitor drift", () => {
+  const dims = computeDimensions({ tasksCompleted: 6, totalTasks: 10, correctToolCalls: 6, totalToolCalls: 10, successfulTools: 5, latenciesMs: [100], groundedClaims: 4, totalClaims: 10, unsupportedClaims: 4, citedClaims: 3, policyViolations: 1 });
+  const alerts = checkAlerts(dims, { taskCompletionRate: 0.8, toolSuccessRate: 0.85 });
+  assert.ok(alerts.length > 0, "alerts emitted for breaches");
+  const good = computeDimensions({ tasksCompleted: 9, totalTasks: 10, correctToolCalls: 9, totalToolCalls: 10, successfulTools: 9, latenciesMs: [100], groundedClaims: 8, totalClaims: 10, unsupportedClaims: 1, citedClaims: 7, policyViolations: 0 });
+  const promote = decidePromotion(good, dims, {});
+  assert.ok(promote.promote, "improvement promotes");
 });
