@@ -2,7 +2,7 @@ import { z } from "zod";
 import { prisma, logAudit, type Integration, type IntegrationLog } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 import { findProvider, categoryLabel, discoverTools, type DiscoveredTool } from "./catalog";
-import { N0va1oGateway, GatewayError, newSecret, retentionExpiry } from "./gateway";
+import { N0va1oGateway, GatewayError, newSecret, retentionExpiry, arrayFromJson } from "./gateway";
 
 const MODULE = "n0va1o";
 
@@ -175,22 +175,34 @@ export class N0va1oService {
 
   async connections(id: string) {
     await this.assert("READ");
-    await this.getIntegration(id);
+    const integration = await this.getIntegration(id);
     const conns = await prisma.integrationConnection.findMany({
       where: { integrationId: id, workspaceId: this.workspaceId },
       orderBy: { updatedAt: "desc" },
-      select: { id: true, accountLabel: true, authType: true, status: true, expiresAt: true, lastRefreshed: true, healthScore: true, createdAt: true },
+      select: { id: true, accountLabel: true, authType: true, status: true, tokenState: true, expiresAt: true, lastRefreshed: true, healthScore: true, allowedActions: true, blockedActions: true, createdAt: true },
     });
     return conns.map((c) => ({
       id: c.id,
       accountLabel: c.accountLabel,
       authType: c.authType,
       status: c.status,
+      tokenState: c.tokenState,
+      healthScore: c.healthScore,
       expiresAt: c.expiresAt?.toISOString() ?? null,
       lastRefreshed: c.lastRefreshed?.toISOString() ?? null,
-      healthScore: c.healthScore,
+      allowedActions: arrayFromJson(c.allowedActions),
+      blockedActions: arrayFromJson(c.blockedActions),
       createdAt: c.createdAt.toISOString(),
+      active: c.id === integration.activeConnectionId,
     }));
+  }
+
+  /** Switch the active account for an integration (multi-account, spec §3.6). */
+  async setActiveConnection(id: string, connectionId: string | null): Promise<void> {
+    await this.assert("UPDATE");
+    await this.getIntegration(id);
+    await gateway.setActiveConnection({ integrationId: id, workspaceId: this.workspaceId, connectionId });
+    await this.audit("integration.active_connection_changed", id, { connectionId });
   }
 
   async connectionHealth(id: string) {

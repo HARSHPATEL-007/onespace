@@ -383,11 +383,27 @@ export class N0va1oGateway {
    *
    * The token is never surfaced to the LLM — only to the adapter at call time.
    */
-  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; allowedActions: string[]; blockedActions: string[]; refreshed: boolean; tokenState: string } | null> {
-    const conn = await prisma.integrationConnection.findFirst({
-      where: { integrationId, workspaceId, status: "ACTIVE" },
-      orderBy: { updatedAt: "desc" },
-    });
+  /**
+   * Resolve the credential envelope for an integration. Prefers the active
+   * account (multi-account switching, spec §3.6), then falls back to the most
+   * recently updated ACTIVE connection. Returns the token + action allow/block
+   * lists plus refresh metadata. The LLM never sees the token.
+   */
+  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; allowedActions: string[]; blockedActions: string[]; refreshed: boolean; tokenState: string; connectionId: string } | null> {
+    // Prefer the explicitly-selected active connection for this integration.
+    const integration = await prisma.integration.findUnique({ where: { id: integrationId } });
+    let conn: { id: string; encryptedToken: string; allowedScopes: unknown; allowedActions: unknown; blockedActions: unknown; tokenState: string; healthScore: number | null; expiresAt: Date | null } | null = null;
+    if (integration?.activeConnectionId) {
+      conn = await prisma.integrationConnection.findFirst({
+        where: { id: integration.activeConnectionId, integrationId, workspaceId, status: "ACTIVE" },
+      });
+    }
+    if (!conn) {
+      conn = await prisma.integrationConnection.findFirst({
+        where: { integrationId, workspaceId, status: "ACTIVE" },
+        orderBy: { updatedAt: "desc" },
+      });
+    }
     if (!conn) return null;
 
     const now = Date.now();
@@ -415,6 +431,7 @@ export class N0va1oGateway {
         blockedActions: arrayFromJson(refreshed.blockedActions),
         refreshed: true,
         tokenState: refreshed.tokenState,
+        connectionId: conn.id,
       };
     }
 
@@ -425,7 +442,31 @@ export class N0va1oGateway {
       blockedActions: arrayFromJson(conn.blockedActions),
       refreshed: false,
       tokenState: conn.tokenState,
+      connectionId: conn.id,
     };
+  }
+
+  /**
+   * Select the active account for multi-account switching (spec §3.6). Pass a
+   * connection id to pin it, or null to clear the selection. Validates that the
+   * connection belongs to the integration + workspace before pinning.
+   */
+  async setActiveConnection(input: {
+    integrationId: string;
+    workspaceId: string;
+    connectionId: string | null;
+  }): Promise<void> {
+    if (input.connectionId) {
+      const conn = await prisma.integrationConnection.findFirst({
+        where: { id: input.connectionId, integrationId: input.integrationId, workspaceId: input.workspaceId },
+      });
+      if (!conn) throw new GatewayError("Connection not found for this integration", 404);
+      if (conn.status !== "ACTIVE") throw new GatewayError(`Cannot select a ${conn.status} connection`, 409);
+    }
+    await prisma.integration.update({
+      where: { id: input.integrationId },
+      data: { activeConnectionId: input.connectionId },
+    });
   }
 
   /**
@@ -493,7 +534,7 @@ export class N0va1oGateway {
 }
 
 /** Normalize a Json field that may be an array or a JSON string. */
-function arrayFromJson(v: unknown): string[] {
+export function arrayFromJson(v: unknown): string[] {
   if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
   if (typeof v === "string") {
     try {

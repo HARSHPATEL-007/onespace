@@ -1024,17 +1024,20 @@ model Integration {
   rateLimitPerMin Int    @default(120)
   retryMax      Int      @default(3)
   timeoutMs     Int      @default(15000)
-  allowlistTools Json         @default("[]")
-  blocklistTools Json         @default("[]")
-  lastSyncAt    DateTime?
+   allowlistTools Json         @default("[]")
+   blocklistTools Json         @default("[]")
+   /// The currently-selected account for multi-account switching (spec §3.6).
+   activeConnectionId String? @unique
+   lastSyncAt    DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  logs       IntegrationLog[]
-  accessRequests IntegrationAccessRequest[]
-  connections  IntegrationConnection[]
+   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+   logs       IntegrationLog[]
+   accessRequests IntegrationAccessRequest[]
+   connections  IntegrationConnection[]
+   activeConnection IntegrationConnection? @relation("ActiveConnection", fields: [activeConnectionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, updatedAt(sort: Desc)])
 }
@@ -1129,10 +1132,11 @@ model IntegrationConnection {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
-  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+   integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+   activeForIntegration Integration? @relation("ActiveConnection")
 
-  @@index([workspaceId, integrationId])
+   @@index([workspaceId, integrationId])
   @@index([expiresAt])
   @@index([tokenState])
 }
