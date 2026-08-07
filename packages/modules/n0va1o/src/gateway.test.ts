@@ -32,6 +32,7 @@ import { evaluateRetention, computeExpiry, isExpired, DEFAULT_RETENTION as ARTIF
 import { buildPointer, readChunk, searchContent, categorize } from "./file-view";
 import { createPlan, selectTool, createStep, verifyStep, decideRetry, replanFromCheckpoint, assessRisk, auditAction, emitTrace, shouldPause, requestHumanApproval } from "./agentic";
 import { retrieveEvidence, extractClaims, verifyClaims, enforceCitations, decideGrounding, gateHighStakes, rankSources, auditGrounding, measureGrounding, detectConflicts } from "./grounding";
+import { planCodeExecution, gateExecution, runInSandbox, registerArtifact, createAuditTrace, decideRecovery, measureExecution, DEFAULT_QUOTA } from "./code-exec";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1160,4 +1161,43 @@ test("grounding: auditGrounding and measureGrounding support governance", () => 
   assert.equal(audit.claimsChecked, 2, "claims checked recorded");
   const metrics = measureGrounding([{ claims, action: "respond" }]);
   assert.ok(metrics.unsupportedRate > 0, "unsupported rate measured");
+});
+
+test("code execution: planCodeExecution decides if code is needed", () => {
+  const task = planCodeExecution("Calculate the sum of sales data");
+  assert.ok(task.requiresExecution, "calculation task needs code");
+  assert.equal(task.language, "python");
+  const noCode = planCodeExecution("Send a message to the team");
+  assert.ok(!noCode.requiresExecution, "messaging does not need code");
+});
+
+test("code execution: gateExecution blocks high-risk code", () => {
+  const policy = { provider: "x", tool: "exec", actorLabel: "agent", isDestructive: false, tokenState: "ACTIVE", inAllowlist: true, healthScore: 1 };
+  const safe = gateExecution({ code: "x = 1 + 2", language: "python", policy, tenantMaxRisk: "high" });
+  assert.ok(safe.approved, "safe code approved");
+  const dangerous = gateExecution({ code: "import subprocess; subprocess.call('rm -rf /')", language: "python", policy, tenantMaxRisk: "high" });
+  assert.ok(!dangerous.approved || dangerous.requiresApproval, "dangerous code blocked or requires approval");
+});
+
+test("code execution: runInSandbox enforces quotas and returns results", () => {
+  const result = runInSandbox({ code: "print('hello')", language: "python", inputFiles: {}, quota: DEFAULT_QUOTA });
+  assert.equal(result.exitCode, 0, "clean execution");
+  assert.ok(result.stdout.length > 0, "output produced");
+  const timeout = runInSandbox({ code: "print('x')", language: "python", inputFiles: {}, quota: { ...DEFAULT_QUOTA, timeoutMs: 500 } });
+  assert.ok(timeout.timedOut, "timeout detected");
+});
+
+test("code execution: registerArtifact and createAuditTrace preserve lineage", () => {
+  const artifact = registerArtifact({ name: "output.csv", sourceTaskId: "t1", contentType: "text/csv", sizeBytes: 1024, parentLineage: ["input.csv"] });
+  assert.ok(artifact.lineage.includes("input.csv"), "lineage preserved");
+  const trace = createAuditTrace({ requester: "agent", taskId: "t1", code: "x=1", language: "python", dataAccessed: ["data.csv"], policyDecision: "approved", result: { exitCode: 0, stdout: "ok", stderr: "", durationMs: 10, timedOut: false, artifactRefs: [] } });
+  assert.equal(trace.requester, "agent", "audit records requester");
+});
+
+test("code execution: decideRecovery classifies failures and measureExecution tracks quality", () => {
+  const timeout = decideRecovery({ exitCode: 124, stdout: "", stderr: "timeout", durationMs: 30_000, timedOut: true, artifactRefs: [] });
+  assert.equal(timeout.failureType, "timeout", "timeout classified");
+  assert.ok(timeout.rerunFromSnapshot, "rerun from snapshot");
+  const metrics = measureExecution([{ exitCode: 0, stdout: "ok", stderr: "", durationMs: 50, timedOut: false, artifactRefs: [] }, { exitCode: 1, stdout: "", stderr: "err", durationMs: 10, timedOut: false, artifactRefs: [] }]);
+  assert.equal(metrics.successRate, 0.5, "success rate computed");
 });
