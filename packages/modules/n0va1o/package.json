@@ -11,6 +11,7 @@
     "./gateway": "./src/gateway.ts",
     "./mcp": "./src/mcp.ts",
     "./policy": "./src/policy.ts",
+    "./adapters": "./src/adapters.ts",
     "./versioning": "./src/versioning.ts",
     "./executor": "./src/executor.ts",
     "./session": "./src/session.ts",

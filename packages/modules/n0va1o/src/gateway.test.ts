@@ -45,6 +45,8 @@ import { createLogger, generateCorrelationId } from "./logging";
 import { MetricsRegistry } from "./metrics";
 import { runIntegrationScenario } from "./integration";
 import { createRuntime, invokeTool, getSystemHealth } from "./orchestrate";
+import { handleMcpMessage, effectiveTools, MCP_PROTOCOL_VERSION, type McpMessage, type McpContext } from "./mcp";
+import { ADAPTERS, providerHeaders } from "./adapters";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1517,4 +1519,289 @@ test("orchestrate: getSystemHealth aggregates subsystem checks", () => {
   const health = getSystemHealth(runtime, { database: () => ({ ok: true, message: "up" }), cache: () => ({ ok: false, message: "down" }) });
   assert.equal(health.status, "degraded", "degraded when one subsystem down");
   assert.equal(health.subsystems.length, 2, "both subsystems reported");
+});
+
+/* ---------- MCP gateway + adapter integration ---------- */
+
+type IntegrationStub = {
+  id: string;
+  provider: string;
+  name: string;
+  enabled: boolean;
+  mcpEnabled: boolean;
+  config: Record<string, unknown>;
+  allowlistTools: string[];
+  blocklistTools: string[];
+  workspaceId: string;
+  [key: string]: unknown;
+};
+
+/** Lightweight integration object that satisfies McpContext without DB side-effects.
+ *  Only use for pure handlers (initialize, tools/list, tools/discover, resources/*).
+ *  For tools/call tests that trigger gateway.call, use the real demo workspace. */
+const mockIntegration = (overrides: Partial<IntegrationStub> = {}): IntegrationStub => ({
+  id: "int-test-1",
+  provider: "github",
+  name: "Test GitHub",
+  enabled: true,
+  mcpEnabled: true,
+  config: { authType: "oauth2" },
+  allowlistTools: [],
+  blocklistTools: [],
+  workspaceId: "ws-test-1",
+  ...overrides,
+});
+
+const mockCtx = (integration: IntegrationStub): McpContext => ({
+  integration: integration as never,
+  workspaceId: integration.workspaceId,
+  actorLabel: "mcp-agent",
+  gateway: new N0va1oGateway(),
+});
+
+test("MCP: initialize returns protocol version and capabilities", async () => {
+  const msg: McpMessage = { jsonrpc: "2.0", id: 1, method: "initialize", params: {} };
+  const res = await handleMcpMessage(msg, mockCtx(mockIntegration()));
+  assert.equal(res.jsonrpc, "2.0");
+  assert.equal(res.id, 1);
+  const result = res.result as { protocolVersion: string; capabilities: unknown; serverInfo: { name: string } };
+  assert.ok(result.protocolVersion, "protocol version returned");
+  assert.ok(result.capabilities, "capabilities advertised");
+  assert.ok(result.serverInfo.name, "server info provided");
+});
+
+test("MCP: tools/list returns scoped tools for a provider", async () => {
+  const integration = mockIntegration({ provider: "slack", name: "Design channel" });
+  const msg: McpMessage = { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} };
+  const res = await handleMcpMessage(msg, mockCtx(integration));
+  assert.ok(res.result, "tools/list returns result");
+  const result = res.result as { tools: Array<{ name: string; description: string; inputSchema: { type: string } }> };
+  assert.ok(result.tools.length > 0, "at least one tool returned");
+  assert.ok(result.tools.every((t) => t.name && t.description), "all tools have name + description");
+  assert.ok(result.tools.every((t) => t.inputSchema.type === "object"), "all tools have object schema");
+  // Destructive tools should be excluded by default (no allowlist).
+  const destructive = result.tools.find((t) => isDestructiveTool("slack", t.name));
+  assert.equal(destructive, undefined, "destructive tools blocked by default");
+});
+
+test("MCP: tools/discover returns intent-matched tools", async () => {
+  const integration = mockIntegration({ provider: "github" });
+  const msg: McpMessage = { jsonrpc: "2.0", id: 3, method: "tools/discover", params: { query: "list issues", maxTools: 5 } };
+  const res = await handleMcpMessage(msg, mockCtx(integration));
+  assert.ok(res.result, "tools/discover returns result");
+  const data = res.result as { intent: string; tools: unknown[]; confidence: number };
+  assert.ok(data.intent.length > 0, "intent string returned");
+  assert.ok(data.tools.length > 0, "tools discovered");
+  assert.ok(data.tools.length <= 5, "respects maxTools");
+  assert.ok(data.confidence > 0, "confidence is positive");
+});
+
+test("MCP: ping notification returns empty result", async () => {
+  const msg: McpMessage = { jsonrpc: "2.0", id: 10, method: "ping", params: {} };
+  const res = await handleMcpMessage(msg, mockCtx(mockIntegration()));
+  assert.ok(res.result, "ping returns result");
+  assert.equal(Object.keys(res.result).length, 0, "ping returns empty object");
+});
+
+/* ---------- DB-backed MCP pipeline tests (demo workspace) ---------- */
+
+test("MCP: tools/call routes to simulated transport for adapter-less provider tools", async () => {
+  const workspace = await prisma.workspace.findUnique({ where: { slug: "n0va-demo" } });
+  assert.ok(workspace, "demo workspace exists");
+  // Use the gdrive integration — list_files has no real adapter, so the gateway
+  // falls through to simulatedResult (no real API needed, DB logging works).
+  const gdrive = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "gdrive" } });
+  assert.ok(gdrive, "gdrive integration exists");
+
+  const msg: McpMessage = {
+    jsonrpc: "2.0", id: 11, method: "tools/call",
+    params: { name: "list_files", arguments: {} },
+  };
+  const res = await handleMcpMessage(msg, {
+    integration: gdrive!,
+    workspaceId: workspace!.id,
+    actorLabel: "mcp-agent",
+    gateway: new N0va1oGateway(),
+  });
+  assert.ok(res.result, "tools/call returns result");
+  const result = res.result as { content?: Array<{ type: string; text: string }>; isError?: boolean; meta?: Record<string, unknown> };
+  assert.ok(result.content, "content returned");
+  assert.ok(result.content[0]!.text.length > 0, "non-empty response");
+  assert.equal(result.isError, false, "simulated non-destructive tool succeeds");
+});
+
+test("MCP: tools/call raises access request for destructive tool not in allowlist", async () => {
+  const workspace = await prisma.workspace.findUnique({ where: { slug: "n0va-demo" } });
+  assert.ok(workspace, "demo workspace exists");
+  const github = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "github" } });
+  assert.ok(github, "github integration exists");
+
+  // create_issue is destructive in the catalog but NOT in the demo allowlist (["list_repos","list_issues"]).
+  // It falls through to the "not in scope, destructive" path → access request raised.
+  const msg: McpMessage = {
+    jsonrpc: "2.0", id: 12, method: "tools/call",
+    params: { name: "create_issue", arguments: { repo: "test", title: "Bug" } },
+  };
+  const res = await handleMcpMessage(msg, {
+    integration: github!,
+    workspaceId: workspace!.id,
+    actorLabel: "mcp-agent",
+    gateway: new N0va1oGateway(),
+  });
+  assert.ok(res.error, "destructive blocked tool returns error");
+  assert.equal(res.error!.code, -32001, "blocked-access-request error code");
+  const errData = res.error!.data as { accessRequestId?: string };
+  assert.ok(errData?.accessRequestId, "access request raised");
+
+  // Clean up the access request we just created.
+  if (errData?.accessRequestId) {
+    await prisma.integrationAccessRequest.delete({ where: { id: errData.accessRequestId } }).catch(() => {});
+  }
+});
+
+test("MCP: tools/call raises access request on policy approval-required (409)", async () => {
+  const workspace = await prisma.workspace.findUnique({ where: { slug: "n0va-demo" } });
+  assert.ok(workspace, "demo workspace exists");
+  const github = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "github" } });
+  assert.ok(github, "github integration exists");
+
+  // Temporarily add create_issue to allowlist so it IS in scope but still
+  // destructive → policy rule "destructive-requires-approval" fires → 409.
+  const originalAllowlist = (github!.allowlistTools as string[] | null) ?? null;
+  await prisma.integration.update({
+    where: { id: github!.id },
+    data: { allowlistTools: ["list_repos", "list_issues", "create_issue"] },
+  });
+
+  try {
+    // Re-fetch so effectiveTools sees the updated allowlist.
+    const updated = await prisma.integration.findUnique({ where: { id: github!.id } });
+    assert.ok(updated);
+
+    const msg: McpMessage = {
+      jsonrpc: "2.0", id: 13, method: "tools/call",
+      params: { name: "create_issue", arguments: { owner: "octocat", repo: "Hello-World", title: "Test" } },
+    };
+    const res = await handleMcpMessage(msg, {
+      integration: updated!,
+      workspaceId: workspace!.id,
+      actorLabel: "mcp-agent",
+      gateway: new N0va1oGateway(),
+    });
+    assert.ok(res.error, "policy-denied returns error");
+    assert.equal(res.error!.code, -32003, "policy-approval-required error code");
+    const errData = res.error!.data as { accessRequestId?: string };
+    assert.ok(errData?.accessRequestId, "access request raised for policy denial");
+
+    if (errData?.accessRequestId) {
+      await prisma.integrationAccessRequest.delete({ where: { id: errData.accessRequestId } }).catch(() => {});
+    }
+  } finally {
+    // Restore original allowlist.
+    await prisma.integration.update({
+      where: { id: github!.id },
+      data: { allowlistTools: originalAllowlist ?? [] },
+    });
+  }
+});
+
+test("MCP: resources/list and resources/read work", async () => {
+  const integration = mockIntegration();
+  const listMsg: McpMessage = { jsonrpc: "2.0", id: "r-list", method: "resources/list", params: {} as Record<string, unknown> };
+  const listRes = await handleMcpMessage(listMsg, mockCtx(integration));
+  const listResult = listRes.result as { resources: Array<{ uri: string }> };
+  assert.ok(listResult.resources?.[0]?.uri?.startsWith("n0va1o://"), "resource URI is namespaced");
+
+  const readMsg: McpMessage = {
+    jsonrpc: "2.0", id: "r-read", method: "resources/read",
+    params: { uri: `n0va1o://${integration.id}` },
+  };
+  const readRes = await handleMcpMessage(readMsg, mockCtx(integration));
+  const readResult = readRes.result as { contents: Array<{ text: string }> };
+  assert.ok(readResult.contents?.[0], "content returned");
+  const parsed = JSON.parse(readResult.contents[0].text);
+  assert.equal(parsed.provider, "github", "provider in resource");
+  assert.ok(parsed.scopedTools, "scoped tools in resource");
+});
+
+test("MCP: notifications/initialized and ping return empty results", async () => {
+  for (const method of ["notifications/initialized", "ping"] as const) {
+    const msg: McpMessage = { jsonrpc: "2.0", id: `notif-${method}`, method, params: {} };
+    const res = await handleMcpMessage(msg, mockCtx(mockIntegration()));
+    assert.ok(res.result !== undefined, `${method} returns a result`);
+  }
+});
+
+test("adapters: real HTTP adapters exist for key provider:tool pairs", () => {
+  const expected = [
+    "github:list_repos",
+    "github:get_repo",
+    "github:list_issues",
+    "github:create_issue",
+    "github:merge_pr",
+    "slack:post_message",
+    "slack:list_channels",
+    "slack:read_thread",
+    "notion:search",
+    "notion:read_page",
+    "notion:create_page",
+    "airtable:list_records",
+    "airtable:create_record",
+    "asana:list_projects",
+    "asana:list_tasks",
+    "linear:list_issues",
+    "linear:create_issue",
+    "clickup:list_tasks",
+    "openai:chat",
+    "openai:list_assistants",
+    "anthropic:chat",
+    "gemini:chat",
+  ];
+  for (const key of expected) {
+    assert.ok(ADAPTERS[key], `real adapter exists for ${key}`);
+  }
+  // Verify we cover at least 8 providers with real adapters.
+  const providers = new Set(Object.keys(ADAPTERS).map((k) => k.split(":")[0]));
+  assert.ok(providers.size >= 8, `at least 8 providers have real adapters (got ${providers.size})`);
+});
+
+test("adapters: providerHeaders sets correct auth scheme per provider", () => {
+  const gh = providerHeaders({ config: { token: "ghp_test" } } as any, "github");
+  assert.equal(gh.Authorization, "Bearer ghp_test", "GitHub uses Bearer");
+  assert.equal(gh.Accept, "application/vnd.github+json", "GitHub Accept header");
+
+  const slack = providerHeaders({ config: { token: "xoxb-test" } } as any, "slack");
+  assert.equal(slack.Authorization, "Bearer xoxb-test", "Slack uses Bearer");
+
+  const notion = providerHeaders({ config: { token: "secret_test" } } as any, "notion");
+  assert.equal(notion.Authorization, "Bearer secret_test", "Notion uses Bearer");
+  assert.equal(notion["Notion-Version"], "2022-06-28", "Notion version header");
+
+  const airtable = providerHeaders({ config: { token: "pat_test" } } as any, "airtable");
+  assert.equal(airtable.Authorization, "Bearer pat_test", "Airtable uses Bearer");
+
+  const clickup = providerHeaders({ config: { token: "pk_test" } } as any, "clickup");
+  assert.equal(clickup.Authorization, "Bearer pk_test", "ClickUp uses Bearer (token in header)");
+
+  const noToken = providerHeaders({ config: {} } as any, "github");
+  assert.equal(noToken.Authorization, undefined, "no token = no auth header");
+});
+
+test("MCP: effectiveTools respects integration allowlist and blocklist", () => {
+  // With allowlist containing only post_message — only that survives.
+  const integration = mockIntegration({ provider: "slack", allowlistTools: ["post_message"] });
+  const tools = effectiveTools(integration as any);
+  assert.equal(tools.length, 1, "only allowlisted tool survives");
+  assert.equal(tools[0]!.name, "post_message", "post_message is the allowed tool");
+
+  // Blocklist removes a non-destructive tool.
+  const blocked = mockIntegration({ provider: "github", blocklistTools: ["list_issues"] });
+  const tools2 = effectiveTools(blocked as any);
+  assert.ok(!tools2.some((t) => t.name === "list_issues"), "blocklisted tool removed");
+
+  // No allowlist → all non-destructive tools pass, destructive blocked.
+  const noAllow = mockIntegration({ provider: "github" });
+  const tools3 = effectiveTools(noAllow as any);
+  assert.ok(tools3.some((t) => t.name === "list_repos"), "non-destructive tool present without allowlist");
+  assert.ok(!tools3.some((t) => t.name === "create_issue"), "destructive tool excluded without allowlist");
 });
