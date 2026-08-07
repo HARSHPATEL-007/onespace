@@ -35,6 +35,7 @@ import { retrieveEvidence, extractClaims, verifyClaims, enforceCitations, decide
 import { planCodeExecution, gateExecution, runInSandbox, registerArtifact, createAuditTrace, decideRecovery, measureExecution, DEFAULT_QUOTA } from "./code-exec";
 import { emitPartialTranscript, detectEndpoint, recognizeSpeech, generateSpeech, createSession, addTurn, interruptTurn, confirmAction, degradeGracefully, auditVoiceAction } from "./voice";
 import { ingestSource, retrieveChunks, packageEvidence, generateGrounded, enforceAccess, measureRAG, logAction } from "./rag";
+import { createTenantProfile, applyTerminology, buildSFDDataset, splitDataset, validateSchema, gradeWithReward, buildDPODataset, recordLineage, redactDataset, requestDeployment, evaluateFineTuning } from "./finetuning";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1288,4 +1289,38 @@ test("rag: measureRAG computes recall, precision, and groundedness", () => {
   assert.equal(metrics.recall, 0.7, "recall computed");
   assert.equal(metrics.precision, 0.7, "precision computed");
   assert.equal(metrics.groundedness, 0.8, "groundedness computed");
+});
+
+test("finetuning: createTenantProfile and applyTerminology customize per tenant", () => {
+  const profile = createTenantProfile("t1", { tone: "casual", terminology: { "invoice": "bill" } });
+  assert.equal(applyTerminology("Send the invoice", profile), "Send the bill", "terminology applied");
+});
+
+test("finetuning: buildSFDDataset splits train/validation and validates schema", () => {
+  const dataset = buildSFDDataset("t1", [{ input: "Q", output: "A", schema: { result: "string" } }], 0.2);
+  const { train, validation } = splitDataset(dataset);
+  assert.ok(train.length + validation.length === 1, "split preserves count");
+  const valid = validateSchema({ result: "ok" }, { result: "string" });
+  assert.ok(valid.valid, "schema valid");
+});
+
+test("finetuning: gradeWithReward and buildDPODataset support RFT/DPO", () => {
+  const fn = { name: "exact", description: "", grader: (o: string, e: string) => o === e ? 1 : 0 };
+  assert.equal(gradeWithReward(fn, "yes", "yes"), 1, "exact match scores 1");
+  const dpo = buildDPODataset("t1", [{ prompt: "Q", chosen: "Good", rejected: "Bad" }], true);
+  assert.ok(dpo.reviewed, "DPO requires review");
+});
+
+test("finetuning: redactDataset and recordLineage govern data lifecycle", () => {
+  const { redacted, redactedCount } = redactDataset([{ input: "email@test.com" }], [/\S+@\S+\.\S+/]);
+  assert.ok(redactedCount > 0, "PII redacted");
+  const lineage = recordLineage("d1", ["raw"], ["filter", "clean"]);
+  assert.equal(lineage.sourceData.length, 1, "lineage recorded");
+});
+
+test("finetuning: evaluateFineTuning blocks unsafe deployments", () => {
+  const good = evaluateFineTuning({ tunedAccuracy: 0.9, baselineAccuracy: 0.85, formatErrors: 1, totalOutputs: 100, policyViolations: 1 });
+  assert.ok(good.deploySafe, "improvement is safe");
+  const bad = evaluateFineTuning({ tunedAccuracy: 0.7, baselineAccuracy: 0.85, formatErrors: 1, totalOutputs: 100, policyViolations: 10 });
+  assert.ok(!bad.deploySafe, "regression blocked");
 });
