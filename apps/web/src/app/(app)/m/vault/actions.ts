@@ -13,6 +13,8 @@ export async function createVaultEntryAction(formData: FormData) {
     name: String(formData.get("name") ?? ""),
     hint: String(formData.get("hint") ?? ""),
     value: String(formData.get("value") ?? ""),
+    category: String(formData.get("category") ?? "general"),
+    expiresAt: String(formData.get("expiresAt") ?? ""),
   });
   await (await svc()).create(parsed);
 }

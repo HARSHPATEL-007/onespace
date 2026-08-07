@@ -18,7 +18,7 @@ import {
   TableRow,
   cn,
 } from "@n0va/ui";
-import type { StorageItem } from "@n0va/db";
+import type { StorageItem, StorageFileVersion } from "@n0va/db";
 
 export interface StorageActions {
   createFolder: (formData: FormData) => Promise<void>;
@@ -27,6 +27,7 @@ export interface StorageActions {
   trash: (formData: FormData) => Promise<void>;
   restore: (formData: FormData) => Promise<void>;
   purge: (formData: FormData) => Promise<void>;
+  versions: (formData: FormData) => Promise<StorageFileVersion[]>;
 }
 
 export function StorageApp({
@@ -44,7 +45,13 @@ export function StorageApp({
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const versionFileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [versioning, setVersioning] = useState<StorageItem | null>(null);
+  const [versioningLoading, setVersioningLoading] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState<StorageItem | null>(null);
+  const [versionRows, setVersionRows] = useState<StorageFileVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [moving, setMoving] = useState<StorageItem | null>(null);
   const [renaming, setRenaming] = useState<StorageItem | null>(null);
@@ -62,6 +69,32 @@ export function StorageApp({
     } finally {
       setUploading(false);
     }
+  };
+
+  const uploadVersion = async (file: File) => {
+    if (!versioning || versioningLoading) return;
+    setVersioningLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("itemId", versioning.id);
+      await fetch("/api/storage/upload", { method: "POST", body: fd });
+      refresh();
+    } finally {
+      setVersioningLoading(false);
+      setVersioning(null);
+    }
+  };
+
+  const openVersions = (item: StorageItem) => {
+    setVersionsOpen(item);
+    setVersionRows([]);
+    setVersionsLoading(true);
+    const fd = new FormData();
+    fd.append("id", item.id);
+    void actions.versions(fd)
+      .then(setVersionRows)
+      .finally(() => setVersionsLoading(false));
   };
 
   return (
@@ -82,6 +115,16 @@ export function StorageApp({
           onChange={(e) => {
             const file = e.target.files?.[0];
             if (file) void upload(file);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={versionFileRef}
+          type="file"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void uploadVersion(file);
             e.target.value = "";
           }}
         />
@@ -137,9 +180,15 @@ export function StorageApp({
                   <TableCell>
                     <Dropdown trigger={<Button variant="ghost" size="sm">⋯</Button>}>
                       {!item.isFolder ? (
-                        <a className="nv-sidebar-item" href={`/api/storage/download?item=${item.id}`} style={{ color: "inherit" }}>
-                          Download
-                        </a>
+                        <>
+                          <a className="nv-sidebar-item" href={`/api/storage/download?item=${item.id}`} style={{ color: "inherit" }}>
+                            Download
+                          </a>
+                          <MenuItem onSelect={() => { setVersioning(item); versionFileRef.current?.click(); }}>
+                            Upload new version
+                          </MenuItem>
+                          <MenuItem onSelect={() => openVersions(item)}>Versions</MenuItem>
+                        </>
                       ) : null}
                       <MenuItem onSelect={() => setRenaming(item)}>Rename</MenuItem>
                       <MenuItem onSelect={() => setMoving(item)}>Move to…</MenuItem>
@@ -238,6 +287,91 @@ export function StorageApp({
           </Field>
         </form>
       </Dialog>
+      <Dialog
+        open={versionsOpen !== null}
+        onClose={() => setVersionsOpen(null)}
+        title={`Versions — ${versionsOpen?.name ?? ""}`}
+        actions={
+          <Button variant="secondary" onClick={() => setVersionsOpen(null)}>Close</Button>
+        }
+      >
+        {versionsLoading ? (
+          <div className="nv-empty">Loading…</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {versionsOpen ? (
+              <VersionRow
+                label={`v${versionsOpen.version}`}
+                sizeBytes={versionsOpen.sizeBytes}
+                storageKey={versionsOpen.storageKey ?? "—"}
+                date={versionsOpen.updatedAt}
+                current
+              />
+            ) : null}
+            {versionRows.length <= 1 ? (
+              <div className="nv-empty">Only the original version exists.</div>
+            ) : (
+              versionRows.map((v, i) => (
+                <VersionRow
+                  key={v.id}
+                  label={`v${Math.max(1, (versionsOpen?.version ?? 1) - 1 - i)}`}
+                  sizeBytes={v.sizeBytes}
+                  storageKey={v.storageKey}
+                  date={v.createdAt}
+                />
+              ))
+            )}
+          </div>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
+function VersionRow({
+  label,
+  sizeBytes,
+  storageKey,
+  date,
+  current = false,
+}: {
+  label: string;
+  sizeBytes: number;
+  storageKey: string;
+  date: Date;
+  current?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "8px 12px",
+        border: "1px solid var(--nv-color-border)",
+        borderRadius: "var(--nv-radius-md)",
+      }}
+    >
+      <span style={{ fontWeight: 700, minWidth: 44 }}>
+        {label}
+        {current ? " (current)" : ""}
+      </span>
+      <span style={{ fontSize: "var(--nv-font-sm)", minWidth: 70 }}>{formatBytes(sizeBytes)}</span>
+      <span
+        style={{
+          flex: 1,
+          fontSize: "var(--nv-font-xs)",
+          color: "var(--nv-color-text-faint)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {storageKey}
+      </span>
+      <span style={{ fontSize: "var(--nv-font-xs)", color: "var(--nv-color-text-faint)" }}>
+        {date.toLocaleDateString()}
+      </span>
     </div>
   );
 }

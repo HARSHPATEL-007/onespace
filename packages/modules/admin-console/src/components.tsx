@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog } from "@n0va/ui";
 import type { AuditLog } from "@n0va/db";
-import type { MemberRow } from "./server";
+import type { InviteRow, MemberRow } from "./server";
 
 export interface ConsoleActions {
   setRole: (formData: FormData) => Promise<void>;
   invite: (formData: FormData) => Promise<string>;
   removeMember: (formData: FormData) => Promise<void>;
   setSecurity: (formData: FormData) => Promise<void>;
+  revokeInvite: (formData: FormData) => Promise<void>;
 }
 
 const ROLE_BADGE: Record<string, string> = {
@@ -20,35 +21,63 @@ const ROLE_BADGE: Record<string, string> = {
   VIEWER: "nv-badge",
 };
 
+const STATE_BADGE: Record<
+  InviteRow["state"],
+  { label: string; className: string; style?: CSSProperties }
+> = {
+  pending: { label: "Pending", className: "nv-badge nv-badge-green" },
+  expired: { label: "Expired", className: "nv-badge" },
+  accepted: {
+    label: "Accepted",
+    className: "nv-badge nv-badge-green",
+    style: { background: "transparent", border: "1px solid var(--nv-color-success)", color: "var(--nv-color-success)" },
+  },
+};
+
 export function AdminConsole({
   members,
+  invites,
   auditLog,
   security,
   actions,
 }: {
   members: MemberRow[];
+  invites: InviteRow[];
   auditLog: AuditLog[];
   security: { mfaEnabled: boolean; sessionTimeoutMin: number };
   actions: ConsoleActions;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"users" | "audit" | "security">("users");
+  const [tab, setTab] = useState<"users" | "invites" | "audit" | "security">("users");
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState<string | null>(null);
   const [mfa, setMfa] = useState(security.mfaEnabled);
   const [timeoutMin, setTimeoutMin] = useState(security.sessionTimeoutMin);
 
+  const copyToken = (token: string) => {
+    try {
+      void navigator.clipboard.writeText(token);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = token;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+    }
+  };
+
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "var(--nv-space-5)" }}>
         <h1 style={{ fontSize: "var(--nv-font-xl)", fontWeight: 800 }}>N0VA ADMIN CONSOLE</h1>
-        <span className="nv-badge nv-badge-amber">users · security · audit</span>
+        <span className="nv-badge nv-badge-amber">users · security · audit · invites</span>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: "var(--nv-space-4)" }}>
-        {(["users", "audit", "security"] as const).map((t) => (
+        {(["users", "invites", "audit", "security"] as const).map((t) => (
           <Button key={t} variant={tab === t ? "primary" : "secondary"} size="sm" onClick={() => setTab(t)}>
-            {t === "users" ? "Users & roles" : t === "audit" ? "Audit log" : "Security"}
+            {t === "users" ? "Users & roles" : t === "invites" ? "Invites" : t === "audit" ? "Audit log" : "Security"}
           </Button>
         ))}
       </div>
@@ -113,6 +142,63 @@ export function AdminConsole({
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {tab === "invites" && (
+        <div className="nv-card" style={{ padding: 0 }}>
+          <table className="nv-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Expires</th>
+                <th style={{ width: 140 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {invites.map((inv) => {
+                const state = STATE_BADGE[inv.state];
+                return (
+                  <tr key={inv.id}>
+                    <td style={{ fontWeight: 600 }}>{inv.email}</td>
+                    <td>
+                      <span className={ROLE_BADGE[inv.role] ?? "nv-badge"}>{inv.role}</span>
+                    </td>
+                    <td>
+                      <span className={state.className} style={state.style}>{state.label}</span>
+                    </td>
+                    <td>{inv.createdAt.toLocaleDateString()}</td>
+                    <td>{inv.expiresAt.toLocaleDateString()}</td>
+                    <td>
+                      {inv.state === "pending" && (
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <Button variant="ghost" size="sm" onClick={() => copyToken(inv.token)}>Copy</Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => {
+                              if (!window.confirm(`Revoke invite for ${inv.email}?`)) return;
+                              const fd = new FormData();
+                              fd.set("inviteId", inv.id);
+                              void actions.revokeInvite(fd).then(() => router.refresh());
+                            }}
+                          >
+                            Revoke
+                          </Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {invites.length === 0 && (
+                <tr><td colSpan={6} className="nv-empty">No invites yet — use "+ Invite member" to send one.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 

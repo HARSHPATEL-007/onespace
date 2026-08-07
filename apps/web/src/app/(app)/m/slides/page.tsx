@@ -8,6 +8,7 @@ import {
   deletePresentationAction,
   addSlideAction,
   saveSlideBlocksAction,
+  saveSlideNotesAction,
   deleteSlideAction,
   moveSlideAction,
 } from "./actions";
@@ -26,6 +27,7 @@ export default async function SlidesPage() {
         remove: deletePresentationAction,
         addSlide: addSlideAction,
         saveBlocks: saveSlideBlocksAction,
+        saveNotes: saveSlideNotesAction,
         removeSlide: deleteSlideAction,
         moveSlide: moveSlideAction,
         setTheme: setThemeAction,

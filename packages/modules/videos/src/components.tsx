@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog } from "@n0va/ui";
-import type { Video } from "@n0va/db";
+import { Button, Dialog, Dropdown, MenuItem } from "@n0va/ui";
+import type { Video, VideoPlaylist } from "@n0va/db";
 import { embedFor } from "./server";
 
 export interface VideosActions {
   create: (formData: FormData) => Promise<void>;
   remove: (formData: FormData) => Promise<void>;
+  createPlaylist: (formData: FormData) => Promise<void>;
+  renamePlaylist: (formData: FormData) => Promise<void>;
+  removePlaylist: (formData: FormData) => Promise<void>;
+  setVideoPlaylist: (formData: FormData) => Promise<void>;
 }
+
+export type PlaylistWithCount = VideoPlaylist & { _count: { videos: number } };
 
 export function VideoDetail({ video }: { video: Video }) {
   const embed = embedFor(video.url, video.provider);
@@ -45,13 +51,26 @@ export function VideoDetail({ video }: { video: Video }) {
 
 export function VideoLibrary({
   videos,
+  playlists,
   actions,
 }: {
   videos: Video[];
+  playlists: PlaylistWithCount[];
   actions: VideosActions;
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
+  const [assigning, setAssigning] = useState<string | null>(null);
+
+  const run = (fd: FormData, fn: (fd: FormData) => Promise<void>) => {
+    void fn(fd).then(() => setTimeout(() => router.refresh(), 50));
+  };
+
+  const filtered = selected ? videos.filter((v) => v.playlistId === selected) : videos;
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto" }}>
@@ -63,16 +82,36 @@ export function VideoLibrary({
         </Button>
       </div>
 
-      {videos.length === 0 ? (
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: "var(--nv-space-4)" }}>
+        <Chip active={selected === null} onClick={() => setSelected(null)}>
+          All videos ({videos.length})
+        </Chip>
+        {playlists.map((p) => (
+          <div key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+            <Chip active={selected === p.id} onClick={() => setSelected(selected === p.id ? null : p.id)}>
+              {p.name} ({p._count.videos})
+            </Chip>
+            <Dropdown trigger={<Button variant="ghost" size="sm" style={{ minWidth: 0, padding: "2px 6px" }}>⋯</Button>}>
+              <MenuItem onSelect={() => setRenaming({ id: p.id, name: p.name })}>Rename</MenuItem>
+              <MenuItem danger onSelect={() => setDeleting({ id: p.id, name: p.name })}>Delete</MenuItem>
+            </Dropdown>
+          </div>
+        ))}
+        <Button variant="secondary" size="sm" onClick={() => setCreating(true)}>
+          + New playlist
+        </Button>
+      </div>
+
+      {filtered.length === 0 ? (
         <div className="nv-empty" style={{ minHeight: 300 }}>
-          <div>Your library is empty</div>
+          <div>{selected ? "No videos in this playlist" : "Your library is empty"}</div>
           <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
             Add a video link
           </Button>
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "var(--nv-space-4)" }}>
-          {videos.map((v) => {
+          {filtered.map((v) => {
             const embed = embedFor(v.url, v.provider);
             return (
               <div key={v.id} className="nv-card" style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -98,12 +137,31 @@ export function VideoLibrary({
                 <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)" }}>
                   {v.provider} · added {v.uploadedAt.toLocaleDateString()}
                 </div>
-                <form action={actions.remove} onSubmit={() => setTimeout(() => router.refresh(), 50)}>
-                  <input type="hidden" name="id" value={v.id} />
-                  <Button variant="ghost" size="sm">
+                <Dropdown trigger={<Button variant="ghost" size="sm" style={{ alignSelf: "flex-end" }}>⋯</Button>}>
+                  <MenuItem onSelect={() => setAssigning(v.id)}>Add to playlist…</MenuItem>
+                  {v.playlistId ? (
+                    <MenuItem
+                      onSelect={() => {
+                        const fd = new FormData();
+                        fd.set("videoId", v.id);
+                        fd.set("playlistId", "");
+                        run(fd, actions.setVideoPlaylist);
+                      }}
+                    >
+                      Remove from playlist
+                    </MenuItem>
+                  ) : null}
+                  <MenuItem
+                    danger
+                    onSelect={() => {
+                      const fd = new FormData();
+                      fd.set("id", v.id);
+                      run(fd, actions.remove);
+                    }}
+                  >
                     Remove
-                  </Button>
-                </form>
+                  </MenuItem>
+                </Dropdown>
               </div>
             );
           })}
@@ -145,6 +203,166 @@ export function VideoLibrary({
           <textarea className="nv-input" name="description" placeholder="Description (optional)" rows={3} />
         </form>
       </Dialog>
+
+      {assigning !== null && (
+        <Dialog
+          open
+          onClose={() => setAssigning(null)}
+          title="Add to playlist"
+          actions={
+            <Button variant="secondary" onClick={() => setAssigning(null)}>
+              Close
+            </Button>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 320 }}>
+            {playlists.length === 0 ? (
+              <div className="nv-empty" style={{ minHeight: 80 }}>
+                <div>No playlists yet</div>
+                <div style={{ fontSize: "var(--nv-font-xs)" }}>Create a playlist, then assign videos to it.</div>
+              </div>
+            ) : (
+              playlists.map((p) => {
+                const current = videos.find((v) => v.id === assigning)?.playlistId ?? null;
+                const active = current === p.id;
+                return (
+                  <MenuItem
+                    key={p.id}
+                    onSelect={() => {
+                      const fd = new FormData();
+                      fd.set("videoId", assigning);
+                      fd.set("playlistId", active ? "" : p.id);
+                      run(fd, actions.setVideoPlaylist);
+                      setAssigning(null);
+                    }}
+                  >
+                    {active ? "✓ " : ""}
+                    {p.name} ({p._count.videos})
+                  </MenuItem>
+                );
+              })
+            )}
+          </div>
+        </Dialog>
+      )}
+
+      <Dialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        title="New playlist"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="create-playlist-form">
+              Create
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="create-playlist-form"
+          action={(fd) => {
+            run(fd, actions.createPlaylist);
+            setCreating(false);
+          }}
+          style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 400 }}
+        >
+          <input className="nv-input" name="name" placeholder="Playlist name" autoFocus required />
+        </form>
+      </Dialog>
+
+      {renaming !== null && (
+        <Dialog
+          open
+          onClose={() => setRenaming(null)}
+          title="Rename playlist"
+          actions={
+            <>
+              <Button variant="secondary" onClick={() => setRenaming(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" form="rename-playlist-form">
+                Save
+              </Button>
+            </>
+          }
+        >
+          <form
+            id="rename-playlist-form"
+            action={(fd) => {
+              run(fd, actions.renamePlaylist);
+              setRenaming(null);
+            }}
+            style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 400 }}
+          >
+            <input type="hidden" name="id" value={renaming.id} />
+            <input className="nv-input" name="name" placeholder="Playlist name" defaultValue={renaming.name} autoFocus required />
+          </form>
+        </Dialog>
+      )}
+
+      {deleting !== null && (
+        <Dialog
+          open
+          onClose={() => setDeleting(null)}
+          title="Delete playlist"
+          actions={
+            <>
+              <Button variant="secondary" onClick={() => setDeleting(null)}>
+                Cancel
+              </Button>
+              <Button variant="danger" type="submit" form="delete-playlist-form">
+                Delete
+              </Button>
+            </>
+          }
+        >
+          <div style={{ minWidth: 400 }}>
+            Delete "{deleting.name}"? Videos in it will be kept, but unassigned from this playlist.
+          </div>
+          <form
+            id="delete-playlist-form"
+            action={(fd) => {
+              run(fd, actions.removePlaylist);
+              if (selected === deleting.id) setSelected(null);
+              setDeleting(null);
+            }}
+          >
+            <input type="hidden" name="id" value={deleting.id} />
+          </form>
+        </Dialog>
+      )}
     </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        fontSize: 12,
+        background: active ? "var(--nv-color-primary)" : "rgba(0,0,0,0.08)",
+        color: active ? "#fff" : "inherit",
+        padding: "4px 12px",
+        borderRadius: 999,
+        fontWeight: 600,
+        cursor: "pointer",
+        border: "none",
+      }}
+    >
+      {children}
+    </button>
   );
 }

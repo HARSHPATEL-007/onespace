@@ -9,6 +9,10 @@ export const vaultEntrySchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   hint: z.string().max(200).default(""),
   value: z.string().min(1, "Secret cannot be empty").max(8000),
+  category: z.enum(["general", "api", "db", "deploy", "infra", "fintech"]).default("general"),
+  expiresAt: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.union([z.string().date(), z.string().datetime()]).optional())
+    .transform((v) => (v ? new Date(v) : null)),
 });
 
 function masterKey(): Buffer {
@@ -65,6 +69,8 @@ export class VaultService {
         createdById: this.userId,
         name: input.name,
         hint: input.hint,
+        category: input.category,
+        expiresAt: input.expiresAt,
         encryptedValue: encryptSecret(input.value),
       },
     });

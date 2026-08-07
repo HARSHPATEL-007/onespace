@@ -11,12 +11,48 @@ export interface MeetActions {
   leave: (formData: FormData) => Promise<void>;
   endRoom: (formData: FormData) => Promise<void>;
   send: (formData: FormData) => Promise<void>;
+  getTranscript?: (formData: FormData) => Promise<MeetTranscriptData>;
+}
+
+export interface MeetTranscriptData {
+  room: MeetRoom;
+  messages: MeetMessage[];
+  participants: MeetParticipant[];
 }
 
 type RoomWithMeta = MeetRoom & {
   _count: { participants: number };
   participants: Array<MeetParticipant & { user: { name: string | null; email: string } }>;
 };
+
+type EndedRoom = MeetRoom & { _count: { participants: number } };
+
+type TranscriptEntry =
+  | { key: string; at: number; kind: "message"; author: string; body: string }
+  | { key: string; at: number; kind: "joined" | "left"; author: string };
+
+function formatDuration(start: Date, end: Date) {
+  const minutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} hr ${rest} min` : `${hours} hr`;
+}
+
+function transcriptEntries(data: MeetTranscriptData): TranscriptEntry[] {
+  const entries: TranscriptEntry[] = data.messages.map((m) => ({
+    key: `m-${m.id}`,
+    at: new Date(m.createdAt).getTime(),
+    kind: "message",
+    author: m.authorName,
+    body: m.body,
+  }));
+  for (const p of data.participants) {
+    entries.push({ key: `j-${p.id}`, at: new Date(p.joinedAt).getTime(), kind: "joined", author: p.name });
+    if (p.leftAt) entries.push({ key: `l-${p.id}`, at: new Date(p.leftAt).getTime(), kind: "left", author: p.name });
+  }
+  return entries.sort((a, b) => a.at - b.at);
+}
 
 interface LiveParticipant {
   id: string;
@@ -79,13 +115,29 @@ function useRoomStream(roomId: string | null) {
 
 export function MeetRooms({
   rooms,
+  endedRooms,
   actions,
 }: {
   rooms: RoomWithMeta[];
+  endedRooms?: EndedRoom[];
   actions: MeetActions;
 }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
+  const [transcript, setTranscript] = useState<MeetTranscriptData | null>(null);
+  const [loadingTranscript, setLoadingTranscript] = useState<string | null>(null);
+
+  const openTranscript = (roomId: string) => {
+    setLoadingTranscript(roomId);
+    const fd = new FormData();
+    fd.set("roomId", roomId);
+    void actions.getTranscript?.(fd)
+      .then((data) => setTranscript(data))
+      .catch(() => undefined)
+      .finally(() => setLoadingTranscript(null));
+  };
+
+  const entries = transcript ? transcriptEntries(transcript) : [];
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto" }}>
@@ -122,6 +174,80 @@ export function MeetRooms({
           ))}
         </div>
       )}
+
+      {endedRooms && (
+        <div style={{ marginTop: "var(--nv-space-6)" }}>
+          <h2 style={{ fontSize: "var(--nv-font-lg)", fontWeight: 800, marginBottom: "var(--nv-space-3)" }}>
+            Past meetings
+          </h2>
+          {endedRooms.length === 0 ? (
+            <div className="nv-empty" style={{ minHeight: 120 }}>
+              <div>No past meetings yet</div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "var(--nv-space-3)" }}>
+              {endedRooms.map((r) => (
+                <div key={r.id} className="nv-card" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ fontWeight: 800, fontSize: "var(--nv-font-lg)" }}>{r.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+                    {new Date(r.endedAt!).toLocaleDateString()} · {formatDuration(r.startedAt, r.endedAt!)} ·{" "}
+                    {r._count.participants} participant{r._count.participants === 1 ? "" : "s"}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={loadingTranscript !== null}
+                    onClick={() => openTranscript(r.id)}
+                  >
+                    {loadingTranscript === r.id ? "Loading…" : "View transcript"}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <Dialog
+        open={transcript !== null}
+        onClose={() => setTranscript(null)}
+        title={transcript ? `${transcript.room.name} — transcript` : ""}
+        actions={
+          <Button variant="secondary" onClick={() => setTranscript(null)}>
+            Close
+          </Button>
+        }
+      >
+        {transcript && (
+          <div style={{ minWidth: 460, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+              {new Date(transcript.room.endedAt!).toLocaleDateString()} ·{" "}
+              {formatDuration(transcript.room.startedAt, transcript.room.endedAt!)} ·{" "}
+              {transcript.participants.length} participant{transcript.participants.length === 1 ? "" : "s"}
+            </div>
+            <div style={{ maxHeight: 420, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+              {entries.length === 0 && (
+                <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No messages recorded</div>
+              )}
+              {entries.map((e) =>
+                e.kind === "message" ? (
+                  <div key={e.key}>
+                    <span style={{ fontWeight: 700, fontSize: 12 }}>{e.author}</span>
+                    <span style={{ fontSize: 11, color: "var(--nv-color-text-faint)", marginLeft: 6 }}>
+                      {new Date(e.at).toLocaleTimeString()}
+                    </span>
+                    <div style={{ fontSize: "var(--nv-font-sm)", whiteSpace: "pre-wrap" }}>{e.body}</div>
+                  </div>
+                ) : (
+                  <div key={e.key} style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+                    {e.author} {e.kind === "joined" ? "joined" : "left"} · {new Date(e.at).toLocaleTimeString()}
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+        )}
+      </Dialog>
 
       <Dialog
         open={creating}

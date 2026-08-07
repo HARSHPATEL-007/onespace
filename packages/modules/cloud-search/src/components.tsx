@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@n0va/ui";
 import type { SearchHit } from "./server";
+
+const RECENTS_KEY = "n0va-search-recent";
+const RECENTS_MAX = 6;
 
 export function SearchPanel({
   initialHits,
@@ -14,6 +17,25 @@ export function SearchPanel({
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>(initialHits);
   const [searching, setSearching] = useState(false);
+  const [recents, setRecents] = useState<string[]>([]);
+  const [activeScopes, setActiveScopes] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(RECENTS_KEY);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored) as unknown;
+      setRecents(Array.isArray(parsed) ? (parsed as string[]) : []);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (recents.length === 0) {
+      window.localStorage.removeItem(RECENTS_KEY);
+      return;
+    }
+    window.localStorage.setItem(RECENTS_KEY, JSON.stringify(recents.slice(0, RECENTS_MAX)));
+  }, [recents]);
 
   const runSearch = async (q: string) => {
     if (q.trim().length < 2) {
@@ -30,10 +52,39 @@ export function SearchPanel({
     }
   };
 
-  const grouped = hits.reduce<Record<string, SearchHit[]>>((acc, h) => {
+  const submitSearch = (q: string) => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return;
+    void runSearch(trimmed);
+    setRecents((prev) => [trimmed, ...prev.filter((r) => r.toLowerCase() !== trimmed.toLowerCase())].slice(0, RECENTS_MAX));
+  };
+
+  const toggleScope = (module: string) => {
+    setActiveScopes((prev) => {
+      const next = new Set(prev);
+      if (next.has(module)) next.delete(module);
+      else next.add(module);
+      return next;
+    });
+  };
+
+  const scopedHits = activeScopes.size === 0 ? hits : hits.filter((h) => activeScopes.has(h.module));
+
+  const grouped = scopedHits.reduce<Record<string, SearchHit[]>>((acc, h) => {
     (acc[h.moduleLabel] ??= []).push(h);
     return acc;
   }, {});
+
+  const chipStyle = (active: boolean) => ({
+    fontSize: 11,
+    padding: "3px 10px",
+    borderRadius: 999,
+    border: `1px solid ${active ? "var(--nv-color-primary-alpha)" : "var(--nv-color-border)"}`,
+    background: active ? "var(--nv-color-primary-alpha)" : "transparent",
+    color: active ? "var(--nv-color-primary)" : "var(--nv-color-text-muted)",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  });
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto" }}>
@@ -51,26 +102,56 @@ export function SearchPanel({
             setQuery(e.target.value);
             void runSearch(e.target.value);
           }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submitSearch(query);
+          }}
         />
-        <Button onClick={() => void runSearch(query)} disabled={searching}>
+        <Button onClick={() => submitSearch(query)} disabled={searching}>
           {searching ? "…" : "Search"}
         </Button>
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: "var(--nv-space-4)", flexWrap: "wrap" }}>
+      {recents.length > 0 && (
+        <div style={{ display: "flex", gap: 6, marginBottom: "var(--nv-space-4)", flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-color-text-faint)", letterSpacing: "0.06em" }}>
+            RECENT
+          </span>
+          {recents.map((r) => (
+            <button
+              key={r}
+              type="button"
+              style={chipStyle(false)}
+              onClick={() => {
+                setQuery(r);
+                void runSearch(r);
+              }}
+            >
+              {r}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setRecents([])}
+            style={{ fontSize: 11, color: "var(--nv-color-text-faint)", cursor: "pointer", background: "none", border: "none", padding: "3px 6px", fontFamily: "inherit" }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginBottom: "var(--nv-space-4)", flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" style={chipStyle(activeScopes.size === 0)} onClick={() => setActiveScopes(new Set())}>
+          All
+        </button>
         {scopes.map((s) => (
-          <span
+          <button
             key={s.module}
-            style={{
-              fontSize: 11,
-              padding: "3px 10px",
-              borderRadius: 999,
-              border: "1px solid var(--nv-color-border)",
-              color: "var(--nv-color-text-muted)",
-            }}
+            type="button"
+            style={chipStyle(activeScopes.has(s.module))}
+            onClick={() => toggleScope(s.module)}
           >
             {s.label}
-          </span>
+          </button>
         ))}
       </div>
 
@@ -81,6 +162,10 @@ export function SearchPanel({
       ) : hits.length === 0 && !searching ? (
         <div className="nv-empty">
           <div>No results for "{query}"</div>
+        </div>
+      ) : scopedHits.length === 0 && !searching ? (
+        <div className="nv-empty">
+          <div>No results for "{query}" in selected scopes</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--nv-space-3)" }}>

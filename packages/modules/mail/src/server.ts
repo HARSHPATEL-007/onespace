@@ -12,6 +12,8 @@ export const sendSchema = z.object({
 
 export type MailFolder = "INBOX" | "SENT" | "ARCHIVE" | "TRASH";
 
+export type MailUnreadCounts = Record<MailFolder, number>;
+
 export class MailService {
   constructor(
     private readonly workspaceId: string,
@@ -73,10 +75,12 @@ export class MailService {
     await this.assert("READ");
     const rows = await prisma.mailMessage.groupBy({
       by: ["folder"],
-      where: { workspaceId: this.workspaceId, isRead: false, folder: "INBOX" },
+      where: { workspaceId: this.workspaceId, isRead: false },
       _count: true,
     });
-    return rows[0]?._count ?? 0;
+    const counts: MailUnreadCounts = { INBOX: 0, SENT: 0, ARCHIVE: 0, TRASH: 0 };
+    for (const row of rows) counts[row.folder] = row._count;
+    return counts;
   }
 
   async labels() {

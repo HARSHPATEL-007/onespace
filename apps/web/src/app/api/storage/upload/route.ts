@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
   const file = formData.get("file");
   const rawParent = String(formData.get("parentId") ?? "");
   const parentId = rawParent ? rawParent : null;
+  const rawItem = String(formData.get("itemId") ?? "");
+  const itemId = rawItem ? rawItem : null;
+  const scopeId = itemId ?? parentId;
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -25,8 +28,8 @@ export async function POST(request: NextRequest) {
     where: {
       userId: session.user.id,
       status: "ACTIVE",
-      ...(parentId
-        ? { workspace: { storageItems: { some: { id: parentId } } } }
+      ...(scopeId
+        ? { workspace: { storageItems: { some: { id: scopeId } } } }
         : {}),
     },
     include: { workspace: true },
@@ -42,14 +45,21 @@ export async function POST(request: NextRequest) {
   const dir = storageDirFor(workspaceId);
   fs.writeFileSync(path.join(dir, key), buffer);
 
-  const item = await svc.recordUpload({
-    name: file.name,
-    mimeType: file.type || "application/octet-stream",
-    sizeBytes: buffer.length,
-    storageKey: key,
-    checksum: checksumOf(buffer),
-    parentId,
-  });
+  const item = itemId
+    ? await svc.uploadNewVersion({
+        itemId,
+        sizeBytes: buffer.length,
+        storageKey: key,
+        checksum: checksumOf(buffer),
+      })
+    : await svc.recordUpload({
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        sizeBytes: buffer.length,
+        storageKey: key,
+        checksum: checksumOf(buffer),
+        parentId,
+      });
 
   return NextResponse.json({ id: item.id, name: item.name });
 }

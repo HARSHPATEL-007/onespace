@@ -1,6 +1,7 @@
 "use server";
 
 import { N0va1oService, integrationSchema } from "@n0va/modules-n0va1o/server";
+import type { IntegrationLog } from "@n0va/db";
 import { actionContext } from "@/lib/action-context";
 
 const svc = async () => {
@@ -27,4 +28,8 @@ export async function toggleIntegrationAction(formData: FormData) {
 
 export async function removeIntegrationAction(formData: FormData) {
   await (await svc()).remove(String(formData.get("id") ?? ""));
+}
+
+export async function integrationActivityAction(formData: FormData): Promise<IntegrationLog[]> {
+  return (await svc()).activity(String(formData.get("id") ?? ""));
 }

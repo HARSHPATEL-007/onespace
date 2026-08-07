@@ -1,6 +1,7 @@
 "use server";
 
 import { DocsService, docMetaSchema, commentSchema } from "@n0va/modules-docs/server";
+import type { RevisionItem } from "@n0va/modules-docs/components";
 import { actionContext } from "@/lib/action-context";
 
 const svc = async () => {
@@ -39,4 +40,17 @@ export async function addCommentAction(formData: FormData) {
   const text = String(formData.get("text") ?? "");
   const { text: parsed } = commentSchema.parse({ text });
   await (await svc()).addComment(docId, parsed, authorName);
+}
+
+export async function getRevisionsAction(formData: FormData): Promise<RevisionItem[]> {
+  const id = String(formData.get("id") ?? "");
+  return (await svc()).revisionsWithAuthors(id);
+}
+
+export async function restoreRevisionAction(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const revisionId = String(formData.get("revisionId") ?? "");
+  const service = await svc();
+  const revision = await service.revisionContent(id, revisionId);
+  await service.saveContent(id, revision.content);
 }

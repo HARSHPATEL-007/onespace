@@ -7,6 +7,7 @@ import type { Group, GroupMember } from "@n0va/db";
 
 export interface GroupsActions {
   create?: (formData: FormData) => Promise<void>;
+  update?: (formData: FormData) => Promise<void>;
   remove?: (formData: FormData) => Promise<void>;
   addMember: (formData: FormData) => Promise<void>;
   removeMember: (formData: FormData) => Promise<void>;
@@ -116,6 +117,7 @@ export function GroupDetail({
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   return (
     <div style={{ maxWidth: 760, margin: "0 auto" }}>
@@ -125,6 +127,9 @@ export function GroupDetail({
         </a>
         <h1 style={{ fontSize: "var(--nv-font-xl)", fontWeight: 800 }}>{group.name}</h1>
         <div style={{ flex: 1 }} />
+        <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+          Edit
+        </Button>
         <Button size="sm" onClick={() => setAdding(true)}>
           + Add member
         </Button>
@@ -208,6 +213,37 @@ export function GroupDetail({
               </option>
             ))}
           </select>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={editing}
+        onClose={() => setEditing(false)}
+        title={`Edit ${group.name}`}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="edit-group-form">
+              Save
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="edit-group-form"
+          action={(fd) => {
+            fd.set("id", group.id);
+            void actions.update?.(fd).then(() => {
+              setEditing(false);
+              setTimeout(() => router.refresh(), 50);
+            });
+          }}
+          style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 320 }}
+        >
+          <input className="nv-input" name="name" defaultValue={group.name} autoFocus required />
+          <textarea className="nv-textarea" name="description" defaultValue={group.description ?? ""} rows={3} />
         </form>
       </Dialog>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog } from "@n0va/ui";
 import type { Album, Photo } from "@n0va/db";
@@ -10,26 +10,69 @@ export interface PicsActions {
   removeAlbum: (formData: FormData) => Promise<void>;
   removePhoto: (formData: FormData) => Promise<void>;
   movePhoto: (formData: FormData) => Promise<void>;
+  toggleFavorite: (formData: FormData) => Promise<void>;
 }
 
 export function PicsApp({
   albums,
   photos,
   activeAlbumId,
+  favoritesOnly,
   actions,
 }: {
   albums: Array<Album & { _count: { photos: number } }>;
   photos: Photo[];
   activeAlbumId: string | null;
+  favoritesOnly: boolean;
   actions: PicsActions;
 }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [lightbox, setLightbox] = useState<Photo | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
   const [moving, setMoving] = useState<Photo | null>(null);
   const [moveTarget, setMoveTarget] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const lightbox = lightboxIndex !== null ? (photos[lightboxIndex] ?? null) : null;
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPlaying(false);
+        setLightboxIndex(null);
+      } else if (e.key === "ArrowLeft") {
+        setPlaying(false);
+        setLightboxIndex((i) => (i === null ? i : (i - 1 + photos.length) % photos.length));
+      } else if (e.key === "ArrowRight") {
+        setPlaying(false);
+        setLightboxIndex((i) => (i === null ? i : (i + 1) % photos.length));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightboxIndex, photos.length]);
+
+  useEffect(() => {
+    if (!playing || lightboxIndex === null) return;
+    const t = setInterval(() => {
+      setLightboxIndex((i) => (i === null ? i : (i + 1) % photos.length));
+    }, 3000);
+    return () => clearInterval(t);
+  }, [playing, lightboxIndex, photos.length]);
+
+  const openLightbox = (p: Photo) => {
+    setPlaying(false);
+    setLightboxIndex(photos.indexOf(p));
+  };
+
+  const toggleStar = (e: React.MouseEvent, p: Photo) => {
+    e.stopPropagation();
+    const fd = new FormData();
+    fd.set("id", p.id);
+    void actions.toggleFavorite(fd).then(() => router.refresh());
+  };
 
   const upload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -60,8 +103,8 @@ export function PicsApp({
               fontSize: 12,
               fontWeight: 700,
               textDecoration: "none",
-              color: !activeAlbumId ? "var(--nv-color-primary)" : "var(--nv-color-text-muted)",
-              background: !activeAlbumId ? "var(--nv-color-primary-alpha)" : "transparent",
+              color: !activeAlbumId && !favoritesOnly ? "var(--nv-color-primary)" : "var(--nv-color-text-muted)",
+              background: !activeAlbumId && !favoritesOnly ? "var(--nv-color-primary-alpha)" : "transparent",
             }}
           >
             All photos
@@ -83,6 +126,20 @@ export function PicsApp({
               {a.name} ({a._count.photos})
             </a>
           ))}
+          <a
+            href={favoritesOnly ? "/m/pics" : "/m/pics?fav=1"}
+            style={{
+              padding: "5px 12px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              textDecoration: "none",
+              color: favoritesOnly ? "var(--nv-color-warning)" : "var(--nv-color-text-muted)",
+              background: favoritesOnly ? "color-mix(in srgb, var(--nv-color-warning) 16%, transparent)" : "transparent",
+            }}
+          >
+            ★ Favorites
+          </a>
         </div>
         <div style={{ flex: 1 }} />
         <Button size="sm" variant="secondary" onClick={() => setCreating(true)}>
@@ -117,7 +174,7 @@ export function PicsApp({
               <img
                 src={`/api/pics/img?key=${encodeURIComponent(p.storageKey)}`}
                 alt={p.filename}
-                onClick={() => setLightbox(p)}
+                onClick={() => openLightbox(p)}
                 style={{
                   width: "100%",
                   aspectRatio: "1",
@@ -127,8 +184,25 @@ export function PicsApp({
                   background: "var(--nv-color-surface-2)",
                 }}
               />
-              <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {p.filename}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                  {p.filename}
+                </div>
+                <button
+                  aria-label={p.favorite ? "Unfavorite" : "Favorite"}
+                  onClick={(e) => toggleStar(e, p)}
+                  style={{
+                    fontSize: 16,
+                    color: p.favorite ? "var(--nv-color-warning)" : "var(--nv-color-text-faint)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    lineHeight: 1,
+                  }}
+                >
+                  {p.favorite ? "★" : "☆"}
+                </button>
               </div>
               <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)" }}>
                 {p.width && p.height ? `${p.width}×${p.height}` : ""} · {Math.round(p.sizeBytes / 1024)} KB
@@ -230,13 +304,98 @@ export function PicsApp({
             justifyContent: "center",
             cursor: "pointer",
           }}
-          onClick={() => setLightbox(null)}
+          onClick={() => {
+            setPlaying(false);
+            setLightboxIndex(null);
+          }}
         >
           <img
             src={`/api/pics/img?key=${encodeURIComponent(lightbox.storageKey)}`}
             alt={lightbox.filename}
-            style={{ maxWidth: "92vw", maxHeight: "92vh", borderRadius: 8 }}
+            style={{ maxWidth: "92vw", maxHeight: "80vh", borderRadius: 8 }}
           />
+          <button
+            aria-label="Previous photo"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPlaying(false);
+              setLightboxIndex((i) => (i === null ? i : (i - 1 + photos.length) % photos.length));
+            }}
+            style={{
+              position: "absolute",
+              left: 16,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              border: "none",
+              fontSize: 18,
+              cursor: "pointer",
+              color: "var(--nv-color-text-faint)",
+              background: "rgba(255,255,255,0.12)",
+            }}
+          >
+            ◀
+          </button>
+          <button
+            aria-label="Next photo"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPlaying(false);
+              setLightboxIndex((i) => (i === null ? i : (i + 1) % photos.length));
+            }}
+            style={{
+              position: "absolute",
+              right: 16,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 44,
+              height: 44,
+              borderRadius: 999,
+              border: "none",
+              fontSize: 18,
+              cursor: "pointer",
+              color: "var(--nv-color-text-faint)",
+              background: "rgba(255,255,255,0.12)",
+            }}
+          >
+            ▶
+          </button>
+          <div
+            style={{
+              position: "absolute",
+              bottom: 20,
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <button
+              aria-label={playing ? "Pause slideshow" : "Play slideshow"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setPlaying((v) => !v);
+              }}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                border: "none",
+                fontSize: 16,
+                cursor: "pointer",
+                color: "var(--nv-color-text-faint)",
+                background: "rgba(255,255,255,0.12)",
+              }}
+            >
+              {playing ? "⏸" : "▶"}
+            </button>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-color-text-faint)" }}>
+              {(lightboxIndex ?? 0) + 1} / {photos.length}
+            </span>
+          </div>
         </div>
       )}
     </div>

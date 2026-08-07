@@ -12,6 +12,7 @@ export interface TasksActions {
   createTask: (formData: FormData) => Promise<void>;
   updateTask: (formData: FormData) => Promise<void>;
   toggleComplete: (formData: FormData) => Promise<void>;
+  moveTask: (formData: FormData) => Promise<void>;
   deleteTask: (formData: FormData) => Promise<void>;
 }
 
@@ -21,17 +22,42 @@ const PRIORITY_TONE: Record<string, "neutral" | "warning" | "danger"> = {
   HIGH: "danger",
 };
 
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "mine", label: "Assigned to me" },
+  { id: "high", label: "High priority" },
+  { id: "overdue", label: "Overdue" },
+] as const;
+
+type TaskFilter = (typeof FILTERS)[number]["id"];
+
+function matchesFilter(task: Task, filter: TaskFilter, userId: string) {
+  switch (filter) {
+    case "mine":
+      return task.assigneeId === userId;
+    case "high":
+      return task.priority === "HIGH";
+    case "overdue":
+      return Boolean(task.dueDate && task.dueDate < new Date() && !task.completedAt);
+    default:
+      return true;
+  }
+}
+
 export function TasksApp({
   lists,
+  userId,
   members,
   actions,
 }: {
   lists: Array<TaskList & { tasks: Task[] }>;
+  userId: string;
   members: Array<{ id: string; name: string | null; email: string }>;
   actions: TasksActions;
 }) {
   const router = useRouter();
   const refresh = () => router.refresh();
+  const [filter, setFilter] = useState<TaskFilter>("all");
   const [newListOpen, setNewListOpen] = useState(false);
   const [taskDialog, setTaskDialog] = useState<{ listId: string } | { listId: string; task: Task } | null>(null);
   const [renaming, setRenaming] = useState<TaskList | null>(null);
@@ -48,6 +74,22 @@ export function TasksApp({
         <Badge tone="primary">{openCount} open</Badge>
         <div style={{ flex: 1 }} />
         <Button size="sm" onClick={() => setNewListOpen(true)}>+ New list</Button>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: "var(--nv-space-4)" }}>
+        {FILTERS.map((f) => (
+          <Button
+            key={f.id}
+            size="sm"
+            variant={filter === f.id ? "primary" : "secondary"}
+            onClick={() => setFilter(f.id)}
+          >
+            {f.label}
+          </Button>
+        ))}
+        <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+          Showing {filter === "all" ? "all tasks" : `"${FILTERS.find((f) => f.id === filter)!.label}"`}
+        </span>
       </div>
 
       {lists.length === 0 ? (
@@ -78,7 +120,9 @@ export function TasksApp({
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {list.tasks.map((task) => (
+                  {list.tasks.filter((t) => matchesFilter(t, filter, userId)).map((task) => {
+                    const fullIndex = list.tasks.indexOf(task);
+                    return (
                     <div
                       key={task.id}
                       style={{
@@ -118,6 +162,34 @@ export function TasksApp({
                           ) : null}
                         </div>
                       </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <form action={actions.moveTask} onSubmit={() => setTimeout(refresh, 50)}>
+                          <input type="hidden" name="id" value={task.id} />
+                          <input type="hidden" name="direction" value="up" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="submit"
+                            disabled={fullIndex === 0}
+                            style={{ padding: "2px 5px", fontSize: 11, lineHeight: 1 }}
+                          >
+                            ↑
+                          </Button>
+                        </form>
+                        <form action={actions.moveTask} onSubmit={() => setTimeout(refresh, 50)}>
+                          <input type="hidden" name="id" value={task.id} />
+                          <input type="hidden" name="direction" value="down" />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            type="submit"
+                            disabled={fullIndex === list.tasks.length - 1}
+                            style={{ padding: "2px 5px", fontSize: 11, lineHeight: 1 }}
+                          >
+                            ↓
+                          </Button>
+                        </form>
+                      </div>
                       <Dropdown trigger={<Button variant="ghost" size="sm">⋯</Button>}>
                         <MenuItem onSelect={() => setTaskDialog({ listId: list.id, task })}>Edit</MenuItem>
                         <form action={actions.deleteTask} onSubmit={() => setTimeout(refresh, 50)}>
@@ -126,7 +198,8 @@ export function TasksApp({
                         </form>
                       </Dropdown>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <Button variant="ghost" size="sm" block style={{ marginTop: 10 }} onClick={() => setTaskDialog({ listId: list.id })}>

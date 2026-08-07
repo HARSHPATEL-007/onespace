@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, cn } from "@n0va/ui";
+import { Button, Dialog, Dropdown, MenuItem, cn } from "@n0va/ui";
 import type { ChatChannel, ChatMessage, WorkspaceMember } from "@n0va/db";
 
 export interface ChatActions {
@@ -11,6 +11,14 @@ export interface ChatActions {
   send: (formData: FormData) => Promise<void>;
   rename: (formData: FormData) => Promise<void>;
   deleteChannel: (formData: FormData) => Promise<void>;
+  react: (formData: FormData) => Promise<void>;
+  markRead: (formData: FormData) => Promise<void>;
+}
+
+interface MessageReaction {
+  emoji: string;
+  userId: string;
+  authorName: string;
 }
 
 interface LivePayload {
@@ -54,6 +62,21 @@ type ChannelWithMeta = ChatChannel & {
 };
 type MemberWithUser = WorkspaceMember & { user: { id: string; name: string | null; email: string } };
 
+function reactionGroups(
+  m: ChatMessage,
+  userId: string,
+): Record<string, { count: number; mine: boolean }> {
+  const groups: Record<string, { count: number; mine: boolean }> = {};
+  const reactions = Array.isArray(m.reactions) ? (m.reactions as unknown as MessageReaction[]) : [];
+  for (const r of reactions) {
+    const g = groups[r.emoji] ?? { count: 0, mine: false };
+    g.count += 1;
+    if (r.userId === userId) g.mine = true;
+    groups[r.emoji] = g;
+  }
+  return groups;
+}
+
 export function ChatPanel({
   workspaceId,
   userId,
@@ -61,6 +84,8 @@ export function ChatPanel({
   members,
   activeChannelId,
   initialMessages,
+  unread,
+  reactionEmojis,
   actions,
 }: {
   workspaceId: string;
@@ -69,22 +94,38 @@ export function ChatPanel({
   members: MemberWithUser[];
   activeChannelId: string | null;
   initialMessages: ChatMessage[];
+  unread: Record<string, number>;
+  reactionEmojis: string[];
   actions: ChatActions;
 }) {
   const router = useRouter();
   const { live, connected } = useLiveChannel(activeChannelId, workspaceId);
   const [showNew, setShowNew] = useState(false);
   const [showDm, setShowDm] = useState(false);
+  const [renaming, setRenaming] = useState<ChannelWithMeta | null>(null);
+  const [confirming, setConfirming] = useState<ChannelWithMeta | null>(null);
+  const [pickerFor, setPickerFor] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const messages = useMemo(
-    () => (live.length ? live : initialMessages),
-    [live, initialMessages],
-  );
+  const messages = useMemo(() => {
+    if (!live.length) return initialMessages;
+    const byId = new Map<string, ChatMessage>(live.map((m) => [m.id, m]));
+    for (const m of initialMessages) byId.set(m.id, m);
+    return [...byId.values()].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, [live, initialMessages]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, activeChannelId]);
+
+  useEffect(() => {
+    if (!activeChannelId) return;
+    const fd = new FormData();
+    fd.set("channelId", activeChannelId);
+    void actions.markRead(fd).then(() => router.refresh());
+  }, [activeChannelId]);
 
   const active = channels.find((c) => c.id === activeChannelId);
 
@@ -99,6 +140,32 @@ export function ChatPanel({
     void actions.createDm(fd).then(() => {
       setShowDm(false);
       router.refresh();
+    });
+  };
+
+  const submitReact = (messageId: string, emoji: string) => {
+    const fd = new FormData();
+    fd.set("messageId", messageId);
+    fd.set("emoji", emoji);
+    void actions.react(fd).then(() => router.refresh());
+  };
+
+  const submitRename = (fd: FormData) => {
+    void actions.rename(fd).then(() => {
+      setRenaming(null);
+      router.refresh();
+    });
+  };
+
+  const submitDelete = (fd: FormData) => {
+    const wasActive = confirming?.id === activeChannelId;
+    void actions.deleteChannel(fd).then(() => {
+      setConfirming(null);
+      if (wasActive) {
+        router.replace("/m/chat");
+      } else {
+        router.refresh();
+      }
     });
   };
 
@@ -153,29 +220,55 @@ export function ChatPanel({
           }}
         >
           {channels.length === 0 && <div className="nv-empty">No channels yet</div>}
-          {channels.map((c) => (
-            <a
-              key={c.id}
-              href={`/m/chat?c=${c.id}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                borderRadius: "var(--nv-radius-md)",
-                textDecoration: "none",
-                color: "var(--nv-color-text)",
-                fontSize: "var(--nv-font-sm)",
-                fontWeight: activeChannelId === c.id ? 700 : 500,
-                background: activeChannelId === c.id ? "var(--nv-color-primary-alpha)" : "transparent",
-              }}
-            >
-              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {channelLabel(c)}
-              </span>
-              <span style={{ color: "var(--nv-color-text-faint)", fontSize: 12 }}>{c._count.messages}</span>
-            </a>
-          ))}
+          {channels.map((c) => {
+            const unreadCount = unread[c.id] ?? 0;
+            return (
+              <div
+                key={c.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 2,
+                  padding: "4px 6px",
+                  borderRadius: "var(--nv-radius-md)",
+                  background:
+                    activeChannelId === c.id ? "var(--nv-color-primary-alpha)" : "transparent",
+                }}
+              >
+                <a
+                  href={`/m/chat?c=${c.id}`}
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    minWidth: 0,
+                    padding: "4px 4px",
+                    textDecoration: "none",
+                    color: "var(--nv-color-text)",
+                    fontSize: "var(--nv-font-sm)",
+                    fontWeight: activeChannelId === c.id ? 700 : 500,
+                  }}
+                >
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {channelLabel(c)}
+                  </span>
+                  {unreadCount > 0 && activeChannelId !== c.id ? (
+                    <span className="nv-badge nv-badge-amber">{unreadCount}</span>
+                  ) : null}
+                  <span style={{ color: "var(--nv-color-text-faint)", fontSize: 12 }}>{c._count.messages}</span>
+                </a>
+                {c.kind === "CHANNEL" ? (
+                  <Dropdown trigger={<Button variant="ghost" size="sm" style={{ minWidth: 0, padding: "2px 6px" }}>⋯</Button>}>
+                    <MenuItem onSelect={() => setRenaming(c)}>Rename</MenuItem>
+                    <MenuItem danger onSelect={() => setConfirming(c)}>
+                      Delete
+                    </MenuItem>
+                  </Dropdown>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -256,6 +349,78 @@ export function ChatPanel({
                   </span>
                 </div>
                 <div style={{ whiteSpace: "pre-wrap", fontSize: "var(--nv-font-md)" }}>{m.body}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                  {Object.entries(reactionGroups(m, userId)).map(([emoji, { count, mine }]) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => submitReact(m.id, emoji)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 12,
+                        border: `1px solid ${mine ? "var(--nv-color-primary)" : "var(--nv-color-border)"}`,
+                        background: mine ? "var(--nv-color-primary-alpha)" : "transparent",
+                        color: "var(--nv-color-text)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>{emoji}</span>
+                      <span style={{ fontWeight: 600 }}>{count}</span>
+                    </button>
+                  ))}
+                  {pickerFor === m.id ? (
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 2,
+                        padding: "2px 6px",
+                        borderRadius: 999,
+                        border: "1px solid var(--nv-color-border)",
+                      }}
+                    >
+                      {reactionEmojis.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => {
+                            submitReact(m.id, emoji);
+                            setPickerFor(null);
+                          }}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            cursor: "pointer",
+                            fontSize: 14,
+                            padding: "1px 4px",
+                          }}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setPickerFor(m.id)}
+                      style={{
+                        border: "1px solid var(--nv-color-border)",
+                        background: "transparent",
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        fontSize: 12,
+                        color: "var(--nv-color-text-faint)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      +
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -330,6 +495,50 @@ export function ChatPanel({
               ),
             )}
           </select>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={renaming !== null}
+        onClose={() => setRenaming(null)}
+        title="Rename channel"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setRenaming(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="rename-channel-form">
+              Save
+            </Button>
+          </>
+        }
+      >
+        <form id="rename-channel-form" action={submitRename}>
+          <input type="hidden" name="channelId" value={renaming?.id ?? ""} />
+          <input className="nv-input" name="name" defaultValue={renaming?.name ?? ""} autoFocus required />
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={confirming !== null}
+        onClose={() => setConfirming(null)}
+        title="Delete channel"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setConfirming(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" type="submit" form="delete-channel-form">
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <form id="delete-channel-form" action={submitDelete}>
+          <input type="hidden" name="channelId" value={confirming?.id ?? ""} />
+          <div style={{ fontSize: "var(--nv-font-sm)" }}>
+            Delete <strong>{confirming?.name}</strong>? All messages in this channel will be removed.
+          </div>
         </form>
       </Dialog>
     </div>

@@ -20,6 +20,8 @@ export const blocksSchema = z.array(
   }),
 );
 
+export const notesSchema = z.string().max(10000);
+
 export function defaultBlocks(): Block[] {
   return [
     { type: "title", content: "Your title here" },
@@ -114,6 +116,16 @@ export class SlidesService {
     if (!slide) throw new Error("Slide not found in this workspace");
     await prisma.slide.update({ where: { id: slideId }, data: { blocks, updatedAt: new Date() } });
     await prisma.presentation.update({ where: { id: slide.presentationId }, data: { updatedAt: new Date() } });
+    return slide;
+  }
+
+  async saveNotes(slideId: string, notes: string) {
+    await this.assert("UPDATE");
+    const slide = await prisma.slide.findFirst({ where: { id: slideId, workspaceId: this.workspaceId } });
+    if (!slide) throw new Error("Slide not found in this workspace");
+    await prisma.slide.update({ where: { id: slideId }, data: { notes, updatedAt: new Date() } });
+    await prisma.presentation.update({ where: { id: slide.presentationId }, data: { updatedAt: new Date() } });
+    await this.audit("presentation.notes_saved", slide.presentationId);
     return slide;
   }
 

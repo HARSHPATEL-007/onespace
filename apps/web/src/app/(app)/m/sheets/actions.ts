@@ -1,6 +1,6 @@
 "use server";
 
-import { SheetsService, workbookSchema, sheetNameSchema, cellSchema } from "@n0va/modules-sheets/server";
+import { SheetsService, workbookSchema, sheetNameSchema, cellSchema, cellMetaSchema } from "@n0va/modules-sheets/server";
 import { actionContext } from "@/lib/action-context";
 
 const svc = async () => {
@@ -47,4 +47,10 @@ export async function saveCellAction(formData: FormData) {
   const value = String(formData.get("value") ?? "");
   const { col: c, row: r, value: v } = cellSchema.parse({ col, row, value });
   await (await svc()).saveCell(sheetId, c, r, v);
+}
+
+export async function saveCellMetaAction(formData: FormData) {
+  const sheetId = String(formData.get("sheetId") ?? "");
+  const meta = cellMetaSchema.parse(JSON.parse(String(formData.get("meta") ?? "{}")));
+  await (await svc()).saveCellMeta(sheetId, meta);
 }

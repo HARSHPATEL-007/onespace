@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { prisma, logAudit, type AuditLog, type WorkspaceMember } from "@n0va/db";
+import { prisma, logAudit, type AuditLog, type Invite, type WorkspaceMember } from "@n0va/db";
 import { rankOf, type Role } from "@n0va/authz";
 import bcrypt from "bcryptjs";
 
@@ -12,6 +12,8 @@ export const inviteSchema = z.object({
 });
 
 export type MemberRow = WorkspaceMember & { user: { id: string; name: string | null; email: string; createdAt: Date } };
+
+export type InviteRow = Invite & { state: "accepted" | "expired" | "pending" };
 
 export class AdminConsoleService {
   constructor(
@@ -43,10 +45,12 @@ export class AdminConsoleService {
     await this.audit("console.role.changed", memberId);
   }
 
-  async invite(input: z.infer<typeof inviteSchema>): Promise<{ email: string; temporaryPassword: string }> {
+  async invite(input: z.infer<typeof inviteSchema>): Promise<{ email: string; temporaryPassword: string; token: string }> {
     await this.assert();
     const temporaryPassword = `nv-${crypto.randomUUID().slice(0, 10)}`;
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    const token = `nv-inv-${crypto.randomUUID().slice(0, 12)}`;
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const user = await prisma.user.upsert({
       where: { email: input.email },
       update: { name: input.name || undefined, passwordHash },
@@ -57,8 +61,37 @@ export class AdminConsoleService {
       update: { role: input.role, status: "ACTIVE" },
       create: { workspaceId: this.workspaceId, userId: user.id, role: input.role, status: "ACTIVE" },
     });
+    await prisma.invite.upsert({
+      where: { workspaceId_email: { workspaceId: this.workspaceId, email: user.email } },
+      update: { token, expiresAt, role: input.role, usedAt: null, createdById: this.userId },
+      create: { workspaceId: this.workspaceId, email: user.email, token, expiresAt, role: input.role, createdById: this.userId },
+    });
     await this.audit("console.member.invited", user.id);
-    return { email: user.email, temporaryPassword };
+    return { email: user.email, temporaryPassword, token };
+  }
+
+  async invites(): Promise<InviteRow[]> {
+    await this.assert();
+    const rows = await prisma.invite.findMany({
+      where: { workspaceId: this.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map((inv) => ({
+      ...inv,
+      state: inv.usedAt
+        ? "accepted"
+        : inv.expiresAt.getTime() < Date.now()
+          ? "expired"
+          : "pending",
+    }));
+  }
+
+  async revokeInvite(inviteId: string): Promise<void> {
+    await this.assert();
+    const invite = await prisma.invite.findFirst({ where: { id: inviteId, workspaceId: this.workspaceId } });
+    if (!invite) throw new Error("Invite not found");
+    await prisma.invite.delete({ where: { id: inviteId } });
+    await this.audit("console.invite.revoked", inviteId);
   }
 
   async removeMember(memberId: string): Promise<void> {

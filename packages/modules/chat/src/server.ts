@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { prisma, logAudit } from "@n0va/db";
+import { prisma, logAudit, type Prisma } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 import { publish } from "./emitter";
 
@@ -12,6 +12,21 @@ export const channelSchema = z.object({
 export const messageSchema = z.object({
   body: z.string().min(1).max(8000),
 });
+
+export const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🚀"] as const;
+
+export const reactionSchema = z.object({
+  messageId: z.string().min(1),
+  emoji: z.enum(REACTION_EMOJIS),
+});
+
+export const channelIdSchema = z.string().min(1);
+
+export interface MessageReaction {
+  emoji: string;
+  userId: string;
+  authorName: string;
+}
 
 export class ChatService {
   constructor(
@@ -147,6 +162,65 @@ export class ChatService {
   async deleteMessage(messageId: string) {
     await this.assert("DELETE");
     await prisma.chatMessage.delete({ where: { id: messageId } });
+  }
+
+  async react(messageId: string, emoji: string, authorName: string) {
+    await this.assert("UPDATE");
+    const message = await prisma.chatMessage.findFirst({
+      where: { id: messageId, workspaceId: this.workspaceId },
+    });
+    if (!message) throw new Error("Message not found in this workspace");
+    const reactions = Array.isArray(message.reactions)
+      ? (message.reactions as unknown as MessageReaction[])
+      : [];
+    const existing = reactions.findIndex(
+      (r) => r.emoji === emoji && r.userId === this.userId,
+    );
+    const next =
+      existing >= 0
+        ? reactions.filter((_, i) => i !== existing)
+        : [...reactions, { emoji, userId: this.userId, authorName }];
+    await prisma.chatMessage.update({
+      where: { id: messageId },
+      data: { reactions: next as unknown as Prisma.InputJsonValue },
+    });
+  }
+
+  async unread(): Promise<Record<string, number>> {
+    await this.assert("READ");
+    const channels = await prisma.chatChannel.findMany({
+      where: { workspaceId: this.workspaceId },
+      select: { id: true },
+    });
+    const ids = channels.map((c) => c.id);
+    if (ids.length === 0) return {};
+    const members = await prisma.chatMember.findMany({
+      where: { userId: this.userId, channelId: { in: ids } },
+      select: { channelId: true, lastReadAt: true },
+    });
+    const lastRead = new Map(members.map((m) => [m.channelId, m.lastReadAt]));
+    const rows = await Promise.all(
+      ids.map(async (id) => {
+        const since = lastRead.get(id);
+        const count = since
+          ? await prisma.chatMessage.count({
+              where: { channelId: id, createdAt: { gt: since } },
+            })
+          : await prisma.chatMessage.count({ where: { channelId: id } });
+        return [id, count] as const;
+      }),
+    );
+    return Object.fromEntries(rows.filter(([, n]) => n > 0));
+  }
+
+  async markRead(channelId: string) {
+    await this.assert("READ");
+    await this.ownedChannel(channelId);
+    await prisma.chatMember.upsert({
+      where: { channelId_userId: { channelId, userId: this.userId } },
+      create: { channelId, userId: this.userId, lastReadAt: new Date() },
+      update: { lastReadAt: new Date() },
+    });
   }
 
   private async ownedChannel(channelId: string) {

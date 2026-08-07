@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, cn } from "@n0va/ui";
 import type { Sheet, SheetWorkbook } from "@n0va/db";
@@ -14,14 +14,31 @@ export interface SheetsListActions {
 
 export interface SheetGridActions {
   saveCell: (formData: FormData) => Promise<void>;
+  saveCellMeta: (formData: FormData) => Promise<void>;
   renameWorkbook: (formData: FormData) => Promise<void>;
   addSheet: (formData: FormData) => Promise<void>;
   renameSheet: (formData: FormData) => Promise<void>;
   removeSheet: (formData: FormData) => Promise<void>;
 }
 
+export interface CellStyle {
+  bold?: boolean;
+  color?: string;
+  bg?: string;
+}
+
+export interface SheetMeta {
+  cells?: Record<string, CellStyle>;
+  widths?: Record<string, number>;
+}
+
 const MAX_COLS = 26;
 const PAGE_ROWS = 30;
+const COL_MIN = 48;
+const COL_MAX = 400;
+const COL_DEFAULT = 96;
+const TEXT_COLORS = ["#111111", "#dc2626", "#16a34a", "#2563eb", "#9333ea"];
+const BG_COLORS = ["#fef9c3", "#fee2e2", "#dcfce7", "#dbeafe", "#f5d0fe"];
 
 export function WorkbookList({
   workbooks,
@@ -127,6 +144,7 @@ export function SheetGrid({
   sheets,
   activeSheet,
   rows,
+  cellMeta,
   actions,
 }: {
   workbookId: string;
@@ -134,6 +152,7 @@ export function SheetGrid({
   sheets: Sheet[];
   activeSheet: Sheet;
   rows: string[][];
+  cellMeta?: SheetMeta;
   actions: SheetGridActions;
 }) {
   const router = useRouter();
@@ -144,7 +163,44 @@ export function SheetGrid({
   const [formulaBar, setFormulaBar] = useState("");
   const [renameOpen, setRenameOpen] = useState(false);
   const [sheetNameDraft, setSheetNameDraft] = useState(activeSheet.name);
+  const [cellStyles, setCellStyles] = useState<Record<string, CellStyle>>(cellMeta?.cells ?? {});
+  const [widths, setWidths] = useState<Record<string, number>>(cellMeta?.widths ?? {});
+  const [dragCol, setDragCol] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dragRef = useRef<{ col: number; startX: number; startWidth: number } | null>(null);
+  const widthsRef = useRef(widths);
+
+  const colWidth = (c: number) => widths[colName(c)] ?? COL_DEFAULT;
+
+  useEffect(() => {
+    if (dragCol === null) return;
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const w = Math.min(COL_MAX, Math.max(COL_MIN, d.startWidth + (e.clientX - d.startX)));
+      setWidths((prev) => {
+        const next = { ...prev, [colName(d.col)]: w };
+        widthsRef.current = next;
+        return next;
+      });
+    };
+    const onUp = () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      setDragCol(null);
+      if (!d) return;
+      const fd = new FormData();
+      fd.set("sheetId", activeSheet.id);
+      fd.set("meta", JSON.stringify({ widths: widthsRef.current }));
+      void actions.saveCellMeta(fd);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragCol]);
 
   const visibleRows = useMemo(() => {
     const count = Math.max(data.length, PAGE_ROWS);
@@ -179,6 +235,34 @@ export function SheetGrid({
   const selectCell = (col: number, row: number) => {
     setSel({ col, row });
     setFormulaBar(data[row]?.[col] ?? "");
+  };
+
+  const setCellStyle = (patch: { bold?: boolean; color?: string | null; bg?: string | null }) => {
+    if (!sel) return;
+    const ref = `${colName(sel.col)}${sel.row + 1}`;
+    setCellStyles((prev) => {
+      const next = { ...prev };
+      const cur = { ...(prev[ref] ?? {}) };
+      if (patch.bold !== undefined) {
+        if (patch.bold === null) delete cur.bold;
+        else cur.bold = patch.bold;
+      }
+      if (patch.color !== undefined) {
+        if (patch.color === null) delete cur.color;
+        else cur.color = patch.color;
+      }
+      if (patch.bg !== undefined) {
+        if (patch.bg === null) delete cur.bg;
+        else cur.bg = patch.bg;
+      }
+      if (Object.keys(cur).length === 0) delete next[ref];
+      else next[ref] = cur;
+      return next;
+    });
+    const fd = new FormData();
+    fd.set("sheetId", activeSheet.id);
+    fd.set("meta", JSON.stringify({ cells: { [ref]: patch } }));
+    void actions.saveCellMeta(fd);
   };
 
   const addRow = () => {
@@ -284,6 +368,70 @@ export function SheetGrid({
         />
       </div>
 
+      {/* Formatting toolbar */}
+      {sel && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 12px",
+            background: "var(--nv-color-surface)",
+            border: "1px solid var(--nv-color-border)",
+            borderTop: "none",
+          }}
+        >
+          <Button
+            size="sm"
+            variant={cellStyles[`${colName(sel.col)}${sel.row + 1}`]?.bold ? "secondary" : "ghost"}
+            onClick={() => setCellStyle({ bold: !cellStyles[`${colName(sel.col)}${sel.row + 1}`]?.bold })}
+            style={{ fontWeight: 800, padding: "0 10px" }}
+          >
+            B
+          </Button>
+          <div style={{ width: 1, height: 18, background: "var(--nv-color-border)" }} />
+          {TEXT_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              title={c}
+              onClick={() => setCellStyle({ color: cellStyles[`${colName(sel.col)}${sel.row + 1}`]?.color === c ? null : c })}
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 4,
+                padding: 0,
+                background: c,
+                border: "1px solid var(--nv-color-border)",
+                cursor: "pointer",
+                outline: cellStyles[`${colName(sel.col)}${sel.row + 1}`]?.color === c ? "2px solid var(--nv-color-primary)" : "none",
+                outlineOffset: 1,
+              }}
+            />
+          ))}
+          <div style={{ width: 1, height: 18, background: "var(--nv-color-border)" }} />
+          {BG_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              title={c}
+              onClick={() => setCellStyle({ bg: cellStyles[`${colName(sel.col)}${sel.row + 1}`]?.bg === c ? null : c })}
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 4,
+                padding: 0,
+                background: c,
+                border: "1px solid var(--nv-color-border)",
+                cursor: "pointer",
+                outline: cellStyles[`${colName(sel.col)}${sel.row + 1}`]?.bg === c ? "2px solid var(--nv-color-primary)" : "none",
+                outlineOffset: 1,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Grid */}
       <div
         style={{
@@ -310,27 +458,50 @@ export function SheetGrid({
                   zIndex: 3,
                 }}
               />
-              {Array.from({ length: MAX_COLS }, (_, c) => (
-                <th
-                  key={c}
-                  style={{
-                    minWidth: 110,
-                    background: "var(--nv-color-surface-2)",
-                    borderBottom: "1px solid var(--nv-color-border)",
-                    borderRight: "1px solid var(--nv-color-border)",
-                    fontWeight: 600,
-                    fontSize: 11,
-                    color: "var(--nv-color-text-muted)",
-                    padding: "4px 8px",
-                    textAlign: "left",
-                    position: "sticky",
-                    top: 0,
-                    zIndex: 2,
-                  }}
-                >
-                  {colName(c)}
-                </th>
-              ))}
+              {Array.from({ length: MAX_COLS }, (_, c) => {
+                const w = colWidth(c);
+                return (
+                  <th
+                    key={c}
+                    style={{
+                      width: w,
+                      minWidth: w,
+                      background: "var(--nv-color-surface-2)",
+                      borderBottom: "1px solid var(--nv-color-border)",
+                      borderRight: "1px solid var(--nv-color-border)",
+                      fontWeight: 600,
+                      fontSize: 11,
+                      color: "var(--nv-color-text-muted)",
+                      padding: "4px 8px",
+                      textAlign: "left",
+                      position: "sticky",
+                      top: 0,
+                      zIndex: 2,
+                    }}
+                  >
+                    {colName(c)}
+                    <div
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dragRef.current = { col: c, startX: e.clientX, startWidth: colWidth(c) };
+                        setDragCol(c);
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        right: 0,
+                        width: 6,
+                        cursor: "col-resize",
+                        zIndex: 4,
+                        userSelect: "none",
+                        background: dragCol === c ? "var(--nv-color-primary)" : "transparent",
+                      }}
+                    />
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -358,11 +529,14 @@ export function SheetGrid({
                   const display = cellDisplay(raw, data);
                   const isSel = sel?.col === c && sel?.row === r;
                   const isEditing = editing?.col === c && editing?.row === r;
+                  const cellStyle = cellStyles[`${colName(c)}${r + 1}`];
+                  const w = colWidth(c);
                   return (
                     <td
                       key={c}
                       style={{
-                        minWidth: 110,
+                        width: w,
+                        minWidth: w,
                         padding: 0,
                         borderRight: "1px solid var(--nv-color-border)",
                         borderBottom: "1px solid var(--nv-color-border)",
@@ -393,9 +567,11 @@ export function SheetGrid({
                             border: "none",
                             outline: "none",
                             padding: "4px 8px",
-                            background: "#fff",
+                            background: cellStyle?.bg ?? "#fff",
                             fontFamily: "inherit",
                             fontSize: 13,
+                            fontWeight: cellStyle?.bold ? 700 : undefined,
+                            color: cellStyle?.color,
                             boxSizing: "border-box",
                             boxShadow: "inset 0 0 0 2px var(--nv-color-primary)",
                           }}
@@ -407,7 +583,9 @@ export function SheetGrid({
                             whiteSpace: "nowrap",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
-                            color: display.startsWith("#") ? "var(--nv-color-danger)" : undefined,
+                            fontWeight: cellStyle?.bold ? 700 : undefined,
+                            color: cellStyle?.color ?? (display.startsWith("#") ? "var(--nv-color-danger)" : undefined),
+                            background: cellStyle?.bg,
                           }}
                           title={raw.startsWith("=") ? raw : undefined}
                         >

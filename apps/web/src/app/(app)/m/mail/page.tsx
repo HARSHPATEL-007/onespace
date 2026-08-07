@@ -29,7 +29,7 @@ export default async function MailPage({
     ? (folder as MailFolder)
     : "INBOX";
 
-  const [threads, labels, unreadCount] = await Promise.all([
+  const [threads, labels, unreadCounts] = await Promise.all([
     svc.listFolder(activeFolder),
     svc.labels(),
     svc.unreadCounts(),
@@ -40,7 +40,7 @@ export default async function MailPage({
       folder={activeFolder}
       threads={threads}
       labels={labels}
-      unreadCount={unreadCount}
+      unreadCounts={unreadCounts}
       actions={{
         send: sendMailAction,
         reply: replyMailAction,

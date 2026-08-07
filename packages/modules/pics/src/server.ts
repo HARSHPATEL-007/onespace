@@ -66,10 +66,14 @@ export class PicsService {
     });
   }
 
-  async photos(albumId?: string | null) {
+  async photos(albumId?: string | null, favoritesOnly = false) {
     await this.assert("READ");
     return prisma.photo.findMany({
-      where: { workspaceId: this.workspaceId, ...(albumId ? { albumId } : {}) },
+      where: {
+        workspaceId: this.workspaceId,
+        ...(favoritesOnly ? { favorite: true } : {}),
+        ...(albumId && !favoritesOnly ? { albumId } : {}),
+      },
       orderBy: { uploadedAt: "desc" },
     });
   }
@@ -142,6 +146,14 @@ export class PicsService {
     if (!photo) throw new Error("Photo not found in this workspace");
     if (albumId) await this.ownedAlbum(albumId);
     return prisma.photo.update({ where: { id }, data: { albumId } });
+  }
+
+  async toggleFavorite(id: string) {
+    await this.assert("UPDATE");
+    const photo = await prisma.photo.findFirst({ where: { id, workspaceId: this.workspaceId } });
+    if (!photo) throw new Error("Photo not found in this workspace");
+    await prisma.photo.update({ where: { id }, data: { favorite: !photo.favorite } });
+    await this.audit("photo.favorited", id);
   }
 
   private async ownedAlbum(id: string) {

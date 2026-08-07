@@ -29,3 +29,7 @@ export async function removeAutomationAction(formData: FormData) {
 export async function runAutomationAction(formData: FormData) {
   return (await svc()).run(String(formData.get("id") ?? ""));
 }
+
+export async function runHistoryAction(formData: FormData) {
+  return (await svc()).runHistory(String(formData.get("id") ?? ""));
+}

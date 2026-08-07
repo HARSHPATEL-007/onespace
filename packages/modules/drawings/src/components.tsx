@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, cn } from "@n0va/ui";
 import type { Drawing } from "@n0va/db";
@@ -16,6 +16,16 @@ export interface DrawingsActions {
 type Tool = "select" | "rect" | "ellipse" | "line" | "text";
 
 const COLORS = ["#7c5cfc", "#ef4444", "#f59e0b", "#22c55e", "#0ea5e9", "#1a1c23"];
+
+function downloadBlob(url: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export function DrawingsList({
   drawings,
@@ -109,18 +119,135 @@ export function CanvasEditor({
   const [tool, setTool] = useState<Tool>("select");
   const [color, setColor] = useState(COLORS[0]!);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [saved, setSaved] = useState(true);
+  const [status, setStatus] = useState<"saved" | "saving" | "dirty">("saved");
+  const [undoStack, setUndoStack] = useState<Shape[][]>([]);
+  const [redoStack, setRedoStack] = useState<Shape[][]>([]);
   const [textDraft, setTextDraft] = useState("");
   const [textPos, setTextPos] = useState<{ x: number; y: number } | null>(null);
   const dragRef = useRef<{ startX: number; startY: number; shape: Shape | null } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shapesRef = useRef<Shape[]>(shapes);
 
-  const save = () => {
+  useEffect(() => {
+    shapesRef.current = shapes;
+  });
+
+  const pushUndo = (prev: Shape[]) => {
+    setUndoStack((stack) => [...stack, prev].slice(-50));
+    setRedoStack([]);
+  };
+
+  const scheduleSave = () => {
+    setStatus("dirty");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => doSave(shapesRef.current), 800);
+  };
+
+  const doSave = (data: Shape[]) => {
+    setStatus("saving");
     const fd = new FormData();
     fd.set("id", drawing.id);
-    fd.set("canvas", JSON.stringify(shapes));
-    void actions.saveCanvas(fd).then(() => setSaved(true));
+    fd.set("canvas", JSON.stringify(data));
+    void actions.saveCanvas(fd).then(() => {
+      if (shapesRef.current !== data) {
+        scheduleSave();
+        return;
+      }
+      setStatus("saved");
+      setTimeout(() => router.refresh(), 50);
+    });
   };
+
+  const save = () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    doSave(shapesRef.current);
+  };
+
+  const undo = () => {
+    const last = undoStack[undoStack.length - 1];
+    if (!last) return;
+    dragRef.current = null;
+    setShapes(last);
+    setSelectedId(null);
+    setUndoStack((stack) => stack.slice(0, -1));
+    setRedoStack((stack) => (stack[stack.length - 1] === shapes ? stack : [...stack, shapes].slice(-50)));
+    scheduleSave();
+  };
+
+  const redo = () => {
+    const next = redoStack[redoStack.length - 1];
+    if (!next) return;
+    dragRef.current = null;
+    setShapes(next);
+    setSelectedId(null);
+    setRedoStack((stack) => stack.slice(0, -1));
+    setUndoStack((stack) => (stack[stack.length - 1] === shapes ? stack : [...stack, shapes].slice(-50)));
+    scheduleSave();
+  };
+
+  const serializeSvg = () => {
+    const node = svgRef.current;
+    if (!node) return "";
+    const clone = node.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("width", "900");
+    clone.setAttribute("height", "560");
+    clone.querySelectorAll("[data-export-ignore]").forEach((n) => n.remove());
+    return new XMLSerializer().serializeToString(clone);
+  };
+
+  const exportSvg = () => {
+    const svg = serializeSvg();
+    if (!svg) return;
+    downloadBlob(URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })), `drawing-${drawing.name}.svg`);
+  };
+
+  const exportPng = () => {
+    const svg = serializeSvg();
+    if (!svg) return;
+    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = 900 * scale;
+      canvas.height = 560 * scale;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (blob) downloadBlob(URL.createObjectURL(blob), `drawing-${drawing.name}.png`);
+        URL.revokeObjectURL(url);
+      });
+    };
+    img.onerror = () => URL.revokeObjectURL(url);
+    img.src = url;
+  };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   const local = (e: React.MouseEvent): { x: number; y: number } => {
     const rect = svgRef.current!.getBoundingClientRect();
@@ -138,6 +265,7 @@ export function CanvasEditor({
         }
         return pos.x >= s.x && pos.x <= s.x + s.w && pos.y >= s.y && pos.y <= s.y + s.h;
       });
+      if (hit) pushUndo(shapes);
       setSelectedId(hit?.id ?? null);
       dragRef.current = { startX: pos.x, startY: pos.y, shape: hit ?? null };
       return;
@@ -149,6 +277,7 @@ export function CanvasEditor({
       return;
     }
     const pos = local(e);
+    pushUndo(shapes);
     dragRef.current = { startX: pos.x, startY: pos.y, shape: null };
   };
 
@@ -166,7 +295,7 @@ export function CanvasEditor({
       );
       drag.startX = pos.x;
       drag.startY = pos.y;
-      setSaved(false);
+      scheduleSave();
       return;
     }
     if (!drag.shape && tool !== "select" && tool !== "text") {
@@ -211,13 +340,14 @@ export function CanvasEditor({
           },
         ];
       });
-      setSaved(false);
+      scheduleSave();
     }
     dragRef.current = null;
   };
 
   const commitText = () => {
     if (textPos && textDraft.trim()) {
+      pushUndo(shapes);
       setShapes((prev) => [
         ...prev,
         {
@@ -231,7 +361,7 @@ export function CanvasEditor({
           text: textDraft,
         },
       ]);
-      setSaved(false);
+      scheduleSave();
     }
     setTextPos(null);
     setTextDraft("");
@@ -239,15 +369,17 @@ export function CanvasEditor({
 
   const deleteSelected = () => {
     if (!selectedId) return;
+    pushUndo(shapes);
     setShapes((prev) => prev.filter((s) => s.id !== selectedId));
     setSelectedId(null);
-    setSaved(false);
+    scheduleSave();
   };
 
   const clearAll = () => {
+    pushUndo(shapes);
     setShapes([]);
     setSelectedId(null);
-    setSaved(false);
+    scheduleSave();
   };
 
   return (
@@ -258,11 +390,23 @@ export function CanvasEditor({
         </a>
         <span style={{ fontWeight: 800, fontSize: "var(--nv-font-lg)" }}>{drawing.name}</span>
         <div style={{ flex: 1 }} />
+        <Button variant="ghost" size="sm" onClick={undo} disabled={undoStack.length === 0}>
+          ↩ Undo
+        </Button>
+        <Button variant="ghost" size="sm" onClick={redo} disabled={redoStack.length === 0}>
+          ↪ Redo
+        </Button>
         <Button variant="ghost" size="sm" onClick={clearAll}>
           Clear
         </Button>
-        <Button onClick={save} disabled={saved}>
-          {saved ? "Saved" : "Save"}
+        <Button variant="ghost" size="sm" onClick={exportSvg}>
+          Export SVG
+        </Button>
+        <Button variant="ghost" size="sm" onClick={exportPng}>
+          Export PNG
+        </Button>
+        <Button onClick={save} disabled={status === "saved"}>
+          {status === "saving" ? "Saving…" : status === "saved" ? "Saved ✓" : "Save"}
         </Button>
       </div>
 
@@ -348,7 +492,7 @@ export function CanvasEditor({
                     </text>
                   )}
                   {isSelected && s.type !== "text" && (
-                    <rect x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} fill="none" stroke={stroke} strokeWidth={1.5} strokeDasharray="4 3" />
+                    <rect data-export-ignore x={s.x - 3} y={s.y - 3} width={s.w + 6} height={s.h + 6} fill="none" stroke={stroke} strokeWidth={1.5} strokeDasharray="4 3" />
                   )}
                 </g>
               );

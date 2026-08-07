@@ -33,6 +33,28 @@ export class MeetService {
     });
   }
 
+  async listEndedRooms() {
+    await this.assert("READ");
+    return prisma.meetRoom.findMany({
+      where: { workspaceId: this.workspaceId, endedAt: { not: null } },
+      include: { _count: { select: { participants: true } } },
+      orderBy: { endedAt: "desc" },
+    });
+  }
+
+  async transcript(roomId: string) {
+    await this.assert("READ");
+    const room = await prisma.meetRoom.findFirst({
+      where: { id: roomId, workspaceId: this.workspaceId, endedAt: { not: null } },
+    });
+    if (!room) throw new Error("Room not found in this workspace");
+    const [messages, participants] = await Promise.all([
+      prisma.meetMessage.findMany({ where: { roomId }, orderBy: { createdAt: "asc" } }),
+      prisma.meetParticipant.findMany({ where: { roomId }, orderBy: { joinedAt: "asc" } }),
+    ]);
+    return { room, messages, participants };
+  }
+
   async createRoom(name: string) {
     await this.assert("CREATE");
     const room = await prisma.meetRoom.create({

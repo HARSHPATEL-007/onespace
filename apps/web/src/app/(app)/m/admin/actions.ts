@@ -23,6 +23,7 @@ export async function resetModuleAction(formData: FormData) {
   await (await svc()).resetModule(String(formData.get("module") ?? ""));
 }
 
-export async function logModuleStatusAction(formData: FormData) {
-  await (await svc()).setModuleStatus(String(formData.get("module") ?? ""), "live");
+export async function setModuleStatusAction(formData: FormData) {
+  const status = formData.get("status") === "planned" ? "planned" : "live";
+  await (await svc()).setModuleStatus(String(formData.get("module") ?? ""), status);
 }

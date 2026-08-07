@@ -1,7 +1,7 @@
 import { StudioService } from "@n0va/modules-workspace-studio/server";
 import { Studio } from "@n0va/modules-workspace-studio/components";
 import { requireWorkspace } from "@/lib/context";
-import { createAutomationAction, toggleAutomationAction, removeAutomationAction, runAutomationAction } from "./actions";
+import { createAutomationAction, toggleAutomationAction, removeAutomationAction, runAutomationAction, runHistoryAction } from "./actions";
 
 export default async function StudioPage() {
   const { workspaceId, userId, role } = await requireWorkspace();
@@ -16,6 +16,7 @@ export default async function StudioPage() {
         toggle: toggleAutomationAction,
         remove: removeAutomationAction,
         run: runAutomationAction,
+        runHistory: runHistoryAction,
       }}
     />
   );

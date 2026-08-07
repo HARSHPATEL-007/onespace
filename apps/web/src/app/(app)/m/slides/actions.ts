@@ -1,6 +1,6 @@
 "use server";
 
-import { SlidesService, presentationSchema, blocksSchema } from "@n0va/modules-slides/server";
+import { SlidesService, presentationSchema, blocksSchema, notesSchema } from "@n0va/modules-slides/server";
 import { actionContext } from "@/lib/action-context";
 
 const svc = async () => {
@@ -35,6 +35,12 @@ export async function saveSlideBlocksAction(formData: FormData) {
   const raw = String(formData.get("blocks") ?? "[]");
   const blocks = blocksSchema.parse(JSON.parse(raw));
   await (await svc()).saveBlocks(slideId, blocks);
+}
+
+export async function saveSlideNotesAction(formData: FormData) {
+  const slideId = String(formData.get("slideId") ?? "");
+  const notes = notesSchema.parse(String(formData.get("notes") ?? ""));
+  await (await svc()).saveNotes(slideId, notes);
 }
 
 export async function deleteSlideAction(formData: FormData) {

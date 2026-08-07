@@ -44,6 +44,13 @@ export async function toggleTaskAction(formData: FormData) {
   await (await svc()).toggleComplete(String(formData.get("id")));
 }
 
+export async function moveTaskAction(formData: FormData) {
+  const direction = String(formData.get("direction") ?? "");
+  if (direction === "up" || direction === "down") {
+    await (await svc()).moveTask(String(formData.get("id")), direction);
+  }
+}
+
 export async function deleteTaskAction(formData: FormData) {
   await (await svc()).deleteTask(String(formData.get("id")));
 }

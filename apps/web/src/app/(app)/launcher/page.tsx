@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Badge, LauncherGrid, ModuleIcon } from "@n0va/ui";
 import { N0VA_MODULES, N0VA_LAYERS } from "@n0va/core";
+import { moduleEnableMap } from "@n0va/modules-admin/server";
+import { requireWorkspace } from "@/lib/context";
 
 const PHASE_LABELS: Record<number, { label: string; tone: "success" | "warning" | "neutral" }> = {
   0: { label: "Foundation", tone: "success" },
@@ -10,7 +12,10 @@ const PHASE_LABELS: Record<number, { label: string; tone: "success" | "warning" 
   4: { label: "Phase 4", tone: "neutral" },
 };
 
-export default function LauncherPage() {
+export default async function LauncherPage() {
+  const { workspaceId } = await requireWorkspace();
+  const enabled = await moduleEnableMap(workspaceId);
+
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto" }}>
       <div style={{ marginBottom: "var(--nv-space-5)" }}>
@@ -24,7 +29,7 @@ export default function LauncherPage() {
       </div>
 
       {N0VA_LAYERS.map((layer) => {
-        const modules = N0VA_MODULES.filter((m) => m.layer === layer);
+        const modules = N0VA_MODULES.filter((m) => m.layer === layer && enabled[m.id] !== false);
         if (modules.length === 0) return null;
         return (
           <div key={layer} style={{ marginBottom: "var(--nv-space-6)" }}>

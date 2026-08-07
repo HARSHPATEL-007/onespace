@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { prisma, logAudit, type Automation } from "@n0va/db";
+import { prisma, logAudit, type Automation, type AutomationRun } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 
 const MODULE = "workspace-studio";
@@ -12,6 +12,8 @@ export const automationSchema = z.object({
 });
 
 export type AutomationWithRuns = Automation & { runs: Array<{ id: string; status: string; detail: string; startedAt: Date }> };
+
+export type RunHistory = { runs: AutomationRun[]; total: number };
 
 export class StudioService {
   constructor(
@@ -51,7 +53,21 @@ export class StudioService {
 
   async toggle(id: string, enabled: boolean): Promise<void> {
     await this.assert("UPDATE");
+    const automation = await prisma.automation.findFirst({ where: { id, workspaceId: this.workspaceId } });
+    if (!automation) throw new Error("Automation not found");
     await prisma.automation.update({ where: { id }, data: { enabled } });
+    await this.audit("automation.toggled", automation.name);
+  }
+
+  async runHistory(id: string): Promise<RunHistory> {
+    await this.assert("READ");
+    const automation = await prisma.automation.findFirst({ where: { id, workspaceId: this.workspaceId } });
+    if (!automation) throw new Error("Automation not found");
+    const [runs, total] = await Promise.all([
+      prisma.automationRun.findMany({ where: { automationId: id }, orderBy: { startedAt: "desc" } }),
+      prisma.automationRun.count({ where: { automationId: id } }),
+    ]);
+    return { runs, total };
   }
 
   async remove(id: string): Promise<void> {

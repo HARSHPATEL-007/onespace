@@ -25,3 +25,7 @@ export async function movePhotoAction(formData: FormData) {
   const albumId = String(formData.get("albumId") ?? "");
   await (await svc()).movePhoto(String(formData.get("id") ?? ""), albumId ? albumId : null);
 }
+
+export async function toggleFavoriteAction(formData: FormData) {
+  await (await svc()).toggleFavorite(String(formData.get("id") ?? ""));
+}

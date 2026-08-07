@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Badge, Button, Dialog, Field, Input, MenuItem, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow, Textarea, cn } from "@n0va/ui";
+import { Badge, Button, Dialog, Field, Input, MenuItem, Select, Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow, Textarea, cn } from "@n0va/ui";
 import type { Form, FormResponse } from "@n0va/db";
 import { FIELD_TYPES, type FormField, type FieldType } from "./server";
 
@@ -103,6 +103,7 @@ export function FormsApp({
                   <TableCell>{form.updatedAt.toLocaleDateString()}</TableCell>
                   <TableCell>
                     <div style={{ display: "flex", gap: 6 }}>
+                      {form.published ? <CopyLinkButton formId={form.id} /> : null}
                       <Button variant="secondary" size="sm" onClick={() => openBuilder(form)}>Edit</Button>
                       <Button variant="secondary" size="sm" onClick={() => openResponses(form)}>Responses</Button>
                       <form action={actions.setPublished} onSubmit={() => setTimeout(refresh, 50)}>
@@ -292,4 +293,159 @@ function formatAnswer(value: unknown): string {
   if (Array.isArray(value)) return value.join(", ");
   if (value === null || value === undefined) return "—";
   return String(value);
+}
+
+function CopyLinkButton({ formId }: { formId: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${location.origin}/f/${formId}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <Button variant="ghost" size="sm" onClick={copy}>
+      {copied ? "Copied" : "Copy link"}
+    </Button>
+  );
+}
+
+export function PublicForm({
+  form,
+  submit,
+}: {
+  form: Pick<Form, "id" | "name" | "description" | "fields">;
+  submit: (formId: string, answers: Record<string, unknown>) => Promise<void>;
+}) {
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fields = (form.fields as unknown as FormField[]) ?? [];
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const answers: Record<string, unknown> = {};
+    for (const field of fields) {
+      answers[field.id] =
+        field.type === "checkbox"
+          ? fd.getAll(field.id).map(String)
+          : String(fd.get(field.id) ?? "");
+    }
+    const missing = fields.find(
+      (f) => f.required && f.type === "checkbox" && (answers[f.id] as string[]).length === 0,
+    );
+    if (missing) {
+      setError(`Please answer "${missing.label}"`);
+      return;
+    }
+    setError(null);
+    try {
+      await submit(form.id, answers);
+      setSubmitted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
+  };
+
+  if (submitted) {
+    return (
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "var(--nv-space-6)" }}>
+        <div className="nv-card" style={{ padding: "var(--nv-space-6)", textAlign: "center" }}>
+          <h1 style={{ fontSize: "var(--nv-font-xl)", fontWeight: 800 }}>Thank you</h1>
+          <p style={{ color: "var(--nv-color-text-muted)", marginTop: 8 }}>
+            Your response has been recorded.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto", padding: "var(--nv-space-6)" }}>
+      <div className="nv-card" style={{ padding: "var(--nv-space-6)" }}>
+        <h1 style={{ fontSize: "var(--nv-font-xl)", fontWeight: 800 }}>{form.name}</h1>
+        {form.description ? (
+          <p style={{ color: "var(--nv-color-text-muted)", marginTop: 8 }}>
+            {form.description}
+          </p>
+        ) : null}
+        <form onSubmit={handleSubmit} style={{ marginTop: "var(--nv-space-5)" }}>
+          {fields.map((field) => (
+            <PublicField key={field.id} field={field} />
+          ))}
+          {error ? (
+            <p style={{ color: "var(--nv-color-danger)", fontSize: "var(--nv-font-sm)", marginBottom: 12 }}>
+              {error}
+            </p>
+          ) : null}
+          <Button type="submit" block size="lg">
+            Submit
+          </Button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function PublicField({ field }: { field: FormField }) {
+  const label = `${field.label}${field.required ? " *" : ""}`;
+  const required = field.required;
+  switch (field.type) {
+    case "textarea":
+      return (
+        <Field label={label}>
+          <Textarea name={field.id} rows={3} required={required} />
+        </Field>
+      );
+    case "select":
+      return (
+        <Field label={label}>
+          <Select name={field.id} defaultValue="" required={required}>
+            <option value="" disabled>Select…</option>
+            {field.options.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </Select>
+        </Field>
+      );
+    case "radio":
+    case "checkbox": {
+      const checkbox = field.type === "checkbox";
+      return (
+        <div className="nv-field">
+          <span className="nv-label">{label}</span>
+          {field.options.map((o) => (
+            <label
+              key={o}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}
+            >
+              <input type={field.type} name={field.id} value={o} required={required && !checkbox} />
+              {o}
+            </label>
+          ))}
+        </div>
+      );
+    }
+    case "email":
+      return (
+        <Field label={label}>
+          <Input type="email" name={field.id} required={required} />
+        </Field>
+      );
+    case "number":
+      return (
+        <Field label={label}>
+          <Input type="number" name={field.id} required={required} />
+        </Field>
+      );
+    default:
+      return (
+        <Field label={label}>
+          <Input type="text" name={field.id} required={required} />
+        </Field>
+      );
+  }
 }

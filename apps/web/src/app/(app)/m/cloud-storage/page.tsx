@@ -8,6 +8,7 @@ import {
   renameItemAction,
   restoreItemAction,
   trashItemAction,
+  versionsItemAction,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export default async function StoragePage({
     return (
       <TrashApp
         items={items}
-        actions={{ createFolder: createFolderAction, rename: renameItemAction, move: moveItemAction, trash: trashItemAction, restore: restoreItemAction, purge: purgeItemAction }}
+        actions={{ createFolder: createFolderAction, rename: renameItemAction, move: moveItemAction, trash: trashItemAction, restore: restoreItemAction, purge: purgeItemAction, versions: versionsItemAction }}
       />
     );
   }
@@ -44,7 +45,7 @@ export default async function StoragePage({
       crumbs={crumbs}
       parentId={parentId}
       folderTargets={folderTargets.filter((f) => f.isFolder)}
-      actions={{ createFolder: createFolderAction, rename: renameItemAction, move: moveItemAction, trash: trashItemAction, restore: restoreItemAction, purge: purgeItemAction }}
+      actions={{ createFolder: createFolderAction, rename: renameItemAction, move: moveItemAction, trash: trashItemAction, restore: restoreItemAction, purge: purgeItemAction, versions: versionsItemAction }}
     />
   );
 }

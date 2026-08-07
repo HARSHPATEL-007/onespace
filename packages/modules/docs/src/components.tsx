@@ -21,6 +21,16 @@ export interface EditorActions {
   remove: (formData: FormData) => Promise<void>;
   save: (formData: FormData) => Promise<void>;
   comment: (formData: FormData) => Promise<void>;
+  getRevisions: (formData: FormData) => Promise<RevisionItem[]>;
+  restore: (formData: FormData) => Promise<void>;
+}
+
+export interface RevisionItem {
+  id: string;
+  createdAt: string;
+  authorName: string;
+  content: string;
+  preview: string;
 }
 
 export function DocsList({
@@ -143,6 +153,10 @@ export function DocEditor({
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [commentText, setCommentText] = useState("");
   const [commentAuthor, setCommentAuthor] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [revisions, setRevisions] = useState<RevisionItem[] | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const skipSaveRef = useRef(false);
 
   const editor = useEditor({
     extensions: [StarterKit],
@@ -168,6 +182,7 @@ export function DocEditor({
       void actions.save(fd).then(() => setSavedAt(new Date()));
     };
     const onEdit = () => {
+      if (skipSaveRef.current) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(save, 2000);
     };
@@ -187,6 +202,23 @@ export function DocEditor({
     });
   };
 
+  const restoreRevision = (revision: RevisionItem) => {
+    const fd = new FormData();
+    fd.set("id", doc.id);
+    fd.set("revisionId", revision.id);
+    setRestoring(true);
+    void actions.restore(fd).then(() => {
+      if (editor) {
+        skipSaveRef.current = true;
+        editor.commands.setContent(JSON.parse(revision.content));
+        skipSaveRef.current = false;
+      }
+      setHistoryOpen(false);
+      setRestoring(false);
+      router.refresh();
+    });
+  };
+
   return (
     <div style={{ maxWidth: 980, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
@@ -195,7 +227,23 @@ export function DocEditor({
           {savedAt ? `Saved ${savedAt.toLocaleTimeString()}` : "Editing…"}
         </span>
         <div style={{ flex: 1 }} />
-        <Button variant="ghost" size="sm" onClick={() => router.push(`/m/docs/${doc.id}?view=history`)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            if (historyOpen) {
+              setHistoryOpen(false);
+              return;
+            }
+            if (saveTimer.current) clearTimeout(saveTimer.current);
+            setHistoryOpen(true);
+            if (revisions === null) {
+              const fd = new FormData();
+              fd.set("id", doc.id);
+              void actions.getRevisions(fd).then(setRevisions);
+            }
+          }}
+        >
           History (v{doc.version})
         </Button>
       </div>
@@ -215,10 +263,22 @@ export function DocEditor({
       />
 
       <div className="nv-card" style={{ padding: "var(--nv-space-5)" }}>
-        <Toolbar editor={editor} />
-        <div style={{ minHeight: 420 }}>
-          <EditorContent editor={editor} />
-        </div>
+        {historyOpen ? (
+          <HistoryPanel
+            revisions={revisions}
+            version={doc.version}
+            restoring={restoring}
+            onRestore={restoreRevision}
+            onBack={() => setHistoryOpen(false)}
+          />
+        ) : (
+          <>
+            <Toolbar editor={editor} />
+            <div style={{ minHeight: 420 }}>
+              <EditorContent editor={editor} />
+            </div>
+          </>
+        )}
       </div>
 
       <div className="nv-card" style={{ padding: "var(--nv-space-4)", marginTop: "var(--nv-space-4)" }}>
@@ -255,6 +315,74 @@ export function DocEditor({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function HistoryPanel({
+  revisions,
+  version,
+  restoring,
+  onRestore,
+  onBack,
+}: {
+  revisions: RevisionItem[] | null;
+  version: number;
+  restoring: boolean;
+  onRestore: (revision: RevisionItem) => void;
+  onBack: () => void;
+}) {
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <span style={{ fontWeight: 700 }}>Version history</span>
+        <span style={{ fontSize: "var(--nv-font-xs)", color: "var(--nv-color-text-faint)" }}>
+          v{version}
+        </span>
+        <div style={{ flex: 1 }} />
+        <Button variant="ghost" size="sm" onClick={onBack}>← Back to editor</Button>
+      </div>
+      {revisions === null ? (
+        <div className="nv-empty">Loading…</div>
+      ) : revisions.length === 0 ? (
+        <div className="nv-empty">No revisions yet</div>
+      ) : (
+        revisions.map((r, i) => (
+          <div
+            key={r.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 0",
+              borderBottom: i === revisions.length - 1 ? "none" : "1px solid var(--nv-color-border)",
+            }}
+          >
+            <div style={{ minWidth: 110 }}>v{version - i}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)" }}>
+                {r.createdAt.toLocaleString()} · {r.authorName}
+              </div>
+              {r.preview && (
+                <div
+                  style={{
+                    fontSize: "var(--nv-font-sm)",
+                    color: "var(--nv-color-text-faint)",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {r.preview}
+                </div>
+              )}
+            </div>
+            <Button variant="secondary" size="sm" disabled={restoring} onClick={() => onRestore(r)}>
+              Restore
+            </Button>
+          </div>
+        ))
+      )}
     </div>
   );
 }

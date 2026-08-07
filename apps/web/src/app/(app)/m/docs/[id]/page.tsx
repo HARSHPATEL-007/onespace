@@ -1,8 +1,16 @@
 import { notFound } from "next/navigation";
+import { Button } from "@n0va/ui";
 import { DocsService } from "@n0va/modules-docs/server";
 import { DocEditor } from "@n0va/modules-docs/components";
 import { requireWorkspace } from "@/lib/context";
-import { renameDocAction, deleteDocAction, saveDocContentAction, addCommentAction } from "../actions";
+import {
+  renameDocAction,
+  deleteDocAction,
+  saveDocContentAction,
+  addCommentAction,
+  getRevisionsAction,
+  restoreRevisionAction,
+} from "../actions";
 
 export default async function DocPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ view?: string }> }) {
   const { id } = await params;
@@ -18,7 +26,7 @@ export default async function DocPage({ params, searchParams }: { params: Promis
   if (!doc) notFound();
 
   if (view === "history") {
-    const revisions = await svc.revisions(id);
+    const revisions = await svc.revisionsWithAuthors(id);
     return (
       <div style={{ maxWidth: 720, margin: "0 auto" }}>
         <a href={`/m/docs/${id}`} className="nv-link" style={{ fontSize: "var(--nv-font-sm)" }}>← Back to editor</a>
@@ -41,12 +49,29 @@ export default async function DocPage({ params, searchParams }: { params: Promis
                 }}
               >
                 <div style={{ minWidth: 110 }}>v{doc.version - i}</div>
-                <div style={{ flex: 1, color: "var(--nv-color-text-muted)", fontSize: "var(--nv-font-sm)" }}>
-                  {r.createdAt.toLocaleString()}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: "var(--nv-color-text-muted)", fontSize: "var(--nv-font-sm)" }}>
+                    {new Date(r.createdAt).toLocaleString()} · {r.authorName}
+                  </div>
+                  {r.preview && (
+                    <div
+                      style={{
+                        color: "var(--nv-color-text-faint)",
+                        fontSize: "var(--nv-font-sm)",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {r.preview}
+                    </div>
+                  )}
                 </div>
-                <a href={`/m/docs/${id}?v=${doc.version - i}`} className="nv-link" style={{ fontSize: "var(--nv-font-sm)" }}>
-                  Restore
-                </a>
+                <form action={restoreRevisionAction}>
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="revisionId" value={r.id} />
+                  <Button variant="secondary" size="sm" type="submit">Restore</Button>
+                </form>
               </div>
             ))
           )}
@@ -66,6 +91,8 @@ export default async function DocPage({ params, searchParams }: { params: Promis
         remove: deleteDocAction,
         save: saveDocContentAction,
         comment: addCommentAction,
+        getRevisions: getRevisionsAction,
+        restore: restoreRevisionAction,
       }}
     />
   );

@@ -1,2 +1,2 @@
-export { MailService, type MailFolder } from "./server";
+export { MailService, type MailFolder, type MailUnreadCounts } from "./server";
 export { MailApp, type MailThread } from "./components";

@@ -43,3 +43,8 @@ export async function purgeItemAction(formData: FormData) {
   const service = await svc();
   await service.purge(String(formData.get("id")));
 }
+
+export async function versionsItemAction(formData: FormData) {
+  const service = await svc();
+  return service.versions(String(formData.get("id")));
+}

@@ -117,6 +117,23 @@ export class TasksService {
     await this.audit(completedAt ? "task.completed" : "task.reopened", id);
   }
 
+  async moveTask(id: string, direction: "up" | "down") {
+    await this.assert("UPDATE");
+    const task = await this.owned(id);
+    const siblings = await prisma.task.findMany({
+      where: { listId: task.listId, workspaceId: this.workspaceId },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    });
+    const index = siblings.findIndex((t) => t.id === id);
+    const swap = direction === "up" ? siblings[index - 1] : siblings[index + 1];
+    if (index === -1 || !swap) return;
+    await prisma.$transaction([
+      prisma.task.update({ where: { id }, data: { position: swap.position } }),
+      prisma.task.update({ where: { id: swap.id }, data: { position: task.position } }),
+    ]);
+    await this.audit("task.moved", id);
+  }
+
   async deleteTask(id: string) {
     await this.assert("DELETE");
     await this.owned(id);

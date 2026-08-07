@@ -148,3 +148,12 @@ export class SiteService {
     ]);
   }
 }
+
+export async function getPublic(siteId: string) {
+  const site = await prisma.site.findUnique({
+    where: { id: siteId },
+    include: { pages: { orderBy: { sortOrder: "asc" } } },
+  });
+  if (!site || !site.published) return null;
+  return site;
+}

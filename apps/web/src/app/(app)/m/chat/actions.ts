@@ -1,6 +1,6 @@
 "use server";
 
-import { ChatService, channelSchema, messageSchema } from "@n0va/modules-chat/server";
+import { ChatService, channelSchema, messageSchema, reactionSchema, channelIdSchema } from "@n0va/modules-chat/server";
 import { actionContext, requireActionContext } from "@/lib/action-context";
 
 const svc = async () => {
@@ -36,4 +36,18 @@ export async function renameChannelAction(formData: FormData) {
 
 export async function deleteChannelAction(formData: FormData) {
   await (await svc()).removeChannel(String(formData.get("channelId") ?? ""));
+}
+
+export async function reactAction(formData: FormData) {
+  const messageId = String(formData.get("messageId") ?? "");
+  const emoji = String(formData.get("emoji") ?? "");
+  const { messageId: parsedMessageId, emoji: parsedEmoji } = reactionSchema.parse({ messageId, emoji });
+  const ctx = await requireActionContext();
+  const name = ctx.user.name ?? ctx.user.email ?? "Member";
+  await (await svc()).react(parsedMessageId, parsedEmoji, name);
+}
+
+export async function markReadAction(formData: FormData) {
+  const channelId = channelIdSchema.parse(String(formData.get("channelId") ?? ""));
+  await (await svc()).markRead(channelId);
 }

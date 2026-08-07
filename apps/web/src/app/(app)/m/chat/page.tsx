@@ -1,4 +1,4 @@
-import { ChatService } from "@n0va/modules-chat/server";
+import { ChatService, REACTION_EMOJIS } from "@n0va/modules-chat/server";
 import { ChatPanel } from "@n0va/modules-chat/components";
 import { requireWorkspace } from "@/lib/context";
 import {
@@ -7,6 +7,8 @@ import {
   sendMessageAction,
   renameChannelAction,
   deleteChannelAction,
+  reactAction,
+  markReadAction,
 } from "./actions";
 
 export default async function ChatPage({
@@ -18,7 +20,11 @@ export default async function ChatPage({
   const { workspaceId, userId, role } = await requireWorkspace();
   const svc = new ChatService(workspaceId, userId, role);
 
-  const [channels, members] = await Promise.all([svc.listChannels(), svc.listMembers()]);
+  const [channels, members, unread] = await Promise.all([
+    svc.listChannels(),
+    svc.listMembers(),
+    svc.unread(),
+  ]);
 
   let activeChannelId: string | null = c ?? channels[0]?.id ?? null;
   let initialMessages: Awaited<ReturnType<ChatService["listMessages"]>>["messages"] = [];
@@ -39,12 +45,16 @@ export default async function ChatPage({
       members={members}
       activeChannelId={activeChannelId}
       initialMessages={initialMessages}
+      unread={unread}
+      reactionEmojis={[...REACTION_EMOJIS]}
       actions={{
         createChannel: createChannelAction,
         createDm: createDmAction,
         send: sendMessageAction,
         rename: renameChannelAction,
         deleteChannel: deleteChannelAction,
+        react: reactAction,
+        markRead: markReadAction,
       }}
     />
   );

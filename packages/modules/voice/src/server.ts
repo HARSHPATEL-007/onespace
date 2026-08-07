@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { prisma, type CallLog } from "@n0va/db";
+import { prisma, logAudit, type CallLog } from "@n0va/db";
+import { can, type Role } from "@n0va/authz";
+
+const MODULE = "voice";
 
 export const callLogSchema = z.object({
   direction: z.enum(["IN", "OUT"]),
@@ -9,14 +12,27 @@ export const callLogSchema = z.object({
   status: z.string().max(30).default("completed"),
 });
 
+export const callNoteSchema = z.object({
+  id: z.string().min(1),
+  note: z.string().max(2000).default(""),
+});
+
+export const callIdSchema = z.string().min(1);
+
 export type CallLogRow = CallLog;
 
 export class VoiceService {
   constructor(
     private readonly workspaceId: string,
     private readonly userId: string,
-    private readonly role: string,
+    private readonly role: Role,
   ) {}
+
+  private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
+    if (!(await can(this.workspaceId, this.role, MODULE, action))) {
+      throw new Error(`Missing ${action} permission for voice`);
+    }
+  }
 
   async list(): Promise<CallLogRow[]> {
     return prisma.callLog.findMany({
@@ -43,12 +59,43 @@ export class VoiceService {
     await prisma.callLog.deleteMany({ where: { workspaceId: this.workspaceId } });
   }
 
+  async toggleFavorite(id: string): Promise<void> {
+    await this.assert("UPDATE");
+    const call = await this.owned(id);
+    await prisma.callLog.update({ where: { id }, data: { favorite: !call.favorite } });
+    await this.audit("call.favorited", id);
+  }
+
+  async setNote(id: string, note: string): Promise<void> {
+    await this.assert("UPDATE");
+    await this.owned(id);
+    await prisma.callLog.update({ where: { id }, data: { note } });
+    await this.audit("call.noted", id);
+  }
+
   /** Cross-module contact picker */
   async contacts(): Promise<Array<{ id: string; firstName: string; lastName: string | null; phone: string | null }>> {
     return prisma.contact.findMany({
       where: { workspaceId: this.workspaceId, phone: { not: null } },
       select: { id: true, firstName: true, lastName: true, phone: true },
       take: 50,
+    });
+  }
+
+  private async owned(id: string) {
+    const call = await prisma.callLog.findFirst({ where: { id, workspaceId: this.workspaceId } });
+    if (!call) throw new Error("Call log entry not found in this workspace");
+    return call;
+  }
+
+  private audit(action: string, targetId: string) {
+    return logAudit({
+      workspaceId: this.workspaceId,
+      actorId: this.userId,
+      module: MODULE,
+      action,
+      targetType: "Call",
+      targetId,
     });
   }
 }

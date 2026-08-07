@@ -98,6 +98,45 @@ export class DocsService {
     });
   }
 
+  async revisionsWithAuthors(id: string) {
+    await this.assert("READ");
+    await this.owned(id);
+    const revisions = await prisma.docRevision.findMany({
+      where: { docId: id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    const userIds = Array.from(
+      new Set(revisions.map((r) => r.createdById).filter((v): v is string => Boolean(v))),
+    );
+    const users = userIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, name: true, email: true },
+        })
+      : [];
+    const byId = new Map(users.map((u) => [u.id, u]));
+    return revisions.map((r) => {
+      const author = r.createdById ? byId.get(r.createdById) : undefined;
+      return {
+        id: r.id,
+        createdAt: r.createdAt.toISOString(),
+        authorName: author ? author.name ?? author.email : "Unknown",
+        content: r.content,
+        preview: contentPreview(r.content),
+      };
+    });
+  }
+
+  async revisionContent(id: string, revisionId: string) {
+    await this.owned(id);
+    const revision = await prisma.docRevision.findFirst({
+      where: { id: revisionId, docId: id },
+    });
+    if (!revision) throw new Error("Revision not found");
+    return revision;
+  }
+
   async comments(id: string) {
     await this.assert("READ");
     await this.owned(id);
@@ -138,5 +177,25 @@ export class DocsService {
       targetType: "Doc",
       targetId,
     });
+  }
+}
+
+type TipNode = { text?: string; content?: TipNode[] };
+
+function contentPreview(content: string) {
+  try {
+    const json = JSON.parse(content) as { content?: TipNode[] };
+    const parts: string[] = [];
+    const walk = (nodes?: TipNode[]) => {
+      if (!nodes) return;
+      for (const node of nodes) {
+        if (typeof node.text === "string" && node.text.trim()) parts.push(node.text);
+        walk(node.content);
+      }
+    };
+    walk(json.content);
+    return parts.join(" ").slice(0, 160);
+  } catch {
+    return "";
   }
 }

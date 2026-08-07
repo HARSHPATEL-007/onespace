@@ -16,6 +16,7 @@ function parseEvent(formData: FormData) {
   let endAt = String(formData.get("endAt") ?? "");
   const startAt = String(formData.get("startAt") ?? "");
   if (!endAt) endAt = startAt;
+  const recurrence = String(formData.get("recurrence") ?? "") || "NONE";
 
   return eventInputSchema.parse({
     title: formData.get("title"),
@@ -23,7 +24,9 @@ function parseEvent(formData: FormData) {
     location: String(formData.get("location") ?? "") || null,
     startAt,
     endAt,
-    allDay: false,
+    allDay: formData.get("allDay") === "on",
+    recurrence,
+    repeatUntil: recurrence === "NONE" ? undefined : String(formData.get("repeatUntil") ?? "") || null,
     attendees,
   });
 }

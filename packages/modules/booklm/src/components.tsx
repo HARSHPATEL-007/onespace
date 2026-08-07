@@ -98,6 +98,54 @@ export function LearningSets({ sets, actions }: { sets: LearningSetWithItems[]; 
 
 const KIND_ICON: Record<LearningItem["kind"], string> = { DOC: "📄", VIDEO: "🎬", LINK: "🔗", NOTE: "📝" };
 
+type QuizQuestion = {
+  prompt: string;
+  answer: string;
+  options: string[];
+};
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j]!, a[i]!];
+  }
+  return a;
+}
+
+function firstSentence(text: string): string {
+  const match = text.trim().match(/^[^.!?\n]+[.!?]?/);
+  return match ? match[0]! : text.trim();
+}
+
+function answerFor(item: LearningItem): string {
+  const t = item.notes.trim() ? firstSentence(item.notes) : item.title.trim();
+  return t.length > 160 ? `${t.slice(0, 160).trimEnd()}…` : t;
+}
+
+function questionPrompt(item: LearningItem): string {
+  const title = item.title.trim();
+  const generic =
+    title.length < 8 || (item.source !== "" && title === item.source);
+  if (generic && item.notes.trim()) return firstSentence(item.notes);
+  return title;
+}
+
+function buildQuiz(items: LearningItem[]): QuizQuestion[] {
+  const pool = items.slice(0, 8);
+  return pool.map((item) => {
+    const answer = answerFor(item);
+    const distractors: string[] = [];
+    for (const other of shuffle(pool.filter((o) => o.id !== item.id))) {
+      if (distractors.length === 3) break;
+      const cand = answerFor(other);
+      if (cand === answer || distractors.includes(cand)) continue;
+      distractors.push(cand);
+    }
+    return { prompt: questionPrompt(item), answer, options: shuffle([answer, ...distractors]) };
+  });
+}
+
 export function LearningSetView({
   set,
   docPicks,
@@ -115,6 +163,12 @@ export function LearningSetView({
   const [study, setStudy] = useState(false);
   const [cardIndex, setCardIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [quiz, setQuiz] = useState<QuizQuestion[] | null>(null);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [pick, setPick] = useState<number | null>(null);
+  const [quizScore, setQuizScore] = useState(0);
+  const [quizResult, setQuizResult] = useState(false);
+  const [quizNotice, setQuizNotice] = useState(false);
 
   const addForm = useMemo(() => {
     if (adding) {
@@ -163,6 +217,26 @@ export function LearningSetView({
 
   const studyDeck = set.items.filter((i) => i.title || i.notes);
   const card = studyDeck[cardIndex];
+  const q = quiz ? quiz[quizIndex] : undefined;
+  const quizAnswered = pick !== null;
+  const quizCorrectIdx = quizAnswered && q ? q.options.indexOf(q.answer) : -1;
+
+  const exitQuiz = () => {
+    setQuiz(null);
+    setQuizIndex(0);
+    setPick(null);
+    setQuizScore(0);
+    setQuizResult(false);
+    setQuizNotice(false);
+  };
+
+  const retryQuiz = () => {
+    setQuiz((cur) => (cur ? shuffle(cur.map((x) => ({ ...x, options: shuffle(x.options) }))) : cur));
+    setQuizIndex(0);
+    setPick(null);
+    setQuizScore(0);
+    setQuizResult(false);
+  };
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto" }}>
@@ -171,10 +245,26 @@ export function LearningSetView({
         <h1 style={{ fontSize: "var(--nv-font-xl)", fontWeight: 800 }}>{set.title}</h1>
         <div style={{ flex: 1 }} />
         {studyDeck.length > 1 && (
-          <Button variant="secondary" size="sm" onClick={() => { setStudy(true); setCardIndex(0); setFlipped(false); }}>
+          <Button variant="secondary" size="sm" onClick={() => { setStudy(true); setCardIndex(0); setFlipped(false); setQuiz(null); setQuizNotice(false); }}>
             🎴 Study mode
           </Button>
         )}
+        <Button variant="secondary" size="sm" onClick={() => {
+          setStudy(false);
+          if (set.items.length < 4) {
+            setQuiz(null);
+            setQuizNotice(true);
+            return;
+          }
+          setQuiz(buildQuiz(set.items));
+          setQuizIndex(0);
+          setPick(null);
+          setQuizScore(0);
+          setQuizResult(false);
+          setQuizNotice(false);
+        }}>
+          🧠 Quiz
+        </Button>
         <Button size="sm" onClick={() => setAdding(true)}>+ Add source</Button>
       </div>
       <div style={{ fontSize: 13, color: "var(--nv-color-text-faint)", marginBottom: "var(--nv-space-4)" }}>{set.description}</div>
@@ -214,6 +304,86 @@ export function LearningSetView({
             <Button variant="secondary" size="sm" disabled={cardIndex >= studyDeck.length - 1} onClick={() => { setCardIndex((i) => i + 1); setFlipped(false); }}>Next →</Button>
           </div>
         </div>
+      ) : quizNotice ? (
+        <div className="nv-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 48, minHeight: 380 }}>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>Add at least 4 items to take a quiz.</div>
+          <Button variant="ghost" size="sm" onClick={() => setQuizNotice(false)}>Exit</Button>
+        </div>
+      ) : quiz && q ? (
+        quizResult ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "var(--nv-space-3)", minHeight: 380 }}>
+            <div style={{ fontSize: 32, fontWeight: 900 }}>{quizScore} / {quiz.length}</div>
+            <div style={{ fontSize: 15, color: "var(--nv-color-text-faint)" }}>
+              {Math.round((quizScore / quiz.length) * 100)}% ·{" "}
+              {quizScore / quiz.length >= 0.7 ? "Nice work!" : quizScore / quiz.length >= 0.4 ? "Keep practicing." : "Review the set and try again."}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Button variant="secondary" size="sm" onClick={retryQuiz}>↻ Retry</Button>
+              <Button variant="ghost" size="sm" onClick={exitQuiz}>Exit</Button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--nv-space-4)", minHeight: 380 }}>
+            <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+              Question {quizIndex + 1} / {quiz.length} · Score {quizScore}
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 700, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{q.prompt}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {q.options.map((opt, i) => {
+                const isCorrect = i === quizCorrectIdx;
+                const isPicked = i === pick;
+                return (
+                  <button
+                    key={opt}
+                    disabled={quizAnswered}
+                    onClick={() => {
+                      setPick(i);
+                      if (i === q.options.indexOf(q.answer)) setQuizScore((s) => s + 1);
+                    }}
+                    style={{
+                      textAlign: "left",
+                      padding: "12px 16px",
+                      borderRadius: "var(--nv-radius-md)",
+                      border: quizAnswered
+                        ? `2px solid ${isCorrect ? "var(--nv-color-success)" : isPicked ? "var(--nv-color-danger)" : "var(--nv-color-border)"}`
+                        : "1px solid var(--nv-color-border)",
+                      background: "var(--nv-color-surface)",
+                      cursor: quizAnswered ? "default" : "pointer",
+                      fontSize: 14,
+                      lineHeight: 1.5,
+                      whiteSpace: "pre-wrap",
+                      opacity: quizAnswered && !isCorrect && !isPicked ? 0.45 : 1,
+                      color: quizAnswered && (isCorrect || isPicked) ? (isCorrect ? "var(--nv-color-success)" : "var(--nv-color-danger)") : undefined,
+                      fontWeight: quizAnswered && (isCorrect || isPicked) ? 700 : 400,
+                    }}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+            {quizAnswered && (
+              <div style={{ fontSize: 13 }}>
+                {pick === quizCorrectIdx ? (
+                  <span style={{ color: "var(--nv-color-success)", fontWeight: 600 }}>Correct!</span>
+                ) : (
+                  <span style={{ color: "var(--nv-color-danger)", fontWeight: 600 }}>Not quite — the answer is “{q.answer}”</span>
+                )}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10 }}>
+              <Button variant="ghost" size="sm" onClick={exitQuiz}>Exit</Button>
+              {quizAnswered && (
+                <Button variant="secondary" size="sm" onClick={() => {
+                  if (quizIndex >= quiz.length - 1) setQuizResult(true);
+                  else { setQuizIndex((i) => i + 1); setPick(null); }
+                }}>
+                  {quizIndex >= quiz.length - 1 ? "See results" : "Next →"}
+                </Button>
+              )}
+            </div>
+          </div>
+        )
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {set.items.length === 0 && <div className="nv-empty" style={{ minHeight: 200 }}><div>No sources yet — add a doc, video, link or note.</div></div>}

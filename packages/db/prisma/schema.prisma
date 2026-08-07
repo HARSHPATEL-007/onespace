@@ -71,6 +71,12 @@ model Workspace {
   payments        Payment[]
   campaigns       Campaign[]
   healthCheckins  HealthCheckin[]
+  videoPlaylists  VideoPlaylist[]
+  legalDocRevisions LegalDocRevision[]
+  dealNotes       DealNote[]
+  incidentUpdates IncidentUpdate[]
+  moduleSettings  WorkspaceModuleSetting[]
+  invites         Invite[]
 }
 
 /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -124,6 +130,11 @@ createdCalendarEvents CalendarEvent[]
   createdPayments      Payment[]
   createdCampaigns     Campaign[]
   healthCheckins       HealthCheckin[]
+  createdVideoPlaylists VideoPlaylist[] @relation("createdVideoPlaylists")
+  createdLegalDocRevisions LegalDocRevision[] @relation("createdLegalDocRevisions")
+  createdDealNotes      DealNote[] @relation("createdDealNotes")
+  createdIncidentUpdates IncidentUpdate[] @relation("createdIncidentUpdates")
+  createdInvites        Invite[] @relation("createdInvites")
 }
 
 /// Seat within a workspace + assigned role.
@@ -251,6 +262,8 @@ model CalendarEvent {
   endAt       DateTime
   allDay      Boolean  @default(false)
   attendees   String[] @default([])
+  recurrence  CalendarRecurrence @default(NONE)
+  repeatUntil DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -258,6 +271,13 @@ model CalendarEvent {
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, startAt])
+}
+
+enum CalendarRecurrence {
+  NONE
+  DAILY
+  WEEKLY
+  MONTHLY
 }
 
 
@@ -496,6 +516,7 @@ model ChatMessage {
   createdById String
   authorName  String
   body        String
+  reactions   Json     @default("[]")
   createdAt   DateTime @default(now())
 
 channel ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -604,6 +625,7 @@ model Sheet {
   workspaceId String
   name        String
   rows        Json
+  cellMeta    Json     @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -665,6 +687,7 @@ model Slide {
   workspaceId     String
   sortOrder       Int          @default(0)
   blocks          Json
+  notes           String       @default("")
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -716,6 +739,7 @@ model Photo {
   storageKey  String
   width       Int?
   height      Int?
+  favorite    Boolean  @default(false)
   uploadedAt  DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -735,12 +759,31 @@ model Video {
   url         String
   provider    String   @default("youtube")
   durationSec Int?
+  playlistId  String?
   uploadedAt  DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?      @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  playlist  VideoPlaylist? @relation(fields: [playlistId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, updatedAt(sort: Desc)])
+}
+
+/// N0VA VIDEOS - playlist.
+model VideoPlaylist {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  name        String
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull, name: "createdVideoPlaylists")
+  videos    Video[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
 }
@@ -878,6 +921,8 @@ model CallLog {
   number      String
   durationSec Int           @default(0)
   status      String        @default("completed")
+  note        String        @default("")
+  favorite    Boolean       @default(false)
   startedAt   DateTime      @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -898,6 +943,8 @@ model VaultEntry {
   name           String
   encryptedValue String
   hint           String   @default("")
+  category       String   @default("general")
+  expiresAt      DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1105,6 +1152,7 @@ model Invoice {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  payments  Payment[]
 
   @@index([workspaceId, status])
 }
@@ -1187,6 +1235,7 @@ model LegalDocument {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  revisions LegalDocRevision[]
 
   @@index([workspaceId, status])
 }
@@ -1244,6 +1293,7 @@ model Incident {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  updates   IncidentUpdate[]
 
   @@index([workspaceId, status])
 }
@@ -1273,6 +1323,8 @@ model Ticket {
   status         TicketStatus   @default(OPEN)
   priority       TicketPriority @default(MEDIUM)
   assigneeId     String?
+  csat           Int?
+  resolvedAt     DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -1328,6 +1380,7 @@ model Deal {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  notes     DealNote[]
 
   @@index([workspaceId, stage])
 }
@@ -1351,6 +1404,7 @@ model Subscription {
   status      SubscriptionStatus @default(TRIAL)
   startedAt   DateTime         @default(now())
   canceledAt  DateTime?
+  nextBillingAt DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
@@ -1372,6 +1426,7 @@ model Payment {
   id             String        @id @default(uuid())
   workspaceId    String
   subscriptionId String?
+  invoiceId      String?
   createdById    String?
   amountCents    Int
   method         String        @default("card")
@@ -1380,6 +1435,7 @@ model Payment {
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   createdBy    User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
@@ -1457,4 +1513,84 @@ enum EnergyLevel {
   LOW
   OK
   HIGH
+}
+
+/// N0VA LEGAL - revision history.
+model LegalDocRevision {
+  id         String   @id @default(uuid())
+  docId      String
+  workspaceId String
+  createdById String?
+  content    String
+  createdAt  DateTime @default(now())
+
+  doc       LegalDocument @relation(fields: [docId], references: [id], onDelete: Cascade)
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation(fields: [createdById], references: [id], onDelete: SetNull, name: "createdLegalDocRevisions")
+
+  @@index([docId, createdAt(sort: Desc)])
+}
+
+/// N0VA SALES - activity notes on deals.
+model DealNote {
+  id         String   @id @default(uuid())
+  dealId     String
+  workspaceId String
+  createdById String?
+  body       String
+  createdAt  DateTime @default(now())
+
+  deal      Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull, name: "createdDealNotes")
+
+  @@index([dealId, createdAt(sort: Desc)])
+}
+
+/// N0VA OPERATIONS & TEAMS - incident timeline.
+model IncidentUpdate {
+  id         String   @id @default(uuid())
+  incidentId String
+  workspaceId String
+  createdById String?
+  body       String
+  createdAt  DateTime @default(now())
+
+  incident  Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull, name: "createdIncidentUpdates")
+
+  @@index([incidentId, createdAt(sort: Desc)])
+}
+
+/// N0VA ADMIN - persisted per-workspace module enablement.
+model WorkspaceModuleSetting {
+  id          String   @id @default(uuid())
+  workspaceId String
+  moduleId    String
+  enabled     Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, moduleId])
+}
+
+/// N0VA ADMIN CONSOLE - member invites.
+model Invite {
+  id          String    @id @default(uuid())
+  workspaceId String
+  email       String
+  role        String    @default("MEMBER")
+  token       String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull, name: "createdInvites")
+
+  @@unique([workspaceId, email])
+  @@index([token])
 }

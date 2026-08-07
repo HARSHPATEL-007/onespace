@@ -1,6 +1,6 @@
 "use server";
 
-import { VoiceService, callLogSchema } from "@n0va/modules-voice/server";
+import { VoiceService, callLogSchema, callNoteSchema, callIdSchema } from "@n0va/modules-voice/server";
 import { actionContext } from "@/lib/action-context";
 
 const svc = async () => {
@@ -21,4 +21,17 @@ export async function logCallAction(formData: FormData) {
 
 export async function clearCallsAction() {
   await (await svc()).clear();
+}
+
+export async function toggleFavoriteAction(formData: FormData) {
+  const id = callIdSchema.parse(String(formData.get("id") ?? ""));
+  await (await svc()).toggleFavorite(id);
+}
+
+export async function setCallNoteAction(formData: FormData) {
+  const { id, note } = callNoteSchema.parse({
+    id: String(formData.get("id") ?? ""),
+    note: String(formData.get("note") ?? ""),
+  });
+  await (await svc()).setNote(id, note);
 }

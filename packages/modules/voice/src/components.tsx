@@ -8,6 +8,8 @@ import type { CallLog } from "@n0va/db";
 export interface VoiceActions {
   log: (formData: FormData) => Promise<void>;
   clear: (formData: FormData) => Promise<void>;
+  toggleFavorite: (formData: FormData) => Promise<void>;
+  setNote: (formData: FormData) => Promise<void>;
 }
 
 export interface VoiceContact {
@@ -29,7 +31,12 @@ export function VoiceDialer({ logs, contacts, actions }: { logs: CallLog[]; cont
   const [number, setNumber] = useState("");
   const [ringing, setRinging] = useState(false);
   const [incoming, setIncoming] = useState(false);
+  const [filter, setFilter] = useState<"all" | "favorites">("all");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const visibleLogs = filter === "favorites" ? logs.filter((l) => l.favorite) : logs;
 
   useEffect(() => {
     if (incoming) {
@@ -178,10 +185,23 @@ export function VoiceDialer({ logs, contacts, actions }: { logs: CallLog[]; cont
 
         {/* Log */}
         <div className="nv-card" style={{ padding: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1, color: "var(--nv-color-text-faint)", marginBottom: 10 }}>Call log</div>
-          {logs.length === 0 && <div style={{ fontSize: 13, color: "var(--nv-color-text-faint)" }}>No calls yet — make a call with the keypad.</div>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 1, color: "var(--nv-color-text-faint)" }}>Call log</div>
+            <div style={{ flex: 1 }} />
+            <button className={filter === "all" ? "nv-badge nv-badge-primary" : "nv-badge nv-badge-neutral"} style={{ cursor: "pointer", border: "none" }} onClick={() => setFilter("all")}>
+              All
+            </button>
+            <button className={filter === "favorites" ? "nv-badge nv-badge-primary" : "nv-badge nv-badge-neutral"} style={{ cursor: "pointer", border: "none" }} onClick={() => setFilter("favorites")}>
+              Favorites
+            </button>
+          </div>
+          {visibleLogs.length === 0 && (
+            <div style={{ fontSize: 13, color: "var(--nv-color-text-faint)" }}>
+              {filter === "favorites" ? "No favorites yet — tap the star on a call." : "No calls yet — make a call with the keypad."}
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {logs.map((l) => (
+            {visibleLogs.map((l) => (
               <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid var(--nv-color-border)" }}>
                 <span style={{ width: 28, fontSize: 15 }}>{l.direction === "OUT" ? "↗" : "↙"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -191,10 +211,52 @@ export function VoiceDialer({ logs, contacts, actions }: { logs: CallLog[]; cont
                   <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)" }}>
                     {l.startedAt.toLocaleString()} · {l.status}
                   </div>
+                  {editingNoteId === l.id ? (
+                    <div style={{ marginTop: 6 }}>
+                      <textarea
+                        className="nv-input"
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                        rows={3}
+                        style={{ width: "100%", fontSize: 12, resize: "vertical" }}
+                      />
+                      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                        <Button size="sm" onClick={() => {
+                          const fd = new FormData();
+                          fd.set("id", l.id);
+                          fd.set("note", noteDraft);
+                          void actions.setNote(fd).then(() => {
+                            setEditingNoteId(null);
+                            router.refresh();
+                          });
+                        }}>
+                          Save
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setEditingNoteId(null)}>Cancel</Button>
+                      </div>
+                    </div>
+                  ) : l.note ? (
+                    <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      📝 {l.note}
+                    </div>
+                  ) : null}
                 </div>
                 <span style={{ fontSize: 12, color: l.durationSec > 0 ? "var(--nv-color-success)" : "var(--nv-color-text-faint)", fontWeight: 600 }}>
                   {l.durationSec > 0 ? formatDuration(l.durationSec) : "—"}
                 </span>
+                <button
+                  onClick={() => { setEditingNoteId(l.id); setNoteDraft(l.note); }}
+                  style={{ fontSize: 11, color: "var(--nv-color-primary)", background: "none", border: "none", cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}
+                >
+                  Note
+                </button>
+                <button
+                  aria-label={l.favorite ? "Unfavorite" : "Favorite"}
+                  onClick={() => { const fd = new FormData(); fd.set("id", l.id); void actions.toggleFavorite(fd).then(() => router.refresh()); }}
+                  style={{ fontSize: 16, color: l.favorite ? "var(--nv-color-warning)" : "var(--nv-color-text-faint)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                >
+                  {l.favorite ? "★" : "☆"}
+                </button>
               </div>
             ))}
           </div>

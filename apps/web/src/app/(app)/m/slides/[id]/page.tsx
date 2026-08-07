@@ -7,6 +7,7 @@ import {
   setThemeAction,
   addSlideAction,
   saveSlideBlocksAction,
+  saveSlideNotesAction,
   deleteSlideAction,
   moveSlideAction,
 } from "../actions";
@@ -32,6 +33,7 @@ export default async function PresentationPage({ params }: { params: Promise<{ i
         setTheme: setThemeAction,
         addSlide: addSlideAction,
         saveBlocks: saveSlideBlocksAction,
+        saveNotes: saveSlideNotesAction,
         removeSlide: deleteSlideAction,
         moveSlide: moveSlideAction,
       }}

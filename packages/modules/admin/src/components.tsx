@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@n0va/ui";
-import type { ModulePolicy } from "./server";
+import type { ModulePolicy, ModuleSetting } from "./server";
 
 export interface AdminActions {
   setPolicy: (formData: FormData) => Promise<void>;
@@ -28,9 +28,19 @@ const STATUS_STYLE: Record<string, string> = {
   planned: "var(--nv-color-text-faint)",
 };
 
-export function GovernancePanel({ policies, actions }: { policies: ModulePolicy[]; actions: AdminActions }) {
+export function GovernancePanel({
+  policies,
+  settings,
+  actions,
+}: {
+  policies: ModulePolicy[];
+  settings: ModuleSetting[];
+  actions: AdminActions;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState<Record<string, boolean>>({});
+
+  const enabledById = new Map(settings.map((s) => [s.module.id, s.enabled]));
 
   const toggle = (moduleId: string, role: string, action: string, current: boolean) => {
     const fd = new FormData();
@@ -39,6 +49,13 @@ export function GovernancePanel({ policies, actions }: { policies: ModulePolicy[
     fd.set("action", action);
     fd.set("allowed", current ? "false" : "true");
     void actions.setPolicy(fd).then(() => router.refresh());
+  };
+
+  const toggleStatus = (moduleId: string, enabled: boolean) => {
+    const fd = new FormData();
+    fd.set("module", moduleId);
+    fd.set("status", enabled ? "planned" : "live");
+    void actions.setModuleStatus(fd).then(() => router.refresh());
   };
 
   return (
@@ -55,26 +72,28 @@ export function GovernancePanel({ policies, actions }: { policies: ModulePolicy[
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {policies.map((p) => {
           const isOpen = open[p.module.id] ?? false;
+          const enabled = enabledById.get(p.module.id) ?? true;
           const overrideMap = new Map(p.overrides.map((o) => [`${o.role}:${o.action}`, o.allowed]));
           return (
             <div key={p.module.id} className="nv-card" style={{ padding: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span
-                  style={{ width: 10, height: 10, borderRadius: "50%", background: STATUS_STYLE[p.module.status ?? "planned"] ?? STATUS_STYLE.planned, flexShrink: 0 }}
+                  style={{ width: 10, height: 10, borderRadius: "50%", background: enabled ? STATUS_STYLE[p.module.status ?? "planned"] ?? STATUS_STYLE.planned : STATUS_STYLE.planned, flexShrink: 0 }}
                 />
                 <span style={{ fontWeight: 800, width: 240 }}>{p.module.name}</span>
                 <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)", flex: 1 }}>{p.module.layer} · {p.module.description}</span>
+                {enabled ? (
+                  <span className="nv-badge nv-badge-success">Enabled</span>
+                ) : (
+                  <span className="nv-badge nv-badge-danger">Disabled</span>
+                )}
                 {p.hasOverrides && <span className="nv-badge nv-badge-amber">custom policy</span>}
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    const fd = new FormData();
-                    fd.set("module", p.module.id);
-                    void actions.setModuleStatus(fd).then(() => router.refresh());
-                  }}
+                  onClick={() => toggleStatus(p.module.id, enabled)}
                 >
-                  Log status change
+                  {enabled ? "Disable" : "Enable"}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setOpen((o) => ({ ...o, [p.module.id]: !isOpen }))}>
                   {isOpen ? "Close" : "Policy"}

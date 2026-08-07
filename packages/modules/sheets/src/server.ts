@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { prisma, logAudit } from "@n0va/db";
+import { prisma, logAudit, Prisma } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 
 const MODULE = "sheets";
@@ -12,11 +12,64 @@ export const cellSchema = z.object({
   value: z.string().max(10_000),
 });
 
+export const cellStyleSchema = z
+  .object({
+    bold: z.boolean().nullable().optional(),
+    color: z.string().max(20).nullable().optional(),
+    bg: z.string().max(20).nullable().optional(),
+  })
+  .strict();
+
+export const cellMetaSchema = z
+  .object({
+    cells: z.record(z.string(), cellStyleSchema).optional(),
+    widths: z.record(z.string(), z.number().int().min(48).max(400)).optional(),
+  })
+  .strict();
+
 const DEFAULT_ROWS = 100;
 const DEFAULT_COLS = 26;
 
 function emptyRows(cols = DEFAULT_COLS, rows = DEFAULT_ROWS): string[][] {
   return Array.from({ length: rows }, () => Array.from({ length: cols }, () => ""));
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function cleanCellStyle(v: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (val === null || val === undefined) continue;
+    out[k] = val;
+  }
+  return out;
+}
+
+function mergeMeta(base: unknown, patch: Record<string, unknown>): Record<string, unknown> {
+  const out = isRecord(base) ? { ...base } : {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null || value === undefined) {
+      delete out[key];
+      continue;
+    }
+    if (key === "cells" && isRecord(value)) {
+      const merged = isRecord(out.cells) ? { ...out.cells } : {};
+      for (const [ref, style] of Object.entries(value)) {
+        const clean = cleanCellStyle(isRecord(style) ? style : {});
+        if (Object.keys(clean).length > 0) merged[ref] = clean;
+      }
+      out.cells = merged;
+      continue;
+    }
+    if (isRecord(value)) {
+      out[key] = { ...(isRecord(out[key]) ? out[key] : {}), ...value };
+      continue;
+    }
+    out[key] = value;
+  }
+  return out;
 }
 
 export class SheetsService {
@@ -109,6 +162,19 @@ export class SheetsService {
     const updated = await prisma.sheet.update({
       where: { id: sheetId },
       data: { rows, updatedAt: new Date() },
+    });
+    await prisma.sheetWorkbook.update({ where: { id: sheet.workbookId }, data: { updatedAt: new Date() } });
+    return updated;
+  }
+
+  async saveCellMeta(sheetId: string, meta: z.infer<typeof cellMetaSchema>) {
+    await this.assert("UPDATE");
+    const sheet = await this.ownedSheet(sheetId);
+    const existing = (sheet as unknown as { cellMeta?: unknown }).cellMeta;
+    const merged = mergeMeta(existing, meta);
+    const updated = await prisma.sheet.update({
+      where: { id: sheetId },
+      data: { cellMeta: merged as Prisma.InputJsonValue, updatedAt: new Date() },
     });
     await prisma.sheetWorkbook.update({ where: { id: sheet.workbookId }, data: { updatedAt: new Date() } });
     return updated;

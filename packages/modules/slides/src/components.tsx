@@ -12,6 +12,7 @@ export interface SlidesActions {
   remove?: (formData: FormData) => Promise<void>;
   addSlide: (formData: FormData) => Promise<void>;
   saveBlocks: (formData: FormData) => Promise<void>;
+  saveNotes: (formData: FormData) => Promise<void>;
   removeSlide: (formData: FormData) => Promise<void>;
   moveSlide: (formData: FormData) => Promise<void>;
   setTheme: (formData: FormData) => Promise<void>;
@@ -138,9 +139,13 @@ export function SlidesEditor({
   const [blocks, setBlocks] = useState<Block[]>(
     (slides.find((s) => s.id === (slides[0]?.id ?? ""))?.blocks ?? []) as Block[],
   );
+  const [notes, setNotes] = useState(slides.find((s) => s.id === (slides[0]?.id ?? ""))?.notes ?? "");
   const [saved, setSaved] = useState(true);
+  const [notesSaved, setNotesSaved] = useState(true);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [playIndex, setPlayIndex] = useState(0);
+  const [showNotes, setShowNotes] = useState(true);
   const [renaming, setRenaming] = useState(false);
 
   const active = slides.find((s) => s.id === activeId) ?? null;
@@ -149,7 +154,9 @@ export function SlidesEditor({
   const selectSlide = (s: Slide) => {
     setActiveId(s.id);
     setBlocks((s.blocks ?? []) as Block[]);
+    setNotes(s.notes);
     setSaved(true);
+    setNotesSaved(true);
   };
 
   const updateBlock = (i: number, patch: Partial<Block>) => {
@@ -169,6 +176,14 @@ export function SlidesEditor({
     fd.set("slideId", active.id);
     fd.set("blocks", JSON.stringify(blocks));
     void actions.saveBlocks(fd).then(() => setSaved(true));
+  };
+
+  const saveNotes = () => {
+    if (!active) return;
+    const fd = new FormData();
+    fd.set("slideId", active.id);
+    fd.set("notes", notes);
+    void actions.saveNotes(fd).then(() => setNotesSaved(true));
   };
 
   const play = () => {
@@ -380,6 +395,58 @@ export function SlidesEditor({
               {saved ? "Saved" : "Save slide"}
             </Button>
           </div>
+          <div
+            style={{
+              border: "1px solid var(--nv-color-border)",
+              borderRadius: "var(--nv-radius-md)",
+              padding: "var(--nv-space-2) var(--nv-space-3)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setNotesOpen((v) => !v)}
+              style={{
+                border: "none",
+                background: "none",
+                cursor: "pointer",
+                padding: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontWeight: 800,
+                color: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ fontSize: 10, display: "inline-block", transition: "transform 0.15s", transform: notesOpen ? "rotate(90deg)" : "none" }}>
+                ▶
+              </span>
+              Notes
+              <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 400, color: "var(--nv-color-text-faint)" }}>
+                {notesSaved ? "saved" : "unsaved"}
+              </span>
+            </button>
+            {notesOpen && (
+              <>
+                <textarea
+                  className="nv-input"
+                  rows={4}
+                  placeholder="Speaker notes for this slide…"
+                  value={notes}
+                  onChange={(e) => {
+                    setNotes(e.target.value);
+                    setNotesSaved(false);
+                  }}
+                />
+                <Button onClick={saveNotes} disabled={notesSaved} style={{ alignSelf: "flex-end" }}>
+                  {notesSaved ? "Saved" : "Save notes"}
+                </Button>
+              </>
+            )}
+          </div>
           <div style={{ fontWeight: 800, marginTop: 8 }}>Theme</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {Object.entries(THEMES).map(([key, t]) => (
@@ -426,6 +493,7 @@ export function SlidesEditor({
           onKeyDown={(e) => {
             if (e.key === "ArrowRight" || e.key === " ") setPlayIndex((i) => (i + 1) % ordered.length);
             if (e.key === "ArrowLeft") setPlayIndex((i) => (i - 1 + ordered.length) % ordered.length);
+            if (e.key === "n" || e.key === "N") setShowNotes((v) => !v);
             if (e.key === "Escape") setPlaying(false);
           }}
           tabIndex={0}
@@ -473,6 +541,40 @@ export function SlidesEditor({
           >
             Exit (Esc)
           </button>
+          <button
+            type="button"
+            style={{ position: "absolute", top: 16, left: 16, border: "none", background: "rgba(255,255,255,0.15)", color: "#fff", borderRadius: 8, padding: "6px 14px", cursor: "pointer", opacity: 0.6 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowNotes((v) => !v);
+            }}
+            title="Toggle speaker notes"
+          >
+            N · Notes
+          </button>
+          {ordered[playIndex]?.notes && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                right: 0,
+                maxHeight: 160,
+                overflowY: "auto",
+                background: "rgba(255,255,255,0.08)",
+                color: "rgba(255,255,255,0.55)",
+                borderTop: "1px solid rgba(255,255,255,0.12)",
+                padding: "10px 20px",
+                fontSize: 13,
+                lineHeight: 1.5,
+                whiteSpace: "pre-wrap",
+                pointerEvents: "none",
+                display: showNotes ? "block" : "none",
+              }}
+            >
+              {ordered[playIndex]?.notes}
+            </div>
+          )}
         </div>
       )}
 

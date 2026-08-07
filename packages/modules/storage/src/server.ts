@@ -100,6 +100,39 @@ export class StorageService {
     return item;
   }
 
+  async uploadNewVersion(input: {
+    itemId: string;
+    sizeBytes: number;
+    storageKey: string;
+    checksum: string;
+  }) {
+    await this.assert("UPDATE");
+    const item = await this.owned(input.itemId);
+    if (item.isFolder || !item.storageKey) throw new Error("Not a file");
+    await prisma.storageFileVersion.create({
+      data: {
+        itemId: item.id,
+        workspaceId: this.workspaceId,
+        sizeBytes: item.sizeBytes,
+        storageKey: item.storageKey,
+      },
+    });
+    const updated = await prisma.storageItem.update({
+      where: { id: item.id },
+      data: {
+        version: { increment: 1 },
+        sizeBytes: input.sizeBytes,
+        storageKey: input.storageKey,
+        checksum: input.checksum,
+      },
+    });
+    await this.audit("storage.file.versioned", item.id, {
+      version: updated.version,
+      sizeBytes: input.sizeBytes,
+    });
+    return updated;
+  }
+
   async rename(id: string, name: string) {
     await this.assert("UPDATE");
     await this.owned(id);

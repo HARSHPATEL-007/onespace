@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dialog, Field, Input, Textarea, cn } from "@n0va/ui";
+import { Button, Dialog, Field, Input, Select, Textarea, cn } from "@n0va/ui";
 import type { CalendarEvent } from "@n0va/db";
 
 export interface CalendarActions {
@@ -107,7 +107,8 @@ export function CalendarApp({
                     textOverflow: "ellipsis",
                   }}
                 >
-                  {e.allDay ? "" : `${formatTime(e.startAt)} `}
+                  {e.allDay ? "☀ " : `${formatTime(e.startAt)} `}
+                  {e.recurrence !== "NONE" ? "↻ " : ""}
                   {e.title}
                 </button>
               ))}
@@ -142,6 +143,7 @@ function EventDialog({
   onClose: () => void;
 }) {
   const action = mode === "edit" ? actions.update : actions.create;
+  const [repeat, setRepeat] = useState<string>(event?.recurrence ?? "NONE");
   return (
     <Dialog
       open={mode !== null}
@@ -173,6 +175,25 @@ function EventDialog({
             <Input type="datetime-local" name="endAt" required defaultValue={event ? toDateTimeInput(event.endAt) : ""} />
           </Field>
         </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--nv-space-3)" }}>
+          <label className="nv-field" style={{ flexDirection: "row", alignItems: "center" }}>
+            <input type="checkbox" name="allDay" defaultChecked={event?.allDay ?? false} />
+            <span className="nv-label" style={{ marginBottom: 0 }}>All day</span>
+          </label>
+          <Field label="Repeat">
+            <Select name="recurrence" defaultValue={event?.recurrence ?? "NONE"} onChange={(e) => setRepeat(e.target.value)}>
+              <option value="NONE">None</option>
+              <option value="DAILY">Daily</option>
+              <option value="WEEKLY">Weekly</option>
+              <option value="MONTHLY">Monthly</option>
+            </Select>
+          </Field>
+        </div>
+        {repeat !== "NONE" ? (
+          <Field label="Repeat until">
+            <Input type="date" name="repeatUntil" defaultValue={event?.repeatUntil ? toDateInput(event.repeatUntil) : ""} />
+          </Field>
+        ) : null}
         <Field label="Location">
           <Input name="location" defaultValue={event?.location ?? ""} placeholder="Conference Room A" />
         </Field>
@@ -221,6 +242,11 @@ function formatTime(d: Date): string {
 function toDateTimeInput(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toDateInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 function defaultDateTime(): string {

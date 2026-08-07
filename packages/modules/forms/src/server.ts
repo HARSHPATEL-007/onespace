@@ -142,3 +142,15 @@ export class FormsService {
     });
   }
 }
+
+export async function getPublicForm(id: string) {
+  return prisma.form.findUnique({ where: { id } });
+}
+
+export async function submitPublicResponse(formId: string, answers: Record<string, unknown>) {
+  const form = await getPublicForm(formId);
+  if (!form) throw new Error("Form not found");
+  if (!form.published) throw new Error("This form is not accepting responses.");
+  const svc = new FormsService(form.workspaceId, form.createdById ?? "public", "VIEWER");
+  return svc.submitResponse(formId, answers);
+}

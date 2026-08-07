@@ -11,6 +11,8 @@ export const eventInputSchema = z.object({
   startAt: z.string().min(1),
   endAt: z.string().min(1),
   allDay: z.boolean().default(false),
+  recurrence: z.enum(["NONE", "DAILY", "WEEKLY", "MONTHLY"]).default("NONE"),
+  repeatUntil: z.string().optional().nullable(),
   attendees: z.array(z.string()).max(200).default([]),
 });
 
@@ -53,6 +55,8 @@ export class CalendarService {
         startAt: new Date(input.startAt),
         endAt: new Date(input.endAt),
         allDay: input.allDay,
+        recurrence: input.recurrence,
+        repeatUntil: input.repeatUntil ? new Date(input.repeatUntil) : null,
         attendees: input.attendees,
       },
     });
@@ -72,6 +76,8 @@ export class CalendarService {
         ...(input.startAt !== undefined ? { startAt: new Date(input.startAt) } : {}),
         ...(input.endAt !== undefined ? { endAt: new Date(input.endAt) } : {}),
         ...(input.allDay !== undefined ? { allDay: input.allDay } : {}),
+        ...(input.recurrence !== undefined ? { recurrence: input.recurrence } : {}),
+        ...(input.repeatUntil !== undefined ? { repeatUntil: input.repeatUntil ? new Date(input.repeatUntil) : null } : {}),
         ...(input.attendees !== undefined ? { attendees: input.attendees } : {}),
       },
     });

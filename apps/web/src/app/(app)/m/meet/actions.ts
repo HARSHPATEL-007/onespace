@@ -28,6 +28,11 @@ export async function endRoomAction(formData: FormData) {
   await (await svc()).endRoom(String(formData.get("roomId") ?? ""));
 }
 
+export async function getMeetTranscriptAction(formData: FormData) {
+  const roomId = String(formData.get("roomId") ?? "");
+  return (await svc()).transcript(roomId);
+}
+
 export async function sendMeetMessageAction(formData: FormData) {
   const roomId = String(formData.get("roomId") ?? "");
   const body = String(formData.get("body") ?? "");

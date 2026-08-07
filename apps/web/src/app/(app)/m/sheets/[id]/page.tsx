@@ -1,9 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 import { SheetsService } from "@n0va/modules-sheets/server";
-import { SheetGrid } from "@n0va/modules-sheets/components";
+import { SheetGrid, type SheetMeta } from "@n0va/modules-sheets/components";
 import { requireWorkspace } from "@/lib/context";
 import {
   saveCellAction,
+  saveCellMetaAction,
   renameWorkbookAction,
   addSheetAction,
   renameSheetAction,
@@ -35,6 +36,7 @@ export default async function WorkbookPage({
     (await svc.addSheet(wb.id, "Sheet 1"));
 
   const rows = (activeSheet.rows ?? []) as string[][];
+  const cellMeta = (activeSheet as unknown as { cellMeta?: SheetMeta }).cellMeta;
 
   return (
     <SheetGrid
@@ -43,8 +45,10 @@ export default async function WorkbookPage({
       sheets={wb.sheets}
       activeSheet={activeSheet}
       rows={rows}
+      cellMeta={cellMeta}
       actions={{
         saveCell: saveCellAction,
+        saveCellMeta: saveCellMetaAction,
         renameWorkbook: renameWorkbookAction,
         addSheet: addSheetAction,
         renameSheet: renameSheetAction,

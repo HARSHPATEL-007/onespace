@@ -36,7 +36,7 @@ export class N0va1oService {
 
   async connect(input: z.infer<typeof integrationSchema>): Promise<void> {
     await this.assert("CREATE");
-    await prisma.integration.create({
+    const integration = await prisma.integration.create({
       data: {
         workspaceId: this.workspaceId,
         createdById: this.userId,
@@ -48,9 +48,20 @@ export class N0va1oService {
       },
     });
     await prisma.integrationLog.create({
-      data: { workspaceId: this.workspaceId, integrationId: "", level: "info", message: `Connected ${input.provider}` },
+      data: { workspaceId: this.workspaceId, integrationId: integration.id, level: "info", message: `Connected ${input.provider}` },
     });
     await this.audit("integration.connected", input.provider);
+  }
+
+  async activity(id: string, take = 12): Promise<IntegrationLog[]> {
+    await this.assert("READ");
+    const integration = await prisma.integration.findFirst({ where: { id, workspaceId: this.workspaceId }, select: { id: true } });
+    if (!integration) throw new Error("Integration not found");
+    return prisma.integrationLog.findMany({
+      where: { integrationId: integration.id },
+      orderBy: { createdAt: "desc" },
+      take,
+    });
   }
 
   async sync(id: string): Promise<{ message: string }> {

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Dialog, cn } from "@n0va/ui";
 import type { MailLabel, MailLabelMap, MailMessage } from "@n0va/db";
+import type { MailUnreadCounts } from "./server";
 
 export interface MailActions {
   send: (formData: FormData) => Promise<void>;
@@ -38,13 +39,13 @@ export function MailApp({
   folder,
   threads,
   labels,
-  unreadCount,
+  unreadCounts,
   actions,
 }: {
   folder: string;
   threads: MailThread[];
   labels: Array<MailLabel & { _count: { messages: number } }>;
-  unreadCount: number;
+  unreadCounts: MailUnreadCounts;
   actions: MailActions;
 }) {
   const router = useRouter();
@@ -64,6 +65,17 @@ export function MailApp({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId]);
+
+  const toggleLabel = (messageId: string, labelId: string, isAssigned: boolean) => {
+    const fd = new FormData();
+    fd.set("messageId", messageId);
+    fd.set("labelId", labelId);
+    void (isAssigned ? actions.unassignLabel(fd) : actions.assignLabel(fd)).then(() => setTimeout(() => router.refresh(), 50));
+  };
+
+  const activeLabelIds = new Set(
+    activeThread ? activeThread.messages[activeThread.messages.length - 1]!.labels.map((lm) => lm.labelId) : [],
+  );
 
   return (
     <div style={{ display: "flex", gap: "var(--nv-space-4)", height: "calc(100dvh - 150px)", minHeight: 440 }}>
@@ -104,20 +116,7 @@ export function MailApp({
           >
             <span>{f.glyph}</span>
             <span style={{ flex: 1 }}>{f.label}</span>
-            {f.key === "INBOX" && unreadCount > 0 && (
-              <span
-                style={{
-                  background: "var(--nv-color-primary)",
-                  color: "#fff",
-                  borderRadius: 999,
-                  fontSize: 11,
-                  padding: "1px 8px",
-                  fontWeight: 700,
-                }}
-              >
-                {unreadCount}
-              </span>
-            )}
+            {unreadCounts[f.key] > 0 && <span className="nv-badge nv-badge-primary">{unreadCounts[f.key]}</span>}
           </a>
         ))}
         <div style={{ marginTop: 14, fontWeight: 700, fontSize: 12, color: "var(--nv-color-text-faint)", padding: "0 10px 6px" }}>
@@ -178,8 +177,14 @@ export function MailApp({
               {t.messages[0]!.labels.length > 0 && (
                 <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
                   {t.messages[0]!.labels.map((lm) => (
-                    <span
+                    <button
                       key={lm.labelId}
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleLabel(t.messages[0]!.id, lm.labelId, true);
+                      }}
                       style={{
                         fontSize: 11,
                         padding: "1px 8px",
@@ -187,10 +192,12 @@ export function MailApp({
                         color: lm.label.color,
                         background: "transparent",
                         border: `1px solid ${lm.label.color}`,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
                       }}
                     >
                       {lm.label.name}
-                    </span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -221,6 +228,37 @@ export function MailApp({
               <div style={{ fontWeight: 800, fontSize: "var(--nv-font-lg)" }}>
                 {activeThread.messages[activeThread.messages.length - 1]!.subject || "(no subject)"}
               </div>
+              {activeThread.messages[activeThread.messages.length - 1]!.labels.length > 0 && (
+                <div style={{ display: "flex", gap: 4 }}>
+                  {activeThread.messages[activeThread.messages.length - 1]!.labels.map((lm) => (
+                    <button
+                      key={lm.labelId}
+                      type="button"
+                      onClick={() => toggleLabel(activeThread.messages[activeThread.messages.length - 1]!.id, lm.labelId, true)}
+                      style={{
+                        fontSize: 11,
+                        padding: "1px 8px",
+                        borderRadius: 999,
+                        color: lm.label.color,
+                        background: "transparent",
+                        border: `1px solid ${lm.label.color}`,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {lm.label.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <LabelPicker
+                key={activeThreadId}
+                labels={labels}
+                assigned={activeLabelIds}
+                onToggle={(labelId, isAssigned) =>
+                  toggleLabel(activeThread.messages[activeThread.messages.length - 1]!.id, labelId, isAssigned)
+                }
+              />
               <div style={{ flex: 1 }} />
               <form action={actions.toggleStar} onSubmit={() => setTimeout(() => router.refresh(), 50)}>
                 <input type="hidden" name="messageId" value={activeThread.messages[activeThread.messages.length - 1]!.id} />
@@ -382,6 +420,66 @@ export function MailApp({
           <input className="nv-input" name="color" type="color" defaultValue="#7c5cfc" style={{ padding: 4, height: 40 }} />
         </form>
       </Dialog>
+    </div>
+  );
+}
+
+function LabelPicker({
+  labels,
+  assigned,
+  onToggle,
+}: {
+  labels: Array<MailLabel & { _count: { messages: number } }>;
+  assigned: Set<string>;
+  onToggle: (labelId: string, isAssigned: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <Button variant="ghost" size="sm" onClick={() => setOpen((o) => !o)}>
+        + label
+      </Button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            right: 0,
+            marginTop: 4,
+            zIndex: 20,
+            minWidth: 180,
+            padding: 4,
+            background: "var(--nv-color-surface)",
+            border: "1px solid var(--nv-color-border)",
+            borderRadius: "var(--nv-radius-md)",
+            boxShadow: "var(--nv-shadow-lg)",
+          }}
+        >
+          {labels.map((l) => {
+            const isAssigned = assigned.has(l.id);
+            return (
+              <button
+                key={l.id}
+                type="button"
+                className={cn("nv-palette-item", isAssigned && "nv-palette-item-active")}
+                onClick={() => {
+                  onToggle(l.id, isAssigned);
+                  setOpen(false);
+                }}
+              >
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: l.color, display: "inline-block" }} />
+                <span className="nv-palette-item-name">{l.name}</span>
+                {isAssigned && <span>✓</span>}
+              </button>
+            );
+          })}
+          {labels.length === 0 && (
+            <div style={{ padding: "8px 12px", fontSize: "var(--nv-font-xs)", color: "var(--nv-color-text-faint)" }}>
+              No labels yet
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

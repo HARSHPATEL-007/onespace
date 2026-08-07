@@ -10,6 +10,13 @@ export interface ModulePolicy {
   hasOverrides: boolean;
 }
 
+export interface ModuleSetting {
+  module: N0vaModule;
+  enabled: boolean;
+}
+
+export type N0vaStatus = "live" | "building" | "planned";
+
 export class AdminService {
   constructor(
     private readonly workspaceId: string,
@@ -58,9 +65,24 @@ export class AdminService {
     await this.audit("admin.policy.reset", module);
   }
 
-  async setModuleStatus(module: string, status: "live" | "building" | "planned"): Promise<void> {
+  async moduleSettings(): Promise<ModuleSetting[]> {
     await this.assert();
-    // Workspace-level module status lives in memory only (registry); record the governance decision.
+    const rows = await prisma.workspaceModuleSetting.findMany({ where: { workspaceId: this.workspaceId } });
+    const enabledByModule = new Map(rows.map((r) => [r.moduleId, r.enabled] as const));
+    return N0VA_MODULES.map((module) => ({
+      module,
+      enabled: enabledByModule.get(module.id) ?? true,
+    }));
+  }
+
+  async setModuleStatus(module: string, status: N0vaStatus): Promise<void> {
+    await this.assert();
+    const enabled = status !== "planned";
+    await prisma.workspaceModuleSetting.upsert({
+      where: { workspaceId_moduleId: { workspaceId: this.workspaceId, moduleId: module } },
+      update: { enabled },
+      create: { workspaceId: this.workspaceId, moduleId: module, enabled },
+    });
     await logAudit({
       workspaceId: this.workspaceId,
       actorId: this.userId,
@@ -84,3 +106,18 @@ export class AdminService {
 }
 
 export { can };
+
+export async function moduleEnableMap(workspaceId: string): Promise<Record<string, boolean>> {
+  const rows = await prisma.workspaceModuleSetting.findMany({ where: { workspaceId } });
+  const enabled: Record<string, boolean> = {};
+  for (const m of N0VA_MODULES) enabled[m.id] = true;
+  for (const r of rows) enabled[r.moduleId] = r.enabled;
+  return enabled;
+}
+
+export async function isModuleEnabled(workspaceId: string, moduleId: string): Promise<boolean> {
+  const row = await prisma.workspaceModuleSetting.findUnique({
+    where: { workspaceId_moduleId: { workspaceId, moduleId } },
+  });
+  return row ? row.enabled : true;
+}

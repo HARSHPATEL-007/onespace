@@ -16,6 +16,14 @@ export async function createGroupAction(formData: FormData) {
   await (await svc()).create(parsed);
 }
 
+export async function updateGroupAction(formData: FormData) {
+  const parsed = groupSchema.parse({
+    name: String(formData.get("name") ?? ""),
+    description: String(formData.get("description") ?? ""),
+  });
+  await (await svc()).update(String(formData.get("id") ?? ""), parsed);
+}
+
 export async function deleteGroupAction(formData: FormData) {
   await (await svc()).remove(String(formData.get("id") ?? ""));
 }

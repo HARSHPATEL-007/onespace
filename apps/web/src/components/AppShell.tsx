@@ -23,6 +23,7 @@ interface ShellProps {
   workspaces: Array<{ workspace: Workspace; role: Role }>;
   activeWorkspace: Workspace;
   children: React.ReactNode;
+  enabledModuleIds?: string[];
 }
 
 const CORE_MODULE_IDS = new Set([
@@ -40,7 +41,7 @@ const CORE_MODULE_IDS = new Set([
   "ani",
 ]);
 
-export function AppShell({ user, workspaces, activeWorkspace, children }: ShellProps) {
+export function AppShell({ user, workspaces, activeWorkspace, children, enabledModuleIds }: ShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -59,7 +60,7 @@ export function AppShell({ user, workspaces, activeWorkspace, children }: ShellP
   }, []);
 
   const sidebarModules = N0VA_MODULES.filter(
-    (m) => CORE_MODULE_IDS.has(m.id) || m.id === "n0va1o",
+    (m) => (CORE_MODULE_IDS.has(m.id) || m.id === "n0va1o") && (enabledModuleIds ? enabledModuleIds.includes(m.id) : true),
   );
   const sections = groupByLayer(sidebarModules);
 

@@ -26,6 +26,7 @@ async function main() {
   await seedPhase2Demo(workspace.id, owner.id, admin.id);
   await seedPhase3Demo(workspace.id, owner.id, admin.id);
   await seedPhase4Demo(workspace.id, owner.id, admin.id);
+  await seedPhase6Demo(workspace.id, owner.id);
 
   const coreModules = [
     "mail",
@@ -623,6 +624,73 @@ async function seedPhase4Demo(workspaceId: string, ownerId: string, adminId: str
         { workspaceId, createdById: ownerId, mood: "OK", energy: "LOW", sleepHours: 5.5, note: "Rough Monday", createdAt: new Date(Date.now() - 68 * 3600_000) },
       ],
     });
+  }
+}
+
+async function seedPhase6Demo(workspaceId: string, ownerId: string) {
+  // CALENDAR — recurring + all-day
+  if ((await prisma.calendarEvent.count({ where: { workspaceId, recurrence: { not: "NONE" } } })) === 0) {
+    await prisma.calendarEvent.create({
+      data: {
+        workspaceId, createdById: ownerId, title: "Weekly product sync",
+        description: "Suite-wide roadmap check", startAt: new Date(Date.now() + 2 * 86_400_000),
+        endAt: new Date(Date.now() + 2 * 86_400_000 + 3600_000), recurrence: "WEEKLY",
+        repeatUntil: new Date(Date.now() + 60 * 86_400_000),
+      },
+    });
+  }
+
+  // VAULT — category + expiry
+  const vaultItems = await prisma.vaultEntry.findMany({ where: { workspaceId } });
+  if (vaultItems.length > 0 && vaultItems.every((v) => v.category === "general")) {
+    const first = vaultItems[0];
+    if (first) await prisma.vaultEntry.update({ where: { id: first.id }, data: { category: "api-keys", expiresAt: new Date(Date.now() + 30 * 86_400_000) } });
+  }
+
+  // REVENUE — renewal dates
+  await prisma.subscription.updateMany({
+    where: { workspaceId, plan: { contains: "Pro" } },
+    data: { nextBillingAt: new Date(Date.now() + 28 * 86_400_000) },
+  });
+
+  // CX — CSAT on an existing ticket
+  const resolvedTicket = await prisma.ticket.findFirst({ where: { workspaceId, status: "RESOLVED" } });
+  if (resolvedTicket && resolvedTicket.csat === null) {
+    await prisma.ticket.update({ where: { id: resolvedTicket.id }, data: { csat: 4, resolvedAt: resolvedTicket.updatedAt } });
+  }
+
+  // VOICE — note + favorite
+  const call = await prisma.callLog.findFirst({ where: { workspaceId } });
+  if (call && call.note === "") {
+    await prisma.callLog.update({ where: { id: call.id }, data: { note: "Discussed phase 5 scope", favorite: true } });
+  }
+
+  // PICS — favorite
+  const photo = await prisma.photo.findFirst({ where: { workspaceId } });
+  if (photo) await prisma.photo.update({ where: { id: photo.id }, data: { favorite: true } });
+
+  // SLIDES — speaker notes
+  const slide = await prisma.slide.findFirst({ where: { workspaceId } });
+  if (slide && slide.notes === "") {
+    await prisma.slide.update({ where: { id: slide.id }, data: { notes: "Pause here — demo the live pipeline totals." } });
+  }
+
+  // SALES — deal note
+  const deal = await prisma.deal.findFirst({ where: { workspaceId, stage: { notIn: ["WON", "LOST"] } } });
+  if (deal && (await prisma.dealNote.count({ where: { dealId: deal.id } })) === 0) {
+    await prisma.dealNote.create({ data: { dealId: deal.id, workspaceId, createdById: ownerId, body: "Intro call went well — security review scheduled for next week." } });
+  }
+
+  // OPS — incident update
+  const incident = await prisma.incident.findFirst({ where: { workspaceId, status: "INVESTIGATING" } });
+  if (incident && (await prisma.incidentUpdate.count({ where: { incidentId: incident.id } })) === 0) {
+    await prisma.incidentUpdate.create({ data: { incidentId: incident.id, workspaceId, createdById: ownerId, body: "Scaling search replicas; impact contained to query latency." } });
+  }
+
+  // LEGAL — revision baseline
+  const legal = await prisma.legalDocument.findFirst({ where: { workspaceId } });
+  if (legal && (await prisma.legalDocRevision.count({ where: { docId: legal.id } })) === 0) {
+    await prisma.legalDocRevision.create({ data: { docId: legal.id, workspaceId, createdById: ownerId, content: legal.content } });
   }
 }
 

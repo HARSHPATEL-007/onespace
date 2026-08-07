@@ -7,6 +7,7 @@ import {
   createTaskAction,
   deleteListAction,
   deleteTaskAction,
+  moveTaskAction,
   renameListAction,
   toggleTaskAction,
   updateTaskAction,
@@ -29,6 +30,7 @@ export default async function TasksPage() {
   return (
     <TasksApp
       lists={lists}
+      userId={ctx.user.id}
       members={members.map((m) => ({ id: m.userId, name: m.user.name, email: m.user.email }))}
       actions={{
         createList: createListAction,
@@ -37,6 +39,7 @@ export default async function TasksPage() {
         createTask: createTaskAction,
         updateTask: updateTaskAction,
         toggleComplete: toggleTaskAction,
+        moveTask: moveTaskAction,
         deleteTask: deleteTaskAction,
       }}
     />

@@ -38,7 +38,17 @@ export function KeepApp({
 }) {
   const router = useRouter();
   const [editor, setEditor] = useState<{ mode: "create" } | { mode: "edit"; note: Note } | null>(null);
+  const [query, setQuery] = useState("");
+  const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const refresh = () => router.refresh();
+
+  const allLabels = Array.from(new Set(notes.flatMap((note) => note.labels))).sort();
+  const q = query.trim().toLowerCase();
+  const filtered = notes.filter(
+    (note) =>
+      (!q || note.title.toLowerCase().includes(q) || note.body.toLowerCase().includes(q)) &&
+      (activeLabel === null || note.labels.includes(activeLabel)),
+  );
 
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto" }}>
@@ -61,57 +71,125 @@ export function KeepApp({
           <div style={{ fontSize: "var(--nv-font-xs)" }}>Capture a thought — it only takes a second.</div>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "var(--nv-space-4)" }}>
-          {notes.map((note) => (
-            <div
-              key={note.id}
-              className="nv-card"
-              style={{
-                padding: "var(--nv-space-4)",
-                background: COLOR_HEX[note.color] ?? COLOR_HEX.default,
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                <div style={{ flex: 1, fontWeight: 700 }}>
-                  {note.pinned ? "📌 " : ""}
-                  {note.title || "Untitled"}
-                </div>
-                <Dropdown
-                  trigger={<Button variant="ghost" size="sm">⋯</Button>}
+        <>
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search notes…"
+            style={{ marginBottom: "var(--nv-space-3)" }}
+          />
+          {allLabels.length > 0 ? (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "var(--nv-space-4)" }}>
+              <button
+                type="button"
+                onClick={() => setActiveLabel(null)}
+                style={{
+                  fontSize: 11,
+                  background: activeLabel === null ? "var(--nv-color-primary)" : "rgba(0,0,0,0.08)",
+                  color: activeLabel === null ? "#fff" : "inherit",
+                  padding: "2px 10px",
+                  borderRadius: 999,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: "none",
+                }}
+              >
+                All
+              </button>
+              {allLabels.map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setActiveLabel(activeLabel === label ? null : label)}
+                  style={{
+                    fontSize: 11,
+                    background: activeLabel === label ? "var(--nv-color-primary)" : "rgba(0,0,0,0.08)",
+                    color: activeLabel === label ? "#fff" : "inherit",
+                    padding: "2px 10px",
+                    borderRadius: 999,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: "none",
+                  }}
                 >
-                  <MenuItem onSelect={() => setEditor({ mode: "edit", note })}>Edit</MenuItem>
-                  <form action={actions.togglePin} onSubmit={() => setTimeout(refresh, 50)}>
-                    <input type="hidden" name="id" value={note.id} />
-                    <MenuItem>{note.pinned ? "Unpin" : "Pin"}</MenuItem>
-                  </form>
-                  <form action={actions.archive} onSubmit={() => setTimeout(refresh, 50)}>
-                    <input type="hidden" name="id" value={note.id} />
-                    <MenuItem>{archived ? "Restore" : "Archive"}</MenuItem>
-                  </form>
-                  <form action={actions.remove} onSubmit={() => setTimeout(refresh, 50)}>
-                    <input type="hidden" name="id" value={note.id} />
-                    <MenuItem danger>Delete</MenuItem>
-                  </form>
-                </Dropdown>
-              </div>
-              {note.body ? (
-                <div style={{ fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-                  {note.body.length > 400 ? `${note.body.slice(0, 400)}…` : note.body}
-                </div>
-              ) : null}
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {note.labels.map((label) => (
-                  <span key={label} style={{ fontSize: 11, background: "rgba(0,0,0,0.08)", padding: "2px 8px", borderRadius: 999, fontWeight: 600 }}>
-                    {label}
-                  </span>
-                ))}
-              </div>
+                  {label}
+                </button>
+              ))}
             </div>
-          ))}
-        </div>
+          ) : null}
+          {filtered.length === 0 ? (
+            <div className="nv-empty">
+              <div>No matches</div>
+              <div style={{ fontSize: "var(--nv-font-xs)" }}>Try a different search or label.</div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "var(--nv-space-4)" }}>
+              {filtered.map((note) => (
+                <div
+                  key={note.id}
+                  className="nv-card"
+                  style={{
+                    padding: "var(--nv-space-4)",
+                    background: COLOR_HEX[note.color] ?? COLOR_HEX.default,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <div style={{ flex: 1, fontWeight: 700 }}>
+                      {note.pinned ? "📌 " : ""}
+                      {note.title || "Untitled"}
+                    </div>
+                    <Dropdown
+                      trigger={<Button variant="ghost" size="sm">⋯</Button>}
+                    >
+                      <MenuItem onSelect={() => setEditor({ mode: "edit", note })}>Edit</MenuItem>
+                      <form action={actions.togglePin} onSubmit={() => setTimeout(refresh, 50)}>
+                        <input type="hidden" name="id" value={note.id} />
+                        <MenuItem>{note.pinned ? "Unpin" : "Pin"}</MenuItem>
+                      </form>
+                      <form action={actions.archive} onSubmit={() => setTimeout(refresh, 50)}>
+                        <input type="hidden" name="id" value={note.id} />
+                        <MenuItem>{archived ? "Restore" : "Archive"}</MenuItem>
+                      </form>
+                      <form action={actions.remove} onSubmit={() => setTimeout(refresh, 50)}>
+                        <input type="hidden" name="id" value={note.id} />
+                        <MenuItem danger>Delete</MenuItem>
+                      </form>
+                    </Dropdown>
+                  </div>
+                  {note.body ? (
+                    <div style={{ fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+                      {note.body.length > 400 ? `${note.body.slice(0, 400)}…` : note.body}
+                    </div>
+                  ) : null}
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {note.labels.map((label) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setActiveLabel(activeLabel === label ? null : label)}
+                        style={{
+                          fontSize: 11,
+                          background: activeLabel === label ? "var(--nv-color-primary)" : "rgba(0,0,0,0.08)",
+                          color: activeLabel === label ? "#fff" : "inherit",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          border: "none",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <NoteDialog

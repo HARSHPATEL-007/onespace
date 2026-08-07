@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Dialog, Dropdown, MenuItem } from "@n0va/ui";
 import type { SitePage } from "@n0va/db";
 import type { PageBlock } from "./server";
+import { RenderBlocks, parseBlocks } from "./blocks";
 
 export interface SiteActions {
   create?: (formData: FormData) => Promise<string | void>;
@@ -25,37 +26,6 @@ export interface SiteMeta {
   createdAt: Date;
   updatedAt: Date;
   pages: SitePage[];
-}
-
-export function RenderBlocks({ blocks }: { blocks: PageBlock[] | null }) {
-  const items = Array.isArray(blocks) ? blocks : [];
-  if (items.length === 0) return <p style={{ color: "var(--nv-color-text-faint)" }}>This page has no content yet.</p>;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {items.map((b) => {
-        switch (b.type) {
-          case "heading":
-            return <h2 key={b.id} style={{ fontSize: 26, fontWeight: 800, margin: 0 }}>{b.content || "Untitled section"}</h2>;
-          case "quote":
-            return <blockquote key={b.id} style={{ margin: 0, padding: "10px 16px", borderLeft: "3px solid var(--nv-color-primary)", background: "var(--nv-color-surface)", borderRadius: 8, fontStyle: "italic" }}>{b.content}</blockquote>;
-          case "bullets":
-            return (
-              <ul key={b.id} style={{ margin: 0, paddingLeft: 20 }}>
-                {b.bullets.map((x, i) => (
-                  <li key={i}>{x}</li>
-                ))}
-              </ul>
-            );
-          default:
-            return <p key={b.id} style={{ margin: 0, lineHeight: 1.7 }}>{b.content}</p>;
-        }
-      })}
-    </div>
-  );
-}
-
-function parseBlocks(value: unknown): PageBlock[] {
-  return Array.isArray(value) ? (value as PageBlock[]) : [];
 }
 
 export function SitesList({ sites, actions }: { sites: SiteMeta[]; actions: SiteActions }) {
@@ -89,6 +59,7 @@ export function SitesList({ sites, actions }: { sites: SiteMeta[]; actions: Site
                 <a href={`/m/sites/${s.id}`} style={{ textDecoration: "none", flex: 1 }}>
                   <Button style={{ width: "100%" }}>Edit</Button>
                 </a>
+                {s.published ? <CopyLinkButton siteId={s.id} /> : null}
                 <Dropdown
                   trigger={
                     <Button variant="ghost" size="sm">⋯</Button>
@@ -147,6 +118,24 @@ export function SitesList({ sites, actions }: { sites: SiteMeta[]; actions: Site
         </form>
       </Dialog>
     </div>
+  );
+}
+
+function CopyLinkButton({ siteId }: { siteId: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${location.origin}/p/${siteId}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <Button variant="ghost" size="sm" onClick={copy}>
+      {copied ? "Copied" : "Copy link"}
+    </Button>
   );
 }
 
