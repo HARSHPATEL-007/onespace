@@ -23,6 +23,10 @@ import { computeHealthScore } from "./health";
 import { detectSchemaDrift, applySafeMappings } from "./schema-drift";
 import { bulkProcess, chunkRecords } from "./bulk";
 import { DependencyMapper } from "./dependency";
+import { deriveTemplate, validateTemplate, applyTemplate, commitTemplate } from "./recipe";
+import { simulatePlan } from "./simulation";
+import { evaluateIntent, DEFAULT_THRESHOLDS } from "./intent";
+import { explainStep, explainWorkflow, renderStepExplanation } from "./explainability";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -589,4 +593,120 @@ test("dependency mapping: reports blocked steps for missing prerequisites", () =
   assert.ok(!plan.executable, "plan not executable without prereq");
   assert.equal(plan.blocked.length, 1, "one blocked step");
   assert.equal(plan.blocked[0]!.missingPrerequisite, "auth", "blocked by missing auth");
+});
+
+test("recipe templates: deriveTemplate captures parameters and validates type safety", () => {
+  const store = new InMemoryWorkflowStore();
+  const wf = store.commit({
+    workflowName: "Invoice_Sync",
+    description: "Sync invoices",
+    steps: [{ provider: "dropbox", tool: "list_files", input: { query: "invoices", limit: 10 } }],
+    parentVersionId: null,
+    policyVersion: "2026.07.1",
+  });
+  const template = deriveTemplate(wf);
+  assert.equal(template.workflowName, "Invoice_Sync");
+  assert.ok(template.parameters.some((p) => p.name === "list_files.query"), "query param captured");
+  assert.ok(template.parameters.some((p) => p.name === "list_files.limit"), "limit param captured");
+
+  const validation = validateTemplate(template, wf);
+  assert.ok(validation.valid, "template validates against workflow");
+});
+
+test("recipe templates: applyTemplate and commitTemplate preserve history", () => {
+  const store = new InMemoryWorkflowStore();
+  const wf = store.commit({
+    workflowName: "Invoice_Sync",
+    description: "Sync invoices",
+    steps: [{ provider: "dropbox", tool: "list_files", input: { query: "invoices" } }],
+    parentVersionId: null,
+    policyVersion: "2026.07.1",
+  });
+  const template = deriveTemplate(wf);
+  const queryParam = template.parameters.find((p) => p.name === "list_files.query")!;
+  queryParam.defaultValue = "receipts";
+
+  const newSteps = applyTemplate(template, wf);
+  assert.equal(newSteps[0]!.input.query, "receipts", "parameter applied");
+
+  const newVersion = commitTemplate(store, template, wf, "2026.07.1");
+  assert.equal(newVersion.version, 2, "new version committed");
+  assert.equal(store.list("Invoice_Sync").length, 2, "history preserved");
+});
+
+test("workflow simulation: predicts success, side effects, and latency", () => {
+  const store = new InMemoryWorkflowStore();
+  const wf = store.commit({
+    workflowName: "Campaign",
+    description: "Run campaign",
+    steps: [
+      { provider: "slack", tool: "post_message", input: {} },
+      { provider: "mailchimp", tool: "send_campaign", input: {} },
+    ],
+    parentVersionId: null,
+    policyVersion: "2026.07.1",
+  });
+  const mapper = new DependencyMapper();
+  for (const step of wf.steps) mapper.addTool(step.tool, step.provider);
+  const plan = mapper.resolve();
+
+  const result = simulatePlan(wf, plan);
+  assert.ok(result.overallSuccess, "simulation succeeds");
+  assert.equal(result.steps.length, 2, "all steps simulated");
+  assert.ok(result.totalPredictedLatencyMs > 0, "latency predicted");
+  assert.ok(result.steps[1]!.sideEffects[0]!.destructive, "send_campaign flagged destructive");
+  assert.ok(result.safeToExecute, "safe to execute");
+});
+
+test("workflow simulation: predicts failures for injected faults", () => {
+  const store = new InMemoryWorkflowStore();
+  const wf = store.commit({
+    workflowName: "Campaign",
+    description: "Run campaign",
+    steps: [{ provider: "slack", tool: "post_message", input: {} }],
+    parentVersionId: null,
+    policyVersion: "2026.07.1",
+  });
+  const mapper = new DependencyMapper();
+  mapper.addTool("post_message", "slack");
+  const plan = mapper.resolve();
+
+  const result = simulatePlan(wf, plan, { failTools: new Set(["post_message"]) });
+  assert.ok(!result.overallSuccess, "simulation fails with injected fault");
+  assert.equal(result.failurePredictions.length, 1, "failure predicted");
+  assert.ok(!result.safeToExecute, "not safe to execute");
+});
+
+test("intent confidence: executes when above threshold, clarifies when below", () => {
+  const high = evaluateIntent({ intent: "list issues", confidence: 0.9, workflowType: "read", riskLevel: "low" });
+  assert.equal(high.decision, "execute", "high confidence executes");
+
+  const low = evaluateIntent({ intent: "delete all", confidence: 0.5, workflowType: "destructive", riskLevel: "high" });
+  assert.equal(low.decision, "clarify", "low confidence on destructive clarifies");
+  assert.ok(low.clarificationPrompt, "clarification prompt provided");
+});
+
+test("intent confidence: blocks critical-risk low-confidence intents", () => {
+  const critical = evaluateIntent({ intent: "delete production", confidence: 0.3, workflowType: "destructive", riskLevel: "critical" });
+  assert.equal(critical.decision, "block", "critical + low confidence blocked");
+});
+
+test("explainability: step and workflow explanations are generated", () => {
+  const store = new InMemoryWorkflowStore();
+  const wf = store.commit({
+    workflowName: "Invoice_Sync",
+    description: "Sync invoices",
+    steps: [{ provider: "dropbox", tool: "list_files", input: { query: "invoices" } }],
+    parentVersionId: null,
+    policyVersion: "2026.07.1",
+  });
+  const decision = evaluatePolicy({ provider: "dropbox", tool: "list_files", actorLabel: "agent", isDestructive: false, tokenState: "ACTIVE", inAllowlist: true, healthScore: 1 });
+  const stepExp = explainStep({ step: wf.steps[0]!, index: 0, policyDecision: decision, confidence: 0.95 });
+  assert.ok(stepExp.selectionReason.includes("list_files"), "selection reason mentions tool");
+  assert.equal(stepExp.riskLevel, decision.riskLevel, "risk level propagated");
+
+  const workflowExp = explainWorkflow({ workflowName: wf.workflowName, versionId: wf.versionId, stepExplanations: [stepExp] });
+  assert.ok(workflowExp.summary.includes("Invoice_Sync"), "workflow summary generated");
+  const rendered = renderStepExplanation(stepExp);
+  assert.ok(rendered.includes("dropbox:list_files"), "rendered explanation readable");
 });
