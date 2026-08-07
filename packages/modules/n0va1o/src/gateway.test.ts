@@ -34,6 +34,7 @@ import { createPlan, selectTool, createStep, verifyStep, decideRetry, replanFrom
 import { retrieveEvidence, extractClaims, verifyClaims, enforceCitations, decideGrounding, gateHighStakes, rankSources, auditGrounding, measureGrounding, detectConflicts } from "./grounding";
 import { planCodeExecution, gateExecution, runInSandbox, registerArtifact, createAuditTrace, decideRecovery, measureExecution, DEFAULT_QUOTA } from "./code-exec";
 import { emitPartialTranscript, detectEndpoint, recognizeSpeech, generateSpeech, createSession, addTurn, interruptTurn, confirmAction, degradeGracefully, auditVoiceAction } from "./voice";
+import { ingestSource, retrieveChunks, packageEvidence, generateGrounded, enforceAccess, measureRAG, logAction } from "./rag";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1244,4 +1245,47 @@ test("voice: confirmAction gates high-risk and degradeGracefully handles quality
   assert.equal(degraded.mode, "text_only", "poor quality degrades to text");
   const good = degradeGracefully("good", 200, 1000);
   assert.equal(good.mode, "speech_to_speech", "good quality stays voice");
+});
+
+test("rag: ingestSource chunks content with full metadata", () => {
+  const chunks = ingestSource({ sourceId: "doc1", sourceType: "document", content: "Invoice #123 total $500 due immediately for services rendered", metadata: { sourceType: "document", version: "1", owner: "u1", tenantId: "t1", originSystem: "erp", createdAt: "2026-01-01", updatedAt: "2026-08-01", classification: "internal" }, chunkSize: 50 });
+  assert.ok(chunks.length >= 1, "at least one chunk");
+  assert.equal(chunks[0]!.metadata.sourceId, "doc1", "source id preserved");
+  assert.ok(chunks[0]!.freshness > 0, "freshness computed");
+});
+
+test("rag: retrieveChunks filters by tenant/classification and ranks hybrid", () => {
+  const corpus = [
+    ingestSource({ sourceId: "d1", sourceType: "document", content: "invoice payment terms", metadata: { sourceType: "document", version: "1", owner: "u1", tenantId: "t1", originSystem: "erp", createdAt: "", updatedAt: "2026-08-01", classification: "internal" } })[0]!,
+    ingestSource({ sourceId: "d2", sourceType: "document", content: "invoice payment terms", metadata: { sourceType: "document", version: "1", owner: "u1", tenantId: "t2", originSystem: "erp", createdAt: "", updatedAt: "2026-08-01", classification: "internal" } })[0]!,
+  ];
+  const results = retrieveChunks("invoice", corpus, { tenantId: "t1", allowedClassifications: ["internal", "confidential"] });
+  assert.ok(results.length > 0, "results retrieved");
+  assert.ok(results.every((r) => r.chunk.metadata.tenantId === "t1"), "tenant filtered");
+});
+
+test("rag: packageEvidence deduplicates and retains provenance", () => {
+  const corpus = [
+    ingestSource({ sourceId: "d1", sourceType: "document", content: "relevant invoice data here", metadata: { sourceType: "document", version: "1", owner: "u1", tenantId: "t1", originSystem: "erp", createdAt: "", updatedAt: "2026-08-01", classification: "internal" } })[0]!,
+    ingestSource({ sourceId: "d1", sourceType: "document", content: "more data", metadata: { sourceType: "document", version: "1", owner: "u1", tenantId: "t1", originSystem: "erp", createdAt: "", updatedAt: "2026-08-01", classification: "internal" } })[0]!,
+  ];
+  const candidates = retrieveChunks("invoice", corpus, { tenantId: "t1", allowedClassifications: ["internal"] });
+  const evidence = packageEvidence(candidates);
+  assert.ok(evidence.length <= 1, "deduplicated by source");
+  assert.ok(evidence[0]!.provenance.includes("erp"), "provenance retained");
+});
+
+test("rag: generateGrounded refuses without evidence and enforces access", () => {
+  const refused = generateGrounded("query", [], 1);
+  assert.equal(refused.status, "refused", "no evidence refuses");
+  const chunk = ingestSource({ sourceId: "d1", sourceType: "document", content: "secret", metadata: { sourceType: "document", version: "1", owner: "u1", tenantId: "t1", originSystem: "erp", createdAt: "", updatedAt: "2026-08-01", classification: "restricted" } })[0]!;
+  assert.ok(!enforceAccess(chunk, "internal").allowed, "restricted blocked for internal user");
+  assert.ok(enforceAccess(chunk, "restricted").allowed, "restricted allowed for cleared user");
+});
+
+test("rag: measureRAG computes recall, precision, and groundedness", () => {
+  const metrics = measureRAG({ trueRelevant: 10, retrievedRelevant: 7, totalRetrieved: 10, groundedClaims: 8, totalClaims: 10, avgFreshness: 0.85 });
+  assert.equal(metrics.recall, 0.7, "recall computed");
+  assert.equal(metrics.precision, 0.7, "precision computed");
+  assert.equal(metrics.groundedness, 0.8, "groundedness computed");
 });
