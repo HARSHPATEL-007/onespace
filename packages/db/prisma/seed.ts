@@ -433,21 +433,75 @@ async function seedPhase3Demo(workspaceId: string, ownerId: string, adminId: str
     });
   }
 
-  // N0VA1O — integrations
-  const integrationCount = await prisma.integration.count({ where: { workspaceId } });
-  if (integrationCount === 0) {
-    const slack = await prisma.integration.create({
-      data: { workspaceId, createdById: adminId, provider: "slack", name: "Design channel", status: "connected", config: { token: "xoxb-demo" }, enabled: true, lastSyncAt: new Date(Date.now() - 3600_000 * 2) },
-    });
-    await prisma.integration.create({
-      data: { workspaceId, createdById: ownerId, provider: "gdrive", name: "Marketing assets", status: "connected", config: {}, enabled: true, lastSyncAt: new Date(Date.now() - 3600_000 * 20) },
-    });
+// N0VA1O — integrations (idempotent: wires gateway fields onto any pre-existing rows too)
+  const wiredConnectors: Array<{ provider: string; name: string; category: string; secret: string | null; path: string | null; mcp: boolean; wh: boolean; rlpm: number; retry: number; allow: string[]; owner: boolean }> = [
+    { provider: "slack", name: "Design channel", category: "communication", secret: "demo-secret-9f3c1a77b2", path: "abcd1234ef56", mcp: true, wh: true, rlpm: 120, retry: 3, allow: [], owner: false },
+    { provider: "gdrive", name: "Marketing assets", category: "documents", secret: "hook-secret-a1b2c3", path: "8d41e2f00517", mcp: false, wh: true, rlpm: 60, retry: 2, allow: [], owner: true },
+    { provider: "github", name: "Core repo", category: "devops", secret: null, path: null, mcp: true, wh: false, rlpm: 240, retry: 3, allow: ["list_repos", "list_issues"], owner: true },
+  ];
+  for (const c of wiredConnectors) {
+    const existing = await prisma.integration.findFirst({ where: { workspaceId, provider: c.provider } });
+    const data = {
+      name: c.name,
+      category: c.category,
+      status: "connected",
+      mcpEnabled: c.mcp,
+      webhookEnabled: c.wh,
+      webhookSecret: c.secret,
+      webhookPath: c.path,
+      rateLimitPerMin: c.rlpm,
+      retryMax: c.retry,
+      timeoutMs: 15000,
+      allowlistTools: c.allow,
+      blocklistTools: [],
+    };
+    if (existing) {
+      await prisma.integration.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.integration.create({
+        data: {
+          workspaceId, createdById: c.owner ? ownerId : adminId, provider: c.provider, enabled: true,
+          config: { authType: "oauth2", token: c.provider === "slack" ? "xoxb-demo" : c.provider === "github" ? "ghp-demo" : undefined },
+          lastSyncAt: new Date(Date.now() - 3600_000 * (c.provider === "github" ? 48 : 4)),
+          ...data,
+        },
+      });
+    }
+  }
+
+  const slack = await prisma.integration.findFirst({ where: { workspaceId, provider: "slack" } });
+  if (slack && (await prisma.integrationLog.count({ where: { integrationId: slack.id } })) === 0) {
     await prisma.integrationLog.createMany({
       data: [
-        { workspaceId, integrationId: slack.id, level: "info", message: "Synced slack — 12 items pulled", createdAt: new Date(Date.now() - 3600_000 * 2) },
-        { workspaceId, integrationId: slack.id, level: "info", message: "Connected slack", createdAt: new Date(Date.now() - 3600_000 * 3) },
+        { workspaceId, integrationId: slack.id, level: "info", direction: "outbound", statusCode: 200, durationMs: 84, idempotencyKey: "k-a1", method: "GET", path: "/sync", meta: { tool: "sync", actorLabel: "owner", provider: "slack" }, message: "Slack: sync completed — 12 items processed via gateway", createdAt: new Date(Date.now() - 3600_000 * 2) },
+        { workspaceId, integrationId: slack.id, level: "info", direction: "system", message: "Connected Slack (Communication)", createdAt: new Date(Date.now() - 3600_000 * 3) },
+        { workspaceId, integrationId: slack.id, level: "info", direction: "inbound", statusCode: 200, idempotencyKey: "wh_001", method: "POST", meta: { payloadSummary: { keys: ["event", "channel", "user"], sizeBytes: 128 }, actorLabel: "webhook" }, message: "Webhook event received (3 fields, 128 bytes)", createdAt: new Date(Date.now() - 3600_000 * 5) },
       ],
     });
+  }
+
+  // N0VA1O retention default + MCP key (idempotent — only set once)
+  const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+  if (ws && !ws.mcpKey) {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { mcpKey: "n0va1o_demo_7f3a9c81b2e4d6f5a0c1", integrationRetentionDays: 90 },
+    });
+  }
+
+  // N0VA1O — one pending governance access request
+  const pendingRequests = await prisma.integrationAccessRequest.count({ where: { workspaceId, status: "PENDING" } });
+  if (pendingRequests === 0) {
+    const mcpSlack = await prisma.integration.findFirst({ where: { workspaceId, provider: "slack", mcpEnabled: true } });
+    if (mcpSlack) {
+      await prisma.integrationAccessRequest.create({
+        data: {
+          workspaceId, integrationId: mcpSlack.id, requesterLabel: "mcp-agent (Claude Code)",
+          tool: "create_channel", reason: "Creating a new #announcements channel for the Q3 launch.",
+          status: "PENDING",
+        },
+      });
+    }
   }
 
   // ANI — assistant conversations

@@ -6,7 +6,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./components": "./src/components.tsx"
+    "./components": "./src/components.tsx",
+    "./catalog": "./src/catalog.ts",
+    "./gateway": "./src/gateway.ts",
+    "./mcp": "./src/mcp.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

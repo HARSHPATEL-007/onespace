@@ -45,14 +45,17 @@ model Workspace {
   sitePages      SitePage[]
   mfaEnabled     Boolean       @default(false)
   sessionTimeoutMin Int       @default(60)
+  integrationRetentionDays Int @default(90)
+  mcpKey         String?
   learningSets   LearningSet[]
   learningItems  LearningItem[]
   callLogs       CallLog[]
   vaultEntries    VaultEntry[]
   automations     Automation[]
   automationRuns  AutomationRun[]
-  integrations    Integration[]
+integrations    Integration[]
   integrationLogs IntegrationLog[]
+  integrationAccessRequests IntegrationAccessRequest[]
   aniConversations AniConversation[]
   aniMessages     AniMessage[]
   scripts         Script[]
@@ -1004,21 +1007,32 @@ model AutomationRun {
 
 /// N0VA1O - integration gateway.
 model Integration {
-  id          String   @id @default(uuid())
-  workspaceId String
-  createdById String?
-  provider    String
-  name        String
-  status      String   @default("connected")
-  config      Json
-  enabled     Boolean  @default(true)
-  lastSyncAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  workspaceId   String
+  createdById   String?
+  provider      String
+  name          String
+  category      String   @default("other")
+  status        String   @default("connected")
+  config        Json
+  enabled       Boolean  @default(true)
+  mcpEnabled    Boolean  @default(false)
+  webhookEnabled Boolean @default(true)
+  webhookSecret String?
+  webhookPath   String?
+  rateLimitPerMin Int    @default(120)
+  retryMax      Int      @default(3)
+  timeoutMs     Int      @default(15000)
+  allowlistTools Json         @default("[]")
+  blocklistTools Json         @default("[]")
+  lastSyncAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
   logs       IntegrationLog[]
+  accessRequests IntegrationAccessRequest[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
 }
@@ -1028,6 +1042,13 @@ model IntegrationLog {
   integrationId String
   workspaceId   String
   level         String      @default("info")
+  direction     String      @default("outbound")
+  statusCode    Int?
+  durationMs    Int?
+  idempotencyKey String?
+  method        String?
+  path          String?
+  meta          Json?
   message       String
   createdAt     DateTime    @default(now())
 
@@ -1035,6 +1056,27 @@ model IntegrationLog {
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([integrationId, createdAt(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+/// N0VA1O MCP - governed tool access requests (blocked destructive tools).
+model IntegrationAccessRequest {
+  id            String   @id @default(uuid())
+  integrationId String
+  workspaceId   String
+  requestedById String?
+  requesterLabel String  @default("mcp-agent")
+  tool          String
+  reason        String   @default("")
+  status        String   @default("PENDING")
+  decidedById   String?
+  decidedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt(sort: Desc)])
 }
 
 /// N0VA ANI - assistant conversations.
