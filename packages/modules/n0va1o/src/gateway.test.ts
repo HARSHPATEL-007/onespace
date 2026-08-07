@@ -16,6 +16,9 @@ import { GatewayError } from "./gateway";
 import { evaluatePolicy, DEFAULT_POLICY, type PolicyContext } from "./policy";
 import { InMemoryWorkflowStore } from "./versioning";
 import { redact, applyRetention, canReplay, DEFAULT_RETENTION } from "./session";
+import { scrubSecrets, scrubString, containsSecret, redactSecretFields, rotationStatus } from "./secrets";
+import { classifyContent, canReachLLM, canReachExternal, normalizeLabel } from "./privacy";
+import { IncidentManager } from "./incident";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -403,4 +406,95 @@ test("session memory: replay requires approval for confidential entries", () => 
   assert.equal(canReplay(entry, DEFAULT_RETENTION), false, "confidential blocked from replay");
   const pub = { ...entry, sensitivity: "public" as const };
   assert.equal(canReplay(pub, DEFAULT_RETENTION), true, "public replay allowed");
+});
+
+test("secretless execution: detects secrets in strings", () => {
+  assert.ok(containsSecret("Bearer abcdefghijklmnop123456789"), "detects bearer token");
+  assert.ok(containsSecret("sk-abcdefghijklmnopqrstuvwxyz1234567890"), "detects sk key");
+  assert.ok(!containsSecret("list the issues on the board"), "no secret in plain text");
+});
+
+test("secretless execution: scrubString removes all secret material", () => {
+  const input = "Use Bearer abcdefghijklmnop123456789 and email admin@test.com";
+  const out = scrubString(input);
+  assert.ok(!out.includes("abcdefghijklmnop123456789"), "bearer token removed");
+  assert.ok(out.includes("<secret-redacted>"), "replaced with marker");
+});
+
+test("secretless execution: scrubSecrets recurses into objects", () => {
+  const input = { token: "abcdefghijklmnop123456789", nested: { apiKey: "sk-abcdefghijklmnopqrstuvwxyz1234567890" } };
+  const out = scrubSecrets(input) as { token: string; nested: { apiKey: string } };
+  assert.equal(out.token, "<secret-redacted>", "top-level token scrubbed");
+  assert.ok(out.nested.apiKey.includes("<secret-redacted>"), "nested secret scrubbed");
+  assert.ok(!out.nested.apiKey.includes("abcdefghijklmnopqrstuvwxyz"), "nested secret value removed");
+});
+
+test("secretless execution: redactSecretFields redacts by field name", () => {
+  const input = { token: "short", user: "alice", password: "x" };
+  const out = redactSecretFields(input) as { token: string; user: string; password: string };
+  assert.equal(out.token, "<secret-redacted>", "token field redacted");
+  assert.equal(out.password, "<secret-redacted>", "password field redacted");
+  assert.equal(out.user, "alice", "non-secret field preserved");
+});
+
+test("secretless execution: rotationStatus flags due rotations", () => {
+  const now = new Date("2026-08-07T00:00:00Z");
+  const recent = rotationStatus({ connectionId: "c1", lastRotated: new Date("2026-08-01"), expiresAt: new Date("2026-08-20"), now });
+  assert.equal(recent.rotationDue, false, "fresh credential not due");
+  const expiring = rotationStatus({ connectionId: "c2", lastRotated: new Date("2026-07-01"), expiresAt: new Date("2026-08-08"), rotationWindowDays: 3, now });
+  assert.equal(expiring.rotationDue, true, "expiring credential is due");
+});
+
+test("privacy classification: restricted content is quarantined and masked", () => {
+  const result = classifyContent("Contact admin@test.com with SSN 123-45-6789", "restricted");
+  assert.equal(result.quarantined, true, "restricted is quarantined");
+  assert.ok(!result.content.includes("admin@test.com"), "email masked");
+  assert.ok(!result.content.includes("123-45-6789"), "SSN masked");
+  assert.ok(result.actions.includes("quarantined"), "quarantine action recorded");
+});
+
+test("privacy classification: public content passes through", () => {
+  const result = classifyContent("The project has 5 open issues", "public");
+  assert.equal(result.quarantined, false, "public not quarantined");
+  assert.equal(result.content, "The project has 5 open issues", "public unchanged");
+  assert.equal(canReachLLM("public"), true, "public reaches LLM");
+  assert.equal(canReachExternal("restricted"), false, "restricted blocked externally");
+});
+
+test("privacy classification: normalizeLabel coerces unknown labels", () => {
+  assert.equal(normalizeLabel("PUBLIC"), "public");
+  assert.equal(normalizeLabel("unknown"), "internal");
+  assert.equal(normalizeLabel(undefined), "internal");
+});
+
+test("incident response: opens incident, suspends sessions, preserves evidence", () => {
+  const mgr = new IncidentManager();
+  const incident = mgr.openIncident({
+    severity: "critical",
+    description: "Mass delete detected",
+    toolCalls: [{ tool: "delete_repo", provider: "github", actorLabel: "agent", timestamp: new Date().toISOString(), policyDecision: { outcome: "DENY", policyVersion: "v1", matchedRules: [], riskLevel: "critical", riskScore: 90, disposition: "" } }],
+    affectedSessions: ["sess-1", "sess-2"],
+    policyVersion: "2026.07.1",
+  });
+  assert.ok(incident.incidentId.startsWith("INC-CRITICAL-"), "incident id prefixed");
+  assert.ok(incident.evidenceHash.length > 0, "evidence hash generated");
+  assert.ok(mgr.isSessionSuspended("sess-1"), "affected session suspended");
+  assert.equal(mgr.listActive().length, 1, "one active incident");
+});
+
+test("incident response: resolve restores sessions and preserves bundle", () => {
+  const mgr = new IncidentManager();
+  const incident = mgr.openIncident({
+    severity: "high",
+    description: "Off-hours destructive",
+    toolCalls: [],
+    affectedSessions: ["sess-1"],
+    policyVersion: "2026.07.1",
+  });
+  const bundle = mgr.buildBundle(incident.incidentId);
+  assert.ok(bundle, "immutable bundle built");
+  const resolved = mgr.resolve(incident.incidentId, "admin@example.com");
+  assert.equal(resolved?.status, "resolved", "incident resolved");
+  assert.ok(!mgr.isSessionSuspended("sess-1"), "session restored after resolve");
+  assert.equal(mgr.listActive().length, 0, "no active incidents after resolve");
 });
