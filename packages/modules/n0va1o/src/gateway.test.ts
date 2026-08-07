@@ -144,6 +144,14 @@ test("JIT connection: token state lifecycle and expiry refresh", async () => {
   const github = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "github" } });
   assert.ok(github, "demo github integration exists");
 
+  // Clean up any extra connections from prior test runs and pin the seeded one.
+  const seeded = await prisma.integrationConnection.findFirst({
+    where: { integrationId: github!.id, workspaceId: workspace!.id, accountLabel: "core-repo (demo)" },
+  });
+  assert.ok(seeded, "seeded connection exists");
+  await prisma.integrationConnection.deleteMany({ where: { integrationId: github!.id, workspaceId: workspace!.id, id: { not: seeded!.id } } });
+  await prisma.integration.update({ where: { id: github!.id }, data: { activeConnectionId: seeded!.id } });
+
   // connectionHealth should report the seeded connection.
   const health = await gw.connectionHealth(github!.id, workspace!.id);
   assert.ok(health, "connection health exists");
@@ -158,12 +166,8 @@ test("JIT connection: token state lifecycle and expiry refresh", async () => {
   assert.ok(conn!.blockedActions.includes("delete_repo"));
 
   // Simulate expiry: set expiresAt to the past, then resolve should refresh.
-  const connRow = await prisma.integrationConnection.findFirst({
-    where: { integrationId: github!.id, workspaceId: workspace!.id },
-  });
-  assert.ok(connRow);
   await prisma.integrationConnection.update({
-    where: { id: connRow!.id },
+    where: { id: seeded!.id },
     data: { expiresAt: new Date(Date.now() - 60_000), tokenState: "REFRESHING" },
   });
 
@@ -217,6 +221,14 @@ test("multi-account: setActiveConnection pins an ACTIVE connection and resolves 
   const github = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "github" } });
   assert.ok(github, "github integration exists");
 
+  // Clean up extras and clear active connection so we start fresh.
+  const seededConn = await prisma.integrationConnection.findFirst({
+    where: { integrationId: github!.id, accountLabel: "core-repo (demo)" },
+  });
+  assert.ok(seededConn, "seeded connection exists");
+  await prisma.integrationConnection.deleteMany({ where: { integrationId: github!.id, id: { not: seededConn!.id } } });
+  await prisma.integration.update({ where: { id: github!.id }, data: { activeConnectionId: null } });
+
   // Create a second connection (simulating a second account).
   const secondConn = await prisma.integrationConnection.create({
     data: {
@@ -240,10 +252,6 @@ test("multi-account: setActiveConnection pins an ACTIVE connection and resolves 
   assert.equal(initial!.connectionId, secondConn.id, "initially resolves the newest connection");
 
   // Pin the original (seeded) connection as active.
-  const seededConn = await prisma.integrationConnection.findFirst({
-    where: { integrationId: github!.id, accountLabel: "core-repo (demo)" },
-  });
-  assert.ok(seededConn, "seeded connection exists");
   await gw.setActiveConnection({ integrationId: github!.id, workspaceId: workspace!.id, connectionId: seededConn!.id });
 
   const pinned = await gw.resolveConnection(github!.id, workspace!.id);

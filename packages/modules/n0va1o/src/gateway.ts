@@ -574,11 +574,15 @@ export class N0va1oGateway {
 
   /** Health check: return connection status + token expiry window for monitoring. */
   async connectionHealth(integrationId: string, workspaceId: string) {
-    const conn = await prisma.integrationConnection.findFirst({
-      where: { integrationId, workspaceId },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true, status: true, expiresAt: true, lastRefreshed: true, healthScore: true, authType: true, tokenState: true, allowedActions: true, blockedActions: true },
-    });
+    // Prefer the active connection, then fall back to the most recently updated.
+    const integration = await prisma.integration.findUnique({ where: { id: integrationId } });
+    let conn = null;
+    if (integration?.activeConnectionId) {
+      conn = await prisma.integrationConnection.findFirst({ where: { id: integration.activeConnectionId, integrationId, workspaceId } });
+    }
+    if (!conn) {
+      conn = await prisma.integrationConnection.findFirst({ where: { integrationId, workspaceId }, orderBy: { updatedAt: "desc" } });
+    }
     if (!conn) return null;
     const now = Date.now();
     return {
