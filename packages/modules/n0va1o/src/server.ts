@@ -165,6 +165,50 @@ export class N0va1oService {
     return { message: result.message, ok: result.ok, statusCode: result.statusCode };
   }
 
+  /* ---------- JIT connections ---------- */
+
+  async connections(id: string) {
+    await this.assert("READ");
+    await this.getIntegration(id);
+    const conns = await prisma.integrationConnection.findMany({
+      where: { integrationId: id, workspaceId: this.workspaceId },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, accountLabel: true, authType: true, status: true, expiresAt: true, lastRefreshed: true, healthScore: true, createdAt: true },
+    });
+    return conns.map((c) => ({
+      id: c.id,
+      accountLabel: c.accountLabel,
+      authType: c.authType,
+      status: c.status,
+      expiresAt: c.expiresAt?.toISOString() ?? null,
+      lastRefreshed: c.lastRefreshed?.toISOString() ?? null,
+      healthScore: c.healthScore,
+      createdAt: c.createdAt.toISOString(),
+    }));
+  }
+
+  async connectionHealth(id: string) {
+    await this.assert("READ");
+    await this.getIntegration(id);
+    return gateway.connectionHealth(id, this.workspaceId);
+  }
+
+  async upsertConnection(id: string, input: { encryptedToken: string; authType: string; allowedScopes?: string[]; expiresAt?: Date | null; accountLabel?: string }) {
+    await this.assert("UPDATE");
+    await this.getIntegration(id);
+    const connId = await gateway.upsertConnection({
+      integrationId: id,
+      workspaceId: this.workspaceId,
+      authType: input.authType,
+      encryptedToken: input.encryptedToken,
+      allowedScopes: input.allowedScopes,
+      expiresAt: input.expiresAt,
+      accountLabel: input.accountLabel,
+    });
+    await this.audit("integration.connection_upserted", id);
+    return connId;
+  }
+
   async activity(id: string, take = 12): Promise<IntegrationLog[]> {
     await this.assert("READ");
     await this.getIntegration(id);

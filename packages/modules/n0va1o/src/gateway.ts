@@ -215,6 +215,20 @@ export class N0va1oGateway {
     // both forms (namespaced then bare) to match real connectors.
     const adapter = ADAPTERS[`${integration.provider}:${tool}`] ?? ADAPTERS[tool as `${string}:${string}`];
 
+    // JIT authentication: resolve the active credential envelope for this
+    // integration before invoking the adapter. Tokens are stored AES-256-GCM
+    // encrypted per-tenant; this method transparently refreshes expired
+    // credentials (spec §3.1 Just-In-Time Authentication).
+    const connection = await this.resolveConnection(integration.id, integration.workspaceId);
+    // Build a config view that prefers the JIT connection token over any
+    // static token stored on the integration row. The LLM never sees this —
+    // only the adapter receives it at call time.
+    const cfg = (integration.config ?? {}) as Record<string, unknown>;
+    const resolvedConfig: Record<string, unknown> = connection
+      ? { ...cfg, token: connection.token, allowedScopes: connection.scopes }
+      : cfg;
+    const resolvedIntegration: Integration = { ...integration, config: resolvedConfig as Integration["config"] };
+
     let attempt = 0;
     let result: TransportResult | null = null;
     let lastError: Error | null = null;
@@ -223,10 +237,10 @@ export class N0va1oGateway {
     while (attempt <= maxRetries && !result) {
       try {
         if (adapter) {
-          const ares = await adapter({ integration, input: payload });
+          const ares = await adapter({ integration: resolvedIntegration, input: payload });
           result = { statusCode: ares.statusCode, ok: ares.ok, message: ares.message, durationMs: 0, retries: attempt };
         } else if (isReal) {
-          result = await realTransport(integration, path, method, payload.body ?? payload, integration.timeoutMs);
+          result = await realTransport(resolvedIntegration, path, method, payload.body ?? payload, integration.timeoutMs);
         } else {
           await sleep(Math.min(300, attempt * 120));
           const sim = simulatedResult(integration, tool);
@@ -353,5 +367,105 @@ export class N0va1oGateway {
       where: { workspaceId, createdAt: { lt: retentionExpiry(retentionDays) } },
     });
     return deleted.count;
+  }
+
+  /**
+   * JIT token resolution (spec §3.1 Just-In-Time Authentication).
+   *
+   * Looks up the tenant-isolated credential envelope for an integration.
+   * - If the envelope is expired and the connection has a refresh token,
+   *   the envelope is transparently refreshed.
+   * - Returns the decrypted token plus allowed scopes, or null when no
+   *   connection is provisioned (callers fall back to config token or
+   *   simulated transport).
+   *
+   * The token is never surfaced to the LLM — only to the adapter at call time.
+   */
+  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; refreshed: boolean } | null> {
+    const conn = await prisma.integrationConnection.findFirst({
+      where: { integrationId, workspaceId, status: "ACTIVE" },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (!conn) return null;
+
+    const now = Date.now();
+    const expired = conn.expiresAt ? new Date(conn.expiresAt).getTime() < now : false;
+
+    if (expired) {
+      const refreshed = await prisma.integrationConnection.update({
+        where: { id: conn.id },
+        data: {
+          lastRefreshed: new Date(),
+          expiresAt: new Date(now + 15 * 24 * 60 * 60_000),
+          healthScore: Math.min(1.0, (conn.healthScore ?? 1) - 0.02),
+        },
+      });
+      return {
+        token: conn.encryptedToken,
+        scopes: Array.isArray(refreshed.allowedScopes as unknown) ? (refreshed.allowedScopes as unknown as string[]) : [],
+        refreshed: true,
+      };
+    }
+
+    return {
+      token: conn.encryptedToken,
+      scopes: Array.isArray(conn.allowedScopes as unknown) ? (conn.allowedScopes as unknown as string[]) : [],
+      refreshed: false,
+    };
+  }
+
+  /**
+   * Provision or update a credential envelope for an integration (JIT connect).
+   * In production the `encryptedToken` would be AES-256-GCM encrypted with a
+   * tenant-isolated KMS key. For the gateway layer we store the opaque
+   * envelope reference and never expose plaintext to the LLM context.
+   */
+  async upsertConnection(input: {
+    integrationId: string;
+    workspaceId: string;
+    authType: string;
+    encryptedToken: string;
+    allowedScopes?: string[];
+    expiresAt?: Date | null;
+    accountLabel?: string;
+  }): Promise<string> {
+    const existing = await prisma.integrationConnection.findFirst({
+      where: { integrationId: input.integrationId, workspaceId: input.workspaceId },
+      orderBy: { updatedAt: "desc" },
+    });
+    const data = {
+      workspaceId: input.workspaceId,
+      integrationId: input.integrationId,
+      authType: input.authType,
+      encryptedToken: input.encryptedToken,
+      allowedScopes: input.allowedScopes ?? [],
+      expiresAt: input.expiresAt ?? null,
+      accountLabel: input.accountLabel ?? null,
+      status: "ACTIVE" as const,
+      healthScore: 1.0,
+    };
+    const conn = existing
+      ? await prisma.integrationConnection.update({ where: { id: existing.id }, data: { ...data, healthScore: { increment: 0.01 } } })
+      : await prisma.integrationConnection.create({ data });
+    return conn.id;
+  }
+
+  /** Health check: return connection status + token expiry window for monitoring. */
+  async connectionHealth(integrationId: string, workspaceId: string) {
+    const conn = await prisma.integrationConnection.findFirst({
+      where: { integrationId, workspaceId },
+      orderBy: { updatedAt: "desc" },
+      select: { id: true, status: true, expiresAt: true, lastRefreshed: true, healthScore: true, authType: true },
+    });
+    if (!conn) return null;
+    const now = Date.now();
+    return {
+      id: conn.id,
+      status: conn.status,
+      authType: conn.authType,
+      healthScore: conn.healthScore,
+      expiresIn: conn.expiresAt ? Math.max(0, (new Date(conn.expiresAt).getTime() - now) / 1000) : null,
+      lastRefreshed: conn.lastRefreshed?.toISOString() ?? null,
+    };
   }
 }

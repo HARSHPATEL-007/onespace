@@ -55,7 +55,8 @@ model Workspace {
   automationRuns  AutomationRun[]
 integrations    Integration[]
   integrationLogs IntegrationLog[]
-  integrationAccessRequests IntegrationAccessRequest[]
+   integrationAccessRequests IntegrationAccessRequest[]
+   integrationConnections   IntegrationConnection[]
   aniConversations AniConversation[]
   aniMessages     AniMessage[]
   scripts         Script[]
@@ -1033,6 +1034,7 @@ model Integration {
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
   logs       IntegrationLog[]
   accessRequests IntegrationAccessRequest[]
+  connections  IntegrationConnection[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
 }
@@ -1096,6 +1098,42 @@ model IntegrationAccessRequest {
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, status, createdAt(sort: Desc)])
+}
+
+/// N0VA1O JIT authentication — tenant-isolated per-account credential envelopes.
+enum ConnectionStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+model IntegrationConnection {
+  id              String   @id @default(uuid())
+  integrationId   String
+  workspaceId     String
+  /// Human-readable label for this account (e.g. "prod Meta BM #1").
+  accountLabel    String?
+  /// OAuth2 / apiKey / basic / webhook — mirrors the catalog auth type.
+  authType        String
+  /// Encrypted token envelope (AES-256-GCM per tenant key). Never plaintext.
+  encryptedToken  String
+  /// The plaintext scopes this connection is authorized for (scope pruning).
+  allowedScopes  Json?    @default("[]")
+  /// When the access token expires (for proactive refresh).
+  expiresAt       DateTime?
+  /// When the credential was last refreshed / verified.
+  lastRefreshed   DateTime?
+  status          ConnectionStatus @default(ACTIVE)
+  /// Health-score 0..1 surfaced by the self-improving auth optimizer.
+  healthScore     Float?   @default(1.0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, integrationId])
+  @@index([expiresAt])
 }
 
 /// N0VA ANI - assistant conversations.
