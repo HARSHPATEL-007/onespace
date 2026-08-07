@@ -433,11 +433,10 @@ async function seedPhase3Demo(workspaceId: string, ownerId: string, adminId: str
     });
   }
 
-// N0VA1O — integrations (idempotent: wires gateway fields onto any pre-existing rows too)
-  const wiredConnectors: Array<{ provider: string; name: string; category: string; secret: string | null; path: string | null; mcp: boolean; wh: boolean; rlpm: number; retry: number; allow: string[]; owner: boolean }> = [
-    { provider: "slack", name: "Design channel", category: "communication", secret: "demo-secret-9f3c1a77b2", path: "abcd1234ef56", mcp: true, wh: true, rlpm: 120, retry: 3, allow: [], owner: false },
-    { provider: "gdrive", name: "Marketing assets", category: "documents", secret: "hook-secret-a1b2c3", path: "8d41e2f00517", mcp: false, wh: true, rlpm: 60, retry: 2, allow: [], owner: true },
-    { provider: "github", name: "Core repo", category: "devops", secret: null, path: null, mcp: true, wh: false, rlpm: 240, retry: 3, allow: ["list_repos", "list_issues"], owner: true },
+  const wiredConnectors: Array<{ provider: string; name: string; category: string; secret: string | null; path: string | null; mcp: boolean; wh: boolean; rlpm: number; retry: number; allow: string[]; config: Record<string, unknown>; owner: boolean }> = [
+    { provider: "slack", name: "Design channel", category: "communication", secret: "demo-secret-9f3c1a77b2", path: "abcd1234ef56", mcp: true, wh: true, rlpm: 120, retry: 3, allow: [], config: { token: "xoxb-demo", authType: "oauth2" }, owner: false },
+    { provider: "gdrive", name: "Marketing assets", category: "documents", secret: "hook-secret-a1b2c3", path: "8d41e2f00517", mcp: false, wh: true, rlpm: 60, retry: 2, allow: [], config: { authType: "oauth2" }, owner: true },
+    { provider: "github", name: "Core repo", category: "devops", secret: null, path: null, mcp: true, wh: false, rlpm: 240, retry: 3, allow: ["list_repos", "list_issues"], config: { authType: "oauth2" }, owner: true },
   ];
   for (const c of wiredConnectors) {
     const existing = await prisma.integration.findFirst({ where: { workspaceId, provider: c.provider } });
@@ -445,6 +444,7 @@ async function seedPhase3Demo(workspaceId: string, ownerId: string, adminId: str
       name: c.name,
       category: c.category,
       status: "connected",
+      config: c.config,
       mcpEnabled: c.mcp,
       webhookEnabled: c.wh,
       webhookSecret: c.secret,
@@ -461,15 +461,14 @@ async function seedPhase3Demo(workspaceId: string, ownerId: string, adminId: str
       await prisma.integration.create({
         data: {
           workspaceId, createdById: c.owner ? ownerId : adminId, provider: c.provider, enabled: true,
-          config: { authType: "oauth2", token: c.provider === "slack" ? "xoxb-demo" : c.provider === "github" ? "ghp-demo" : undefined },
           lastSyncAt: new Date(Date.now() - 3600_000 * (c.provider === "github" ? 48 : 4)),
           ...data,
         },
       });
-    }
-  }
+     }
+   }
 
-  const slack = await prisma.integration.findFirst({ where: { workspaceId, provider: "slack" } });
+   const slack = await prisma.integration.findFirst({ where: { workspaceId, provider: "slack" } });
   if (slack && (await prisma.integrationLog.count({ where: { integrationId: slack.id } })) === 0) {
     await prisma.integrationLog.createMany({
       data: [

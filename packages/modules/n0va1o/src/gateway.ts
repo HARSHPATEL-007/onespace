@@ -8,6 +8,7 @@
 import { createHmac, createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { prisma, type Integration } from "@n0va/db";
 import { findProvider } from "./catalog";
+import { ADAPTERS } from "./adapters";
 
 export class GatewayError extends Error {
   constructor(
@@ -207,9 +208,10 @@ export class N0va1oGateway {
     const startedAt = Date.now();
     const method = typeof payload.method === "string" ? payload.method.toUpperCase() : "POST";
     const path = typeof payload.path === "string" ? payload.path : "";
-    const config = integration.config as Record<string, unknown> | null;
+    const config = (integration.config as Record<string, unknown> | null) ?? {};
     const provider = findProvider(integration.provider);
     const isReal = provider?.auth === "rest" || (config && typeof config.baseUrl === "string");
+    const adapter = ADAPTERS[`${integration.provider}:${tool}`];
 
     let attempt = 0;
     let result: TransportResult | null = null;
@@ -218,7 +220,10 @@ export class N0va1oGateway {
 
     while (attempt <= maxRetries && !result) {
       try {
-        if (isReal) {
+        if (adapter) {
+          const ares = await adapter({ integration, input: payload });
+          result = { statusCode: ares.statusCode, ok: ares.ok, message: ares.message, durationMs: 0, retries: attempt };
+        } else if (isReal) {
           result = await realTransport(integration, path, method, payload.body ?? payload, integration.timeoutMs);
         } else {
           await sleep(Math.min(300, attempt * 120));
