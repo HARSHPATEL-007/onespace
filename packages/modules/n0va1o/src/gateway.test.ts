@@ -31,6 +31,7 @@ import { selectProfile, checkResourceUsage, generateReplayId, buildTrace } from 
 import { evaluateRetention, computeExpiry, isExpired, DEFAULT_RETENTION as ARTIFACT_RETENTION } from "./artifact";
 import { buildPointer, readChunk, searchContent, categorize } from "./file-view";
 import { createPlan, selectTool, createStep, verifyStep, decideRetry, replanFromCheckpoint, assessRisk, auditAction, emitTrace, shouldPause, requestHumanApproval } from "./agentic";
+import { retrieveEvidence, extractClaims, verifyClaims, enforceCitations, decideGrounding, gateHighStakes, rankSources, auditGrounding, measureGrounding, detectConflicts } from "./grounding";
 import { minimizeContext, diagnoseOverexposure, DEFAULT_BUDGET } from "./context";
 import { selectTransport, canPreserveSession } from "./transport";
 import { buildDashboard, flagQuotaRisks } from "./dashboard";
@@ -1111,4 +1112,52 @@ test("agentic: shouldPause and emitTrace support observability and HITL", () => 
   assert.equal(trace.phase, "execution", "trace phase set");
   const pause = requestHumanApproval(createPlan("P", []), [], "retry", "high_risk");
   assert.equal(pause.reason, "high_risk", "pause reason set");
+});
+
+test("grounding: retrieveEvidence ranks by authority and relevance", () => {
+  const evidence = [
+    { id: "e1", sourceType: "internal_kb" as const, sourceUrl: "kb/1", title: "Policy", snippet: "Refunds allowed within 30 days", retrievedAt: "", authority: 0.9, recency: 0.8, relevance: 0 },
+    { id: "e2", sourceType: "web" as const, sourceUrl: "web/1", title: "Blog", snippet: "Refunds are great", retrievedAt: "", authority: 0.3, recency: 0.5, relevance: 0 },
+  ];
+  const results = retrieveEvidence({ query: "refund policy", tenantId: "t1", sources: ["internal_kb", "web"] }, evidence);
+  assert.equal(results[0]!.sourceType, "internal_kb", "internal source ranked first");
+});
+
+test("grounding: verifyClaims checks claims against evidence", () => {
+  const evidence = [{ id: "e1", sourceType: "internal_kb" as const, sourceUrl: "kb/1", title: "Policy", snippet: "Refunds allowed within 30 days", retrievedAt: "", authority: 0.9, recency: 0.8, relevance: 0.8 }];
+  const claims = ["Refunds are allowed within 30 days", "Free shipping always"];
+  const verified = verifyClaims(claims, evidence);
+  assert.equal(verified[0]!.status, "verified", "supported claim verified");
+  assert.equal(verified[1]!.status, "unsupported", "unsupported claim flagged");
+});
+
+test("grounding: enforceCitations attaches sources and rejects unsupported", () => {
+  const evidence = [{ id: "e1", sourceType: "web" as const, sourceUrl: "https://example.com", title: "Source", snippet: "GDP grew 3 percent", retrievedAt: "", authority: 0.7, recency: 0.9, relevance: 0.9 }];
+  const result = enforceCitations("GDP grew 3 percent. The moon is made of cheese.", evidence);
+  assert.ok(result.grounded.includes("https://example.com"), "citation attached");
+  assert.ok(result.rejected.length > 0, "unsupported claim rejected");
+});
+
+test("grounding: decideGrounding defers or escalates on weak evidence", () => {
+  const weak = [{ text: "Claim", status: "unsupported" as const, citations: [], confidence: 0 }];
+  assert.equal(decideGrounding(weak).action, "escalate", "unsupported claims escalate");
+  const strong = [{ text: "Claim", status: "verified" as const, citations: ["src"], confidence: 0.9 }];
+  assert.equal(decideGrounding(strong).action, "respond", "strong evidence responds");
+  assert.equal(decideGrounding(strong, true).action, "respond", "high-stakes passes with strong evidence");
+});
+
+test("grounding: gateHighStakes enforces mandatory grounding for risky domains", () => {
+  const good = gateHighStakes({ domain: "finance", claims: [{ text: "X", status: "verified" as const, citations: ["s"], confidence: 0.9 }, { text: "Y", status: "verified" as const, citations: ["s"], confidence: 0.8 }] });
+  assert.ok(good.approved, "finance with full coverage approved");
+  const bad = gateHighStakes({ domain: "medical", claims: [{ text: "X", status: "unsupported" as const, citations: [], confidence: 0 }] });
+  assert.ok(!bad.approved, "medical without evidence blocked");
+  assert.ok(bad.requiresHumanReview, "requires human review");
+});
+
+test("grounding: auditGrounding and measureGrounding support governance", () => {
+  const claims = [{ text: "X", status: "verified" as const, citations: ["s"], confidence: 0.9 }, { text: "Y", status: "unsupported" as const, citations: [], confidence: 0 }];
+  const audit = auditGrounding(claims, [{ id: "e1", sourceType: "web" as const, sourceUrl: "https://x.com", title: "T", snippet: "S", retrievedAt: "", authority: 0.7, recency: 0.8, relevance: 0.8 }]);
+  assert.equal(audit.claimsChecked, 2, "claims checked recorded");
+  const metrics = measureGrounding([{ claims, action: "respond" }]);
+  assert.ok(metrics.unsupportedRate > 0, "unsupported rate measured");
 });
