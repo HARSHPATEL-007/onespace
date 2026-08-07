@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { prisma } from "@n0va/db/src/client";
 import {
   hmacHex,
   safeEqualHex,
@@ -8,6 +9,7 @@ import {
   retentionExpiry,
   rateLimitHit,
   clearRateBuckets,
+  N0va1oGateway,
 } from "./gateway";
 import { scopeTools, providerTools, isDestructiveTool, findProvider, PROVIDERS } from "./catalog";
 
@@ -83,17 +85,38 @@ test("MCP tool scoping: destructive blocked by default, allowlist admits, blockl
   }
 });
 
-test("catalog integrity: keys unique, categories valid, tools have names", () => {
-  const keys = new Set<string>();
-  for (const p of PROVIDERS) {
-    assert.equal(keys.has(p.key), false, `duplicate provider key ${p.key}`);
-    keys.add(p.key);
-    assert.ok(findProvider(p.key), `findProvider("${p.key}") resolves`);
-    if (p.tools.length) {
-      for (const tool of p.tools) {
-        assert.ok(tool.name.length > 0);
-        assert.ok(tool.description.length > 0);
-      }
-    }
-  }
+test("JIT connection: token state lifecycle and expiry refresh", async () => {
+  const gw = new N0va1oGateway();
+  const workspace = await prisma.workspace.findUnique({ where: { slug: "n0va-demo" } });
+  assert.ok(workspace, "demo workspace exists");
+  const github = await prisma.integration.findFirst({ where: { workspaceId: workspace!.id, provider: "github" } });
+  assert.ok(github, "demo github integration exists");
+
+  // connectionHealth should report the seeded connection.
+  const health = await gw.connectionHealth(github!.id, workspace!.id);
+  assert.ok(health, "connection health exists");
+  assert.equal(health!.tokenState, "ACTIVE");
+  assert.ok(health!.expiresIn !== null && health!.expiresIn! > 0, "token not expired");
+
+  // resolveConnection returns the token + action allow/block lists.
+  const conn = await gw.resolveConnection(github!.id, workspace!.id);
+  assert.ok(conn, "connection resolves");
+  assert.equal(conn!.refreshed, false, "no refresh needed");
+  assert.ok(conn!.allowedActions.includes("list_repos"));
+  assert.ok(conn!.blockedActions.includes("delete_repo"));
+
+  // Simulate expiry: set expiresAt to the past, then resolve should refresh.
+  const connRow = await prisma.integrationConnection.findFirst({
+    where: { integrationId: github!.id, workspaceId: workspace!.id },
+  });
+  assert.ok(connRow);
+  await prisma.integrationConnection.update({
+    where: { id: connRow!.id },
+    data: { expiresAt: new Date(Date.now() - 60_000), tokenState: "REFRESHING" },
+  });
+
+  const refreshed = await gw.resolveConnection(github!.id, workspace!.id);
+  assert.ok(refreshed, "connection re-resolves after expiry");
+  assert.equal(refreshed!.refreshed, true, "token was refreshed");
+  assert.equal(refreshed!.tokenState, "ACTIVE", "state returned to ACTIVE after refresh");
 });

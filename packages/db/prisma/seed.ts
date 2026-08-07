@@ -27,6 +27,7 @@ async function main() {
   await seedPhase3Demo(workspace.id, owner.id, admin.id);
   await seedPhase4Demo(workspace.id, owner.id, admin.id);
   await seedPhase6Demo(workspace.id, owner.id);
+  await seedConnectionDemo(workspace.id, owner.id, admin.id);
 
   const coreModules = [
     "mail",
@@ -744,6 +745,32 @@ async function seedPhase6Demo(workspaceId: string, ownerId: string) {
   const legal = await prisma.legalDocument.findFirst({ where: { workspaceId } });
   if (legal && (await prisma.legalDocRevision.count({ where: { docId: legal.id } })) === 0) {
     await prisma.legalDocRevision.create({ data: { docId: legal.id, workspaceId, createdById: ownerId, content: legal.content } });
+  }
+}
+
+async function seedConnectionDemo(workspaceId: string, ownerId: string, adminId: string) {
+  const github = await prisma.integration.findFirst({ where: { workspaceId, provider: "github" } });
+  if (github) {
+    const existing = await prisma.integrationConnection.findFirst({ where: { integrationId: github.id, workspaceId } });
+    if (!existing) {
+      await prisma.integrationConnection.create({
+        data: {
+          workspaceId,
+          integrationId: github.id,
+          accountLabel: "core-repo (demo)",
+          authType: "oauth2",
+          encryptedToken: "demo-token-envelope-7f3a9c",
+          allowedScopes: ["repo", "read:org"],
+          allowedActions: ["list_repos", "list_issues", "create_issue", "read_file"],
+          blockedActions: ["delete_repo", "delete_branch", "force_push"],
+          expiresAt: new Date(Date.now() + 15 * 24 * 60 * 60_000),
+          lastRefreshed: new Date(),
+          status: "ACTIVE",
+          tokenState: "ACTIVE",
+          healthScore: 0.98,
+        },
+      });
+    }
   }
 }
 

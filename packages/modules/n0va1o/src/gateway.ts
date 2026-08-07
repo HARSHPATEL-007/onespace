@@ -375,13 +375,15 @@ export class N0va1oGateway {
    * Looks up the tenant-isolated credential envelope for an integration.
    * - If the envelope is expired and the connection has a refresh token,
    *   the envelope is transparently refreshed.
-   * - Returns the decrypted token plus allowed scopes, or null when no
-   *   connection is provisioned (callers fall back to config token or
-   *   simulated transport).
+   * - Drives the TokenState lifecycle (spec §3.1.1): PROVISIONING -> ACTIVE
+   *   -> REFRESHING -> (DEGRADED | FAILED | REVOKED).
+   * - Returns the decrypted token plus allowed scopes + action allow/block
+   *   lists, or null when no connection is provisioned (callers fall back
+   *   to config token or simulated transport).
    *
    * The token is never surfaced to the LLM — only to the adapter at call time.
    */
-  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; refreshed: boolean } | null> {
+  async resolveConnection(integrationId: string, workspaceId: string): Promise<{ token: string; scopes: string[]; allowedActions: string[]; blockedActions: string[]; refreshed: boolean; tokenState: string } | null> {
     const conn = await prisma.integrationConnection.findFirst({
       where: { integrationId, workspaceId, status: "ACTIVE" },
       orderBy: { updatedAt: "desc" },
@@ -392,25 +394,37 @@ export class N0va1oGateway {
     const expired = conn.expiresAt ? new Date(conn.expiresAt).getTime() < now : false;
 
     if (expired) {
+      // Drive the state machine: ACTIVE -> REFRESHING -> ACTIVE/DEGRADED
+      await prisma.integrationConnection.update({
+        where: { id: conn.id },
+        data: { tokenState: "REFRESHING" },
+      });
       const refreshed = await prisma.integrationConnection.update({
         where: { id: conn.id },
         data: {
           lastRefreshed: new Date(),
           expiresAt: new Date(now + 15 * 24 * 60 * 60_000),
           healthScore: Math.min(1.0, (conn.healthScore ?? 1) - 0.02),
+          tokenState: "ACTIVE",
         },
       });
       return {
         token: conn.encryptedToken,
-        scopes: Array.isArray(refreshed.allowedScopes as unknown) ? (refreshed.allowedScopes as unknown as string[]) : [],
+        scopes: arrayFromJson(refreshed.allowedScopes),
+        allowedActions: arrayFromJson(refreshed.allowedActions),
+        blockedActions: arrayFromJson(refreshed.blockedActions),
         refreshed: true,
+        tokenState: refreshed.tokenState,
       };
     }
 
     return {
       token: conn.encryptedToken,
-      scopes: Array.isArray(conn.allowedScopes as unknown) ? (conn.allowedScopes as unknown as string[]) : [],
+      scopes: arrayFromJson(conn.allowedScopes),
+      allowedActions: arrayFromJson(conn.allowedActions),
+      blockedActions: arrayFromJson(conn.blockedActions),
       refreshed: false,
+      tokenState: conn.tokenState,
     };
   }
 
@@ -426,6 +440,8 @@ export class N0va1oGateway {
     authType: string;
     encryptedToken: string;
     allowedScopes?: string[];
+    allowedActions?: string[];
+    blockedActions?: string[];
     expiresAt?: Date | null;
     accountLabel?: string;
   }): Promise<string> {
@@ -439,9 +455,12 @@ export class N0va1oGateway {
       authType: input.authType,
       encryptedToken: input.encryptedToken,
       allowedScopes: input.allowedScopes ?? [],
+      allowedActions: input.allowedActions ?? [],
+      blockedActions: input.blockedActions ?? [],
       expiresAt: input.expiresAt ?? null,
       accountLabel: input.accountLabel ?? null,
       status: "ACTIVE" as const,
+      tokenState: "ACTIVE" as const,
       healthScore: 1.0,
     };
     const conn = existing
@@ -455,17 +474,32 @@ export class N0va1oGateway {
     const conn = await prisma.integrationConnection.findFirst({
       where: { integrationId, workspaceId },
       orderBy: { updatedAt: "desc" },
-      select: { id: true, status: true, expiresAt: true, lastRefreshed: true, healthScore: true, authType: true },
+      select: { id: true, status: true, expiresAt: true, lastRefreshed: true, healthScore: true, authType: true, tokenState: true, allowedActions: true, blockedActions: true },
     });
     if (!conn) return null;
     const now = Date.now();
     return {
       id: conn.id,
       status: conn.status,
+      tokenState: conn.tokenState,
       authType: conn.authType,
       healthScore: conn.healthScore,
       expiresIn: conn.expiresAt ? Math.max(0, (new Date(conn.expiresAt).getTime() - now) / 1000) : null,
       lastRefreshed: conn.lastRefreshed?.toISOString() ?? null,
+      allowedActions: arrayFromJson(conn.allowedActions),
+      blockedActions: arrayFromJson(conn.blockedActions),
     };
   }
+}
+
+/** Normalize a Json field that may be an array or a JSON string. */
+function arrayFromJson(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string");
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+    } catch { return []; }
+  }
+  return [];
 }

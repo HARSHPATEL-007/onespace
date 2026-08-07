@@ -193,7 +193,7 @@ export class N0va1oService {
     return gateway.connectionHealth(id, this.workspaceId);
   }
 
-  async upsertConnection(id: string, input: { encryptedToken: string; authType: string; allowedScopes?: string[]; expiresAt?: Date | null; accountLabel?: string }) {
+  async upsertConnection(id: string, input: { encryptedToken: string; authType: string; allowedScopes?: string[]; allowedActions?: string[]; blockedActions?: string[]; expiresAt?: Date | null; accountLabel?: string }) {
     await this.assert("UPDATE");
     await this.getIntegration(id);
     const connId = await gateway.upsertConnection({
@@ -202,6 +202,8 @@ export class N0va1oService {
       authType: input.authType,
       encryptedToken: input.encryptedToken,
       allowedScopes: input.allowedScopes,
+      allowedActions: input.allowedActions,
+      blockedActions: input.blockedActions,
       expiresAt: input.expiresAt,
       accountLabel: input.accountLabel,
     });

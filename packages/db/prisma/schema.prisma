@@ -1101,12 +1101,6 @@ model IntegrationAccessRequest {
 }
 
 /// N0VA1O JIT authentication — tenant-isolated per-account credential envelopes.
-enum ConnectionStatus {
-  ACTIVE
-  EXPIRED
-  REVOKED
-}
-
 model IntegrationConnection {
   id              String   @id @default(uuid())
   integrationId   String
@@ -1119,6 +1113,12 @@ model IntegrationConnection {
   encryptedToken  String
   /// The plaintext scopes this connection is authorized for (scope pruning).
   allowedScopes  Json?    @default("[]")
+  /// Action-level allowlist from the catalog (e.g. ["read_campaigns", "update_budget"]).
+  allowedActions Json?    @default("[]")
+  /// Action-level blocklist (e.g. ["delete_account", "modify_billing"]).
+  blockedActions Json?    @default("[]")
+  /// Token lifecycle state machine state.
+  tokenState     TokenState @default(ACTIVE)
   /// When the access token expires (for proactive refresh).
   expiresAt       DateTime?
   /// When the credential was last refreshed / verified.
@@ -1134,6 +1134,23 @@ model IntegrationConnection {
 
   @@index([workspaceId, integrationId])
   @@index([expiresAt])
+  @@index([tokenState])
+}
+
+/// Token lifecycle state machine (spec §3.1.1)
+enum TokenState {
+  PROVISIONING
+  ACTIVE
+  REFRESHING
+  DEGRADED
+  FAILED
+  REVOKED
+}
+
+enum ConnectionStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
 }
 
 /// N0VA ANI - assistant conversations.
