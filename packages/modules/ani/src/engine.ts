@@ -22,6 +22,7 @@ import {
   type ContextDigestionResult,
   type AutonomousWorkflow,
 } from "./context-engine";
+import { callLlm } from "./providers";
 
 export type IntentClass =
   | "factual"
@@ -755,6 +756,22 @@ export class N0VA_ANI {
     const maxTokens = Math.min(options.maxTokens ?? 2048, this.config.maxTokens);
     const temperature = options.temperature ?? 0.7;
 
+    const provider = this._resolveActiveProvider();
+    if (provider) {
+      try {
+        const messages = [
+          { role: "system", content: this._buildSystemPrompt() },
+          { role: "user", content: prompt },
+        ];
+        const result = await callLlm(provider.provider, provider.model, { token: provider.token, model: provider.model }, messages, []);
+        if (result.content && result.content !== "(no response)") {
+          return { content: result.content };
+        }
+      } catch (err) {
+        console.error("ANI LLM call failed, using fallback:", err instanceof Error ? err.message : err);
+      }
+    }
+
     const response = await _simulateLLMResponse(prompt, intent.classification, maxTokens, temperature);
 
     if (options.stream) {
@@ -762,6 +779,28 @@ export class N0VA_ANI {
     }
 
     return { content: response };
+  }
+
+  private _resolveActiveProvider(): { provider: string; model: string; token: string } | null {
+    const apiKey = process.env["OPENAI_API_KEY"] ?? process.env["ANTHROPIC_API_KEY"] ?? process.env["GEMINI_API_KEY"] ?? process.env["GOOGLE_API_KEY"];
+    if (!apiKey) return null;
+    if (process.env["OPENAI_API_KEY"]) return { provider: "openai", model: "gpt-4o-mini", token: apiKey };
+    if (process.env["ANTHROPIC_API_KEY"]) return { provider: "anthropic", model: "claude-3-5-sonnet-20241022", token: apiKey };
+    return { provider: "gemini", model: "gemini-1.5-flash", token: apiKey };
+  }
+
+  private _buildSystemPrompt(): string {
+    return `You are N0VA ANI (AI Native Intelligence), an agentic AI assistant operating within the N0VA workspace ecosystem. You help users with ${this.config.modelPreset === "transcendent" ? "advanced research, multi-step reasoning, and autonomous workflow execution" : "productivity, analysis, and task completion"}.
+
+Key behaviors:
+- Provide concise, actionable responses
+- When reasoning through complex problems, show your work step by step
+- Cite sources when making factual claims
+- Ask for clarification when the request is ambiguous
+- Suggest next actions when appropriate
+
+Current mode: ${this.config.consciousnessMode ? "Full consciousness (self-monitoring, reflective)" : "Standard"}
+Safety level: ${this.config.safetyLevel}`;
   }
 
   private _errorResponse(message: string, startTime: number, safetyFlags: string[]): ANIResponse {

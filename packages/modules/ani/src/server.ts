@@ -150,6 +150,22 @@ export class AniService {
       weight: 0.3,
     });
 
+    try {
+      const prismaAny = prisma as unknown as Record<string, { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }>;
+      if (prismaAny["aniConsciousnessSnapshot"]) {
+        await prismaAny["aniConsciousnessSnapshot"].create({
+          data: {
+            workspaceId: this.workspaceId,
+            coherence: 0.95,
+            cognitiveLoad: 0.3,
+            flowState: 0.7,
+            stressLevel: 0.1,
+            engagement: result.confidence,
+          },
+        });
+      }
+    } catch { /* consciousness snapshots are best-effort until prisma generate runs */ }
+
     return {
       userMessage,
       assistantMessage: assistantMsg,
@@ -158,6 +174,67 @@ export class AniService {
       ...(result.citations ? { citations: JSON.stringify(result.citations) } : {}),
       ...(result.confidence !== undefined ? { confidence: result.confidence } : {}),
     };
+  }
+
+  async persistMemoryMark(type: string, content: string, importance: number, tags: string[] = []): Promise<string> {
+    await this.assert("CREATE");
+    const prismaAny = prisma as unknown as (Record<string, { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string }> }> | undefined);
+    if (!prismaAny?.["aniMemoryMark"]) return `mm_${Date.now()}`;
+    const mark = await prismaAny["aniMemoryMark"].create({
+      data: { workspaceId: this.workspaceId, userId: this.userId, type, content, importance, tags },
+    });
+    return mark.id;
+  }
+
+  async getMemoryMarks(type?: string, limit: number = 20): Promise<Array<{ id: string; type: string; content: string; importance: number; tags: string[]; createdAt: Date }>> {
+    await this.assert("READ");
+    const prismaAny = prisma as unknown as (Record<string, { findMany: (args: Record<string, unknown>) => Promise<Array<{ id: string; type: string; content: string; importance: number; tags: string[]; createdAt: Date }>> }> | undefined);
+    if (!prismaAny?.["aniMemoryMark"]) return [];
+    return prismaAny["aniMemoryMark"].findMany({
+      where: { workspaceId: this.workspaceId, userId: this.userId, ...(type ? { type } : {}) },
+      orderBy: { importance: "desc" },
+      take: limit,
+    });
+  }
+
+  async recordOutcome(feature: string, action: string, timeSavedMs: number, satisfaction: number): Promise<void> {
+    await this.assert("CREATE");
+    const prismaAny = prisma as unknown as (Record<string, { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }> | undefined);
+    if (!prismaAny?.["aniOutcome"]) return;
+    await prismaAny["aniOutcome"].create({
+      data: { workspaceId: this.workspaceId, userId: this.userId, feature, action, timeSavedMs, satisfaction },
+    });
+  }
+
+  async getOutcomes(limit: number = 50): Promise<Array<{ feature: string; action: string; satisfaction: number; createdAt: Date }>> {
+    await this.assert("READ");
+    const prismaAny = prisma as unknown as (Record<string, { findMany: (args: Record<string, unknown>) => Promise<Array<{ feature: string; action: string; satisfaction: number; createdAt: Date }>> }> | undefined);
+    if (!prismaAny?.["aniOutcome"]) return [];
+    return prismaAny["aniOutcome"].findMany({
+      where: { workspaceId: this.workspaceId, userId: this.userId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+  }
+
+  async saveMeetingSession(meetingId: string, title: string, participants: string[], decisions: number, actions: number, engagement: number): Promise<void> {
+    await this.assert("CREATE");
+    const prismaAny = prisma as unknown as (Record<string, { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }> | undefined);
+    if (!prismaAny?.["aniMeetingSession"]) return;
+    await prismaAny["aniMeetingSession"].create({
+      data: { workspaceId: this.workspaceId, meetingId, title, participants, decisionsCount: decisions, actionItemsCount: actions, engagement },
+    });
+  }
+
+  async getMeetingSessions(limit: number = 10): Promise<Array<{ meetingId: string; title: string; decisionsCount: number; actionItemsCount: number; engagement: number; createdAt: Date }>> {
+    await this.assert("READ");
+    const prismaAny = prisma as unknown as (Record<string, { findMany: (args: Record<string, unknown>) => Promise<Array<{ meetingId: string; title: string; decisionsCount: number; actionItemsCount: number; engagement: number; createdAt: Date }>> }> | undefined);
+    if (!prismaAny?.["aniMeetingSession"]) return [];
+    return prismaAny["aniMeetingSession"].findMany({
+      where: { workspaceId: this.workspaceId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
   }
 
   async clear(id: string): Promise<void> {

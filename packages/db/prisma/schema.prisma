@@ -1183,12 +1183,114 @@ model AniMessage {
   workspaceId    String
   role           String    @default("user")
   content        String
+  citations      String    @default("[]")
+  confidence     Float?
+  toolCalls      String    @default("[]")
+  depth          String    @default("balanced")
+  intent         String    @default("conversational")
+  thoughtSummary String?
+  tokensIn       Int       @default(0)
+  tokensOut      Int       @default(0)
+  latencyMs      Int       @default(0)
+  costUsd        Float     @default(0)
   createdAt      DateTime  @default(now())
 
   conversation AniConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+}
+
+/// N0VA ANI - persisted memory marks across sessions.
+model AniMemoryMark {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  type        String   @default("fact")
+  content     String
+  context     String   @default("")
+  importance  Float    @default(0.5)
+  tags        String[] @default([])
+  sessionId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId, userId, type])
+  @@index([workspaceId, importance(sort: Desc)])
+}
+
+/// N0VA ANI - learning module progress per user.
+model AniLearningProgress {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  userId       String
+  moduleId     String
+  currentStep  Int      @default(0)
+  totalSteps   Int      @default(0)
+  correctCount Int      @default(0)
+  totalQuestions Int    @default(0)
+  completed    Boolean  @default(false)
+  startedAt    DateTime @default(now())
+  lastActiveAt DateTime @updatedAt
+
+  @@unique([workspaceId, userId, moduleId])
+}
+
+/// N0VA ANI - outcome tracking for feature usage.
+model AniOutcome {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  userId          String
+  feature         String
+  action          String
+  timeSavedMs     Int      @default(0)
+  decisionQuality Float    @default(0.5)
+  followThrough   Float    @default(0.5)
+  satisfaction    Float    @default(0.5)
+  completionRate  Float    @default(1.0)
+  notes           String?
+  sessionId       String?
+  createdAt       DateTime @default(now())
+
+  @@index([workspaceId, userId, feature])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+/// N0VA ANI - meeting intelligence sessions.
+model AniMeetingSession {
+  id          String   @id @default(uuid())
+  workspaceId String
+  meetingId   String
+  title       String   @default("Meeting")
+  status      String   @default("in_progress")
+  participants String[] @default([])
+  decisionsCount Int   @default(0)
+  actionItemsCount Int @default(0)
+  transcript  String   @default("")
+  engagement  Float    @default(0.5)
+  sentiment   Float    @default(0.5)
+  durationMin Int      @default(0)
+  createdAt   DateTime @default(now())
+  endedAt     DateTime?
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+/// N0VA ANI - consciousness state snapshots for self-optimization.
+model AniConsciousnessSnapshot {
+  id          String   @id @default(uuid())
+  workspaceId String
+  coherence   Float    @default(1.0)
+  cognitiveLoad Float  @default(0.0)
+  flowState   Float    @default(0.0)
+  stressLevel Float    @default(0.0)
+  engagement  Float    @default(1.0)
+  latencyMs   Int      @default(0)
+  costUsd     Float    @default(0)
+  hallucinationRate Float @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 /// N0VA APPSCRIPT - scripting runtime.
