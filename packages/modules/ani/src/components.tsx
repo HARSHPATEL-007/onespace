@@ -7,9 +7,17 @@ import type { ConversationWithMessages } from "./server";
 
 export interface AniActions {
   create: (formData: FormData) => Promise<void>;
-  send: (formData: FormData) => Promise<{ delayMs: number }>;
+  send: (formData: FormData) => Promise<{ delayMs: number; toolCalls?: string }>;
   clear: (formData: FormData) => Promise<void>;
   remove: (formData: FormData) => Promise<void>;
+}
+
+interface AniToolCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  status: "pending" | "loading" | "done" | "error";
+  result?: string;
 }
 
 export function AniChat({
@@ -26,11 +34,12 @@ export function AniChat({
   const [sending, setSending] = useState(false);
   const [typing, setTyping] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [toolCalls, setToolCalls] = useState<AniToolCall[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [active?.messages.length, typing]);
+  }, [active?.messages.length, typing, toolCalls.length]);
 
   const send = () => {
     const content = draft.trim();
@@ -38,16 +47,25 @@ export function AniChat({
     setSending(true);
     setTyping(true);
     setDraft("");
+    setToolCalls([]);
     const fd = new FormData();
     fd.set("id", active.id);
     fd.set("content", content);
     void actions
       .send(fd)
-      .then((r) => setTimeout(() => setTyping(false), r.delayMs))
-      .finally(() => {
-        setSending(false);
-        router.refresh();
-      });
+      .then((r) => {
+        if (r.toolCalls) {
+          try {
+            const calls = JSON.parse(r.toolCalls) as Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+            setToolCalls(calls.map((c) => ({ ...c, status: "loading" as const })));
+          } catch {}
+        }
+        setTimeout(() => {
+          setTyping(false);
+          setToolCalls([]);
+        }, r.delayMs);
+      })
+      .finally(() => setSending(false));
   };
 
   return (
@@ -132,6 +150,14 @@ export function AniChat({
                   {m.content}
                 </div>
               ))}
+              {toolCalls.map((tc) => (
+                <div key={tc.id} style={{ alignSelf: "flex-start", maxWidth: "78%", fontSize: 12, padding: "8px 12px", background: "var(--nv-color-surface-raised)", borderRadius: 10, border: "1px solid var(--nv-color-border)" }}>
+                  <div style={{ fontWeight: 600 }}>Calling tool: {tc.name}</div>
+                  <pre style={{ fontSize: 10, marginTop: 4, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{JSON.stringify(tc.arguments, null, 2)}</pre>
+                  {tc.status === "loading" && <div style={{ marginTop: 4, color: "var(--nv-color-text-faint)" }}>Waiting for result…</div>}
+                  {tc.result && <div style={{ marginTop: 4 }}>{tc.result}</div>}
+                </div>
+              ))}
               {typing && (
                 <div className="nv-badge" style={{ alignSelf: "flex-start", animation: "nv-pulse 1.2s ease-in-out infinite" }}>
                   ANI is typing…
@@ -153,6 +179,7 @@ export function AniChat({
                 }}
                 placeholder="Message ANI…"
                 style={{ flex: 1 }}
+                disabled={sending}
               />
               <Button onClick={send} disabled={sending || !draft.trim()}>Send</Button>
             </div>
@@ -163,6 +190,7 @@ export function AniChat({
             <Button variant="secondary" size="sm" onClick={() => setCreating(true)}>Start a conversation</Button>
           </div>
         )}
+
       </div>
 
       <Dialog

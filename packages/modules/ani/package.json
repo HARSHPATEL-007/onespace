@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
+    "@n0va/modules-n0va1o": "workspace:*",
     "@n0va/authz": "workspace:*",
     "@n0va/ui": "workspace:*",
     "next": "^15.3.0",
