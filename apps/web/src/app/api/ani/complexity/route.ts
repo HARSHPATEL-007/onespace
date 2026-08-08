@@ -1,12 +1,10 @@
-import { actionContext } from "@/lib/action-context";
+import { actionContext, UnauthorizedError } from "@/lib/action-context";
 import { AniService } from "@n0va/modules-ani/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const { workspaceId, userId, role } = await actionContext();
-
   let body: { content?: string };
   try {
     body = await req.json();
@@ -18,6 +16,17 @@ export async function POST(req: Request) {
   if (!content || typeof content !== "string") {
     return Response.json({ error: "Missing 'content' field" }, { status: 400 });
   }
+
+  let ctx;
+  try {
+    ctx = await actionContext();
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    throw err;
+  }
+  const { workspaceId, userId, role } = ctx;
 
   const svc = new AniService(workspaceId, userId, role);
 

@@ -1,12 +1,24 @@
-import { actionContext } from "@/lib/action-context";
+import { actionContext, UnauthorizedError } from "@/lib/action-context";
 import { AniService } from "@n0va/modules-ani/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
-  const { workspaceId, userId, role } = await actionContext();
+export async function GET() {
+  try {
+    const { workspaceId, userId, role } = await actionContext();
+    const svc = new AniService(workspaceId, userId, role);
+    const conversations = await svc.conversations();
+    return Response.json({ conversations });
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    throw err;
+  }
+}
 
+export async function POST(req: Request) {
   let body: {
     content?: string;
     conversationId?: string;
@@ -25,6 +37,17 @@ export async function POST(req: Request) {
   if (!content || typeof content !== "string") {
     return Response.json({ error: "Missing 'content' field" }, { status: 400 });
   }
+
+  let ctx;
+  try {
+    ctx = await actionContext();
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    throw err;
+  }
+  const { workspaceId, userId, role } = ctx;
 
   const svc = new AniService(workspaceId, userId, role);
 
@@ -47,7 +70,12 @@ export async function POST(req: Request) {
 
   const depth =
     (body.depth as
-      "fast" | "balanced" | "deep" | "research" | "auto" | undefined) ??
+      | "fast"
+      | "balanced"
+      | "deep"
+      | "research"
+      | "auto"
+      | undefined) ??
     undefined;
   const autoDepth =
     body.autoDepth === true || body.autoDepth === "true" || depth === "auto";

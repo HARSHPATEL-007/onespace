@@ -1,0 +1,16 @@
+   ▲ Next.js 15.5.22
+   - Local:        http://localhost:3004
+   - Network:      http://192.168.137.1:3004
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 4.2s
+ ○ Compiling /signin ...
+ ✓ Compiled /signin in 10.3s (799 modules)
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 913ms (777 modules)
+ GET /signin 500 in 834ms
+ GET /signin 500 in 404ms
+C:\Users\hvipa\Downloads\New NOVA\onespace\apps\web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] web@0.1.0 dev: `next dev`
+Exit status 4294967295

@@ -1,4 +1,4 @@
-import { actionContext } from "@/lib/action-context";
+import { actionContext, UnauthorizedError } from "@/lib/action-context";
 import {
   createANI,
   createWorkspaceContext,
@@ -11,7 +11,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const { workspaceId, userId } = await actionContext();
+  let workspaceId: string;
+  let userId: string;
+  try {
+    const ctx = await actionContext();
+    workspaceId = ctx.workspaceId;
+    userId = ctx.userId;
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+    throw err;
+  }
 
   const url = new URL(req.url);
   const content = url.searchParams.get("content");

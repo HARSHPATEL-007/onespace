@@ -1,0 +1,43 @@
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\hvipa\package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * C:\Users\hvipa\Downloads\New NOVA\onespace\pnpm-lock.yaml
+
+   ▲ Next.js 15.5.22
+   - Local:        http://localhost:3004
+   - Network:      http://192.168.137.1:3004
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 2.5s
+ ○ Compiling /api/auth/[...nextauth] ...
+ ✓ Compiled /api/auth/[...nextauth] in 4.6s (445 modules)
+ GET /api/auth/csrf 200 in 5552ms
+ ○ Compiling /signin ...
+ ✓ Compiled /signin in 6s (979 modules)
+ GET /signin 200 in 6417ms
+ GET /api/auth/csrf 200 in 101ms
+ GET /signin 200 in 72ms
+ GET /api/auth/csrf 200 in 37ms
+ POST /api/auth/callback/credentials 302 in 130ms
+ GET /api/auth/session 200 in 44ms
+ ○ Compiling /api/ani/health ...
+ ✓ Compiled /api/ani/health in 538ms (957 modules)
+ GET /api/ani/health 200 in 1174ms
+ ✓ Compiled /api/ani in 275ms (959 modules)
+ GET /api/ani 200 in 926ms
+{"timestamp":"2026-08-08T14:09:33.704Z","level":"info","message":"N0VA ANI processing request","metadata":{"correlationId":"corr_1jvgraa07_gksdmf","intent":"Summarize the workspace activity in one sentence"}}
+{"timestamp":"2026-08-08T14:09:33.705Z","level":"info","message":"N0VA ANI response generated","metadata":{"correlationId":"corr_1jvgraa07_gksdmf","latencyMs":2,"safetyFlags":[]}}
+ POST /api/ani 200 in 52ms
+ ○ Compiling /api/ani/stream ...
+ ✓ Compiled /api/ani/stream in 550ms (1031 modules)
+{"timestamp":"2026-08-08T14:09:39.168Z","level":"info","message":"N0VA ANI processing request","metadata":{"correlationId":"corr_1jvgrafb0_1zp2zc","intent":"What is our Q4 strategy"}}
+{"timestamp":"2026-08-08T14:09:39.169Z","level":"info","message":"N0VA ANI response generated","metadata":{"correlationId":"corr_1jvgrafb0_1zp2zc","latencyMs":1,"safetyFlags":[]}}
+ GET /api/ani/stream?content=What+is+our+Q4+strategy&depth=balanced 200 in 5952ms
+ ✓ Compiled /api/ani/complexity in 311ms (1033 modules)
+ POST /api/ani/complexity 200 in 916ms
+{"timestamp":"2026-08-08T14:09:40.653Z","level":"info","message":"N0VA ANI processing request","metadata":{"correlationId":"corr_1jvgragpd_iwxgzs","intent":"What modules are available in this workspace?"}}
+{"timestamp":"2026-08-08T14:09:40.653Z","level":"info","message":"N0VA ANI response generated","metadata":{"correlationId":"corr_1jvgragpd_iwxgzs","latencyMs":1,"safetyFlags":[]}}
+ POST /api/ani 200 in 71ms
