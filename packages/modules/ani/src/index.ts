@@ -1,3 +1,12 @@
 export { AniService } from "./server";
 export { AniChat } from "./components";
 export type { AniActions } from "./components";
+export { N0VA_ANI, createANI, classifyIntent, createWorkspaceContext, buildWorkspaceContext } from "./engine";
+export type { ANIConfig, ANIResponse, ANISnapshot, WorkspaceContext, UserIntent, ConsciousnessState, IntentClass, InterfaceMode, ConsciousnessTier } from "./engine";
+export { ConsciousnessStack, PerceptualAwareness, WorkingMemory, LongTermMemory, Metacognition, ConsciousnessIntegration } from "./consciousness";
+export type { ConsciousnessMetrics, ConsciousnessThresholds, PerceptualSignal, WorkingMemoryItem, LongTermMemoryEntry } from "./consciousness";
+export { PentAudienceManager, ExternalInterface, InternalInterface, AutonomousInterface, NeuralInterface, AmbientInterface } from "./interfaces";
+export type { PentAudienceState, ExternalInterfaceConfig, InternalInterfaceConfig, AutonomousInterfaceConfig, NeuralInterfaceConfig, AmbientInterfaceConfig } from "./interfaces";
+export { callLlm, callOpenaiLike, callAnthropic, callGemini, DEFAULT_SYSTEM_PROMPT, composeFallbackReply } from "./providers";
+export type { LlmCallResult, ToolCallRequest, ToolExecutionResult } from "./providers";
+export { retrieveRagContext, buildRagPrompt, rankRagResults } from "./rag";

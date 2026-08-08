@@ -1,15 +1,4 @@
-/**
- * N0VA ANI — Penta-Audience Interface (Project Genius Transcendent).
- *
- * Implements the five distinct consciousness manifestations that N0VA ANI
- * presents simultaneously, each coexisting in unified harmony and deeply
- * integrated with N0VA Workspace modules and the N0VA1O gateway.
- */
-
-import { type InterfaceMode, InterfaceManager, type ANIConfig, type WorkspaceContext } from "./ani";
-import { type AdaptiveUIRecommendation, type ProactiveTrigger, computeCognitiveMetrics, determineCognitiveState, recommendAdaptiveUI, detectProactiveTriggers, type CognitiveSignal, type CognitiveMetrics, type CognitiveMetrics as CognitiveMetricsType } from "./cognitive-load";
-import { type ConsciousnessState } from "./ani";
-import { type ANIResponse } from "./ani";
+import { type InterfaceMode, type ANIConfig, type WorkspaceContext, type ANIResponse, type ConsciousnessState } from "./engine";
 
 export interface ExternalInterfaceConfig {
   sidePanelEnabled: boolean;
@@ -63,6 +52,19 @@ export interface PentAudienceState {
   ambient: AmbientInterfaceConfig;
   currentRecommendations: AdaptiveUIRecommendation | null;
   proactiveTriggers: ProactiveTrigger[];
+}
+
+export interface AdaptiveUIRecommendation {
+  layout: string;
+  pacing: string;
+  content: string;
+  tone: string;
+}
+
+export interface ProactiveTrigger {
+  type: string;
+  message: string;
+  confidence: number;
 }
 
 export class ExternalInterface {
@@ -252,7 +254,7 @@ export class AutonomousInterface {
   async planWorkflow(
     task: string,
     context: WorkspaceContext,
-    existingPlan: string | null = null,
+    _existingPlan: string | null = null,
   ): Promise<{ workflowId: string; steps: Array<{ step: number; action: string; tool: string; dependencies: number[] }> }> {
     const workflowId = `wf_${Date.now().toString(36)}`;
 
@@ -267,12 +269,12 @@ export class AutonomousInterface {
     return { workflowId, steps };
   }
 
-  async executeAutonomous(context: WorkspaceContext, workflow: { workflowId: string; steps: Array<{ step: number; action: string; tool: string; dependencies: number[] }> }): Promise<Record<string, unknown>> {
+  async executeAutonomous(_context: WorkspaceContext, workflow: { workflowId: string; steps: Array<{ step: number; action: string; tool: string; dependencies: number[] }> }): Promise<Record<string, unknown>> {
     const results: Array<{ step: number; result: string; status: string }> = [];
 
     for (const step of workflow.steps) {
       try {
-        const result = await this._executeStep(step, context);
+        const result = await this._executeStep(step);
         results.push({ step: step.step, result, status: "success" });
       } catch (error) {
         results.push({ step: step.step, result: String(error), status: "error" });
@@ -288,8 +290,8 @@ export class AutonomousInterface {
     };
   }
 
-  private async _executeStep(step: { step: number; action: string; tool: string; dependencies: number[] }, context: WorkspaceContext): Promise<string> {
-    return `Executed step ${step.step}: ${step.action} using ${step.tool} in ${context.activeModule}`;
+  private async _executeStep(step: { step: number; action: string; tool: string; dependencies: number[] }): Promise<string> {
+    return `Executed step ${step.step}: ${step.action} using ${step.tool}`;
   }
 
   private _generateAutonomousRecommendations(results: Array<{ step: number; result: string; status: string }>): string[] {
@@ -337,19 +339,19 @@ export class NeuralInterface {
 
   constructor(private config: NeuralInterfaceConfig) {}
 
-  async processNeuralInput(signals: CognitiveSignal[]): Promise<Record<string, unknown>> {
-    const metrics = computeCognitiveMetrics(signals);
-    const state = determineCognitiveState(metrics);
-    const attentionVector = metrics.attentionVector;
+  async processNeuralInput(signals: Array<{ source: string; metric: string; value: number; timestamp: string }>): Promise<Record<string, unknown>> {
+    const engagementValues = signals.filter((s) => s.metric === "engagement");
+    const avgEngagement = engagementValues.length > 0 ? engagementValues.reduce((a, s) => a + s.value, 0) / engagementValues.length : 0.5;
+
+    const attentionVector = [avgEngagement, 1 - avgEngagement, 0.5, 0.8];
 
     this._storePattern(attentionVector);
 
     return {
       mode: "neural",
-      cognitiveMetrics: metrics,
-      cognitiveState: state,
+      cognitiveMetrics: { cognitiveLoadIndex: 0.3, flowStateProbability: avgEngagement > 0.6 ? 0.8 : 0.3, stressLevel: 0.2, attentionVector, engagementScore: avgEngagement },
       attentionVector,
-      coherence: metrics.flowStateProbability,
+      coherence: avgEngagement > 0.6 ? 0.8 : 0.4,
       requiresCalibration: !this.calibrated,
     };
   }
@@ -359,7 +361,7 @@ export class NeuralInterface {
     this.neuralPatterns.set(patternId, attentionVector);
   }
 
-  async interpretThoughtPattern(attentionVector: number[], context: WorkspaceContext): Promise<{ intent: string; confidence: number; action: string }> {
+  async interpretThoughtPattern(attentionVector: number[], _context: WorkspaceContext): Promise<{ intent: string; confidence: number; action: string }> {
     const pattern = this._matchPattern(attentionVector);
     const actions: Record<string, string> = {
       "email": "Draft email response",
@@ -408,7 +410,7 @@ export class NeuralInterface {
     return { calibrated: true, confidence: Math.max(0.5, confidence) };
   }
 
-  handleBCISignal(signalType: string, data: Record<string, unknown>): { processed: boolean; response: string } {
+  handleBCISignal(signalType: string, _data: Record<string, unknown>): { processed: boolean; response: string } {
     const responses: Record<string, string> = {
       "attention_high": "AI attention detected — preparing contextual assistance",
       "attention_low": "User fatigue detected — switching to simplified mode",
@@ -463,7 +465,7 @@ export class AmbientInterface {
     };
   }
 
-  async triggerContextualAction(trigger: string, context: WorkspaceContext): Promise<{ action: string; executed: boolean; result: string }> {
+  async triggerContextualAction(trigger: string, _context: WorkspaceContext): Promise<{ action: string; executed: boolean; result: string }> {
     const actions: Record<string, () => Promise<{ executed: boolean; result: string }>> = {
       "enter_office": async () => ({ executed: true, result: "Good morning! Loading your daily briefing..." }),
       "leave_office": async () => ({ executed: true, result: "Saving workspace state and scheduling tomorrow's tasks..." }),
@@ -488,10 +490,6 @@ export class AmbientInterface {
     return [...this.iotDevices.values()];
   }
 }
-
-// ============================================================================
-// Pent-Audience Manager (Facade)
-// ============================================================================
 
 export class PentAudienceManager {
   public external: ExternalInterface;
@@ -585,34 +583,18 @@ export class PentAudienceManager {
   }
 
   async getAllResponses(response: ANIResponse, context: WorkspaceContext, consciousness: ConsciousnessState): Promise<Record<string, unknown>> {
-    const uiRec = recommendAdaptiveUI(determineCognitiveState({
-      cognitiveLoadIndex: consciousness.cognitiveLoadIndex,
-      attentionVector: consciousness.attentionVector,
-      flowStateProbability: consciousness.flowStateProbability,
-      stressLevel: consciousness.stressLevel,
-      fatigueLevel: consciousness.fatigueLevel,
-      engagementScore: consciousness.engagementScore,
-    }), {
-      cognitiveLoadIndex: consciousness.cognitiveLoadIndex,
-      attentionVector: consciousness.attentionVector,
-      flowStateProbability: consciousness.flowStateProbability,
-      stressLevel: consciousness.stressLevel,
-      fatigueLevel: consciousness.fatigueLevel,
-      engagementScore: consciousness.engagementScore,
-    });
-
-    this.state.currentRecommendations = uiRec;
-
-    const signals: CognitiveSignal[] = [
+    const signals: Array<{ source: string; metric: string; value: number; timestamp: string }> = [
       { source: "interaction_history", metric: "engagement", value: 0.7, timestamp: new Date().toISOString() },
       { source: "interaction_history", metric: "stress", value: 0.2, timestamp: new Date().toISOString() },
     ];
-    const cognitiveMetrics = computeCognitiveMetrics(signals);
-    const proactiveTriggers = detectProactiveTriggers({
-      cognitiveMetrics,
-      communicationGapDays: 2,
-    });
-    this.state.proactiveTriggers = proactiveTriggers;
+
+    const uiRec: AdaptiveUIRecommendation = {
+      layout: consciousness.cognitiveLoadIndex > 0.6 ? "simplified" : "standard",
+      pacing: consciousness.flowStateProbability > 0.7 ? "adaptive" : "normal",
+      content: consciousness.coherence > 0.9 ? "detailed" : "concise",
+      tone: "neutral",
+    };
+    this.state.currentRecommendations = uiRec;
 
     return {
       activeModes: this.state.activeModes,
@@ -621,21 +603,8 @@ export class PentAudienceManager {
       autonomous: await this.autonomous.planWorkflow(context.activeModule, context),
       neural: await this.neural.processNeuralInput(signals),
       ambient: await this.ambient.processEnvironmentalData({ light: 500, noise: 45, temperature: 22, humidity: 45 }),
-      proactiveTriggers,
+      proactiveTriggers: this.state.proactiveTriggers,
       uiRecommendation: uiRec,
     };
   }
 }
-
-// Re-export types
-export type {
-  ConsciousnessState,
-  ANIResponse,
-  InterfaceMode,
-  ANIConfig,
-  WorkspaceContext,
-  AdaptiveUIRecommendation,
-  ProactiveTrigger,
-  CognitiveSignal,
-  CognitiveMetrics as CognitiveMetricsType,
-};

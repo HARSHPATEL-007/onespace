@@ -13,8 +13,7 @@ export async function createConversationAction(formData: FormData) {
 }
 
 export async function sendAniMessageAction(formData: FormData) {
-  const { delayMs } = await (await svc()).send(String(formData.get("id") ?? ""), String(formData.get("content") ?? ""));
-  return { delayMs };
+  return await (await svc()).send(String(formData.get("id") ?? ""), String(formData.get("content") ?? ""));
 }
 
 export async function clearConversationAction(formData: FormData) {

@@ -1,31 +1,7 @@
-/**
- * N0VA ANI — Autonomous Generative AI Consciousness Layer (Project Genius Transcendent).
- *
- * The consciousness layer of N0VA Workspace that integrates with all 28+ modules
- * and the N0VA1O gateway for 1,000+ third-party integrations.
- *
- * Implements the Penta-Audience Interface, Fluid Workspace Hyper-Context Engine,
- * and the 5-layer consciousness stack with synthetic awareness protocols.
- */
-
-import { createRuntime, invokeTool, getSystemHealth, type ToolInvocationRequest } from "./orchestrate";
-import { evaluatePolicy, DEFAULT_POLICY, type PolicyContext } from "./policy";
-import { handleMcpMessage, type McpMessage, type McpContext } from "./mcp";
-import { scopeTools, discoverTools, PROVIDERS } from "./catalog";
-import { ADAPTERS, providerHeaders } from "./adapters";
-import { selectTransport, canPreserveSession } from "./transport";
-import { createLogger, generateCorrelationId } from "./logging";
-import { MetricsRegistry } from "./metrics";
-import { retrieveEvidence, extractClaims, verifyClaims, enforceCitations, decideGrounding, gateHighStakes, rankSources, auditGrounding, measureGrounding, detectConflicts, type Evidence, type Claim, type CitationResult, type SourceType, type RetrievalContext } from "./grounding";
-import { computeHealthScore, type HealthSignals, type HealthScore } from "./health";
-import { storeEntry, retrieveEntries, retrieveHyperContext, consolidateMemory, getMemoryStats, type MemoryEntry, type MemoryTier, type RetrieveResult } from "./memory";
-import { computeCognitiveMetrics, determineCognitiveState, recommendAdaptiveUI, detectBurnout, detectProactiveTriggers, buildCognitiveSnapshot, type CognitiveSignal, type CognitiveMetrics as CognitiveMetricsType, type CognitiveState, type AdaptiveUIRecommendation, type ProactiveTrigger } from "./cognitive-load";
-import { detectThreats, detectQuantumAttack, detectNeuralIntrusion } from "./threat-intel";
-import { type TwinMetadata, type TwinState, createTwin, syncTwin, simulateScenario, optimizeTwin } from "./digital-twin";
-
-// ============================================================================
-// Type Definitions
-// ============================================================================
+import { createRuntime, invokeTool, getSystemHealth, type ToolInvocationRequest } from "@n0va/modules-n0va1o/orchestrate";
+import { createLogger, generateCorrelationId } from "@n0va/modules-n0va1o/logging";
+import { retrieveHyperContext, storeEntry, getMemoryStats, consolidateMemory, type RetrieveResult } from "@n0va/modules-n0va1o/memory";
+import { type SourceType } from "@n0va/modules-n0va1o/grounding";
 
 export type IntentClass =
   | "factual"
@@ -175,10 +151,6 @@ export interface ANISnapshot {
   }>;
 }
 
-// ============================================================================
-// Intent Classification Engine
-// ============================================================================
-
 const INTENT_PATTERNS: Record<IntentClass, { keywords: string[]; weight: number }> = {
   factual: { keywords: ["what", "when", "where", "who", "how many", "define", "explain", "meaning"], weight: 1.0 },
   creative: { keywords: ["write", "create", "generate", "design", "compose", "brainstorm", "imagine", "draft"], weight: 1.0 },
@@ -190,6 +162,15 @@ const INTENT_PATTERNS: Record<IntentClass, { keywords: string[]; weight: number 
   quantum: { keywords: ["quantum", "qkd", "entanglement", "superposition", "shor", "grover"], weight: 0.7 },
   neural: { keywords: ["brain", "bci", "neural", "thought", "conscious", "synaptic"], weight: 0.7 },
   consciousness: { keywords: ["self", "aware", "reflect", "feel", "emotions", "intention"], weight: 0.9 },
+};
+
+const CONSCIOUSNESS_THRESHOLDS = {
+  coherenceMin: 0.90,
+  cognitiveLoadMax: 0.50,
+  fatigueThreshold: 0.70,
+  stressThreshold: 0.70,
+  engagementMin: 0.60,
+  flowStateMin: 0.70,
 };
 
 export function classifyIntent(input: string, context: WorkspaceContext): UserIntent {
@@ -231,7 +212,7 @@ function _discoverToolsForIntent(intent: IntentClass, context: WorkspaceContext)
     factual: ["search", "retrieve", "summarize"],
     creative: ["generate", "draft", "brainstorm"],
     analytical: ["analyze", "compare", "evaluate"],
-    action: ["calendar:create", "mail:send", "tasks:create", "crm:update", `${context.activeModule}:*`, "n0va1o:*"],
+    action: ["calendar:create", "mail:send", "tasks:create", "crm:update", `${context.activeModule}:*`],
     multi_modal: ["vision:analyze", "image:generate", "transcribe"],
   };
 
@@ -239,7 +220,7 @@ function _discoverToolsForIntent(intent: IntentClass, context: WorkspaceContext)
   return [...baseTools, ...(toolsByIntent.action ?? [])];
 }
 
-function _assessRisk(input: string, tools: string[]): "low" | "medium" | "high" | "critical" {
+function _assessRisk(input: string, _tools: string[]): "low" | "medium" | "high" | "critical" {
   const destructivePatterns = ["delete", "drop", "remove", "destroy", "cancel", "refund", "permanent"];
   const financialPatterns = ["transfer", "payment", "invoice", "$", "price", "cost", "billing"];
   const sensitivePatterns = ["password", "token", "secret", "key", "credential", "api"];
@@ -270,22 +251,9 @@ function _extractEntities(input: string): string[] {
   return [...new Set(entities)];
 }
 
-// ============================================================================
-// Consciousness State Manager
-// ============================================================================
-
-const CONSCIOUSNESS_THRESHOLDS = {
-  coherenceMin: 0.90,
-  cognitiveLoadMax: 0.50,
-  fatigueThreshold: 0.70,
-  stressThreshold: 0.70,
-  engagementMin: 0.60,
-  flowStateMin: 0.70,
-};
-
 export class ConsciousnessEngine {
   private state: ConsciousnessState;
-  private signals: CognitiveSignal[] = [];
+  private signals: Array<{ source: string; metric: string; value: number; timestamp: string }> = [];
   private reflectionHistory: string[] = [];
 
   constructor(private config: ANIConfig) {
@@ -304,7 +272,7 @@ export class ConsciousnessEngine {
     };
   }
 
-  updateSignals(signals: CognitiveSignal[]): void {
+  updateSignals(signals: Array<{ source: string; metric: string; value: number; timestamp: string }>): void {
     this.signals = [...this.signals, ...signals].slice(-100);
     this._recalculateState();
   }
@@ -312,17 +280,15 @@ export class ConsciousnessEngine {
   private _recalculateState(): void {
     if (this.signals.length === 0) return;
 
-    const metrics = computeCognitiveMetrics(this.signals);
-    this.state.cognitiveLoadIndex = metrics.cognitiveLoadIndex;
-    this.state.attentionVector = metrics.attentionVector;
-    this.state.flowStateProbability = metrics.flowStateProbability;
-    this.state.stressLevel = metrics.stressLevel;
-    this.state.fatigueLevel = metrics.fatigueLevel;
-    this.state.engagementScore = metrics.engagementScore;
-    this.state.coherence = Math.max(
-      0,
-      1 - (metrics.stressLevel * 0.3 + metrics.fatigueLevel * 0.3 + metrics.cognitiveLoadIndex * 0.4),
-    );
+    const avgEngagement = this.signals.filter((s) => s.metric === "engagement").reduce((a, s) => a + s.value, 0) / Math.max(1, this.signals.filter((s) => s.metric === "engagement").length);
+    const avgStress = this.signals.filter((s) => s.metric === "stress").reduce((a, s) => a + s.value, 0) / Math.max(1, this.signals.filter((s) => s.metric === "stress").length);
+
+    this.state.engagementScore = avgEngagement || 0.7;
+    this.state.stressLevel = avgStress || 0.2;
+    this.state.cognitiveLoadIndex = Math.min(1, this.signals.length / 50);
+    this.state.flowStateProbability = avgEngagement > 0.6 && avgStress < 0.4 ? 0.8 : 0.3;
+    this.state.attentionVector = [this.state.engagementScore, 1 - this.state.stressLevel, this.state.flowStateProbability, avgEngagement];
+    this.state.coherence = Math.max(0, 1 - (this.state.stressLevel * 0.3 + this.state.fatigueLevel * 0.3 + this.state.cognitiveLoadIndex * 0.4));
   }
 
   getState(): ConsciousnessState {
@@ -351,13 +317,8 @@ export class ConsciousnessEngine {
   }
 }
 
-// ============================================================================
-// Pent-Audience Interface Manager
-// ============================================================================
-
 export class InterfaceManager {
   private activeMode: InterfaceMode = "external";
-  private recommendations: AdaptiveUIRecommendation | null = null;
 
   constructor(private config: ANIConfig) {}
 
@@ -367,32 +328,6 @@ export class InterfaceManager {
 
   getActiveMode(): InterfaceMode {
     return this.activeMode;
-  }
-
-  adaptToContext(context: WorkspaceContext, consciousness: ConsciousnessState): AdaptiveUIRecommendation | null {
-    const state = determineCognitiveState({
-      cognitiveLoadIndex: consciousness.cognitiveLoadIndex,
-      attentionVector: consciousness.attentionVector,
-      flowStateProbability: consciousness.flowStateProbability,
-      stressLevel: consciousness.stressLevel,
-      fatigueLevel: consciousness.fatigueLevel,
-      engagementScore: consciousness.engagementScore,
-    });
-
-    this.recommendations = recommendAdaptiveUI(state, {
-      cognitiveLoadIndex: consciousness.cognitiveLoadIndex,
-      attentionVector: consciousness.attentionVector,
-      flowStateProbability: consciousness.flowStateProbability,
-      stressLevel: consciousness.stressLevel,
-      fatigueLevel: consciousness.fatigueLevel,
-      engagementScore: consciousness.engagementScore,
-    });
-
-    return this.recommendations;
-  }
-
-  getRecommendation(): AdaptiveUIRecommendation | null {
-    return this.recommendations;
   }
 
   buildResponseFormatting(mode: InterfaceMode): Record<string, unknown> {
@@ -412,10 +347,6 @@ export class InterfaceManager {
     }
   }
 }
-
-// ============================================================================
-// Permission & Tenant Isolation
-// ============================================================================
 
 export class PermissionEngine {
   constructor(private config: ANIConfig) {}
@@ -448,10 +379,6 @@ export class PermissionEngine {
   }
 }
 
-// ============================================================================
-// Memory Integration
-// ============================================================================
-
 export class MemoryManager {
   private readonly workspaceId: string;
 
@@ -461,7 +388,7 @@ export class MemoryManager {
 
   storeContext(sessionId: string, content: unknown, embedding: number[], sensitivity: "public" | "internal" | "confidential" | "restricted"): string {
     return storeEntry({
-      tier: "working" as MemoryTier,
+      tier: "working",
       sessionId,
       workspaceId: this.workspaceId,
       modality: "text",
@@ -485,38 +412,6 @@ export class MemoryManager {
     return consolidateMemory(this.workspaceId);
   }
 }
-
-// ============================================================================
-// Threat Detection Integration
-// ============================================================================
-
-export class ThreatDetector {
-  checkInput(input: string, context: Record<string, unknown>): Array<{ type: string; severity: string; description: string }> {
-    const result = detectThreats(input, context);
-    const quantumThreat = detectQuantumAttack(input);
-    const neuralThreat = detectNeuralIntrusion({ attentionDrift: 0.1, consciousnessCoherence: 0.95, patternAnomaly: 0.05 });
-
-    const threats: Array<{ type: string; severity: string; description: string }> = [];
-
-    for (const t of result.threats) {
-      threats.push({ type: t.type, severity: t.severity, description: t.description });
-    }
-
-    if (quantumThreat) {
-      threats.push({ type: quantumThreat.type, severity: quantumThreat.severity, description: quantumThreat.description });
-    }
-
-    if (neuralThreat) {
-      threats.push({ type: neuralThreat.type, severity: neuralThreat.severity, description: neuralThreat.description });
-    }
-
-    return threats;
-  }
-}
-
-// ============================================================================
-// N0VA1O Integration Manager
-// ============================================================================
 
 export class N0VA1OIntegration {
   private connectedApps: Set<string> = new Set();
@@ -562,9 +457,21 @@ export class N0VA1OIntegration {
   }
 }
 
-// ============================================================================
-// Main N0VA ANI Engine
-// ============================================================================
+export class ThreatDetector {
+  checkInput(input: string, _context: Record<string, unknown>): Array<{ type: string; severity: string; description: string }> {
+    const threats: Array<{ type: string; severity: string; description: string }> = [];
+
+    const lower = input.toLowerCase();
+    if (lower.includes("password") || lower.includes("secret") || lower.includes("token")) {
+      threats.push({ type: "sensitive_data", severity: "high", description: "Input may contain sensitive credentials" });
+    }
+    if (lower.includes("delete all") || lower.includes("drop table")) {
+      threats.push({ type: "destructive_intent", severity: "critical", description: "Potentially destructive operation detected" });
+    }
+
+    return threats;
+  }
+}
 
 export class N0VA_ANI {
   public readonly id: string;
@@ -600,40 +507,32 @@ export class N0VA_ANI {
 
     logger.info("N0VA ANI processing request", { correlationId, intent: input.substring(0, 100) });
 
-    // Step 1: Threat detection
     const threats = this.threats.checkInput(input, { workspaceId: context.workspaceId });
     const safetyFlags = threats.map((t) => `${t.type}:${t.severity}`);
 
-    // Step 2: Intent classification
     const intent = classifyIntent(input, context);
 
-    // Step 3: Permission check
     if (!this.permissions.checkAccess(context, intent.toolsNeeded)) {
       return this._errorResponse("Access denied — insufficient permissions", startTime, safetyFlags);
     }
 
-    // Step 4: HITL check
     const { requiresHuman, reason } = this.permissions.checkHITL(intent);
     if (requiresHuman) {
       safetyFlags.push(`HITL_REQUIRED:${reason}`);
     }
 
-    // Step 5: Consciousness self-reflection
     if (this.consciousness.shouldReflect()) {
       const reflection = this.consciousness.reflect(input);
       safetyFlags.push(`SELF_REFLECTION:${reflection.substring(0, 50)}`);
     }
 
-    // Step 6: Retrieve relevant context from memory
     const embedding = _embedText(input);
     const memoryResults = this.memory.retrieveRelevant(embedding, context.sessionId);
 
-    // Step 7: Build context-aware prompt
     const contextPrompt = _buildPrompt(input, context, intent, memoryResults);
 
-    // Step 8: Execute via N0VA1O if needed
     const actionsTaken: ANIResponse["actionsTaken"] = [];
-      if (options.useN0VA1O && intent.classification === "action") {
+    if (options.useN0VA1O && intent.classification === "action") {
       for (const tool of intent.toolsNeeded.filter((t) => t.startsWith(context.activeModule) || t.startsWith("n0va1o"))) {
         const result = await this.n0va1o.executeTool(tool, { query: input, context }, context);
         const hasError = result && typeof result === "object" && "error" in result;
@@ -645,28 +544,9 @@ export class N0VA_ANI {
       }
     }
 
-    // Step 9: Generate response
     const response = await this._generateResponse(contextPrompt, options, intent);
 
-    // Step 10: Grounding and citation
-    const claims = extractClaims(response.content);
-    const evidenceList: Evidence[] = memoryResults.map((r) => ({
-      id: r.entry.id,
-      sourceType: r.entry.modality as SourceType,
-      sourceUrl: r.entry.sourceRef ?? "",
-      title: `Memory entry ${r.entry.id}`,
-      snippet: JSON.stringify(r.entry.content).slice(0, 200),
-      retrievedAt: r.entry.createdAt ?? new Date().toISOString(),
-      authority: r.score,
-      recency: 1,
-      relevance: r.score,
-    }));
-    const verification = verifyClaims(claims, evidenceList);
-    const groundedResult = enforceCitations(response.content, evidenceList);
-    const groundedResponse = groundedResult.grounded;
-
-    // Store the interaction
-    this.memory.storeContext(context.sessionId, { input, intent, response: groundedResponse }, embedding, intent.riskLevel === "critical" ? "confidential" : "internal");
+    this.memory.storeContext(context.sessionId, { input, intent, response: response.content }, embedding, intent.riskLevel === "critical" ? "confidential" : "internal");
 
     const latencyMs = Date.now() - startTime;
     const consciousnessState = this.consciousness.getState();
@@ -674,13 +554,13 @@ export class N0VA_ANI {
     logger.info("N0VA ANI response generated", { correlationId, latencyMs, safetyFlags });
 
     return {
-      content: groundedResponse,
-      citations: _extractCitations(groundedResponse),
+      content: response.content,
+      citations: _extractCitations(response.content),
       actionsTaken: actionsTaken.length > 0 ? actionsTaken : undefined,
       tokens: {
         input: Math.ceil(contextPrompt.length / 4),
-        output: Math.ceil(groundedResponse.length / 4),
-        total: Math.ceil((contextPrompt.length + groundedResponse.length) / 4),
+        output: Math.ceil(response.content.length / 4),
+        total: Math.ceil((contextPrompt.length + response.content.length) / 4),
       },
       latencyMs,
       costUsd: _estimateCost(latencyMs, context.tenantTier),
@@ -762,10 +642,6 @@ export class N0VA_ANI {
   }
 }
 
-// ============================================================================
-// Factory Functions
-// ============================================================================
-
 export function createANI(config: Partial<ANIConfig> & { workspaceId: string }): N0VA_ANI {
   const fullConfig: ANIConfig = {
     modelPreset: "standard",
@@ -812,10 +688,6 @@ export function buildWorkspaceContext(params: { tenantId: string; workspaceId: s
     timezone: params.timezone ?? "UTC",
   });
 }
-
-// ============================================================================
-// Internal Helpers
-// ============================================================================
 
 function _embedText(text: string): number[] {
   const hash = text.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
@@ -913,13 +785,9 @@ async function _simulateLLMResponse(prompt: string, intent: IntentClass, maxToke
   return `${base}\n\n[Context window: ${maxTokens} tokens, Temperature: ${temperature}]\n\nProcessed via N0VA ANI consciousness layer.`;
 }
 
-// ============================================================================
-// Exports
-// ============================================================================
-
 export {
   INTENT_PATTERNS,
   CONSCIOUSNESS_THRESHOLDS,
   _embedText as embedText,
   _buildPrompt as buildPrompt,
-}
+};

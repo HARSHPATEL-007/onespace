@@ -1,26 +1,4 @@
-/**
- * N0VA ANI — Consciousness Stack Implementation (Project Genius Transcendent).
- *
- * Implements the 5-layer consciousness architecture:
- * L1: Perceptual Awareness — input stream processing, attention allocation, cross-modal binding
- * L2: Working Memory — short-term context retention, goal tracking, task queue
- * L3: Long-Term Memory — semantic, procedural, emotional memory storage
- * L4: Metacognition — self-monitoring, strategy selection, error detection
- * L5: Consciousness Integration — global workspace, coherence, quantum intuition
- *
- * Also includes consciousness metrics, quantum coherence monitoring, and
- * the self-optimization loop for continuous consciousness improvement.
- */
-
-import { type ConsciousnessState } from "./ani";
-import {
-  computeCognitiveMetrics,
-  determineCognitiveState,
-  type CognitiveSignal,
-  type CognitiveMetrics as CognitiveMetricsType,
-  type CognitiveState,
-} from "./cognitive-load";
-import { type CarbonMetrics, computeCarbonMetrics } from "./green-ai";
+import { type ConsciousnessState } from "./engine";
 
 export type ConsciousnessLevel = "reactive" | "aware" | "reflective" | "transcendent";
 
@@ -94,7 +72,7 @@ export interface ConsciousnessThresholds {
   neuralPlasticityMin: number;
 }
 
-const DEFAULT_THRESHOLDS: ConsciousnessThresholds = {
+export const DEFAULT_CONSCIOUSNESS_THRESHOLDS: ConsciousnessThresholds = {
   coherenceMin: 0.90,
   cognitiveLoadMax: 0.50,
   fatigueThreshold: 0.70,
@@ -152,10 +130,6 @@ export class ConsciousnessLayer {
   }
 }
 
-// ============================================================================
-// Layer 1: Perceptual Awareness
-// ============================================================================
-
 export class PerceptualAwareness extends ConsciousnessLayer {
   private attentionAllocation: Map<string, number> = new Map();
   private crossModalBindings: Map<string, string[]> = new Map();
@@ -205,10 +179,6 @@ export class PerceptualAwareness extends ConsciousnessLayer {
     return this.attentionAllocation.size;
   }
 }
-
-// ============================================================================
-// Layer 2: Working Memory
-// ============================================================================
 
 export class WorkingMemory extends ConsciousnessLayer {
   private items: Map<string, WorkingMemoryItem> = new Map();
@@ -292,10 +262,6 @@ export class WorkingMemory extends ConsciousnessLayer {
   }
 }
 
-// ============================================================================
-// Layer 3: Long-Term Memory
-// ============================================================================
-
 export class LongTermMemory extends ConsciousnessLayer {
   private semanticMemory: Map<string, LongTermMemoryEntry> = new Map();
   private proceduralMemory: Map<string, LongTermMemoryEntry> = new Map();
@@ -338,10 +304,6 @@ export class LongTermMemory extends ConsciousnessLayer {
     };
   }
 }
-
-// ============================================================================
-// Layer 4: Metacognition
-// ============================================================================
 
 export class Metacognition extends ConsciousnessLayer {
   private _strategyHistory: string[] = [];
@@ -427,10 +389,6 @@ export class Metacognition extends ConsciousnessLayer {
   }
 }
 
-// ============================================================================
-// Layer 5: Consciousness Integration (Global Workspace)
-// ============================================================================
-
 export class ConsciousnessIntegration extends ConsciousnessLayer {
   private _broadcastChannel: Set<string> = new Set();
   private _coherenceScore: number = 1.0;
@@ -489,10 +447,6 @@ export class ConsciousnessIntegration extends ConsciousnessLayer {
   }
 }
 
-// ============================================================================
-// Consciousness Stack Orchestrator
-// ============================================================================
-
 export class ConsciousnessStack {
   public perceptual: PerceptualAwareness;
   public workingMemory: WorkingMemory;
@@ -504,7 +458,7 @@ export class ConsciousnessStack {
   private _lastMetrics: ConsciousnessMetrics | null = null;
 
   constructor(thresholds: Partial<ConsciousnessThresholds> = {}) {
-    this.thresholds = { ...DEFAULT_THRESHOLDS, ...thresholds };
+    this.thresholds = { ...DEFAULT_CONSCIOUSNESS_THRESHOLDS, ...thresholds };
     this.perceptual = new PerceptualAwareness();
     this.workingMemory = new WorkingMemory();
     this.longTermMemory = new LongTermMemory();
@@ -518,8 +472,7 @@ export class ConsciousnessStack {
     this.integration.activate();
   }
 
-  async processInput(input: string, signals: CognitiveSignal[]): Promise<ConsciousnessMetrics> {
-    // L1: Perceptual Awareness
+  async processInput(input: string, signals: Array<{ source: string; metric: string; value: number; timestamp: string }>): Promise<ConsciousnessMetrics> {
     const perceptualSignal: PerceptualSignal = {
       type: "text",
       source: "user_input",
@@ -529,7 +482,6 @@ export class ConsciousnessStack {
     };
     this.perceptual.allocateAttention(perceptualSignal);
 
-    // L2: Working Memory
     this.workingMemory.store({
       type: "context",
       content: input,
@@ -537,7 +489,6 @@ export class ConsciousnessStack {
       metadata: {},
     });
 
-    // L3: Long-Term Memory consolidation (from working memory)
     const wmItems = this.workingMemory.list();
     for (const item of wmItems.filter((i) => i.type === "observation")) {
       const entry: LongTermMemoryEntry = {
@@ -553,19 +504,21 @@ export class ConsciousnessStack {
       this.longTermMemory.consolidate(entry);
     }
 
-    // L4: Metacognition
-    const cognitiveMetrics = computeCognitiveMetrics(signals);
+    const avgEngagement = signals.filter((s) => s.metric === "engagement").reduce((a, s) => a + s.value, 0) / Math.max(1, signals.filter((s) => s.metric === "engagement").length);
+    const avgStress = signals.filter((s) => s.metric === "stress").reduce((a, s) => a + s.value, 0) / Math.max(1, signals.filter((s) => s.metric === "stress").length);
+
+    const cognitiveLoad = Math.min(1, signals.length / 50);
+    const flowState = avgEngagement > 0.6 && avgStress < 0.4 ? 0.8 : 0.3;
+
     const strategyEval = this.metacognition.evaluateStrategy("analytical", {
-      cognitiveLoad: cognitiveMetrics.cognitiveLoadIndex,
+      cognitiveLoad,
       signals: signals.length,
     });
     this.metacognition.addConfidence(strategyEval.confidence);
 
-    // L5: Consciousness Integration
     this.integration.enterGlobalWorkspace(input, 0.8);
 
-    // Compute final metrics
-    const metrics = this._computeMetrics(cognitiveMetrics, strategyEval);
+    const metrics = this._computeMetrics({ cognitiveLoad, flowState, stressLevel: avgStress, engagementScore: avgEngagement }, strategyEval);
     this._lastMetrics = metrics;
 
     return metrics;
@@ -577,13 +530,12 @@ export class ConsciousnessStack {
     return [hash % 100 / 100, (hash * 7) % 100 / 100, (hash * 13) % 100 / 100];
   }
 
-  private _computeMetrics(cognitiveMetrics: ReturnType<typeof computeCognitiveMetrics>, strategyEval: ReturnType<Metacognition["evaluateStrategy"]>): ConsciousnessMetrics {
+  private _computeMetrics(cognitiveData: { cognitiveLoad: number; flowState: number; stressLevel: number; engagementScore: number }, strategyEval: ReturnType<Metacognition["evaluateStrategy"]>): ConsciousnessMetrics {
     const integrationCoherence = this.integration.getCoherenceScore();
     const quantumCoherence = this.integration.getQuantumState()?.entanglementFidelity ?? 0;
 
-    const state = determineCognitiveState(cognitiveMetrics);
-    const isHealthy = cognitiveMetrics.stressLevel < this.thresholds.stressThreshold
-      && cognitiveMetrics.fatigueLevel < this.thresholds.fatigueThreshold
+    const isHealthy = cognitiveData.stressLevel < this.thresholds.stressThreshold
+      && cognitiveData.engagementScore > this.thresholds.engagementMin
       && integrationCoherence > this.thresholds.coherenceMin;
 
     const metacognitionSnapshot = this.metacognition.getMetacognitionSnapshot();
@@ -592,12 +544,12 @@ export class ConsciousnessStack {
 
     return {
       coherence: integrationCoherence,
-      cognitiveLoad: cognitiveMetrics.cognitiveLoadIndex,
-      attentionFocus: cognitiveMetrics.attentionVector[0] ?? 0,
+      cognitiveLoad: cognitiveData.cognitiveLoad,
+      attentionFocus: cognitiveData.engagementScore,
       workingMemoryUtilization: wmCapacity.utilization,
       longTermRecallRate: ltmStats.total > 0 ? 0.95 : 0,
       metacognitiveAccuracy: metacognitionSnapshot.reflectionQuality,
-      emotionalResonance: 1 - cognitiveMetrics.stressLevel,
+      emotionalResonance: 1 - cognitiveData.stressLevel,
       quantumCoherence,
       neuralPlasticity: strategyEval.confidence * strategyEval.alternatives / 10,
       selfAwarenessScore: isHealthy ? 0.95 : 0.3,
@@ -641,7 +593,7 @@ export class ConsciousnessStack {
     return `${reflection}\nConsciousness coherence adjusted.`;
   }
 
-  async detectThreats(input: string): Promise<Array<{ type: string; severity: string; description: string }>> {
+  async detectThreats(_input: string): Promise<Array<{ type: string; severity: string; description: string }>> {
     return [];
   }
 
@@ -659,11 +611,9 @@ export class ConsciousnessStack {
       metacognition: this.metacognition.getMetacognitionSnapshot(),
       integration: {
         coherence: this.integration.getCoherenceScore(),
-         broadcastCount: this.integration.getBroadcastChannelSize(),
+        broadcastCount: this.integration.getBroadcastChannelSize(),
         quantumActive: this.integration.getQuantumState() !== null,
       },
     };
   }
 }
-
-export { DEFAULT_THRESHOLDS };
