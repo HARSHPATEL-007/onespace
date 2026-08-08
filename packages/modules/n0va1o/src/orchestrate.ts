@@ -10,7 +10,7 @@ import { MetricsRegistry } from "./metrics";
 import { checkSubsystem, aggregateHealth, type SubsystemHealth } from "./system-health";
 import { loadConfig, type GatewayConfig } from "./config";
 import { N0va1oGateway, type GatewayCallInput } from "./gateway";
-import { isDestructiveTool, type ProviderInfo } from "./catalog";
+import { isDestructiveTool } from "./catalog";
 import type { Integration } from "@n0va/db";
 
 export interface N0va1oRuntime {

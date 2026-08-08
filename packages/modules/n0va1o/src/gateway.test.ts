@@ -1516,6 +1516,8 @@ test("orchestrate: invokeTool runs policy + observability pipeline", async () =>
 
 test("orchestrate: invokeTool executes real gateway call when integration provided", async () => {
   const runtime = createRuntime();
+  const workspace = await prisma.workspace.findUnique({ where: { slug: "n0va-demo" } });
+  assert.ok(workspace, "demo workspace exists");
   const integration = await prisma.integration.findFirst({ where: { provider: "github", workspaceId: workspace!.id } });
   assert.ok(integration, "github integration exists");
   const result = await invokeTool(runtime, {
