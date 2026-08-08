@@ -22,6 +22,13 @@ import { SessionIntentionPredictor } from "./src/intention-predictor";
 import { AuditLogger } from "./src/audit-logger";
 import { RiskAdaptiveRedaction } from "./src/risk-redaction";
 import { PreferenceEvolutionEngine } from "./src/preference-evolution";
+import { AutonomousCodeEvolution } from "./src/code-evolution";
+import { MultiModalMemory } from "./src/multimodal-memory";
+import { CollaborationIntelligence } from "./src/collaboration-intel";
+import { SelfOptimizationGovernor } from "./src/self-optimization";
+import { FailureTaxonomy } from "./src/failure-taxonomy";
+import { BehavioralDriftDetector } from "./src/drift-detector";
+import { ContinuousQAHarness } from "./src/qa-harness";
 
 async function smoke() {
   console.log("=== N0VA ANI Smoke Test ===\n");
@@ -245,6 +252,55 @@ async function smoke() {
   const successRate = prefs.getSuccessRate("research");
   const researchPref = prefs.getPreference("research");
   console.log(`✓ (success: ${(successRate * 100).toFixed(0)}%, tone: ${researchPref.tone}, verbosity: ${researchPref.verbosity})`);
+
+  process.stdout.write("31. Code Evolution... ");
+  const codeEvo = new AutonomousCodeEvolution();
+  const issues = codeEvo.detectIssues([{ file: "test.ts", content: "const x: any = 1;\nconsole.log(x);\ntry { } catch {}" }]);
+  const patch = issues.length > 0 ? codeEvo.writePatch(issues[0]!, "const x: any = 1;") : null;
+  const testResult = patch ? codeEvo.runTests(patch) : null;
+  console.log(`✓ (${issues.length} issues, tests pass: ${testResult?.pass})`);
+
+  process.stdout.write("32. Multi-Modal Memory... ");
+  const mmMemory = new MultiModalMemory();
+  const textExp = mmMemory.store("text", "Q4 strategy meeting notes", [], 0.9);
+  const chartExp = mmMemory.store("chart", "Revenue trajectory chart", [textExp.id], 0.8);
+  mmMemory.linkExperiences(textExp.id, chartExp.id);
+  const linked = mmMemory.getLinkedExperiences(textExp.id);
+  console.log(`✓ (${linked.length} linked experiences)`);
+
+  process.stdout.write("33. Collaboration Intelligence... ");
+  const collab = new CollaborationIntelligence();
+  const collabState = collab.analyze([
+    { participantId: "p1", sentiment: "positive", engagement: 0.9, lastContribution: new Date().toISOString() },
+    { participantId: "p2", sentiment: "negative", engagement: 0.4, lastContribution: new Date().toISOString() },
+  ]);
+  console.log(`✓ (state: ${collabState.state}, confidence: ${collabState.confidence})`);
+
+  process.stdout.write("34. Self-Optimization Governor... ");
+  const governor = new SelfOptimizationGovernor();
+  governor.record({ timestamp: new Date().toISOString(), latencyMs: 120, accuracy: 0.95, costUsd: 0.002, hallucinationRate: 0.01 });
+  governor.record({ timestamp: new Date().toISOString(), latencyMs: 450, accuracy: 0.82, costUsd: 0.005, hallucinationRate: 0.08 });
+  const trends = governor.getTrends();
+  const shouldAdjust = governor.shouldAdjustRouting();
+  console.log(`✓ (accuracy: ${trends.accuracyTrend}, adjust: ${shouldAdjust})`);
+
+  process.stdout.write("35. Failure Taxonomy... ");
+  const taxonomy = new FailureTaxonomy();
+  const failure = taxonomy.handle("integration", "Service unavailable (503)");
+  console.log(`✓ (type: ${failure.type}, action: ${failure.recoveryAction.slice(0, 40)}...)`);
+
+  process.stdout.write("36. Drift Detector... ");
+  const driftDetector = new BehavioralDriftDetector();
+  driftDetector.setBaseline("latency", 100);
+  driftDetector.setBaseline("accuracy", 0.95);
+  const drift = driftDetector.detectDrift("latency", 180);
+  console.log(`✓ (drift: ${drift?.direction ?? "none"}, ${drift ? (drift.driftPercentage * 100).toFixed(0) + "%" : "stable"})`);
+
+  process.stdout.write("37. QA Harness... ");
+  const qa = new ContinuousQAHarness();
+  const qaScore = qa.score("Based on the Q3 report, revenue grew 14%", ["doc_q3_report", "finance_system"]);
+  const shouldRetrain = qa.shouldRetrain();
+  console.log(`✓ (groundedness: ${qaScore.groundedness.toFixed(2)}, retrain: ${shouldRetrain})`);
 
   console.log("\n=== All smoke tests passed ===");
 }

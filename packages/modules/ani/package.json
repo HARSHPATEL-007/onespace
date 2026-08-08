@@ -40,6 +40,13 @@
     "./audit-logger": "./src/audit-logger.ts",
     "./risk-redaction": "./src/risk-redaction.ts",
     "./preference-evolution": "./src/preference-evolution.ts",
+    "./code-evolution": "./src/code-evolution.ts",
+    "./multimodal-memory": "./src/multimodal-memory.ts",
+    "./collaboration-intel": "./src/collaboration-intel.ts",
+    "./self-optimization": "./src/self-optimization.ts",
+    "./failure-taxonomy": "./src/failure-taxonomy.ts",
+    "./drift-detector": "./src/drift-detector.ts",
+    "./qa-harness": "./src/qa-harness.ts",
     "./types": "./src/types.ts"
   },
   "dependencies": {
