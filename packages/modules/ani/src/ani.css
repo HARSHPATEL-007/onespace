@@ -1493,3 +1493,24 @@
 .ani-graph-stats { display: flex; gap: 12px; font-size: 10px; color: var(--nv-color-text-faint); }
 .ani-graph-nodes { display: flex; flex-wrap: wrap; gap: 4px; }
 .ani-graph-node { padding: 4px 8px; border-radius: 4px; border: 1px solid; background: var(--nv-color-surface-2); font-size: 10px; }
+
+.ani-graph-canvas { width: 100%; height: auto; border-radius: 8px; background: var(--nv-color-bg); border: 1px solid var(--nv-color-border); }
+
+/* ===== MEETING INTELLIGENCE ===== */
+.ani-meeting-content { display: flex; flex-direction: column; gap: 10px; }
+.ani-meeting-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ani-meeting-stat { text-align: center; padding: 8px 4px; border-radius: 8px; background: var(--nv-color-surface-2); }
+.ani-meeting-stat span { display: block; font-size: 16px; font-weight: 800; color: var(--nv-color-primary); }
+.ani-meeting-stat label { display: block; font-size: 9px; color: var(--nv-color-text-faint); margin-top: 2px; }
+.ani-meeting-participants { display: flex; flex-direction: column; gap: 4px; }
+.ani-participant { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; background: var(--nv-color-surface-2); font-size: 11px; }
+.ani-participant-name { flex: 1; font-weight: 500; }
+.ani-participant-talk { font-family: var(--nv-font-mono); color: var(--nv-color-text-faint); }
+.ani-participant-engagement { font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+.eng-high { background: var(--nv-color-success); color: #fff; }
+.eng-med { background: var(--nv-color-warning); color: #fff; }
+.eng-low { background: var(--nv-color-danger); color: #fff; }
+.ani-meeting-actions { display: flex; flex-direction: column; gap: 4px; }
+.ani-action-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-radius: 6px; background: var(--nv-color-surface-2); border-left: 3px solid var(--nv-color-accent); font-size: 11px; }
+.ani-action-desc { flex: 1; }
+.ani-action-assignee { font-family: var(--nv-font-mono); color: var(--nv-color-primary); font-size: 10px; }

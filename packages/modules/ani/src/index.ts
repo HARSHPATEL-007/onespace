@@ -178,6 +178,25 @@ export type {
   ContextEdge3D,
   ContextGraph3D,
 } from "./remaining-capabilities";
+export {
+  layoutForceDirected3D,
+  project3Dto2D,
+  initializeMeetingIntelligence,
+  updateMeetingWithTranscript,
+  selectOptimalModel,
+  buildCausalChain,
+  monitorToolHealth,
+  adaptToneForContext,
+  runSelfOptimizationCheck,
+} from "./ani-integration";
+export type {
+  MeetingIntelligenceState,
+  ParticipantInsight,
+  AgendaItem,
+  MeetingDecision,
+  MeetingActionItem,
+  GraphLayout3D,
+} from "./ani-integration";
 export { CrossAppSchemaMapper } from "./schema-mapper";
 export type { SchemaMapping } from "./schema-mapper";
 export { MultiResolutionRenderer, NeuralEthicsBoard } from "./multi-resolution";

@@ -41,6 +41,19 @@ import {
   type PersistentMemoryEntry,
   type OutcomeRecord,
 } from "./remaining-capabilities";
+import {
+  layoutForceDirected3D,
+  project3Dto2D,
+  initializeMeetingIntelligence,
+  updateMeetingWithTranscript,
+  selectOptimalModel,
+  buildCausalChain,
+  monitorToolHealth,
+  adaptToneForContext,
+  runSelfOptimizationCheck,
+  type MeetingIntelligenceState,
+  type GraphLayout3D,
+} from "./ani-integration";
 
 interface WalkthroughNotification {
   id: string;
@@ -177,6 +190,10 @@ export function AniChat({
   const [showOutcomePanel, setShowOutcomePanel] = useState(false);
   const [contextGraph, setContextGraph] = useState<ContextGraph3D | null>(null);
   const [showGraphPanel, setShowGraphPanel] = useState(false);
+  const [showMeetingPanel, setShowMeetingPanel] = useState(false);
+  const [meetingState, setMeetingState] = useState<MeetingIntelligenceState | null>(null);
+  const [graphLayout, setGraphLayout] = useState<GraphLayout3D | null>(null);
+  const graphCanvasRef = useRef<HTMLCanvasElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -333,6 +350,59 @@ export function AniChat({
   };
 
   useEffect(() => { autoResize(); }, [draft]);
+
+  useEffect(() => {
+    if (!contextGraph || !graphLayout) return;
+    const canvas = graphCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "var(--nv-color-bg)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (const edge of graphLayout.edges) {
+      const source = graphLayout.nodes.find((n) => n.id === edge.source);
+      const target = graphLayout.nodes.find((n) => n.id === edge.target);
+      if (!source || !target) continue;
+      const s2d = project3Dto2D(source.x, source.y, source.z, graphLayout.bounds, canvas.width, canvas.height);
+      const t2d = project3Dto2D(target.x, target.y, target.z, graphLayout.bounds, canvas.width, canvas.height);
+      ctx.strokeStyle = "var(--nv-color-border)";
+      ctx.lineWidth = edge.weight * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(s2d.sx, s2d.sy);
+      ctx.lineTo(t2d.sx, t2d.sy);
+      ctx.stroke();
+    }
+
+    for (const node of graphLayout.nodes) {
+      const pos = project3Dto2D(node.x, node.y, node.z, graphLayout.bounds, canvas.width, canvas.height);
+      const radius = 4 + node.weight * 2;
+      ctx.beginPath();
+      ctx.arc(pos.sx, pos.sy, radius * pos.scale, 0, Math.PI * 2);
+      ctx.fillStyle = node.color ?? "var(--nv-color-primary)";
+      ctx.fill();
+      ctx.font = `${Math.round(9 * pos.scale)}px var(--nv-font-mono)`;
+      ctx.fillStyle = "var(--nv-color-text)";
+      ctx.fillText(node.label.slice(0, 15), pos.sx + radius * pos.scale + 3, pos.sy + 3);
+    }
+  }, [contextGraph, graphLayout]);
+
+  useEffect(() => {
+    if (showGraphPanel && !contextGraph && active) {
+      const docs = [{ id: "1", title: active.title, module: "ani" }];
+      const graph = buildContextGraph([{ messages: active.messages }], docs);
+      setContextGraph(graph);
+      setGraphLayout(layoutForceDirected3D(graph, 80));
+    }
+  }, [showGraphPanel, contextGraph, active]);
+
+  useEffect(() => {
+    if (showMeetingPanel && !meetingState) {
+      setMeetingState(initializeMeetingIntelligence("meeting_1", ["You", "ANI"]));
+    }
+  }, [showMeetingPanel, meetingState]);
 
   return (
     <div className="ani-root">
@@ -541,6 +611,7 @@ export function AniChat({
             <button className={`ani-cap-btn ${showProgressPanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowProgressPanel(!showProgressPanel); setShowLearning(false); setShowOutcomePanel(false); setShowGraphPanel(false); }} title="Task progress">📊</button>
             <button className={`ani-cap-btn ${showOutcomePanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowOutcomePanel(!showOutcomePanel); setShowLearning(false); setShowProgressPanel(false); setShowGraphPanel(false); }} title="Outcomes">🏆</button>
             <button className={`ani-cap-btn ${showGraphPanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowGraphPanel(!showGraphPanel); setShowLearning(false); setShowProgressPanel(false); setShowOutcomePanel(false); }} title="Context graph">🕸️</button>
+            <button className={`ani-cap-btn ${showMeetingPanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowMeetingPanel(!showMeetingPanel); setShowLearning(false); setShowProgressPanel(false); setShowOutcomePanel(false); setShowGraphPanel(false); }} title="Meeting intelligence">👥</button>
             {ttsState.supported && active && active.messages.length > 0 && (
               <button className={`ani-cap-btn ${isSpeaking ? "ani-cap-btn-active" : ""}`} onClick={() => {
                 if (isSpeaking) { stopSpeech(); setIsSpeaking(false); }
@@ -653,21 +724,53 @@ export function AniChat({
           <div className="ani-capability-panel">
             <div className="ani-panel-header"><span>🕸️ Context Graph</span><button className="ani-panel-close" onClick={() => setShowGraphPanel(false)}>✕</button></div>
             <div className="ani-graph-content">
-              {contextGraph ? (
+              {graphLayout ? (
                 <>
                   <div className="ani-graph-stats">
-                    <span>{contextGraph.nodes.length} nodes</span>
-                    <span>{contextGraph.edges.length} edges</span>
-                    <span>{contextGraph.clusters.length} clusters</span>
+                    <span>{graphLayout.nodes.length} nodes</span>
+                    <span>{graphLayout.edges.length} edges</span>
                   </div>
-                  <div className="ani-graph-nodes">
-                    {contextGraph.nodes.slice(0, 12).map((n) => (
-                      <span key={n.id} className="ani-graph-node" style={{ borderColor: n.color }}>{n.label.slice(0, 20)}</span>
-                    ))}
-                  </div>
+                  <canvas ref={graphCanvasRef} width={700} height={350} className="ani-graph-canvas" />
                 </>
               ) : (
-                <div className="ani-graph-empty">Context graph builds from your conversations and documents. Add more interactions to see connections.</div>
+                <div className="ani-graph-empty">Building context graph from your workspace…</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {showMeetingPanel && meetingState && (
+          <div className="ani-capability-panel">
+            <div className="ani-panel-header"><span>👥 Meeting Intelligence</span><button className="ani-panel-close" onClick={() => setShowMeetingPanel(false)}>✕</button></div>
+            <div className="ani-meeting-content">
+              <div className="ani-meeting-stats">
+                <div className="ani-meeting-stat"><span>{meetingState.participants.length}</span><label>Participants</label></div>
+                <div className="ani-meeting-stat"><span>{meetingState.decisions.length}</span><label>Decisions</label></div>
+                <div className="ani-meeting-stat"><span>{meetingState.actionItems.length}</span><label>Actions</label></div>
+                <div className="ani-meeting-stat"><span>{Math.round(meetingState.engagement * 100)}%</span><label>Engagement</label></div>
+              </div>
+              {meetingState.participants.length > 0 && (
+                <div className="ani-meeting-participants">
+                  {meetingState.participants.map((p) => (
+                    <div key={p.id} className="ani-participant">
+                      <span className="ani-participant-name">{p.name}</span>
+                      <span className="ani-participant-talk">{p.talkTimePercent}%</span>
+                      <span className={`ani-participant-engagement eng-${p.engagement > 0.6 ? "high" : p.engagement > 0.3 ? "med" : "low"}`}>
+                        {Math.round(p.engagement * 100)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {meetingState.actionItems.length > 0 && (
+                <div className="ani-meeting-actions">
+                  {meetingState.actionItems.slice(0, 5).map((a) => (
+                    <div key={a.id} className="ani-action-item">
+                      <span className="ani-action-desc">{a.description}</span>
+                      <span className="ani-action-assignee">@{a.assignee}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
