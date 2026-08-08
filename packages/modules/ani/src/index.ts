@@ -17,8 +17,19 @@ export { XAIFramework, createXAI } from "./xai";
 export type { ExplanationRequest, ExplanationResult, CitationDetail } from "./xai";
 export { AdaptiveLearningEngine, createAdaptiveEngine } from "./adaptive";
 export type { UserProfile, CommunicationStyle, DecisionPreferences, CognitiveProfile, TemporalPatterns, FeedbackEntry, AdaptationResult } from "./adaptive";
-export { CrisisResilienceEngine, createCrisisEngine } from "./resilience";
-export type { FailureSeverity, FailureEvent, CircuitBreakerState, CrisisPlaybook } from "./resilience";
+export {
+  CircuitBreaker,
+  withRetry,
+  GracefulDegradation,
+  ProductionMonitor,
+  DEFAULT_RETRY_CONFIG,
+  DEFAULT_CIRCUIT_CONFIG,
+} from "./resilience";
+export type {
+  RetryConfig,
+  CircuitBreakerConfig,
+  ResilienceResult,
+} from "./resilience";
 export { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 export type { KnowledgeEntity, Relationship, GraphPath, GraphQueryResult } from "./knowledge-graph";
 export { PredictiveIntelligenceEngine, createPredictiveEngine } from "./predictive";

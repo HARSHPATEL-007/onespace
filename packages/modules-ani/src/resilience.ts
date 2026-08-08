@@ -104,14 +104,26 @@ export async function withRetry<T>(
   for (let attempt = 1; attempt <= cfg.maxAttempts; attempt++) {
     try {
       const result = await fn();
-      return { result, attempts: attempt, totalDurationMs: Date.now() - startTime, errors, degraded: false };
+      return {
+        result,
+        attempts: attempt,
+        totalDurationMs: Date.now() - startTime,
+        errors,
+        degraded: false,
+      };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
+      const errorMessage = err instanceof Error ? err.message : String(error);
       const isRetryable = cfg.retryableErrors.some((e) => errorMessage.toLowerCase().includes(e));
       errors.push({ attempt, error: errorMessage, timestamp: new Date().toISOString() });
 
       if (attempt === cfg.maxAttempts || !isRetryable) {
-        return { result: null, attempts: attempt, totalDurationMs: Date.now() - startTime, errors, degraded: true };
+        return {
+          result: null,
+          attempts: attempt,
+          totalDurationMs: Date.now() - startTime,
+          errors,
+          degraded: true,
+        };
       }
 
       const delay = Math.min(cfg.maxDelayMs, cfg.baseDelayMs * Math.pow(cfg.backoffMultiplier, attempt - 1));

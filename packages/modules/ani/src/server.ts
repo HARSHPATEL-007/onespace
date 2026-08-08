@@ -9,7 +9,7 @@ import { PersistentMemorySystem, createMemorySystem } from "./memory";
 import { ConsciousnessStack } from "./consciousness";
 import { XAIFramework, createXAI } from "./xai";
 import { AdaptiveLearningEngine, createAdaptiveEngine } from "./adaptive";
-import { CrisisResilienceEngine, createCrisisEngine } from "./resilience";
+import { CircuitBreaker, GracefulDegradation } from "./resilience";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { DEFAULT_ANI_SETTINGS, type AniSettings, type ToolCallRecord } from "./types";
 
@@ -33,7 +33,8 @@ export class AniService {
   private memory: PersistentMemorySystem;
   private xai: XAIFramework;
   private adaptive: AdaptiveLearningEngine;
-  private crisis: CrisisResilienceEngine;
+  private circuitBreaker: CircuitBreaker;
+  private degradation: GracefulDegradation;
 
   constructor(
     private readonly workspaceId: string,
@@ -46,7 +47,14 @@ export class AniService {
     this.memory = createMemorySystem(workspaceId);
     this.xai = createXAI();
     this.adaptive = createAdaptiveEngine(workspaceId);
-    this.crisis = createCrisisEngine();
+    this.circuitBreaker = new CircuitBreaker();
+    this.degradation = new GracefulDegradation();
+    this.degradation.registerFeature("deep_think", true);
+    this.degradation.registerFeature("voice_input", true);
+    this.degradation.registerFeature("voice_output", true);
+    this.degradation.registerFeature("graph_3d", true);
+    this.degradation.registerFeature("meeting_intel", true);
+    this.degradation.registerFeature("real_time_stream", true);
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
@@ -289,9 +297,20 @@ export class AniService {
     return { total: stats.total, working: stats.working, semantic: stats.semantic };
   }
 
-  async getSystemHealth(): Promise<{ status: "healthy" | "degraded" | "critical"; openCircuits: string[]; degradedFeatures: string[]; recentFailures: Array<{ id: string; timestamp: string; severity: string; component: string; message: string }> }> {
+  async getSystemHealth(): Promise<{ status: "healthy" | "degraded" | "critical"; openCircuits: string[]; degradedFeatures: string[]; circuitState: string; failures: number }> {
     await this.assert("READ");
-    return this.crisis.getSystemHealth();
+    const cbState = this.circuitBreaker.getState();
+    const degraded: string[] = [];
+    for (const feature of ["deep_think", "voice_input", "voice_output", "graph_3d", "meeting_intel", "real_time_stream"]) {
+      if (!(await this.degradation.isAvailable(feature))) degraded.push(feature);
+    }
+    return {
+      status: cbState.state === "open" ? "degraded" : degraded.length > 2 ? "critical" : "healthy",
+      openCircuits: cbState.state === "open" ? ["llm_provider"] : [],
+      degradedFeatures: degraded,
+      circuitState: cbState.state,
+      failures: cbState.failures,
+    };
   }
 
   async getSettings(): Promise<AniSettings> {
