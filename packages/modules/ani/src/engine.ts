@@ -2,6 +2,26 @@ import { createRuntime, invokeTool, getSystemHealth, type ToolInvocationRequest 
 import { createLogger, generateCorrelationId } from "@n0va/modules-n0va1o/logging";
 import { retrieveHyperContext, storeEntry, getMemoryStats, consolidateMemory, type RetrieveResult } from "@n0va/modules-n0va1o/memory";
 import { type SourceType } from "@n0va/modules-n0va1o/grounding";
+import {
+  assessComplexity,
+  getDepthSettings,
+  buildReasoningSteps,
+  needsClarification,
+  generateMemoryMarks,
+  buildFeedbackPanel,
+  type ReasoningDepth,
+  type TraceableThought,
+  type ComplexityAssessment,
+  type DeepThinkResult,
+} from "./deep-think";
+import {
+  buildMultiPassAnswer,
+  digestContext,
+  buildAutonomousWorkflow,
+  type MultiPassResult,
+  type ContextDigestionResult,
+  type AutonomousWorkflow,
+} from "./context-engine";
 
 export type IntentClass =
   | "factual"
@@ -577,6 +597,122 @@ export class N0VA_ANI {
     };
   }
 
+  async processDeepThink(
+    input: string,
+    context: WorkspaceContext,
+    options: { depth?: ReasoningDepth; autoDepth?: boolean; explanationLevel?: string } = {},
+  ): Promise<DeepThinkResult> {
+    const startTime = Date.now();
+    const depth = options.autoDepth
+      ? assessComplexity(input, classifyIntent(input, context), this.config.contextWindow).recommendedDepth
+      : (options.depth ?? "balanced");
+
+    const depthSettings = getDepthSettings(depth);
+    const complexity = assessComplexity(input, classifyIntent(input, context), this.config.contextWindow);
+    const reasoningSteps = buildReasoningSteps(depth, classifyIntent(input, context));
+
+    const clarification = needsClarification(input, complexity);
+    if (clarification.needsTo && depth !== "fast") {
+      const response: ANIResponse = {
+        content: clarification.question ?? "Could you provide more context?",
+        citations: [],
+        tokens: { input: 0, output: 50, total: 50 },
+        latencyMs: Date.now() - startTime,
+        costUsd: 0.0001,
+        safetyFlags: ["CLARIFICATION_REQUESTED"],
+        hallucinationScore: 0,
+        confidenceScore: 0.3,
+        recommendations: [],
+      };
+      return {
+        response,
+        thought: {
+          summary: "Clarification requested before processing",
+          steps: reasoningSteps.map((s) => ({ ...s, status: "done" })),
+          confidenceFactors: ["Insufficient context for confident response"],
+          assumptions: ["User will provide additional details"],
+          sourcesUsed: [],
+          complexity,
+          depth,
+          totalDurationMs: Date.now() - startTime,
+          passedClarification: false,
+          multiPassRounds: 0,
+        },
+        actions: [],
+        proactiveFollowups: [],
+        memoryMarks: [],
+        feedbackPanel: buildFeedbackPanel(complexity, depth, classifyIntent(input, context)),
+      };
+    }
+
+    const baseResult = await this.process(input, context, {
+      maxTokens: depthSettings.maxTokens,
+      temperature: depthSettings.temperature,
+      useN0VA1O: true,
+    });
+
+    let finalContent = baseResult.content;
+    let multiPassRounds = 0;
+
+    if (depthSettings.multiPassRounds > 0 && depthSettings.useSelfCritique) {
+      const multiPass = buildMultiPassAnswer(finalContent, depthSettings.multiPassRounds, depth);
+      finalContent = multiPass.finalAnswer;
+      multiPassRounds = multiPass.rounds.length;
+    }
+
+    const memoryMarks = generateMemoryMarks(input, finalContent, classifyIntent(input, context));
+    const workflow = buildAutonomousWorkflow(input, classifyIntent(input, context).toolsNeeded);
+
+    const totalDurationMs = Date.now() - startTime;
+
+    const thought: TraceableThought = {
+      summary: `Processed via ${depth} mode: ${reasoningSteps.length} reasoning steps, ${multiPassRounds} critique rounds`,
+      steps: reasoningSteps.map((s, i) => ({
+        ...s,
+        status: i < reasoningSteps.length - 1 ? "done" as const : "done" as const,
+        durationMs: Math.ceil(totalDurationMs / reasoningSteps.length),
+      })),
+      confidenceFactors: [
+        `Intent confidence: ${(baseResult.confidenceScore * 100).toFixed(0)}%`,
+        `Complexity: ${(complexity.score * 100).toFixed(0)}%`,
+        `Depth mode: ${depth}`,
+      ],
+      assumptions: [
+        `Classification: ${classifyIntent(input, context).classification}`,
+        `Tools available: ${classifyIntent(input, context).toolsNeeded.length}`,
+      ],
+      sourcesUsed: baseResult.citations.map((c) => c.source),
+      complexity,
+      depth,
+      totalDurationMs,
+      passedClarification: true,
+      multiPassRounds,
+    };
+
+    const enhancedResponse: ANIResponse = {
+      ...baseResult,
+      content: finalContent,
+      consciousnessCoherence: Math.min(1, baseResult.consciousnessCoherence ?? 0.95 + complexity.score * 0.03),
+    };
+
+    return {
+      response: enhancedResponse,
+      thought,
+      actions: workflow.steps.map((s) => ({
+        id: `act_${s.step}`,
+        tool: s.tool,
+        label: s.action,
+        description: s.description,
+        riskLevel: s.step <= 1 ? "low" : s.step <= 2 ? "medium" : "high",
+        requiresApproval: s.status === "needs_approval",
+        status: "pending",
+      })),
+      proactiveFollowups: _generateProactiveFollowups(classifyIntent(input, context), complexity),
+      memoryMarks,
+      feedbackPanel: buildFeedbackPanel(complexity, depth, classifyIntent(input, context)),
+    };
+  }
+
   async snapshot(): Promise<ANISnapshot> {
     this.snapshotCounter++;
     const consciousness = this.consciousness.getState();
@@ -785,9 +921,32 @@ async function _simulateLLMResponse(prompt: string, intent: IntentClass, maxToke
   return `${base}\n\n[Context window: ${maxTokens} tokens, Temperature: ${temperature}]\n\nProcessed via N0VA ANI consciousness layer.`;
 }
 
+function _generateProactiveFollowups(intent: UserIntent, complexity: ComplexityAssessment): string[] {
+  const followups: string[] = [];
+
+  if (intent.classification === "action" && complexity.score > 0.3) {
+    followups.push("Review and approve the proposed workflow steps");
+  }
+  if (complexity.isTechnical) {
+    followups.push("Ask for deeper technical analysis or architecture diagrams");
+  }
+  if (intent.classification === "analytical") {
+    followups.push("Request a comparison of alternative approaches");
+  }
+  if (complexity.isMultiPart) {
+    followups.push("Break down into subtasks for step-by-step execution");
+  }
+  if (intent.toolsNeeded.includes("calendar:create")) {
+    followups.push("Review scheduled events and add preparation time");
+  }
+
+  return followups.slice(0, 3);
+}
+
 export {
   INTENT_PATTERNS,
   CONSCIOUSNESS_THRESHOLDS,
   _embedText as embedText,
   _buildPrompt as buildPrompt,
+  _generateProactiveFollowups as generateProactiveFollowups,
 };

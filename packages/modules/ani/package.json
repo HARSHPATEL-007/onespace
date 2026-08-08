@@ -60,7 +60,13 @@
     "./neural-coherence": "./src/neural-coherence.ts",
     "./policy-compiler": "./src/policy-compiler.ts",
     "./governance-platform": "./src/governance-platform.ts",
-    "./types": "./src/types.ts"
+    "./schema-mapper": "./src/schema-mapper.ts",
+    "./multi-resolution": "./src/multi-resolution.ts",
+    "./tool-sentinel": "./src/tool-sentinel.ts",
+    "./cognition-ledger": "./src/cognition-ledger.ts",
+    "./deception-self-model": "./src/deception-self-model.ts",
+    "./types": "./src/types.ts",
+    "./ani.css": "./src/ani.css"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

@@ -24,3 +24,5 @@ a {
 ::selection {
   background: var(--nv-color-primary-alpha);
 }
+
+/* N0VA ANI will use the CSS from packages/modules/ani/src/ani.css imported in layout */

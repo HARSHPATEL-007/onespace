@@ -184,6 +184,23 @@ export class AniService {
     return this.engine.process(input, ctx, { useN0VA1O: false });
   }
 
+  async deepThink(
+    input: string,
+    options: { depth?: "fast" | "balanced" | "deep" | "research"; autoDepth?: boolean } = {},
+  ): Promise<ReturnType<typeof this.engine.processDeepThink>> {
+    await this.assert("CREATE");
+    const ctx = createWorkspaceContext(this.workspaceId, this.userId, `sess_${Date.now()}`, { activeModule: "ani" });
+    return this.engine.processDeepThink(input, ctx, options);
+  }
+
+  async analyzeComplexity(input: string): Promise<ReturnType<typeof import("./deep-think").assessComplexity>> {
+    await this.assert("READ");
+    const { assessComplexity } = await import("./deep-think");
+    const { classifyIntent } = await import("./engine");
+    const ctx = createWorkspaceContext(this.workspaceId, this.userId, `sess_${Date.now()}`, { activeModule: "ani" });
+    return assessComplexity(input, classifyIntent(input, ctx), 128000);
+  }
+
   async getConsciousnessMetrics(): Promise<ReturnType<ConsciousnessStack["getMetrics"]>> {
     await this.assert("READ");
     return this.consciousness.getMetrics();
