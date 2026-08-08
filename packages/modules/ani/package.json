@@ -18,6 +18,9 @@
     "./resilience": "./src/resilience.ts",
     "./knowledge-graph": "./src/knowledge-graph.ts",
     "./predictive": "./src/predictive.ts",
+    "./swarm": "./src/swarm.ts",
+    "./context-hydration": "./src/context-hydration.ts",
+    "./hitl": "./src/hitl.ts",
     "./types": "./src/types.ts"
   },
   "dependencies": {

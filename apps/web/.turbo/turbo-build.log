@@ -10,36 +10,45 @@ $ next build
    - Environments: .env
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 12.0s
+ ✓ Compiled successfully in 12.1s
    Linting and checking validity of types ...
    Collecting page data ...
-   Generating static pages (0/45) ...
-   Generating static pages (11/45) 
-   Generating static pages (22/45) 
-   Generating static pages (33/45) 
- ✓ Generating static pages (45/45)
+   Generating static pages (0/47) ...
+   Generating static pages (11/47) 
+   Generating static pages (23/47) 
+   Generating static pages (35/47) 
+ ✓ Generating static pages (47/47)
    Finalizing page optimization ...
    Collecting build traces ...
 
 Route (app)                                 Size  First Load JS
-┌ ○ /                                      154 B         103 kB
+┌ ○ /                                      178 B         103 kB
 ├ ○ /_not-found                            999 B         103 kB
-├ ƒ /api/auth/[...nextauth]                154 B         103 kB
+├ ƒ /api/ani                               178 B         103 kB
+├ ƒ /api/ani/health                        178 B         103 kB
+├ ƒ /api/ani/stream                        178 B         103 kB
+├ ƒ /api/auth/[...nextauth]                178 B         103 kB
 ├ ƒ /api/chat/stream                       127 B         110 kB
-├ ƒ /api/forms/[id]/responses              154 B         103 kB
+├ ƒ /api/forms/[id]/responses              178 B         103 kB
 ├ ƒ /api/meet/stream                       165 B         110 kB
-├ ƒ /api/pics/img                          154 B         103 kB
-├ ƒ /api/pics/upload                       154 B         103 kB
-├ ƒ /api/search                            154 B         103 kB
-├ ƒ /api/storage/download                  154 B         103 kB
-├ ƒ /api/storage/upload                    154 B         103 kB
+├ ƒ /api/n0va1o/callback/[provider]        178 B         103 kB
+├ ƒ /api/n0va1o/export                     178 B         103 kB
+├ ƒ /api/n0va1o/health                     178 B         103 kB
+├ ƒ /api/n0va1o/hooks/[webhookPath]        178 B         103 kB
+├ ƒ /api/n0va1o/mcp/[workspaceSlug]        178 B         103 kB
+├ ƒ /api/n0va1o/sse/[workspaceSlug]        178 B         103 kB
+├ ƒ /api/pics/img                          178 B         103 kB
+├ ƒ /api/pics/upload                       178 B         103 kB
+├ ƒ /api/search                            178 B         103 kB
+├ ƒ /api/storage/download                  178 B         103 kB
+├ ƒ /api/storage/upload                    178 B         103 kB
 ├ ƒ /f/[formId]                            172 B         277 kB
 ├ ƒ /launcher                            3.56 kB         110 kB
 ├ ƒ /m/[module]                            162 B         107 kB
 ├ ƒ /m/admin                             1.64 kB         108 kB
 ├ ƒ /m/admin-console                     2.55 kB         109 kB
 ├ ƒ /m/ads-marketing                     2.03 kB         109 kB
-├ ƒ /m/ani                               1.87 kB         109 kB
+├ ƒ /m/ani                               3.03 kB         110 kB
 ├ ƒ /m/appscript                         2.18 kB         109 kB
 ├ ƒ /m/appset                              973 B         103 kB
 ├ ƒ /m/booklm                              164 B         110 kB
@@ -69,7 +78,7 @@ Route (app)                                 Size  First Load JS
 ├ ƒ /m/mail                              3.13 kB         110 kB
 ├ ƒ /m/meet                                163 B         110 kB
 ├ ƒ /m/meet/[id]                           164 B         110 kB
-├ ƒ /m/n0va1o                            1.91 kB         109 kB
+├ ƒ /m/n0va1o                            13.1 kB         120 kB
 ├ ƒ /m/operations-teams                  2.06 kB         109 kB
 ├ ƒ /m/pics                              2.75 kB         109 kB
 ├ ƒ /m/revenue                           2.04 kB         109 kB
@@ -83,8 +92,8 @@ Route (app)                                 Size  First Load JS
 ├ ƒ /m/slides/[id]                         165 B         111 kB
 ├ ƒ /m/tasks                             2.72 kB         109 kB
 ├ ƒ /m/vault                             2.31 kB         109 kB
-├ ƒ /m/videos                              171 B         276 kB
-├ ƒ /m/videos/[id]                         173 B         276 kB
+├ ƒ /m/videos                              171 B         277 kB
+├ ƒ /m/videos/[id]                         173 B         277 kB
 ├ ƒ /m/voice                             2.52 kB         109 kB
 ├ ƒ /m/workspace-studio                  2.02 kB         109 kB
 ├ ƒ /p/[siteId]                            164 B         111 kB

@@ -25,3 +25,9 @@ export { PredictiveIntelligenceEngine, createPredictiveEngine } from "./predicti
 export type { ProactiveTrigger, BehavioralPrediction, AnomalyPrediction } from "./predictive";
 export { DEFAULT_ANI_SETTINGS } from "./types";
 export type { AniSettings, ToolCallRecord, Sensitivity, MemoryTier } from "./types";
+export { MultiAgentSwarmOrchestrator, createSwarmOrchestrator } from "./swarm";
+export type { AgentRole, AgentTask, SwarmPlan, SwarmResult } from "./swarm";
+export { hydrateContext, formatContextForPrompt } from "./context-hydration";
+export type { ContextDimensions, HydratedContext } from "./context-hydration";
+export { evaluateHITL, createHITLChecker } from "./hitl";
+export type { HITLLevel, HITLCheck, ActionContext } from "./hitl";

@@ -1,5 +1,8 @@
 import { AniService } from "./src/server";
 import { prisma } from "@n0va/db";
+import { createSwarmOrchestrator } from "./src/swarm";
+import { hydrateContext, formatContextForPrompt } from "./src/context-hydration";
+import { evaluateHITL } from "./src/hitl";
 
 async function smoke() {
   console.log("=== N0VA ANI Smoke Test ===\n");
@@ -54,6 +57,21 @@ async function smoke() {
   process.stdout.write("8. Processing with engine... ");
   const engineResult = await svc.processWithEngine("Summarize the workspace activity");
   console.log(`✓ (${engineResult.content.slice(0, 50)}...)`);
+
+  process.stdout.write("9. Swarm orchestration... ");
+  const swarm = createSwarmOrchestrator();
+  const plan = await swarm.decomposeGoal("Research the workspace and create a summary", { workspaceId: workspace.id, activeModule: "ani", userId: user.userId, sessionId: "test", tenantId: workspace.id, tenantTier: "enterprise", language: "en", timezone: "UTC", locale: "en-US" });
+  const swarmResult = await swarm.executePlan(plan, { workspaceId: workspace.id, activeModule: "ani", userId: user.userId, sessionId: "test", tenantId: workspace.id, tenantTier: "enterprise", language: "en", timezone: "UTC", locale: "en-US" });
+  console.log(`✓ (${swarmResult.results.length} agents, consensus: ${swarmResult.consensus.toFixed(2)})`);
+
+  process.stdout.write("10. Context hydration... ");
+  const hydrated = await hydrateContext({ workspaceId: workspace.id, activeModule: "ani", userId: user.userId, sessionId: "test", tenantId: workspace.id, tenantTier: "enterprise", language: "en", timezone: "UTC", locale: "en-US" });
+  const contextPrompt = formatContextForPrompt(hydrated);
+  console.log(`✓ (${hydrated.dimensions.projectMilestones.length} milestones, ${hydrated.tokenEstimate} tokens)`);
+
+  process.stdout.write("11. HITL evaluation... ");
+  const hitlResult = evaluateHITL("Delete all customer data", { financialImpactUsd: 10000, recipientCount: 0, isDestructive: true, isCrossTenant: false, isPrivilegeEscalation: false, isPHI: false, tier: "enterprise" });
+  console.log(`✓ (requiresHuman: ${hitlResult.requiresHuman}, level: ${hitlResult.level})`);
 
   console.log("\n=== All smoke tests passed ===");
 }
