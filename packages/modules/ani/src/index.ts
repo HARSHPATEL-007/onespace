@@ -25,6 +25,12 @@ export { PredictiveIntelligenceEngine, createPredictiveEngine } from "./predicti
 export type { ProactiveTrigger, BehavioralPrediction, AnomalyPrediction } from "./predictive";
 export { DEFAULT_ANI_SETTINGS } from "./types";
 export type { AniSettings, ToolCallRecord, Sensitivity, MemoryTier } from "./types";
+export { TwinManager } from "./twins";
+export type { DigitalTwin, TwinType, TwinSimulation } from "./twins";
+export { CausalReasoningEngine } from "./causal";
+export type { CausalNode, CausalEdge, CounterfactualResult, CausalLevel } from "./causal";
+export { HyperdimensionalComputer } from "./hyperdimensional";
+export type { HyperVector, HDC_DIMENSION } from "./hyperdimensional";
 export { MultiAgentSwarmOrchestrator, createSwarmOrchestrator } from "./swarm";
 export type { AgentRole, AgentTask, SwarmPlan, SwarmResult } from "./swarm";
 export { hydrateContext, formatContextForPrompt } from "./context-hydration";

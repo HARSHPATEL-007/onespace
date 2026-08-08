@@ -21,6 +21,9 @@
     "./swarm": "./src/swarm.ts",
     "./context-hydration": "./src/context-hydration.ts",
     "./hitl": "./src/hitl.ts",
+    "./twins": "./src/twins.ts",
+    "./causal": "./src/causal.ts",
+    "./hyperdimensional": "./src/hyperdimensional.ts",
     "./types": "./src/types.ts"
   },
   "dependencies": {

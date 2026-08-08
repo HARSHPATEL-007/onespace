@@ -3,6 +3,9 @@ import { prisma } from "@n0va/db";
 import { createSwarmOrchestrator } from "./src/swarm";
 import { hydrateContext, formatContextForPrompt } from "./src/context-hydration";
 import { evaluateHITL } from "./src/hitl";
+import { TwinManager } from "./src/twins";
+import { CausalReasoningEngine } from "./src/causal";
+import { HyperdimensionalComputer } from "./src/hyperdimensional";
 
 async function smoke() {
   console.log("=== N0VA ANI Smoke Test ===\n");
@@ -72,6 +75,28 @@ async function smoke() {
   process.stdout.write("11. HITL evaluation... ");
   const hitlResult = evaluateHITL("Delete all customer data", { financialImpactUsd: 10000, recipientCount: 0, isDestructive: true, isCrossTenant: false, isPrivilegeEscalation: false, isPHI: false, tier: "enterprise" });
   console.log(`✓ (requiresHuman: ${hitlResult.requiresHuman}, level: ${hitlResult.level})`);
+
+  process.stdout.write("12. Digital Twin creation... ");
+  const twinMgr = new TwinManager();
+  const twin = twinMgr.createTwin({ type: "enterprise", workspaceId: workspace.id, name: "Enterprise Twin", state: {}, telemetrySources: ["erp", "crm"], updateFrequencyMs: 1000 });
+  const sim = twinMgr.simulate(twin.id, "What if we increase ad spend by 50%?", 20);
+  console.log(`✓ (${sim.branches} branches, outcome: sim.results[0].outcome.slice(0, 30)}...)`);
+
+  process.stdout.write("13. Causal reasoning... ");
+  const causal = new CausalReasoningEngine();
+  causal.addCausalLink("ad_spend", "lead_velocity", 0.7, "More ads → more leads");
+  causal.addCausalLink("lead_velocity", "server_load", 0.5, "More leads → more users → more load");
+  const counterfactual = causal.predictIntervention("ad_spend", "server_load");
+  console.log(`✓ (effect: ${counterfactual.causalEffect.toFixed(3)}, confidence: ${counterfactual.confidence.toFixed(2)})`);
+
+  process.stdout.write("14. Hyperdimensional computing... ");
+  const hdc = new HyperdimensionalComputer();
+  const vecA = hdc.createRandomVector("concept_A");
+  const vecB = hdc.createRandomVector("concept_B");
+  const bundled = hdc.bundle(vecA, vecB);
+  const bound = hdc.bind(vecA, vecB);
+  const sim_score = hdc.similarity(vecA, vecB);
+  console.log(`✓ (bundle: ${bundled.label}, bind: ${bound.label}, similarity: ${sim_score.toFixed(3)})`);
 
   console.log("\n=== All smoke tests passed ===");
 }
