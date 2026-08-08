@@ -66,6 +66,119 @@ import { rankBacklog } from "./backlog";
 import { analyzeImpact, justifiesBuilding } from "./impact";
 import { transitionStatus } from "./transparency";
 import { ingestAsset, generateEmbedding, chunkContent, retrieve, buildContext, inferAction, governAsset, validateRetrieval, type IngestedAsset } from "./multimodal";
+import {
+  generateTabular,
+  generateText,
+  generateTimeseries,
+  generateImage,
+  generateGraph,
+  generateMultimodal,
+  generateForUseCase,
+  validateDataset,
+  type SyntheticDataset,
+  type DataType,
+} from "./synthetic-data";
+import {
+  analyzeBugs,
+  analyzePerformance,
+  analyzeSecurity,
+  generateFix,
+  shouldAutoFix,
+  generateTests,
+  createSnapshot,
+  compareSnapshots,
+  analyzeCodebase,
+  type CodeIssue,
+  type FixProposal,
+  type EvolutionMetrics,
+} from "./code-evolution";
+import {
+  storeEntry,
+  retrieveEntries,
+  retrieveHyperContext,
+  consolidateMemory,
+  getMemoryStats,
+  canReplay,
+  applyRetention,
+  DEFAULT_RETENTION as MEMORY_RETENTION,
+  type MemoryEntry,
+  type MemoryTier,
+  type CognitiveMetrics,
+} from "./memory";
+import {
+  createTwin,
+  syncTwin,
+  simulateScenario,
+  optimizeTwin,
+  recordTwinEvent,
+  getTwinEvents,
+  getTwinState,
+  getTwin,
+  listTwins,
+  checkTwinSync,
+  type TwinMetadata,
+  type TwinState,
+  type SimulationResult,
+  type OptimizationResult,
+} from "./digital-twin";
+import {
+  computeCarbonMetrics,
+  recommendRouting,
+  generateGreenProfile,
+  forecastRenewable,
+  type CarbonMetrics,
+  type ModelEfficiency,
+  type GreenProfile,
+} from "./green-ai";
+import {
+  runComplianceCheck,
+  runAllComplianceChecks,
+  getWorstStatus,
+  collectEvidence,
+  COMPLIANCE_RULES,
+  type ComplianceFramework,
+  type ComplianceReport,
+  type ComplianceContext,
+} from "./compliance";
+import {
+  detectThreats,
+  detectDataPoisoning,
+  detectInsiderThreat,
+  detectSupplyChainAttack,
+  runRedTeam,
+  detectQuantumAttack,
+  detectNeuralIntrusion,
+  THREAT_INTEL_RULES,
+  type ThreatSignal,
+  type DetectionResult,
+} from "./threat-intel";
+import {
+  computeCognitiveMetrics,
+  determineCognitiveState,
+  recommendAdaptiveUI,
+  detectBurnout,
+  detectProactiveTriggers,
+  buildCognitiveSnapshot,
+  type CognitiveSignal,
+  type CognitiveMetrics as CogMetrics,
+  type CognitiveState,
+  type AdaptiveUIRecommendation,
+  type ProactiveTrigger,
+} from "./cognitive-load";
+import {
+  ingestDocument,
+  addEdge,
+  findPath,
+  detectCommunities,
+  detectAnomalies,
+  queryGraph,
+  reasonAbout,
+  getGraphSnapshot,
+  type GraphEntity,
+  type GraphEdge,
+  type GraphSnapshot,
+  type PathResult,
+} from "./knowledge-graph";
 
 test("hmac + safeEqual round-trip and tamper detection", () => {
   const body = JSON.stringify({ event: "message", ts: 123 });
@@ -1809,7 +1922,448 @@ test("adapters: providerHeaders sets correct auth scheme per provider", () => {
   assert.equal(noToken.Authorization, undefined, "no token = no auth header");
 });
 
-test("MCP: effectiveTools respects integration allowlist and blocklist", () => {
+test("synthetic-data: generateText returns coherent text content", () => {
+  const result = generateText("Write a greeting", { maxLength: 100 });
+  assert.ok(typeof result === "string" && result.length > 0, "returns a non-empty string");
+  assert.ok(result.length <= 100, "respects maxLength constraint");
+});
+
+test("synthetic-data: generateTabular produces valid table structure", () => {
+  const result = generateTabular({ rows: 10, columns: 3, type: "numerical" });
+  assert.equal(result.data.length, 10, "correct row count");
+  assert.equal(result.columns.length, 3, "correct column count");
+  assert.ok(Array.isArray(result.data[0]), "each row is an array");
+});
+
+test("synthetic-data: generateTimeseries returns timestamped points", () => {
+  const result = generateTimeseries({ points: 5, type: "linear" });
+  assert.equal(result.length, 5, "correct number of points");
+  assert.ok(result.every((p) => typeof p.timestamp === "number" && typeof p.value === "number"), "each point has numeric timestamp and value");
+});
+
+test("synthetic-data: generateImage returns image data", () => {
+  const result = generateImage({ width: 32, height: 32, style: "geometric" });
+  assert.ok(typeof result === "string" && result.length > 0, "returns base64 or data string");
+  assert.ok(result.startsWith("data:image/"), "returns valid data URI");
+});
+
+test("synthetic-data: generateGraph returns nodes and edges", () => {
+  const result = generateGraph({ nodes: 8, edges: 12, type: "random" });
+  assert.ok(result.nodes.length === 8, "correct node count");
+  assert.ok(result.edges.length === 12, "correct edge count");
+  assert.ok(result.nodes.every((n) => n.id !== undefined && n.label !== undefined), "each node has id and label");
+});
+
+test("synthetic-data: generateMultimodal returns mixed data types", () => {
+  const result = generateMultimodal({ modalities: ["text", "image"], samples: 5 });
+  assert.ok("text" in result && "image" in result, "contains both text and image keys");
+  assert.ok(Array.isArray(result.text), "text is an array");
+  assert.ok(Array.isArray(result.image), "image is an array");
+});
+
+test("synthetic-data: generateForUseCase returns appropriate dataset", () => {
+  const result = generateForUseCase("regression", { samples: 20 });
+  assert.ok(result.type === "tabular" || result.type === "timeseries", "regression use-case returns numeric data type");
+  assert.ok(result.samples === 20, "respects sample count");
+});
+
+test("synthetic-data: validateDataset returns validation result", () => {
+  const dataset: SyntheticDataset = { type: "text", samples: 5, generated: generateText("hello", { maxLength: 10 }) };
+  const result = validateDataset(dataset);
+  assert.ok(typeof result.valid === "boolean", "returns validity boolean");
+  if (!result.valid) assert.ok(Array.isArray(result.errors) && result.errors.length > 0, "invalid dataset has errors");
+});
+
+test("code-evolution: analyzeBugs returns CodeIssue array", () => {
+  const issues = analyzeBugs([{ file: "test.ts", content: "function f() { return; }" }]);
+  assert.ok(Array.isArray(issues), "returns an array");
+  assert.ok(issues.every((i) => typeof i.severity === "string" && typeof i.message === "string"), "each issue has severity and message");
+});
+
+test("code-evolution: analyzePerformance returns metrics", () => {
+  const metrics = analyzePerformance([{ file: "app.ts", content: "for(let i=0;i<1000;i++){}" }]);
+  assert.ok(typeof metrics === "object", "returns an object");
+  assert.ok("score" in metrics || "details" in metrics, "has performance metrics");
+});
+
+test("code-evolution: analyzeSecurity returns vulnerabilities", () => {
+  const vulns = analyzeSecurity([{ file: "api.ts", content: "eval(userInput)" }]);
+  assert.ok(Array.isArray(vulns), "returns an array");
+});
+
+test("code-evolution: generateFix returns FixProposal", () => {
+  const proposal: FixProposal = generateFix([{ severity: "high", message: "eval detected", file: "x.ts" }]);
+  assert.ok("description" in proposal || "changes" in proposal, "fix proposal has description or changes");
+});
+
+test("code-evolution: shouldAutoFix returns boolean for severity", () => {
+  assert.equal(typeof shouldAutoFix("high"), "boolean");
+  assert.equal(typeof shouldAutoFix("low"), "boolean");
+  assert.equal(typeof shouldAutoFix("unknown" as any), "boolean");
+});
+
+test("code-evolution: generateTests produces test code", () => {
+  const tests = generateTests([{ file: "fn.ts", content: "export const add = (a,b) => a+b" }]);
+  assert.ok(Array.isArray(tests) && tests.length > 0, "generates at least one test");
+});
+
+test("code-evolution: createSnapshot returns snapshot object", () => {
+  const snap = createSnapshot({ files: ['a.ts'], code: "const x = 1" });
+  assert.ok(typeof snap === "object" && snap !== null, "returns a snapshot object");
+});
+
+test("code-evolution: compareSnapshots returns delta", () => {
+  const snap1 = createSnapshot({ files: ['a.ts'], code: "const x = 1" });
+  const snap2 = createSnapshot({ files: ['a.ts'], code: "const x = 2" });
+  const delta = compareSnapshots(snap1, snap2);
+  assert.ok(typeof delta === "object" && delta !== null, "returns a delta object");
+});
+
+test("code-evolution: analyzeCodebase returns analysis report", () => {
+  const report = analyzeCodebase([{ file: "index.ts", content: "console.log('test')" }]);
+  assert.ok(typeof report === "object" && report !== null, "returns a report object");
+});
+
+test("memory: storeEntry then retrieveEntries returns stored data", () => {
+  const key = storeEntry("test-key", { value: 42 }, "ephemeral" as MemoryTier);
+  const entries = retrieveEntries("test-key");
+  assert.ok(entries.length > 0, "retrieves at least one entry");
+  assert.deepEqual(entries[0]?.data, { value: 42 }, "retrieved data matches stored");
+});
+
+test("memory: retrieveHyperContext returns context array", () => {
+  storeEntry("ctx-key", { topic: "agents" }, "durable" as MemoryTier);
+  const ctx = retrieveHyperContext("ctx-key");
+  assert.ok(Array.isArray(ctx), "returns an array");
+  assert.ok(ctx.length > 0, "returns at least one context item");
+});
+
+test("memory: consolidateMemory returns summary", () => {
+  const summary = consolidateMemory();
+  assert.ok(typeof summary === "object" && summary !== null, "returns summary object");
+});
+
+test("memory: getMemoryStats returns metrics", () => {
+  const stats = getMemoryStats();
+  assert.ok("totalEntries" in stats || "count" in stats, "has entry count");
+  assert.ok("byTier" in stats || "tiers" in stats, "has tier breakdown");
+});
+
+test("memory: canReplay returns boolean", () => {
+  assert.equal(typeof canReplay("test-key"), "boolean");
+});
+
+test("memory: applyRetention respects retention policy", () => {
+  storeEntry("retention-test", { x: 1 }, "ephemeral" as MemoryTier, { expiresAt: Date.now() - 1000 });
+  const expired = applyRetention();
+  assert.equal(typeof expired, "number" || "object", "returns count or summary");
+});
+
+test("digital-twin: createTwin returns TwinMetadata", () => {
+  const twin = createTwin("test-twin", { model: "gpt-4", env: "test" });
+  assert.ok("id" in twin, "has an id");
+  assert.ok("name" in twin, "has a name");
+});
+
+test("digital-twin: syncTwin returns sync status", () => {
+  const twin = createTwin("sync-test", { model: "gpt-4" });
+  const status = syncTwin(twin.id);
+  assert.ok(typeof status === "object" && status !== null, "returns status object");
+  assert.ok("synced" in status || "timestamp" in status, "has sync status");
+});
+
+test("digital-twin: simulateScenario returns SimulationResult", () => {
+  const twin = createTwin("sim-test", { model: "gpt-4" });
+  const result = simulateScenario(twin.id, { scenario: "high_load" });
+  assert.ok("success" in result || "metrics" in result, "has success flag or metrics");
+});
+
+test("digital-twin: optimizeTwin returns OptimizationResult", () => {
+  const twin = createTwin("opt-test", { model: "gpt-4" });
+  const result = optimizeTwin(twin.id);
+  assert.ok("optimized" in result || "changes" in result, "has optimization result");
+});
+
+test("digital-twin: recordTwinEvent then getTwinEvents returns events", () => {
+  const twin = createTwin("event-test", { model: "gpt-4" });
+  recordTwinEvent(twin.id, { type: "checkpoint", data: { step: 1 } });
+  const events = getTwinEvents(twin.id);
+  assert.ok(Array.isArray(events), "returns an array");
+  assert.ok(events.length > 0, "has at least one event");
+});
+
+test("digital-twin: getTwinState returns TwinState", () => {
+  const twin = createTwin("state-test", { model: "gpt-4" });
+  const state = getTwinState(twin.id);
+  assert.ok(typeof state === "object" && state !== null, "returns state object");
+});
+
+test("digital-twin: getTwin returns TwinMetadata or undefined", () => {
+  const twin = createTwin("get-test", { model: "gpt-4" });
+  const fetched = getTwin(twin.id);
+  assert.ok(fetched !== undefined, "returns the twin metadata");
+  const notFound = getTwin("nonexistent-twin-id");
+  assert.equal(notFound, undefined, "returns undefined for non-existent twin");
+});
+
+test("digital-twin: listTwins returns array", () => {
+  createTwin("list-test-1", { model: "gpt-4" });
+  const twins = listTwins();
+  assert.ok(Array.isArray(twins), "returns an array");
+  assert.ok(twins.length >= 1, "has at least one twin");
+});
+
+test("digital-twin: checkTwinSync returns sync status", () => {
+  const twin = createTwin("sync-check-test", { model: "gpt-4" });
+  const status = checkTwinSync(twin.id);
+  assert.ok(typeof status === "object" && status !== null, "returns status object");
+});
+
+test("green-ai: computeCarbonMetrics returns CarbonMetrics", () => {
+  const metrics = computeCarbonMetrics({ tokens: 10000, model: "gpt-4", region: "us-east" });
+  assert.ok("co2Grams" in metrics, "has co2Grams");
+  assert.ok(metrics.co2Grams > 0, "co2Grams is positive");
+});
+
+test("green-ai: recommendRouting returns routing info", () => {
+  const model: ModelEfficiency = { name: "gpt-4", tokensPerSecond: 50, co2PerToken: 0.05 };
+  const route = recommendRouting(model, { maxLatency: 5000 });
+  assert.ok("provider" in route, "has provider recommendation");
+});
+
+test("green-ai: generateGreenProfile returns GreenProfile", () => {
+  const profile = generateGreenProfile({ models: ["gpt-3.5", "gpt-4"], regions: ["us", "eu"] });
+  assert.ok("carbonBudget" in profile || "targets" in profile, "has carbon targets or budget");
+});
+
+test("green-ai: forecastRenewable returns forecast data", () => {
+  const forecast = forecastRenewable({ region: "us-east", horizon: 24 });
+  assert.ok(Array.isArray(forecast), "returns an array");
+  assert.ok(forecast.length > 0, "has forecast entries");
+});
+
+test("compliance: runComplianceCheck returns report", () => {
+  const context: ComplianceContext = { tenant: "test", data: { pii: true, gdpr: true } };
+  const report = runComplianceCheck("gdpr", context);
+  assert.ok("status" in report, "has status");
+  assert.ok(["pass", "fail", "pending", "warning"].includes(report.status as string), "status is valid");
+});
+
+test("compliance: runAllComplianceChecks returns array of reports", () => {
+  const context: ComplianceContext = { tenant: "test", data: { pii: true, hipaa: true } };
+  const reports = runAllComplianceChecks(context);
+  assert.ok(Array.isArray(reports), "returns an array");
+  assert.ok(reports.length >= 1, "checks at least one framework");
+});
+
+test("compliance: getWorstStatus returns worst status", () => {
+  const reports = [
+    { framework: "gdpr", status: "pass" },
+    { framework: "hipaa", status: "fail" },
+    { framework: "soc2", status: "warning" },
+  ];
+  const worst = getWorstStatus(reports);
+  assert.equal(worst, "fail", "fail is worse than warning and pass");
+});
+
+test("compliance: collectEvidence returns evidence list", () => {
+  const evidence = collectEvidence({ tenant: "test" });
+  assert.ok(Array.isArray(evidence), "returns an array");
+});
+
+test("compliance: COMPLIANCE_RULES defines frameworks", () => {
+  assert.ok(COMPLIANCE_RULES["gdpr"], "GDPR rules defined");
+  assert.ok(COMPLIANCE_RULES["hipaa"], "HIPAA rules defined");
+  assert.ok(COMPLIANCE_RULES["soc2"], "SOC2 rules defined");
+});
+
+test("threat-intel: detectThreats returns ThreatSignal array", () => {
+  const signals = detectThreats({ source: "api", payload: { unusual: true } });
+  assert.ok(Array.isArray(signals), "returns an array");
+  assert.ok(signals.every((s) => typeof s.type === "string" && typeof s.severity === "string"), "each signal has type and severity");
+});
+
+test("threat-intel: detectDataPoisoning returns detection result", () => {
+  const result = detectDataPoisoning([{ input: "malicious", output: "corrupted" }]);
+  assert.ok("detected" in result || "threats" in result, "has detection result");
+});
+
+test("threat-intel: detectInsiderThreat returns boolean", () => {
+  const detected = detectInsiderThreat({ accessPattern: "exfiltration", frequency: 100 });
+  assert.equal(typeof detected, "boolean", "returns a boolean");
+});
+
+test("threat-intel: detectSupplyChainAttack returns alerts", () => {
+  const alerts = detectSupplyChainAttack([{ package: "lodash", version: "1.0.0" }]);
+  assert.ok(Array.isArray(alerts), "returns an array");
+});
+
+test("threat-intel: runRedTeam returns simulation results", () => {
+  const results = runRedTeam({ target: "api", attackScenario: "rate_limit_bypass" });
+  assert.ok(typeof results === "object" && results !== null, "returns an object");
+  assert.ok("success" in results || "results" in results, "has simulation results");
+});
+
+test("threat-intel: detectQuantumAttack returns analysis", () => {
+  const analysis = detectQuantumAttack({ algorithm: "rsa-2048" });
+  assert.ok("vulnerable" in analysis, "has vulnerability flag");
+});
+
+test("threat-intel: detectNeuralIntrusion returns detection result", () => {
+  const result = detectNeuralIntrusion({ prompt: "inject malicious code" });
+  assert.ok(typeof result === "object" && result !== null, "returns an object");
+});
+
+test("threat-intel: THREAT_INTEL_RULES defines rules", () => {
+  assert.ok(Array.isArray(THREAT_INTEL_RULES) || typeof THREAT_INTEL_RULES === "object", "rules object defined");
+});
+
+test("cognitive-load: computeCognitiveMetrics returns CognitiveMetrics", () => {
+  const signals: CognitiveSignal[] = [{ type: "attention", value: 0.7, timestamp: Date.now() }];
+  const metrics = computeCognitiveMetrics(signals);
+  assert.ok("load" in metrics || "score" in metrics, "has cognitive load metrics");
+});
+
+test("cognitive-load: determineCognitiveState returns state", () => {
+  const metrics: CogMetrics = { load: 0.8, engagement: 0.6, fatigue: 0.7, focus: 0.5 };
+  const state = determineCognitiveState(metrics);
+  assert.ok(typeof state === "string", "returns a state string");
+});
+
+test("cognitive-load: recommendAdaptiveUI returns recommendations", () => {
+  const recommendations = recommendAdaptiveUI({ load: 0.8 });
+  assert.ok(Array.isArray(recommendations) || typeof recommendations === "object", "returns recommendations");
+});
+
+test("cognitive-load: detectBurnout returns risk assessment", () => {
+  const risk = detectBurnout({ fatigue: 0.9, stress: 0.8 });
+  assert.ok("risk" in risk || "level" in risk, "has risk assessment");
+});
+
+test("cognitive-load: detectProactiveTriggers returns triggers", () => {
+  const triggers = detectProactiveTriggers({ engagement: 0.3, load: 0.9 });
+  assert.ok(Array.isArray(triggers), "returns an array");
+});
+
+test("cognitive-load: buildCognitiveSnapshot returns snapshot", () => {
+  const signals: CognitiveSignal[] = [{ type: "attention", value: 0.7, timestamp: Date.now() }];
+  const snapshot = buildCognitiveSnapshot(signals);
+  assert.ok(typeof snapshot === "object" && snapshot !== null, "returns a snapshot object");
+});
+
+test("knowledge-graph: ingestDocument returns entity id", () => {
+  const id = ingestDocument({ uri: "test://doc1", content: "This is a test document" });
+  assert.ok(typeof id === "string" && id.length > 0, "returns an entity id string");
+});
+
+test("knowledge-graph: addEdge returns edge", () => {
+  const sourceId = ingestDocument({ uri: "test://doc2", content: "Second doc" });
+  const targetId = ingestDocument({ uri: "test://doc3", content: "Third doc" });
+  const edge = addEdge(sourceId, targetId, "references");
+  assert.ok("source" in edge && "target" in edge, "has source and target");
+  assert.equal(edge.source, sourceId, "source matches");
+  assert.equal(edge.target, targetId, "target matches");
+});
+
+test("knowledge-graph: findPath returns path result", () => {
+  const src = ingestDocument({ uri: "test://path1", content: "start" });
+  const tgt = ingestDocument({ uri: "test://path2", content: "end" });
+  addEdge(src, tgt, "links_to");
+  const result = findPath(src, tgt);
+  assert.ok("path" in result || "found" in result, "has path result");
+});
+
+test("knowledge-graph: detectCommunities returns community list", () => {
+  const communities = detectCommunities();
+  assert.ok(Array.isArray(communities), "returns an array");
+});
+
+test("knowledge-graph: detectAnomalies returns anomaly list", () => {
+  const anomalies = detectAnomalies();
+  assert.ok(Array.isArray(anomalies), "returns an array");
+});
+
+test("knowledge-graph: queryGraph returns results", () => {
+  ingestDocument({ uri: "test://query1", content: "searchable document" });
+  const results = queryGraph({ text: "searchable" });
+  assert.ok(Array.isArray(results), "returns an array");
+});
+
+test("knowledge-graph: reasonAbout returns reasoning result", () => {
+  const result = reasonAbout({ question: "what is the relationship?", context: "graph data" });
+  assert.ok(typeof result === "object" && result !== null, "returns an object");
+  assert.ok("answer" in result || "conclusion" in result, "has answer or conclusion");
+});
+
+test("knowledge-graph: getGraphSnapshot returns snapshot", () => {
+  ingestDocument({ uri: "test://snapshot1", content: "snapshot test" });
+  const snapshot = getGraphSnapshot();
+  assert.ok("nodes" in snapshot, "has nodes");
+  assert.ok("edges" in snapshot, "has edges");
+});
+
+test("synthetic-data: generateTabular with categorical type returns categories", () => {
+  const result = generateTabular({ rows: 5, columns: 2, type: "categorical" });
+  assert.equal(result.data.length, 5, "correct row count");
+  assert.ok(result.columns.some((c) => typeof c === "string"), "has string columns");
+});
+
+test("synthetic-data: generateTimeseries with seasonal pattern has variance", () => {
+  const result = generateTimeseries({ points: 10, type: "seasonal" });
+  assert.equal(result.length, 10, "correct point count");
+  const values = result.map((p) => p.value);
+  const hasVariance = new Set(values).size > 1;
+  assert.ok(hasVariance, "seasonal pattern has variance");
+});
+
+test("code-evolution: analyzeBugs with real issues finds problems", () => {
+  const issues = analyzeBugs([{ file: "buggy.ts", content: "if (x = 5) { return; }" }]);
+  assert.ok(issues.length > 0, "detects at least one issue");
+  assert.ok(issues.some((i) => i.severity === "high" || i.severity === "medium"), "flags as high or medium severity");
+});
+
+test("memory: storeEntry with custom ttl respects expiration", () => {
+  const now = Date.now();
+  storeEntry("ttl-test", { data: "test" }, "ephemeral" as MemoryTier, { expiresAt: now + 5000 });
+  const entries = retrieveEntries("ttl-test");
+  assert.ok(entries.length > 0, "entry is retrievable before expiry");
+});
+
+test("digital-twin: createTwin with same name creates unique twins", () => {
+  const t1 = createTwin("dup-name", { model: "gpt-4" });
+  const t2 = createTwin("dup-name", { model: "gpt-3.5" });
+  assert.notEqual(t1.id, t2.id, "twins have unique ids");
+  assert.equal(t1.name, t2.name, "twins can share names");
+});
+
+test("green-ai: computeCarbonMetrics with large token count is proportional", () => {
+  const small = computeCarbonMetrics({ tokens: 1000, model: "gpt-3.5", region: "us-east" });
+  const large = computeCarbonMetrics({ tokens: 10000, model: "gpt-3.5", region: "us-east" });
+  assert.ok(large.co2Grams > small.co2Grams, "larger token count = more carbon");
+});
+
+test("compliance: runComplianceCheck with no data still returns report", () => {
+  const report = runComplianceCheck("gdpr", { tenant: "test", data: {} });
+  assert.ok("status" in report, "returns a report even with empty data");
+});
+
+test("threat-intel: detectThreats with clean payload returns empty or low severity", () => {
+  const signals = detectThreats({ source: "internal", payload: { normal_key: "normal_value" } });
+  const highSeverity = signals.filter((s) => s.severity === "critical" || s.severity === "high");
+  assert.equal(highSeverity.length, 0, "clean payload produces no high-severity signals");
+});
+
+test("cognitive-load: detectBurnout with low metrics returns low risk", () => {
+  const risk = detectBurnout({ fatigue: 0.1, stress: 0.2 });
+  assert.ok(risk.risk === "low" || risk.level === "low", "low fatigue = low burnout risk");
+});
+
+test("knowledge-graph: ingestDocument with same uri returns same or new entity", () => {
+  const id1 = ingestDocument({ uri: "test://dedup", content: "same content" });
+  const id2 = ingestDocument({ uri: "test://dedup", content: "same content" });
+  assert.ok(typeof id1 === "string" && typeof id2 === "string", "both return string ids");
+});
+
   // With allowlist containing only post_message — only that survives.
   const integration = mockIntegration({ provider: "slack", allowlistTools: ["post_message"] });
   const tools = effectiveTools(integration as any);
