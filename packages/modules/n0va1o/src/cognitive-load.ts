@@ -79,7 +79,7 @@ export function computeCognitiveMetrics(signals: CognitiveSignal[]): CognitiveMe
   const engagementScore = 1 - cognitiveLoad - (stressLevel * 0.5);
 
   let flowState = 0;
-  if (attentionVector[0] > FLOW_STATE_TARGETS.minAttention &&
+  if ((attentionVector[0] ?? 0) > FLOW_STATE_TARGETS.minAttention &&
       stressLevel < FLOW_STATE_TARGETS.maxStress &&
       engagementScore > FLOW_STATE_TARGETS.minEngagement &&
       cognitiveLoad < FLOW_STATE_TARGETS.maxCognitiveLoad) {
@@ -209,7 +209,8 @@ export function detectBurnout(
     factors.push(`Extended work session (${consecutiveHours}h)`);
   }
 
-  const interactionDensity = interactionHistory.length / Math.max(1, (Date.now() - (Date.parse(interactionHistory[0]?.timestamp ?? Date.now()))) / 3_600_000);
+  const firstTimestamp = interactionHistory[0]?.timestamp;
+  const interactionDensity = interactionHistory.length / Math.max(1, (Date.now() - (firstTimestamp ? Date.parse(firstTimestamp) : Date.now())) / 3_600_000);
   if (interactionDensity > 50) {
     factors.push("High interaction density");
   }

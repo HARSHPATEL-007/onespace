@@ -393,7 +393,7 @@ export function queryGraph(query: string): QueryResult {
   } else if (query.toLowerCase().includes("related to")) {
     const idMatch = query.match(/related to\s+(\S+)/i);
     if (idMatch) {
-      const entityId = idMatch[1];
+      const entityId = idMatch[1]!;
       const neighbors = EDGE_INDEX.neighbors(entityId);
       for (const { target, edgeId } of neighbors) {
         const targetEntity = ENTITY_STORE.get(target);
@@ -440,28 +440,32 @@ export function reasonAbout(query: string, context: Record<string, unknown> = {}
     const fromMatch = query.match(/from\s+(\S+)/i);
     const toMatch = query.match(/to\s+(\S+)/i);
     if (fromMatch && toMatch) {
-      const path = findPath(fromMatch[1], toMatch[1], 5);
+      const fromId = fromMatch[1];
+      const toId = toMatch[1];
+      if (!fromId || !toId) return { query, answer: false, confidence: 0, evidence: [], caveats: ["Could not parse query parameters"] };
+      const path = findPath(fromId, toId, 5);
       if (path) {
         answer = true;
         confidence = path.confidence;
-        evidence.push({ entityId: fromMatch[1], explanation: `Path found via ${path.edges.length} hops` });
+        evidence.push({ entityId: fromId, explanation: `Path found via ${path.edges.length} hops` });
       } else {
         answer = false;
         confidence = 0.8;
-        evidence.push({ entityId: fromMatch[1], explanation: "No path found within max length" });
+        evidence.push({ entityId: fromId, explanation: "No path found within max length" });
       }
     }
   } else if (reasoningQuery.includes("depends on")) {
     const idMatch = query.match(/dependencies of\s+(\S+)/i);
     if (idMatch) {
-      const neighbors = EDGE_INDEX.neighbors(idMatch[1]);
+      const entityId = idMatch[1]!;
+      const neighbors = EDGE_INDEX.neighbors(entityId);
       const deps = neighbors.filter((n) => {
         const edge = EDGE_STORE.get(n.edgeId);
         return edge?.type === "DEPENDS_ON";
       });
       answer = deps.length > 0;
       confidence = 0.9;
-      evidence.push({ entityId: idMatch[1], explanation: `${deps.length} dependencies found` });
+      evidence.push({ entityId, explanation: `${deps.length} dependencies found` });
     }
   }
 

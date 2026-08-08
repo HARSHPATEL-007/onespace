@@ -95,14 +95,14 @@ export function generateText(spec: SyntheticDataSpec): SyntheticDataset {
   const rng = seededRng(spec.seed ?? "text-default");
 
   for (let i = 0; i < spec.count; i++) {
-    const template = templates[Math.floor(rng() * templates.length)];
+    const template = templates[Math.floor(rng() * templates.length)]!;
     const record = template
-      .replace("{entity}", entities[Math.floor(rng() * entities.length)])
-      .replace("{metric}", metrics[Math.floor(rng() * metrics.length)])
+      .replace("{entity}", entities[Math.floor(rng() * entities.length)]!)
+      .replace("{metric}", metrics[Math.floor(rng() * metrics.length)]!)
       .replace("{value}", String(Math.floor(rng() * 100)))
-      .replace("{period}", ["Q1", "Q2", "Q3", "Q4"][Math.floor(rng() * 4)])
-      .replace("{comparison}", ["exceeds", "is below", "matches"][Math.floor(rng() * 3)])
-      .replace("{change}", ["an increase", "a decrease", "stability"][Math.floor(rng() * 3)]);
+      .replace("{period}", ["Q1", "Q2", "Q3", "Q4"][Math.floor(rng() * 4)]!)
+      .replace("{comparison}", ["exceeds", "is below", "matches"][Math.floor(rng() * 3)]!)
+      .replace("{change}", ["an increase", "a decrease", "stability"][Math.floor(rng() * 3)]!);
     records.push(record);
   }
 

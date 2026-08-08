@@ -205,7 +205,7 @@ const COMPLIANCE_RULES: ComplianceRule[] = [
     description: "Consumer right to request deletion of personal data",
     severity: "high",
     check: (ctx) => ({
-      passed: ctx.dataProcessed,
+      passed: ctx.dataProcessed ?? false,
       severity: "high",
       message: "Data deletion process available",
       evidence: ["Deletion capability verified"],
@@ -233,7 +233,7 @@ const COMPLIANCE_RULES: ComplianceRule[] = [
     description: "NIST AI RMF: data quality, model performance, robustness",
     severity: "high",
     check: (ctx) => ({
-      passed: ctx.automatedDecisionMaking ? ctx.humanOversight && ctx.auditTrailAvailable : true,
+      passed: ctx.automatedDecisionMaking ? (ctx.humanOversight ?? false) && (ctx.auditTrailAvailable ?? false) : true,
       severity: "high",
       message: ctx.automatedDecisionMaking
         ? "Human oversight with audit trail"
@@ -249,7 +249,7 @@ const COMPLIANCE_RULES: ComplianceRule[] = [
     description: "Identify, protect, detect, respond, recover",
     severity: "high",
     check: (ctx) => ({
-      passed: ctx.encryptionAtRest && ctx.encryptionInTransit && ctx.breachNotification,
+      passed: ctx.encryptionAtRest && ctx.encryptionInTransit && (ctx.breachNotification ?? false),
       severity: "high",
       message: "Cybersecurity framework implemented",
       evidence: ["Encryption verified", "Breach notification enabled"],
@@ -263,7 +263,7 @@ const COMPLIANCE_RULES: ComplianceRule[] = [
     description: "Classification of AI systems per EU AI Act risk tiers",
     severity: "critical",
     check: (ctx) => ({
-      passed: ctx.automatedDecisionMaking ? ctx.humanOversight && ctx.auditTrailAvailable : true,
+      passed: ctx.automatedDecisionMaking ? (ctx.humanOversight ?? false) && (ctx.auditTrailAvailable ?? false) : true,
       severity: "critical",
       message: ctx.automatedDecisionMaking
         ? "High-risk AI: human oversight with audit"

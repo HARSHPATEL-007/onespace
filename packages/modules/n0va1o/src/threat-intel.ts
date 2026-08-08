@@ -229,15 +229,15 @@ export function detectDataPoisoning(data: string[], labels: string[]): { poisone
  */
 export function detectInsiderThreat(activityLog: Array<{ userId: string; action: string; resource: string; timestamp: string; sensitivity: string }>): ThreatSignal[] {
   const threats: ThreatSignal[] = [];
-  const userActivity: Record<string, Array<typeof activityLog[0]>[]> = {};
+  const userActivity: Record<string, Array<typeof activityLog[number]>> = {};
 
   for (const entry of activityLog) {
     if (!userActivity[entry.userId]) userActivity[entry.userId] = [];
-    userActivity[entry.userId].push([{ ...entry }]);
+    userActivity[entry.userId]!.push(entry);
   }
 
   for (const [userId, entries] of Object.entries(userActivity)) {
-    const sensitiveAccess = entries.flat().filter((e) => e.sensitivity === "restricted" || e.sensitivity === "confidential");
+    const sensitiveAccess = entries.filter((e) => e.sensitivity === "restricted" || e.sensitivity === "confidential");
 
     if (sensitiveAccess.length > 10) {
       threats.push({
