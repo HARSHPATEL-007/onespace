@@ -47,6 +47,13 @@
     "./failure-taxonomy": "./src/failure-taxonomy.ts",
     "./drift-detector": "./src/drift-detector.ts",
     "./qa-harness": "./src/qa-harness.ts",
+    "./crisis-autopilot": "./src/crisis-autopilot.ts",
+    "./marketplace-ranker": "./src/marketplace-ranker.ts",
+    "./token-economy": "./src/token-economy.ts",
+    "./model-portfolio": "./src/model-portfolio.ts",
+    "./conversation-fsm": "./src/conversation-fsm.ts",
+    "./micro-confirm": "./src/micro-confirm.ts",
+    "./tone-engine": "./src/tone-engine.ts",
     "./types": "./src/types.ts"
   },
   "dependencies": {

@@ -29,6 +29,13 @@ import { SelfOptimizationGovernor } from "./src/self-optimization";
 import { FailureTaxonomy } from "./src/failure-taxonomy";
 import { BehavioralDriftDetector } from "./src/drift-detector";
 import { ContinuousQAHarness } from "./src/qa-harness";
+import { CrisisAutopilot } from "./src/crisis-autopilot";
+import { MarketplaceRanker } from "./src/marketplace-ranker";
+import { TokenEconomyManager } from "./src/token-economy";
+import { ModelPortfolioStrategy } from "./src/model-portfolio";
+import { ConversationStateMachine } from "./src/conversation-fsm";
+import { MicroConfirmationUX } from "./src/micro-confirm";
+import { SituationalToneEngine } from "./src/tone-engine";
 
 async function smoke() {
   console.log("=== N0VA ANI Smoke Test ===\n");
@@ -301,6 +308,46 @@ async function smoke() {
   const qaScore = qa.score("Based on the Q3 report, revenue grew 14%", ["doc_q3_report", "finance_system"]);
   const shouldRetrain = qa.shouldRetrain();
   console.log(`✓ (groundedness: ${qaScore.groundedness.toFixed(2)}, retrain: ${shouldRetrain})`);
+
+  process.stdout.write("38. Crisis Autopilot... ");
+  const crisis = new CrisisAutopilot();
+  const crisisState = crisis.detect({ hallucinationRate: 0.15, errorRate: 0.4, latencyMs: 2500, toolAvailability: 0.3 });
+  console.log(`✓ (level: ${crisisState.level}, mode: ${crisisState.mode}, triggers: ${crisisState.triggers.length})`);
+
+  process.stdout.write("39. Marketplace Ranker... ");
+  const ranker = new MarketplaceRanker();
+  const ranked = ranker.rank([{ id: "a1", name: "Research Agent", kind: "agent", taskFit: 0.95, safety: 0.9, reliability: 0.85, popularity: 0.8 }]);
+  console.log(`✓ (top: ${ranked[0]?.name}, score: ${ranked[0]?.score.toFixed(2)})`);
+
+  process.stdout.write("40. Token Economy... ");
+  const tokens = new TokenEconomyManager();
+  tokens.spend("context", 50000);
+  tokens.spend("tool", 2);
+  const util = tokens.getUtilization();
+  console.log(`✓ (context: ${(util.context * 100).toFixed(0)}%, reduce: ${tokens.shouldReduceDepth()})`);
+
+  process.stdout.write("41. Model Portfolio... ");
+  const portfolio = new ModelPortfolioStrategy();
+  const route = portfolio.route("research", "medium", 0.9);
+  console.log(`✓ (routed to: ${route.tier}, model: ${route.modelName})`);
+
+  process.stdout.write("42. Conversation FSM... ");
+  const fsm = new ConversationStateMachine();
+  fsm.transition("plan", "Complex task identified");
+  fsm.transition("act", "Plan ready");
+  fsm.transition("verify", "Actions completed");
+  console.log(`✓ (current: ${fsm.getCurrentPhase()}, transitions: ${fsm.getHistory().length})`);
+
+  process.stdout.write("43. Micro-Confirmation... ");
+  const confirm = new MicroConfirmationUX();
+  const req = confirm.createConfirmation("Delete production database", "Irreversible data loss", "critical");
+  console.log(`✓ (risk: ${req.riskTier}, options: ${req.options.length})`);
+
+  process.stdout.write("44. Tone Engine... ");
+  const tone = new SituationalToneEngine();
+  const profile = tone.getProfile("crisis");
+  const adapted = tone.adapt(profile, 0.8);
+  console.log(`✓ (situation: crisis, pace: ${adapted.pace}, empathy: ${adapted.empathy})`);
 
   console.log("\n=== All smoke tests passed ===");
 }
