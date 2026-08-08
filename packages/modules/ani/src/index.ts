@@ -141,6 +141,43 @@ export type {
   OutcomeMetric,
   EnrichedCitation,
 } from "./remaining-features";
+export {
+  createDefaultTtsState,
+  speakText,
+  pauseSpeech,
+  resumeSpeech,
+  stopSpeech,
+  VOICE_PROFILES,
+  createLearningModule,
+  evaluateLearningAnswer,
+  constrainResearch,
+  createTaskProgress,
+  updateTaskStep,
+  recordOutcome,
+  summarizeOutcomes,
+  recallMemories,
+  buildContextGraph,
+} from "./remaining-capabilities";
+export type {
+  VoiceTtsState,
+  VoiceProfile,
+  TtsQueueItem,
+  LearningModule,
+  LearningStep,
+  LearningProgress,
+  SourceConstraint,
+  ConstrainedResearchResult,
+  ResearchSource,
+  TaskProgress,
+  ProgressStep,
+  OutcomeRecord,
+  OutcomeSummary,
+  PersistentMemoryEntry,
+  MemoryRecallQuery,
+  ContextNode3D,
+  ContextEdge3D,
+  ContextGraph3D,
+} from "./remaining-capabilities";
 export { CrossAppSchemaMapper } from "./schema-mapper";
 export type { SchemaMapping } from "./schema-mapper";
 export { MultiResolutionRenderer, NeuralEthicsBoard } from "./multi-resolution";

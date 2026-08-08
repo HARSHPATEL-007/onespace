@@ -1378,3 +1378,118 @@
   font-weight: 600;
   color: var(--nv-color-danger);
 }
+
+/* ===== CAPABILITY BAR & PANELS ===== */
+.ani-capability-bar {
+  padding: 6px 20px;
+  border-top: 1px solid var(--nv-color-border);
+  background: var(--nv-color-surface);
+}
+
+.ani-capability-buttons {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  gap: 4px;
+}
+
+.ani-cap-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--nv-color-border);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.ani-cap-btn:hover { background: var(--nv-color-surface-2); border-color: var(--nv-color-primary); }
+.ani-cap-btn-active { background: var(--nv-color-primary-alpha) !important; border-color: var(--nv-color-primary) !important; }
+
+.ani-capability-panel {
+  padding: 12px 20px;
+  border-top: 1px solid var(--nv-color-border);
+  background: var(--nv-color-surface);
+  animation: ani-msg-in 0.2s ease-out;
+}
+
+.ani-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ani-panel-close {
+  background: none;
+  border: none;
+  color: var(--nv-color-text-faint);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.ani-learning-topics {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ani-topic-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--nv-color-border);
+  background: var(--nv-color-bg);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.ani-topic-btn:hover { border-color: var(--nv-color-primary); background: var(--nv-color-primary-alpha); }
+
+.ani-learning-content { display: flex; flex-direction: column; gap: 10px; }
+.ani-learning-header { display: flex; align-items: center; gap: 10px; }
+.ani-learning-back { background: none; border: none; color: var(--nv-color-primary); cursor: pointer; font-size: 12px; }
+.ani-learning-title { flex: 1; font-size: 12px; font-weight: 600; }
+.ani-learning-step { font-size: 10px; color: var(--nv-color-text-faint); }
+
+.ani-learning-step-content { display: flex; flex-direction: column; gap: 8px; }
+.ani-step-title { font-size: 13px; font-weight: 700; }
+.ani-step-body { font-size: 12px; line-height: 1.5; color: var(--nv-color-text-muted); }
+.ani-step-points { display: flex; flex-direction: column; gap: 3px; }
+.ani-step-point { font-size: 11px; color: var(--nv-color-text-faint); }
+.ani-step-check { padding: 8px 10px; border-radius: 6px; background: var(--nv-color-surface-2); border-left: 3px solid var(--nv-color-accent); }
+.ani-check-q { font-size: 11px; font-weight: 600; margin-bottom: 4px; }
+.ani-check-hint { font-size: 10px; color: var(--nv-color-text-faint); }
+.ani-learning-nav { display: flex; justify-content: space-between; gap: 6px; }
+
+.ani-progress-empty, .ani-outcome-empty, .ani-graph-empty { font-size: 11px; color: var(--nv-color-text-faint); text-align: center; padding: 16px 0; }
+.ani-progress-content, .ani-outcome-content, .ani-graph-content { display: flex; flex-direction: column; gap: 10px; }
+.ani-progress-header { display: flex; justify-content: space-between; align-items: center; }
+.ani-progress-label { font-size: 12px; font-weight: 600; }
+.ani-progress-pct { font-size: 14px; font-weight: 800; color: var(--nv-color-primary); }
+.ani-progress-track { height: 6px; border-radius: 3px; background: var(--nv-color-surface-2); overflow: hidden; }
+.ani-progress-fill { height: 100%; border-radius: 3px; background: var(--nv-color-primary); transition: width 0.4s ease; }
+.ani-progress-steps { display: flex; flex-direction: column; gap: 4px; }
+.ani-progress-step { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.ani-step-icon { width: 14px; text-align: center; }
+.ani-step-completed .ani-step-icon { color: var(--nv-color-success); }
+.ani-step-active .ani-step-icon { color: var(--nv-color-warning); animation: ani-spin 1s linear infinite; }
+.ani-step-failed .ani-step-icon { color: var(--nv-color-danger); }
+
+.ani-outcome-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ani-outcome-stat { text-align: center; padding: 10px; border-radius: 8px; background: var(--nv-color-surface-2); }
+.ani-outcome-val { display: block; font-size: 18px; font-weight: 800; color: var(--nv-color-primary); }
+.ani-outcome-key { display: block; font-size: 10px; color: var(--nv-color-text-faint); margin-top: 2px; }
+.ani-outcome-features { display: flex; flex-wrap: wrap; gap: 4px; }
+.ani-outcome-feature { padding: 3px 8px; border-radius: 4px; background: var(--nv-color-surface-2); font-size: 10px; }
+
+.ani-graph-stats { display: flex; gap: 12px; font-size: 10px; color: var(--nv-color-text-faint); }
+.ani-graph-nodes { display: flex; flex-wrap: wrap; gap: 4px; }
+.ani-graph-node { padding: 4px 8px; border-radius: 4px; border: 1px solid; background: var(--nv-color-surface-2); font-size: 10px; }

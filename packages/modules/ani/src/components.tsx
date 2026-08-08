@@ -18,9 +18,29 @@ import {
   type VoiceState,
   type ContentTransformResult,
   type ClutterConfig,
-  type CheckpointResult,
-  type EnrichedCitation,
 } from "./remaining-features";
+import {
+  createDefaultTtsState,
+  speakText,
+  stopSpeech,
+  createLearningModule,
+  evaluateLearningAnswer,
+  constrainResearch,
+  createTaskProgress,
+  updateTaskStep,
+  recordOutcome,
+  summarizeOutcomes,
+  recallMemories,
+  buildContextGraph,
+  type VoiceTtsState,
+  type LearningModule,
+  type LearningStep,
+  type TaskProgress,
+  type ConstrainedResearchResult,
+  type ContextGraph3D,
+  type PersistentMemoryEntry,
+  type OutcomeRecord,
+} from "./remaining-capabilities";
 
 interface WalkthroughNotification {
   id: string;
@@ -145,6 +165,18 @@ export function AniChat({
   const [safetyWarnings, setSafetyWarnings] = useState<string[]>([]);
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
   const [sessionMemory, setSessionMemory] = useState<ReturnType<typeof createCrossSessionMemory> | null>(null);
+  const [ttsState, setTtsState] = useState<VoiceTtsState>(createDefaultTtsState());
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showLearning, setShowLearning] = useState(false);
+  const [learningModule, setLearningModule] = useState<LearningModule | null>(null);
+  const [learningStep, setLearningStep] = useState(0);
+  const [taskProgress, setTaskProgress] = useState<TaskProgress | null>(null);
+  const [showProgressPanel, setShowProgressPanel] = useState(false);
+  const [persistentMemory, setPersistentMemory] = useState<PersistentMemoryEntry[]>([]);
+  const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
+  const [showOutcomePanel, setShowOutcomePanel] = useState(false);
+  const [contextGraph, setContextGraph] = useState<ContextGraph3D | null>(null);
+  const [showGraphPanel, setShowGraphPanel] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -500,6 +532,144 @@ export function AniChat({
                 <button className="ani-rec-close" onClick={() => setProactiveRecs((prev) => prev.filter((r) => r.id !== rec.id))}>✕</button>
               </div>
             ))}
+          </div>
+        )}
+
+        <div className="ani-capability-bar">
+          <div className="ani-capability-buttons">
+            <button className={`ani-cap-btn ${showLearning ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowLearning(!showLearning); setShowProgressPanel(false); setShowOutcomePanel(false); setShowGraphPanel(false); }} title="Learning mode">📚</button>
+            <button className={`ani-cap-btn ${showProgressPanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowProgressPanel(!showProgressPanel); setShowLearning(false); setShowOutcomePanel(false); setShowGraphPanel(false); }} title="Task progress">📊</button>
+            <button className={`ani-cap-btn ${showOutcomePanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowOutcomePanel(!showOutcomePanel); setShowLearning(false); setShowProgressPanel(false); setShowGraphPanel(false); }} title="Outcomes">🏆</button>
+            <button className={`ani-cap-btn ${showGraphPanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowGraphPanel(!showGraphPanel); setShowLearning(false); setShowProgressPanel(false); setShowOutcomePanel(false); }} title="Context graph">🕸️</button>
+            {ttsState.supported && active && active.messages.length > 0 && (
+              <button className={`ani-cap-btn ${isSpeaking ? "ani-cap-btn-active" : ""}`} onClick={() => {
+                if (isSpeaking) { stopSpeech(); setIsSpeaking(false); }
+                else { const last = active.messages.filter((m) => m.role === "assistant").pop(); if (last) { speakText(last.content, ttsState).then(() => setIsSpeaking(false)); setIsSpeaking(true); } }
+              }} title={isSpeaking ? "Stop speaking" : "Speak last response"}>{isSpeaking ? "🔊" : "🔈"}</button>
+            )}
+          </div>
+        </div>
+
+        {showLearning && (
+          <div className="ani-capability-panel">
+            <div className="ani-panel-header"><span>📚 Learning Mode</span><button className="ani-panel-close" onClick={() => setShowLearning(false)}>✕</button></div>
+            {!learningModule ? (
+              <div className="ani-learning-topics">
+                {["architecture", "decision-making", "system-design"].map((topic) => (
+                  <button key={topic} className="ani-topic-btn" onClick={() => { setLearningModule(createLearningModule(topic, "beginner")); setLearningStep(0); }}>
+                    {topic}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="ani-learning-content">
+                <div className="ani-learning-header">
+                  <button className="ani-learning-back" onClick={() => setLearningModule(null)}>← Topics</button>
+                  <span className="ani-learning-title">{learningModule.title}</span>
+                  <span className="ani-learning-step">Step {learningStep + 1}/{learningModule.steps.length}</span>
+                </div>
+                {learningModule.steps[learningStep] && (
+                  <div className="ani-learning-step-content">
+                    <div className="ani-step-title">{learningModule.steps[learningStep]!.title}</div>
+                    <div className="ani-step-body">{learningModule.steps[learningStep]!.content}</div>
+                    <div className="ani-step-points">
+                      {learningModule.steps[learningStep]!.keyPoints.map((p, i) => (
+                        <span key={i} className="ani-step-point">• {p}</span>
+                      ))}
+                    </div>
+                    {learningModule.steps[learningStep]!.checkQuestion && (
+                      <div className="ani-step-check">
+                        <div className="ani-check-q">{learningModule.steps[learningStep]!.checkQuestion}</div>
+                        <div className="ani-check-hint">Think about the key points above, then continue to check your understanding.</div>
+                      </div>
+                    )}
+                    <div className="ani-learning-nav">
+                      <Button size="sm" variant="ghost" onClick={() => setLearningStep(Math.max(0, learningStep - 1))} disabled={learningStep === 0}>← Previous</Button>
+                      <Button size="sm" onClick={() => {
+                        if (learningStep < learningModule.steps.length - 1) setLearningStep(learningStep + 1);
+                        else { setLearningModule(null); setLearningStep(0); }
+                      }}>{learningStep < learningModule.steps.length - 1 ? "Next →" : "Complete ✓"}</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {showProgressPanel && (
+          <div className="ani-capability-panel">
+            <div className="ani-panel-header"><span>📊 Task Progress</span><button className="ani-panel-close" onClick={() => setShowProgressPanel(false)}>✕</button></div>
+            {!taskProgress ? (
+              <div className="ani-progress-empty">No active tasks. Autonomous workflows will show progress here.</div>
+            ) : (
+              <div className="ani-progress-content">
+                <div className="ani-progress-header">
+                  <span className="ani-progress-label">{taskProgress.label}</span>
+                  <span className="ani-progress-pct">{Math.round(taskProgress.progress * 100)}%</span>
+                </div>
+                <div className="ani-progress-track"><div className="ani-progress-fill" style={{ width: `${taskProgress.progress * 100}%` }} /></div>
+                <div className="ani-progress-steps">
+                  {taskProgress.steps.map((s, i) => (
+                    <div key={i} className={`ani-progress-step ani-step-${s.status}`}>
+                      <span className="ani-step-icon">{s.status === "completed" ? "✓" : s.status === "active" ? "⟳" : s.status === "failed" ? "✕" : "○"}</span>
+                      <span className="ani-step-label">{s.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {showOutcomePanel && (
+          <div className="ani-capability-panel">
+            <div className="ani-panel-header"><span>🏆 Outcome Tracker</span><button className="ani-panel-close" onClick={() => setShowOutcomePanel(false)}>✕</button></div>
+            {outcomes.length === 0 ? (
+              <div className="ani-outcome-empty">Outcomes will be tracked as you use ANI features. Metrics include time saved, decision quality, and satisfaction.</div>
+            ) : (() => {
+              const summary = summarizeOutcomes(outcomes);
+              return (
+                <div className="ani-outcome-content">
+                  <div className="ani-outcome-stats">
+                    <div className="ani-outcome-stat"><span className="ani-outcome-val">{summary.totalActions}</span><span className="ani-outcome-key">Actions</span></div>
+                    <div className="ani-outcome-stat"><span className="ani-outcome-val">{Math.round(summary.avgSatisfaction * 100)}%</span><span className="ani-outcome-key">Satisfaction</span></div>
+                    <div className="ani-outcome-stat"><span className="ani-outcome-val">{summary.trend === "improving" ? "📈" : summary.trend === "declining" ? "📉" : "➡️"}</span><span className="ani-outcome-key">Trend</span></div>
+                  </div>
+                  {summary.topFeatures.length > 0 && (
+                    <div className="ani-outcome-features">
+                      {summary.topFeatures.map((f) => (
+                        <span key={f.feature} className="ani-outcome-feature">{f.feature} ({f.count})</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {showGraphPanel && (
+          <div className="ani-capability-panel">
+            <div className="ani-panel-header"><span>🕸️ Context Graph</span><button className="ani-panel-close" onClick={() => setShowGraphPanel(false)}>✕</button></div>
+            <div className="ani-graph-content">
+              {contextGraph ? (
+                <>
+                  <div className="ani-graph-stats">
+                    <span>{contextGraph.nodes.length} nodes</span>
+                    <span>{contextGraph.edges.length} edges</span>
+                    <span>{contextGraph.clusters.length} clusters</span>
+                  </div>
+                  <div className="ani-graph-nodes">
+                    {contextGraph.nodes.slice(0, 12).map((n) => (
+                      <span key={n.id} className="ani-graph-node" style={{ borderColor: n.color }}>{n.label.slice(0, 20)}</span>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="ani-graph-empty">Context graph builds from your conversations and documents. Add more interactions to see connections.</div>
+              )}
+            </div>
           </div>
         )}
 
