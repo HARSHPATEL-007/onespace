@@ -11,7 +11,7 @@ export { callLlm, callOpenaiLike, callAnthropic, callGemini, DEFAULT_SYSTEM_PROM
 export type { LlmCallResult, ToolCallRequest, ToolExecutionResult } from "./providers";
 export { retrieveRagContext, buildRagPrompt, rankRagResults } from "./rag";
 export type { RagContext, RagDocument } from "./rag";
-export { MultiModalMemorySystem, createMemorySystem } from "./memory";
+export { PersistentMemorySystem, createMemorySystem } from "./memory";
 export type { MemoryEntry, MemoryStats, ConsolidationResult, RetrievalQuery, RetrievalResult } from "./memory";
 export { XAIFramework, createXAI } from "./xai";
 export type { ExplanationRequest, ExplanationResult, CitationDetail } from "./xai";

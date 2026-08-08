@@ -1,3 +1,4 @@
+import { prisma } from "@n0va/db";
 import { type WorkspaceContext } from "./engine";
 
 export interface RagDocument {
@@ -17,20 +18,91 @@ export interface RagContext {
   assembledPrompt: string;
 }
 
-export function retrieveRagContext(query: string, workspace: WorkspaceContext, limit = 5): RagContext {
+export async function retrieveRagContext(query: string, workspace: WorkspaceContext, limit = 5): Promise<RagContext> {
   const expandedQuery = _expandQuery(query);
-  const documents = _mockRetrieval(expandedQuery, workspace, limit);
+  const searchTerms = expandedQuery.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+
+  const documents: RagDocument[] = [];
+
+  try {
+    const docs = await prisma.doc.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        OR: searchTerms.map((term) => ({ title: { contains: term, mode: "insensitive" as const } })),
+      },
+      orderBy: { updatedAt: "desc" },
+      take: limit,
+    });
+    for (const d of docs) {
+      documents.push({ id: d.id, title: d.title, content: d.content ?? "", source: `doc:${d.id}`, module: "docs", score: 0.85 });
+    }
+  } catch { /* module may not be populated */ }
+
+  try {
+    const tasks = await prisma.task.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        OR: searchTerms.map((term) => ({ title: { contains: term, mode: "insensitive" as const } })),
+      },
+      orderBy: { updatedAt: "desc" },
+      take: limit,
+    });
+    for (const t of tasks) {
+      documents.push({ id: t.id, title: t.title, content: t.notes ?? "", source: `task:${t.id}`, module: "tasks", score: 0.80 });
+    }
+  } catch { /* */ }
+
+  try {
+    const notes = await prisma.note.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        OR: searchTerms.map((term) => ({ title: { contains: term, mode: "insensitive" as const } })),
+      },
+      orderBy: { updatedAt: "desc" },
+      take: limit,
+    });
+    for (const n of notes) {
+      documents.push({ id: n.id, title: n.title, content: n.body ?? "", source: `note:${n.id}`, module: "keep", score: 0.75 });
+    }
+  } catch { /* */ }
+
+  try {
+    const events = await prisma.calendarEvent.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        startAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { startAt: "desc" },
+      take: limit,
+    });
+    for (const e of events) {
+      documents.push({ id: e.id, title: e.title, content: e.description ?? "", source: `calendar:${e.id}`, module: "calendar", score: 0.70 });
+    }
+  } catch { /* */ }
+
+  if (documents.length === 0) {
+    const recentDocs = await prisma.doc.findMany({
+      where: { workspaceId: workspace.workspaceId },
+      orderBy: { updatedAt: "desc" },
+      take: 3,
+    });
+    for (const d of recentDocs) {
+      documents.push({ id: d.id, title: d.title, content: d.content?.slice(0, 500) ?? "", source: `doc:${d.id}`, module: "docs", score: 0.50 });
+    }
+  }
+
+  const sorted = documents.sort((a, b) => b.score - a.score).slice(0, limit);
 
   return {
     query,
     expandedQuery,
-    documents,
-    citations: documents.map((d) => ({
+    documents: sorted,
+    citations: sorted.map((d) => ({
       source: d.source,
       confidence: d.score,
       snippet: d.content.slice(0, 200),
     })),
-    assembledPrompt: _assemblePrompt(query, documents),
+    assembledPrompt: _assemblePrompt(query, sorted),
   };
 }
 
@@ -84,48 +156,6 @@ function _expandQuery(query: string): string {
   }
 
   return expanded;
-}
-
-function _mockRetrieval(query: string, workspace: WorkspaceContext, limit: number): RagDocument[] {
-  const mockDocs: RagDocument[] = [
-    {
-      id: "doc_1",
-      title: "Recent workspace activity",
-      content: "The workspace has activity across mail, calendar, docs, and tasks modules. Users have been collaborating on quarterly planning documents.",
-      source: "cloud_search",
-      module: "insights",
-      score: 0.92,
-    },
-    {
-      id: "doc_2",
-      title: "ANI conversation history",
-      content: "Previous conversations include scheduling meetings, drafting documents, and summarizing task lists. ANI has been assisting with daily workflow management.",
-      source: "ani_memory",
-      module: "ani",
-      score: 0.88,
-    },
-    {
-      id: "doc_3",
-      title: "Calendar events this week",
-      content: "This week includes team standup on Monday, client review on Wednesday, and sprint planning on Friday. Two meetings were rescheduled.",
-      source: "calendar",
-      module: "calendar",
-      score: 0.85,
-    },
-    {
-      id: "doc_4",
-      title: "Open tasks and assignments",
-      content: "There are 12 open tasks across 3 projects. 4 tasks are due this week. The 'Q4 planning' project has the highest priority items.",
-      source: "tasks",
-      module: "tasks",
-      score: 0.82,
-    },
-  ];
-
-  const queryLower = query.toLowerCase();
-  return mockDocs
-    .filter((doc) => doc.content.toLowerCase().includes(queryLower) || doc.title.toLowerCase().includes(queryLower) || doc.module === workspace.activeModule)
-    .slice(0, limit);
 }
 
 function _assemblePrompt(query: string, documents: RagDocument[]): string {

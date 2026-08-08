@@ -2,11 +2,13 @@ import { prisma, logAudit, type AniConversation, type AniMessage } from "@n0va/d
 import { can, type Role } from "@n0va/authz";
 import { N0va1oGateway } from "@n0va/modules-n0va1o/gateway";
 import { effectiveTools } from "@n0va/modules-n0va1o/mcp";
-import { discoverTools } from "@n0va/modules-n0va1o/catalog";
 import { N0VA_ANI, createANI, createWorkspaceContext, classifyIntent, type ANIResponse } from "./engine";
-import { callLlm, getTypingDelay, DEFAULT_SYSTEM_PROMPT, composeFallbackReply, type LlmCallResult, type ToolCallRequest } from "./providers";
+import { callLlm, getTypingDelay, DEFAULT_SYSTEM_PROMPT, composeFallbackReply, type ToolCallRequest } from "./providers";
 import { retrieveRagContext, buildRagPrompt } from "./rag";
+import { PersistentMemorySystem, createMemorySystem } from "./memory";
 import { ConsciousnessStack } from "./consciousness";
+import { XAIFramework, createXAI } from "./xai";
+import { AdaptiveLearningEngine, createAdaptiveEngine } from "./adaptive";
 import { DEFAULT_ANI_SETTINGS, type AniSettings, type ToolCallRecord } from "./types";
 
 const MODULE = "ani";
@@ -26,6 +28,9 @@ export class AniService {
   private gateway: N0va1oGateway;
   private engine: N0VA_ANI;
   private consciousness: ConsciousnessStack;
+  private memory: PersistentMemorySystem;
+  private xai: XAIFramework;
+  private adaptive: AdaptiveLearningEngine;
 
   constructor(
     private readonly workspaceId: string,
@@ -35,6 +40,9 @@ export class AniService {
     this.gateway = new N0va1oGateway();
     this.engine = createANI({ workspaceId });
     this.consciousness = new ConsciousnessStack();
+    this.memory = createMemorySystem(workspaceId);
+    this.xai = createXAI();
+    this.adaptive = createAdaptiveEngine(workspaceId);
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
@@ -119,6 +127,22 @@ export class AniService {
       await this._persistToolCalls(conversationId, assistantMsg.id, result.toolCalls);
     }
 
+    try {
+      await this.memory.store(
+         { query: content, response: result.content, ragResults: result.citations?.length ?? 0 },
+        { sessionId: conversationId, tier: "episodic", modality: "conversation", sensitivity: "internal" },
+      );
+    } catch { /* non-blocking */ }
+
+    this.adaptive.recordFeedback(this.userId, {
+      timestamp: new Date().toISOString(),
+      type: "implicit",
+      category: "conversation",
+      rating: result.confidence,
+      context: { conversationId },
+      weight: 0.3,
+    });
+
     return {
       userMessage,
       assistantMessage: assistantMsg,
@@ -160,7 +184,8 @@ export class AniService {
 
   async getMemoryStats(): Promise<{ total: number; working: number; semantic: number }> {
     await this.assert("READ");
-    return { total: 0, working: 0, semantic: 0 };
+    const stats = await this.memory.getStats();
+    return { total: stats.total, working: stats.working, semantic: stats.semantic };
   }
 
   async getSettings(): Promise<AniSettings> {
@@ -178,7 +203,35 @@ export class AniService {
 
   async getToolCalls(conversationId: string): Promise<ToolCallRecord[]> {
     await this.assert("READ");
-    return [];
+    const messages = await prisma.aniMessage.findMany({
+      where: { conversationId, workspaceId: this.workspaceId, role: "assistant" },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+
+    const records: ToolCallRecord[] = [];
+    for (const msg of messages) {
+      try {
+        const parsed = JSON.parse(msg.content);
+        if (parsed.toolCalls) {
+          for (const tc of parsed.toolCalls) {
+            records.push({
+              id: `tc_${msg.id}_${tc.name}`,
+              conversationId,
+              messageId: msg.id,
+              tool: tc.name,
+              provider: "n0va1o",
+              status: "done",
+              input: tc.arguments,
+              durationMs: 0,
+              createdAt: msg.createdAt.toISOString(),
+            });
+          }
+        }
+      } catch { /* skip non-JSON */ }
+    }
+
+    return records;
   }
 
   private async _loadSettings(): Promise<AniSettings> {
@@ -192,8 +245,19 @@ export class AniService {
     _settings: AniSettings,
   ): Promise<{ content: string; toolCalls?: ToolCallRequest[]; citations?: ANIResponse["citations"]; confidence?: number }> {
     const integration = await this._resolveAniIntegration();
+    const ctx = createWorkspaceContext(this.workspaceId, this.userId, `sess_${Date.now()}`, { activeModule: "ani" });
+    const ragContext = await retrieveRagContext(userContent, ctx);
+
     if (!integration || !integration.config) {
-      return { content: composeFallbackReply(userContent, conversation.title) };
+      if (ragContext.documents.length > 0) {
+        const docList = ragContext.documents.slice(0, 3).map((d) => `- **${d.title}** (${d.module}): ${d.content.slice(0, 100)}`).join("\n");
+        return {
+          content: `Based on your workspace, here's what I found related to "${userContent}":\n\n${docList}\n\n[Note: Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY for full AI responses.]`,
+          citations: ragContext.citations,
+          confidence: 0.5,
+        };
+      }
+      return { content: composeFallbackReply(userContent, conversation.title), confidence: 0.3 };
     }
 
     const cfg = integration.config as Record<string, unknown>;
@@ -201,16 +265,12 @@ export class AniService {
     const provider = integration.provider;
 
     const availableTools = await this._discoverScopedTools();
-    if (availableTools.length === 0) {
-      return { content: composeFallbackReply(userContent, conversation.title) };
-    }
-
-    const ctx = createWorkspaceContext(this.workspaceId, this.userId, `sess_${Date.now()}`, { activeModule: "ani" });
-    const ragContext = retrieveRagContext(userContent, ctx);
     const ragPrompt = buildRagPrompt(userContent, ctx, ragContext);
+    const adaptiveMods = this.adaptive.getAdaptivePromptModifiers(this.userId);
+    const systemPrompt = DEFAULT_SYSTEM_PROMPT + (adaptiveMods.length > 0 ? "\n\n[USER PREFERENCES]\n" + adaptiveMods.join("\n") : "");
 
     const messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string }> = [
-      { role: "system", content: DEFAULT_SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
     ];
 
     for (const m of recentMessages) {
@@ -267,7 +327,18 @@ export class AniService {
 
     if (process.env["OPENAI_API_KEY"] || process.env["ANTHROPIC_API_KEY"] || process.env["GOOGLE_API_KEY"] || process.env["GEMINI_API_KEY"]) {
       const provider = process.env["OPENAI_API_KEY"] ? "openai" : process.env["ANTHROPIC_API_KEY"] ? "anthropic" : "gemini";
-      return { id: "env-llm", provider, name: "LLM (env)", enabled: true, config: { provider, token: process.env["OPENAI_API_KEY"] ?? process.env["ANTHROPIC_API_KEY"] ?? process.env["GEMINI_API_KEY"] ?? process.env["GOOGLE_API_KEY"]! }, workspaceId: this.workspaceId } as never;
+      return {
+        id: "env-llm",
+        provider,
+        name: "LLM (env)",
+        enabled: true,
+        config: {
+          provider,
+          token: process.env["OPENAI_API_KEY"] ?? process.env["ANTHROPIC_API_KEY"] ?? process.env["GEMINI_API_KEY"] ?? process.env["GOOGLE_API_KEY"]!,
+          model: provider === "openai" ? "gpt-4o-mini" : provider === "anthropic" ? "claude-3-5-sonnet-20241022" : "gemini-1.5-flash",
+        },
+        workspaceId: this.workspaceId,
+      } as never;
     }
 
     return null;
