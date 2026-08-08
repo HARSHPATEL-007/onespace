@@ -54,6 +54,12 @@
     "./conversation-fsm": "./src/conversation-fsm.ts",
     "./micro-confirm": "./src/micro-confirm.ts",
     "./tone-engine": "./src/tone-engine.ts",
+    "./hyper-context": "./src/hyper-context.ts",
+    "./cross-module-tx": "./src/cross-module-tx.ts",
+    "./temporal-reasoning": "./src/temporal-reasoning.ts",
+    "./neural-coherence": "./src/neural-coherence.ts",
+    "./policy-compiler": "./src/policy-compiler.ts",
+    "./governance-platform": "./src/governance-platform.ts",
     "./types": "./src/types.ts"
   },
   "dependencies": {

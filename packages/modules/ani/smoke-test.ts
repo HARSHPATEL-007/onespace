@@ -36,6 +36,12 @@ import { ModelPortfolioStrategy } from "./src/model-portfolio";
 import { ConversationStateMachine } from "./src/conversation-fsm";
 import { MicroConfirmationUX } from "./src/micro-confirm";
 import { SituationalToneEngine } from "./src/tone-engine";
+import { HyperContextEngine } from "./src/hyper-context";
+import { CrossModuleTransaction } from "./src/cross-module-tx";
+import { TemporalReasoningEngine } from "./src/temporal-reasoning";
+import { NeuralCoherenceMonitor } from "./src/neural-coherence";
+import { PolicyCompiler } from "./src/policy-compiler";
+import { CrossTenantVerifier, FederatedLearningLoop, DeploymentTopologyOptimizer } from "./src/governance-platform";
 
 async function smoke() {
   console.log("=== N0VA ANI Smoke Test ===\n");
@@ -348,6 +354,51 @@ async function smoke() {
   const profile = tone.getProfile("crisis");
   const adapted = tone.adapt(profile, 0.8);
   console.log(`✓ (situation: crisis, pace: ${adapted.pace}, empathy: ${adapted.empathy})`);
+
+  process.stdout.write("45. Hyper-Context Engine... ");
+  const hyperCtx = new HyperContextEngine();
+  hyperCtx.updateModule("docs", "active", ["Q4_strategy", "product_roadmap"]);
+  hyperCtx.updateModule("calendar", "active", ["planning_meeting"]);
+  const insights = hyperCtx.getCrossModuleInsights();
+  console.log(`✓ (${insights.length} cross-module insights)`);
+
+  process.stdout.write("46. Cross-Module Transaction... ");
+  const tx = new CrossModuleTransaction();
+  tx.addStep("mail", "send_invite", "meeting@example.com", "recall_invite");
+  tx.addStep("calendar", "create_event", "Q4_planning", "delete_event");
+  const commitResult = tx.commit();
+  console.log(`✓ (committed: ${commitResult.completed}, rolled back: ${tx.rollback().length})`);
+
+  process.stdout.write("47. Temporal Reasoning... ");
+  const temporal = new TemporalReasoningEngine();
+  const comparison = temporal.compareSnapshots({ task: "draft", status: "pending" }, { task: "draft", status: "completed", reviewed: true });
+  const temporalPrediction = temporal.predictNearFuture(["research", "analysis", "research", "analysis", "research"]);
+  console.log(`✓ (drift: ${comparison.driftScore.toFixed(2)}, prediction: ${prediction})`);
+
+  process.stdout.write("48. Neural Coherence... ");
+  const coherence = new NeuralCoherenceMonitor();
+  const coherenceMetrics = coherence.update([{ attentionScore: 0.9, loadScore: 0.3, stabilityScore: 0.85 }, { attentionScore: 0.85, loadScore: 0.4, stabilityScore: 0.8 }]);
+  console.log(`✓ (coherence: ${coherenceMetrics.overallCoherence.toFixed(2)}, load: ${coherenceMetrics.cognitiveLoad.toFixed(2)})`);
+
+  process.stdout.write("49. Policy Compiler... ");
+  const policy = new PolicyCompiler();
+  policy.addRule("No mass delete", "delete_all", "require_approval", ["*"]);
+  policy.addRule("Allow reads", "read", "allow", ["docs", "tasks"]);
+  const policyResult = policy.evaluate({ module: "docs", action: "delete_all", riskLevel: "high" });
+  console.log(`✓ (allowed: ${policyResult.allowed}, approval: ${policyResult.requiresApproval})`);
+
+  process.stdout.write("50. Cross-Tenant Verifier... ");
+  const tenantVerifier = new CrossTenantVerifier();
+  const sameAccess = tenantVerifier.verifyAccess("tenant_a", "tenant_a", "doc_1");
+  const crossAccess = tenantVerifier.verifyAccess("tenant_a", "tenant_b", "doc_2");
+  console.log(`✓ (same: ${sameAccess.allowed}, cross: ${crossAccess.allowed})`);
+
+  process.stdout.write("51. Federated Learning... ");
+  const federated = new FederatedLearningLoop();
+  federated.submitUpdate({ tenantId: "t1", metric: "routing_accuracy", value: 0.92 });
+  federated.submitUpdate({ tenantId: "t2", metric: "routing_accuracy", value: 0.88 });
+  const aggregated = federated.aggregate("routing_accuracy");
+  console.log(`✓ (mean: ${aggregated.mean.toFixed(2)}, trend: ${aggregated.trend})`);
 
   console.log("\n=== All smoke tests passed ===");
 }
