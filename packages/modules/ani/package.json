@@ -24,6 +24,8 @@
     "./twins": "./src/twins.ts",
     "./causal": "./src/causal.ts",
     "./hyperdimensional": "./src/hyperdimensional.ts",
+    "./v5-twin": "./src/v5-twin.ts",
+    "./v5-compile": "./src/v5-compile.ts",
     "./types": "./src/types.ts"
   },
   "dependencies": {

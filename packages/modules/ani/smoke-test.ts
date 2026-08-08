@@ -6,6 +6,8 @@ import { evaluateHITL } from "./src/hitl";
 import { TwinManager } from "./src/twins";
 import { CausalReasoningEngine } from "./src/causal";
 import { HyperdimensionalComputer } from "./src/hyperdimensional";
+import { TwinSimulationEngine } from "./src/v5-twin";
+import { CompileEngine } from "./src/v5-compile";
 
 async function smoke() {
   console.log("=== N0VA ANI Smoke Test ===\n");
@@ -97,6 +99,19 @@ async function smoke() {
   const bound = hdc.bind(vecA, vecB);
   const sim_score = hdc.similarity(vecA, vecB);
   console.log(`✓ (bundle: ${bundled.label}, bind: ${bound.label}, similarity: ${sim_score.toFixed(3)})`);
+
+  process.stdout.write("15. v5 Causal Simulation... ");
+  const twinEngine = new TwinSimulationEngine();
+  const simResult = twinEngine.runSimulation("revenue_and_churn_q4", [
+    { variable: "engineering_headcount", deltaPercentage: 15 },
+    { variable: "marketing_spend", deltaPercentage: -8 },
+  ], 100000, 0.95);
+  console.log(`✓ (mean: ${simResult.meanOutcome.toFixed(1)}, P positive: ${(simResult.probabilityPositive * 100).toFixed(0)}%)`);
+
+  process.stdout.write("16. v5 Wasm Compilation... ");
+  const compiler = new CompileEngine();
+  const compiled = compiler.compileWorkflow("When an invoice in NetSuite exceeds $50,000, cross-check compliance status in Salesforce, verify bank details via Plaid API, and require CFO biometric approval.");
+  console.log(`✓ (${compiled.generatedCode.split("\n").length} lines generated, arch: ${compiled.targetArchitecture})`);
 
   console.log("\n=== All smoke tests passed ===");
 }
