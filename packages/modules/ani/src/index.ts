@@ -113,6 +113,8 @@ export { assessComplexity, getDepthSettings, buildReasoningSteps, needsClarifica
 export type { ReasoningDepth, ExplanationLevel, ComplexityAssessment, TraceableThought, DeepThinkResult, AutonomousAction, MemoryMark, FeedbackPanel } from "./deep-think";
 export { buildMultiPassAnswer, digestContext, buildAutonomousWorkflow } from "./context-engine";
 export type { MultiPassResult, CritiqueRound, ContextDigestionResult, AutonomousWorkflow, AutonomousWorkflowStep } from "./context-engine";
+export { getEligibleWalkthroughs, classifyUserSegment, buildSegmentProfile, generateRecommendations, getFeaturePriorityVotes } from "./education";
+export type { UserSegment, Walkthrough, ContextualGuide, GuideCard, ProactiveRecommendation, UserSegmentProfile, FeatureRequestVote } from "./education";
 export { CrossAppSchemaMapper } from "./schema-mapper";
 export type { SchemaMapping } from "./schema-mapper";
 export { MultiResolutionRenderer, NeuralEthicsBoard } from "./multi-resolution";

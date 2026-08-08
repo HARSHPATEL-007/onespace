@@ -4,6 +4,31 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Badge } from "@n0va/ui";
 import type { ConversationWithMessages } from "./server";
+import type { UserSegment, ProactiveRecommendation, Walkthrough, GuideCard } from "./education";
+
+interface WalkthroughNotification {
+  id: string;
+  title: string;
+  description: string;
+  step: number;
+  totalSteps: number;
+}
+
+interface GuideCardNotification {
+  id: string;
+  icon: string;
+  title: string;
+  body: string;
+  feature: string;
+}
+
+interface ProactiveRecNotification {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  relevanceScore: number;
+}
 
 export interface AniActions {
   create: (formData: FormData) => Promise<void>;
@@ -93,6 +118,10 @@ export function AniChat({
   const [adaptiveClutter, setAdaptiveClutter] = useState(false);
   const [memoryMarks, setMemoryMarks] = useState<Array<{ id: string; type: string; label: string }>>([]);
   const [feedbackPanel, setFeedbackPanel] = useState<{ confidence: number; assumptions: string[]; nextActions: string[] } | null>(null);
+  const [activeWalkthrough, setActiveWalkthrough] = useState<WalkthroughNotification | null>(null);
+  const [guideCards, setGuideCards] = useState<GuideCardNotification[]>([]);
+  const [proactiveRecs, setProactiveRecs] = useState<ProactiveRecNotification[]>([]);
+  const [userSegment, setUserSegment] = useState<"new" | "casual" | "power" | "enterprise">("new");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -103,6 +132,32 @@ export function AniChat({
   useEffect(() => {
     scrollToBottom();
   }, [active?.messages.length, typing, streamContent, scrollToBottom]);
+
+  useEffect(() => {
+    const sessionCount = conversations.length + 1;
+    if (sessionCount <= 1) {
+      setUserSegment("new");
+      setGuideCards([{
+        id: "guide_welcome",
+        icon: "◆",
+        title: "Welcome to N0VA ANI",
+        body: "Try asking a complex question and enable Deep Think mode for step-by-step reasoning.",
+        feature: "welcome",
+      }]);
+    } else if (sessionCount > 10) {
+      setUserSegment("power");
+    }
+  }, [conversations.length]);
+
+  useEffect(() => {
+    if (active && active.messages.length >= 3 && proactiveRecs.length === 0) {
+      const tips = [
+        { id: "rec_trace", type: "tip", title: "See ANI's reasoning", body: "Click the 💭 icon to view how ANI arrived at its answer.", relevanceScore: 0.8 },
+        { id: "rec_depth", type: "tip", title: "Try Deep Think for complex tasks", body: "Use the depth selector for multi-step reasoning on hard problems.", relevanceScore: 0.75 },
+      ];
+      setProactiveRecs(tips.slice(0, 1));
+    }
+  }, [active?.messages.length, proactiveRecs.length]);
 
   const handleStreamMessage = useCallback((data: StreamChunk) => {
     switch (data.type) {
@@ -376,6 +431,45 @@ export function AniChat({
 
           <div ref={messagesEndRef} />
         </div>
+
+        {(activeWalkthrough || guideCards.length > 0 || proactiveRecs.length > 0) && (
+          <div className="ani-education-bar">
+            {activeWalkthrough && (
+              <div className="ani-walkthrough-card">
+                <div className="ani-wt-header">
+                  <span className="ani-wt-icon">🎓</span>
+                  <span className="ani-wt-title">{activeWalkthrough.title}</span>
+                  <span className="ani-wt-steps">Step {activeWalkthrough.step}/{activeWalkthrough.totalSteps}</span>
+                </div>
+                <div className="ani-wt-body">{activeWalkthrough.description}</div>
+                <div className="ani-wt-actions">
+                  <Button size="sm" onClick={() => setActiveWalkthrough(null)}>Got it</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setActiveWalkthrough(null)}>Dismiss</Button>
+                </div>
+              </div>
+            )}
+            {guideCards.slice(0, 1).map((card) => (
+              <div key={card.id} className="ani-guide-card">
+                <span className="ani-guide-icon">{card.icon}</span>
+                <div className="ani-guide-content">
+                  <div className="ani-guide-title">{card.title}</div>
+                  <div className="ani-guide-body">{card.body}</div>
+                </div>
+                <button className="ani-guide-close" onClick={() => setGuideCards((prev) => prev.filter((c) => c.id !== card.id))}>✕</button>
+              </div>
+            ))}
+            {proactiveRecs.slice(0, 1).map((rec) => (
+              <div key={rec.id} className="ani-rec-card">
+                <span className="ani-rec-icon">{rec.type === "tip" ? "💡" : rec.type === "workflow" ? "⚡" : rec.type === "insight" ? "📊" : "⌨️"}</span>
+                <div className="ani-rec-content">
+                  <div className="ani-rec-title">{rec.title}</div>
+                  <div className="ani-rec-body">{rec.body}</div>
+                </div>
+                <button className="ani-rec-close" onClick={() => setProactiveRecs((prev) => prev.filter((r) => r.id !== rec.id))}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="ani-input-area">
           {(showDepthPanel || showThoughts || feedbackPanel) && (
