@@ -5,6 +5,22 @@ import { useRouter } from "next/navigation";
 import { Button, Dialog, Badge } from "@n0va/ui";
 import type { ConversationWithMessages } from "./server";
 import type { UserSegment, ProactiveRecommendation, Walkthrough, GuideCard } from "./education";
+import {
+  createDefaultVoiceState,
+  matchVoiceCommand,
+  transformContent,
+  getClutterConfig,
+  createCrossSessionMemory,
+  runCheckpoint,
+  STANDARD_CHECKPOINTS,
+  detectInjectionRisk,
+  enrichCitations,
+  type VoiceState,
+  type ContentTransformResult,
+  type ClutterConfig,
+  type CheckpointResult,
+  type EnrichedCitation,
+} from "./remaining-features";
 
 interface WalkthroughNotification {
   id: string;
@@ -122,6 +138,13 @@ export function AniChat({
   const [guideCards, setGuideCards] = useState<GuideCardNotification[]>([]);
   const [proactiveRecs, setProactiveRecs] = useState<ProactiveRecNotification[]>([]);
   const [userSegment, setUserSegment] = useState<"new" | "casual" | "power" | "enterprise">("new");
+  const [voiceState, setVoiceState] = useState<VoiceState>(createDefaultVoiceState());
+  const [clutterConfig, setClutterConfig] = useState<ClutterConfig>(getClutterConfig("balanced", 0.3));
+  const [showTransformPanel, setShowTransformPanel] = useState(false);
+  const [lastTransform, setLastTransform] = useState<ContentTransformResult | null>(null);
+  const [safetyWarnings, setSafetyWarnings] = useState<string[]>([]);
+  const [showMemoryPanel, setShowMemoryPanel] = useState(false);
+  const [sessionMemory, setSessionMemory] = useState<ReturnType<typeof createCrossSessionMemory> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -200,6 +223,14 @@ export function AniChat({
   const send = useCallback(() => {
     const content = draft.trim();
     if (!content || !active || sending) return;
+
+    const injectionCheck = detectInjectionRisk(content);
+    if (injectionCheck.risk === "high") {
+      setSafetyWarnings([...safetyWarnings, `Blocked: ${injectionCheck.indicators.join(", ")}`]);
+      setSending(false);
+      return;
+    }
+
     setSending(true);
     setTyping(true);
     setDraft("");
@@ -207,6 +238,7 @@ export function AniChat({
     setToolCalls([]);
     setCitations([]);
     setTraceThoughts([]);
+    setSafetyWarnings([]);
     setFeedbackPanel(null);
     const localIntent = classifyLocalIntent(content);
     setIntent(localIntent);
@@ -525,6 +557,27 @@ export function AniChat({
                   💭
                 </button>
                 <button
+                  className={`ani-voice-toggle ${voiceState.isListening ? "ani-voice-toggle-active" : ""}`}
+                  onClick={() => {
+                    if (voiceState.isListening) {
+                      setVoiceState((prev) => ({ ...prev, isListening: false }));
+                    } else {
+                      setVoiceState((prev) => ({ ...prev, isListening: true, transcript: "" }));
+                    }
+                  }}
+                  title={voiceState.isListening ? "Stop listening" : "Voice input"}
+                  disabled={!voiceState.supported}
+                >
+                  {voiceState.isListening ? "🔴" : "🎤"}
+                </button>
+                <button
+                  className={`ani-transform-toggle ${showTransformPanel ? "ani-transform-toggle-active" : ""}`}
+                  onClick={() => setShowTransformPanel(!showTransformPanel)}
+                  title="Transform last response"
+                >
+                  ✂️
+                </button>
+                <button
                   className="ani-send-btn"
                   onClick={send}
                   disabled={sending || !draft.trim()}
@@ -575,10 +628,65 @@ export function AniChat({
               </div>
             )}
 
+            {showTransformPanel && active && active.messages.length > 0 && (
+              <div className="ani-transform-panel">
+                <div className="ani-transform-header">
+                  <span className="ani-transform-label">Transform Last Response</span>
+                </div>
+                <div className="ani-transform-options">
+                  {(["sharpen", "clarify", "condense", "actionable", "executive"] as const).map((t) => (
+                    <button
+                      key={t}
+                      className="ani-transform-option"
+                      onClick={() => {
+                        const lastMsg = active.messages.filter((m) => m.role === "assistant").pop();
+                        if (lastMsg) {
+                          const result = transformContent(lastMsg.content, t);
+                          setLastTransform(result);
+                        }
+                      }}
+                    >
+                      {t === "sharpen" ? "🔪" : t === "clarify" ? "💡" : t === "condense" ? "🗜️" : t === "actionable" ? "→" : "📊"}
+                      <span>{t}</span>
+                    </button>
+                  ))}
+                </div>
+                {lastTransform && (
+                  <div className="ani-transform-result">
+                    <div className="ani-transform-stats">
+                      {lastTransform.wordCountBefore} → {lastTransform.wordCountAfter} words
+                      ({Math.round((1 - lastTransform.wordCountAfter / lastTransform.wordCountBefore) * 100)}% reduction)
+                    </div>
+                    <div className="ani-transform-changes">
+                      {lastTransform.changes.map((c, i) => <span key={i} className="ani-transform-change">{c}</span>)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {voiceState.isListening && (
+              <div className="ani-voice-status">
+                <span className="ani-voice-dot" />
+                <span>Listening…</span>
+                {voiceState.interimTranscript && <span className="ani-voice-interim">{voiceState.interimTranscript}</span>}
+              </div>
+            )}
+
+            {safetyWarnings.length > 0 && (
+              <div className="ani-safety-warnings">
+                {safetyWarnings.map((w, i) => (
+                  <div key={i} className="ani-safety-warning">🛡️ {w}</div>
+                ))}
+              </div>
+            )}
+
             <div className="ani-input-hint">
               <span>ANI v4.0</span>
               <span>•</span>
               <span>{autoDepth ? "Auto depth" : reasoningDepth}</span>
+              <span>•</span>
+              <span>{voiceState.isListening ? "🎤 Voice on" : ""}</span>
               <span>•</span>
               <span>{active ? `${active.messages.length} messages` : "Ready"}</span>
             </div>

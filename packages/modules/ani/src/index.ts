@@ -115,6 +115,32 @@ export { buildMultiPassAnswer, digestContext, buildAutonomousWorkflow } from "./
 export type { MultiPassResult, CritiqueRound, ContextDigestionResult, AutonomousWorkflow, AutonomousWorkflowStep } from "./context-engine";
 export { getEligibleWalkthroughs, classifyUserSegment, buildSegmentProfile, generateRecommendations, getFeaturePriorityVotes } from "./education";
 export type { UserSegment, Walkthrough, ContextualGuide, GuideCard, ProactiveRecommendation, UserSegmentProfile, FeatureRequestVote } from "./education";
+export {
+  createDefaultVoiceState,
+  matchVoiceCommand,
+  transformContent,
+  getClutterConfig,
+  createCrossSessionMemory,
+  runCheckpoint,
+  STANDARD_CHECKPOINTS,
+  detectInjectionRisk,
+  detectDeepfakeIndicators,
+  enrichCitations,
+  VOICE_COMMANDS,
+} from "./remaining-features";
+export type {
+  VoiceState,
+  VoiceCommand,
+  ContentTransformResult,
+  ContentTransformType,
+  ClutterConfig,
+  CrossSessionMemory,
+  DecidedFact,
+  ActionItem,
+  CheckpointResult,
+  OutcomeMetric,
+  EnrichedCitation,
+} from "./remaining-features";
 export { CrossAppSchemaMapper } from "./schema-mapper";
 export type { SchemaMapping } from "./schema-mapper";
 export { MultiResolutionRenderer, NeuralEthicsBoard } from "./multi-resolution";
