@@ -221,6 +221,25 @@ export const ADAPTERS: Record<string, (ctx: AdapterContext) => Promise<AdapterRe
     return { statusCode: 200, ok: true, message: `GitHub: PR #${pr} merged${d.merged ? "" : " (status check)"} — ${d.sha ?? ""}` };
   },
 
+  "github:open_pr": async ({ integration, input }) => {
+    const c = cfgOf(integration);
+    const owner = typeof (input as Record<string, unknown>).owner === "string" ? String((input as Record<string, unknown>).owner) : typeof c.owner === "string" ? c.owner : "octocat";
+    const repo = typeof (input as Record<string, unknown>).repo === "string" ? String((input as Record<string, unknown>).repo) : "";
+    const title = typeof (input as Record<string, unknown>).title === "string" ? String((input as Record<string, unknown>).title) : "";
+    const head = typeof (input as Record<string, unknown>).head === "string" ? String((input as Record<string, unknown>).head) : "";
+    const base = typeof (input as Record<string, unknown>).base === "string" ? String((input as Record<string, unknown>).base) : "main";
+    if (!repo || !title || !head) return { statusCode: 400, ok: false, message: "GitHub: open_pr requires `repo`, `title`, and `head`" };
+    const r = await fetchPostJson(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`,
+      integration,
+      "github",
+      { title, head, base, body: (input as Record<string, unknown>).body ?? "" },
+    );
+    if (!r.ok) return { statusCode: r.status, ok: false, message: `GitHub: open_pr failed — ${r.err}` };
+    const d = r.data as { number?: number; html_url?: string; title?: string };
+    return { statusCode: 201, ok: true, message: `GitHub: PR #${d.number ?? "?"} opened — ${d.html_url ?? ""}`.slice(0, 240) };
+  },
+
   /* ------------------------------------------------------------------ */
   /*  Slack                                                            */
   /* ------------------------------------------------------------------ */
@@ -476,7 +495,51 @@ export const ADAPTERS: Record<string, (ctx: AdapterContext) => Promise<AdapterRe
   },
 
   /* ------------------------------------------------------------------ */
-  /*  OpenAI (already existed, kept as-is)                              */
+  /*  GitLab                                                           */
+  /* ------------------------------------------------------------------ */
+
+  "gitlab:list_projects": async ({ integration, input }) => {
+    const c = cfgOf(integration);
+    const owned = (input as Record<string, unknown>).owned === true;
+    const params = new URLSearchParams({ per_page: "20", membership: "true" });
+    if (owned) params.set("owned", "true");
+    if (c.search && typeof c.search === "string") params.set("search", c.search);
+    const r = await fetchJson(`https://gitlab.com/api/v4/projects?${params.toString()}`, {
+      headers: providerHeaders(integration, "gitlab"),
+    });
+    if (!r.ok) return { statusCode: r.status, ok: false, message: `GitLab: list_projects failed — ${r.err}` };
+    const d = r.data as Array<{ id: number; name: string; path_with_namespace: string; web_url?: string }>;
+    const count = Array.isArray(d) ? d.length : 0;
+    const names = Array.isArray(d) ? d.slice(0, 5).map((p) => p.path_with_namespace).join(", ") : "";
+    return {
+      statusCode: 200,
+      ok: true,
+      message: `GitLab: ${count} projects${names ? `; ${names.slice(0, 160)}` : ""}`.slice(0, 240),
+    };
+  },
+
+  "gitlab:create_issue": async ({ integration, input }) => {
+    const c = cfgOf(integration);
+    const projectId = typeof (input as Record<string, unknown>).projectId === "string"
+      ? String((input as Record<string, unknown>).projectId)
+      : typeof c.projectId === "string"
+      ? c.projectId
+      : "";
+    const title = String((input as Record<string, unknown>).title ?? "Untitled issue");
+    const description = String((input as Record<string, unknown>).description ?? "");
+    if (!projectId) return { statusCode: 400, ok: false, message: "GitLab: create_issue requires `projectId`" };
+    const encoded = encodeURIComponent(projectId);
+    const r = await fetchPostJson(`https://gitlab.com/api/v4/projects/${encoded}/issues`, integration, "gitlab", {
+      title,
+      description,
+    });
+    if (!r.ok) return { statusCode: r.status, ok: false, message: `GitLab: create_issue failed — ${r.err}` };
+    const d = r.data as { id?: number; iid?: number; title?: string; web_url?: string };
+    return { statusCode: 201, ok: true, message: `GitLab: issue #${d.iid ?? d.id ?? "?"} created — ${d.web_url ?? ""}`.slice(0, 240) };
+  },
+
+  /* ------------------------------------------------------------------ */
+  /*  OpenAI (already existed, kept as-is)                             */
   /* ------------------------------------------------------------------ */
 
   "openai:chat": async ({ integration, input }) => {

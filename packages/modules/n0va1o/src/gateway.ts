@@ -249,11 +249,10 @@ export class N0va1oGateway {
     // both forms (namespaced then bare) to match real connectors.
     const adapter = ADAPTERS[`${integration.provider}:${tool}`] ?? ADAPTERS[tool as `${string}:${string}`];
 
-    // JIT authentication: resolve the active credential envelope for this
-    // integration before invoking the adapter. Tokens are stored AES-256-GCM
-    // encrypted per-tenant; this method transparently refreshes expired
-    // credentials (spec §3.1 Just-In-Time Authentication).
-    const authConnection = await this.resolveConnection(integration.id, integration.workspaceId);
+    // JIT authentication: reuse the credential envelope resolved earlier for
+    // policy evaluation. Tokens are stored AES-256-GCM encrypted per-tenant;
+    // this method transparently refreshed expired credentials above.
+    const authConnection = connection;
     // Build a config view that prefers the JIT connection token over any
     // static token stored on the integration row. The LLM never sees this —
     // only the adapter receives it at call time.
