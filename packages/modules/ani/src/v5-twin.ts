@@ -21,7 +21,12 @@ export interface SimulationResult {
   riskLowerBound: number;
   riskUpperBound: number;
   probabilityPositive: number;
-  trajectoryChart: Array<{ quarter: number; low: number; mean: number; high: number }>;
+  trajectoryChart: Array<{
+    quarter: number;
+    low: number;
+    mean: number;
+    high: number;
+  }>;
   generatedAt: string;
 }
 
@@ -38,7 +43,7 @@ export class TwinSimulationEngine {
       let outcome = 100;
       for (const intervention of interventions) {
         const noise = (Math.random() - 0.5) * 10;
-        outcome *= (1 + intervention.deltaPercentage / 100) + noise / 100;
+        outcome *= 1 + intervention.deltaPercentage / 100 + noise / 100;
       }
       outcomes.push(outcome);
     }
@@ -46,11 +51,13 @@ export class TwinSimulationEngine {
     outcomes.sort((a, b) => a - b);
 
     const mean = outcomes.reduce((a, b) => a + b, 0) / outcomes.length;
-    const variance = outcomes.reduce((sum, val) => sum + (val - mean) ** 2, 0) / outcomes.length;
+    const variance =
+      outcomes.reduce((sum, val) => sum + (val - mean) ** 2, 0) /
+      outcomes.length;
     const stdDev = Math.sqrt(variance);
 
-    const lowerIdx = Math.floor((1 - confidence) / 2 * runs);
-    const upperIdx = Math.floor((1 + confidence) / 2 * runs);
+    const lowerIdx = Math.floor(((1 - confidence) / 2) * runs);
+    const upperIdx = Math.floor(((1 + confidence) / 2) * runs);
 
     const positiveCount = outcomes.filter((o) => o > 100).length;
 
@@ -87,9 +94,18 @@ export class TwinSimulationEngine {
       data: {
         labels: result.trajectoryChart.map((t) => "Q" + t.quarter),
         datasets: [
-          { label: "Low Bound", data: result.trajectoryChart.map((t) => t.low) },
-          { label: "Mean Projection", data: result.trajectoryChart.map((t) => t.mean) },
-          { label: "High Bound", data: result.trajectoryChart.map((t) => t.high) },
+          {
+            label: "Low Bound",
+            data: result.trajectoryChart.map((t) => t.low),
+          },
+          {
+            label: "Mean Projection",
+            data: result.trajectoryChart.map((t) => t.mean),
+          },
+          {
+            label: "High Bound",
+            data: result.trajectoryChart.map((t) => t.high),
+          },
         ],
       },
     };

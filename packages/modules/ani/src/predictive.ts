@@ -27,7 +27,13 @@ export interface AnomalyPrediction {
   horizonHours: number;
 }
 
-const PROACTIVE_TRIGGERS: Array<{ type: string; detect: (ctx: WorkspaceContext, signals: number[]) => boolean; message: string; action?: string; module?: string }> = [
+const PROACTIVE_TRIGGERS: Array<{
+  type: string;
+  detect: (ctx: WorkspaceContext, signals: number[]) => boolean;
+  message: string;
+  action?: string;
+  module?: string;
+}> = [
   {
     type: "meeting_conflict",
     detect: (ctx) => ctx.activeModule === "calendar",
@@ -63,7 +69,10 @@ export class PredictiveIntelligenceEngine {
 
   constructor(private readonly workspaceId: string) {}
 
-  detectProactiveTriggers(context: WorkspaceContext, signals: number[] = []): ProactiveTrigger[] {
+  detectProactiveTriggers(
+    context: WorkspaceContext,
+    signals: number[] = [],
+  ): ProactiveTrigger[] {
     const triggers: ProactiveTrigger[] = [];
 
     for (const trigger of PROACTIVE_TRIGGERS) {
@@ -83,7 +92,10 @@ export class PredictiveIntelligenceEngine {
     return triggers.sort((a, b) => b.confidence - a.confidence);
   }
 
-  predictBehavior(userId: string, context: WorkspaceContext): BehavioralPrediction {
+  predictBehavior(
+    userId: string,
+    context: WorkspaceContext,
+  ): BehavioralPrediction {
     const pattern = this.userPatterns.get(userId) ?? [];
     const hour = new Date().getUTCHours();
 
@@ -107,7 +119,8 @@ export class PredictiveIntelligenceEngine {
     return {
       userId,
       predictedAction,
-      confidence: pattern.length > 5 ? Math.min(0.95, confidence + 0.1) : confidence,
+      confidence:
+        pattern.length > 5 ? Math.min(0.95, confidence + 0.1) : confidence,
       horizon: "1h",
       context: { activeModule: context.activeModule, hour },
     };
@@ -143,14 +156,28 @@ export class PredictiveIntelligenceEngine {
 
   recordBehaviorPattern(userId: string, action: string): void {
     const existing = this.userPatterns.get(userId) ?? [];
-    const actionHash = action.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 100 / 100;
+    const actionHash =
+      (action.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % 100) / 100;
     existing.push(actionHash);
     if (existing.length > 100) existing.shift();
     this.userPatterns.set(userId, existing);
   }
 
-  getBurnoutRisk(userId: string, signals: { hoursWorked: number; stressLevel: number; taskCount: number; breakFrequency: number }): number {
-    const weights = { hoursWorked: 0.3, stressLevel: 0.3, taskCount: 0.2, breakFrequency: -0.2 };
+  getBurnoutRisk(
+    userId: string,
+    signals: {
+      hoursWorked: number;
+      stressLevel: number;
+      taskCount: number;
+      breakFrequency: number;
+    },
+  ): number {
+    const weights = {
+      hoursWorked: 0.3,
+      stressLevel: 0.3,
+      taskCount: 0.2,
+      breakFrequency: -0.2,
+    };
     const normalized = {
       hoursWorked: Math.min(1, signals.hoursWorked / 12),
       stressLevel: signals.stressLevel,
@@ -167,6 +194,8 @@ export class PredictiveIntelligenceEngine {
   }
 }
 
-export function createPredictiveEngine(workspaceId: string): PredictiveIntelligenceEngine {
+export function createPredictiveEngine(
+  workspaceId: string,
+): PredictiveIntelligenceEngine {
   return new PredictiveIntelligenceEngine(workspaceId);
 }

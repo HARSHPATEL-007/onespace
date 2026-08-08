@@ -4,7 +4,12 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Badge } from "@n0va/ui";
 import type { ConversationWithMessages } from "./server";
-import type { UserSegment, ProactiveRecommendation, Walkthrough, GuideCard } from "./education";
+import type {
+  UserSegment,
+  ProactiveRecommendation,
+  Walkthrough,
+  GuideCard,
+} from "./education";
 import {
   createDefaultVoiceState,
   matchVoiceCommand,
@@ -81,7 +86,12 @@ interface ProactiveRecNotification {
 
 export interface AniActions {
   create: (formData: FormData) => Promise<void>;
-  send: (formData: FormData) => Promise<{ delayMs: number; toolCalls?: string; citations?: string; confidence?: number }>;
+  send: (formData: FormData) => Promise<{
+    delayMs: number;
+    toolCalls?: string;
+    citations?: string;
+    confidence?: number;
+  }>;
   clear: (formData: FormData) => Promise<void>;
   remove: (formData: FormData) => Promise<void>;
 }
@@ -111,11 +121,19 @@ interface StreamChunk {
   latencyMs?: number;
   confidence?: number;
   consciousnessCoherence?: number;
-  toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown>; status: string }>;
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+    status: string;
+  }>;
   message?: string;
 }
 
-function useEventSource(url: string | null, onMessage: (data: StreamChunk) => void) {
+function useEventSource(
+  url: string | null,
+  onMessage: (data: StreamChunk) => void,
+) {
   const esRef = useRef<EventSource | null>(null);
   const cbRef = useRef(onMessage);
   cbRef.current = onMessage;
@@ -128,10 +146,17 @@ function useEventSource(url: string | null, onMessage: (data: StreamChunk) => vo
       try {
         const data = JSON.parse(e.data) as StreamChunk;
         cbRef.current(data);
-      } catch { /* skip malformed */ }
+      } catch {
+        /* skip malformed */
+      }
     };
-    es.onerror = () => { es.close(); };
-    return () => { es.close(); esRef.current = null; };
+    es.onerror = () => {
+      es.close();
+    };
+    return () => {
+      es.close();
+      esRef.current = null;
+    };
   }, [url]);
 }
 
@@ -159,39 +184,66 @@ export function AniChat({
   const [engagement, setEngagement] = useState(0.91);
   const [intent, setIntent] = useState("conversational");
   const [showSidebar, setShowSidebar] = useState(true);
-  const [reasoningDepth, setReasoningDepth] = useState<"fast" | "balanced" | "deep" | "research">("balanced");
+  const [reasoningDepth, setReasoningDepth] = useState<
+    "fast" | "balanced" | "deep" | "research"
+  >("balanced");
   const [autoDepth, setAutoDepth] = useState(true);
   const [showDepthPanel, setShowDepthPanel] = useState(false);
   const [showThoughts, setShowThoughts] = useState(false);
   const [traceThoughts, setTraceThoughts] = useState<string[]>([]);
   const [adaptiveClutter, setAdaptiveClutter] = useState(false);
-  const [memoryMarks, setMemoryMarks] = useState<Array<{ id: string; type: string; label: string }>>([]);
-  const [feedbackPanel, setFeedbackPanel] = useState<{ confidence: number; assumptions: string[]; nextActions: string[] } | null>(null);
-  const [activeWalkthrough, setActiveWalkthrough] = useState<WalkthroughNotification | null>(null);
+  const [memoryMarks, setMemoryMarks] = useState<
+    Array<{ id: string; type: string; label: string }>
+  >([]);
+  const [feedbackPanel, setFeedbackPanel] = useState<{
+    confidence: number;
+    assumptions: string[];
+    nextActions: string[];
+  } | null>(null);
+  const [activeWalkthrough, setActiveWalkthrough] =
+    useState<WalkthroughNotification | null>(null);
   const [guideCards, setGuideCards] = useState<GuideCardNotification[]>([]);
-  const [proactiveRecs, setProactiveRecs] = useState<ProactiveRecNotification[]>([]);
-  const [userSegment, setUserSegment] = useState<"new" | "casual" | "power" | "enterprise">("new");
-  const [voiceState, setVoiceState] = useState<VoiceState>(createDefaultVoiceState());
-  const [clutterConfig, setClutterConfig] = useState<ClutterConfig>(getClutterConfig("balanced", 0.3));
+  const [proactiveRecs, setProactiveRecs] = useState<
+    ProactiveRecNotification[]
+  >([]);
+  const [userSegment, setUserSegment] = useState<
+    "new" | "casual" | "power" | "enterprise"
+  >("new");
+  const [voiceState, setVoiceState] = useState<VoiceState>(
+    createDefaultVoiceState(),
+  );
+  const [clutterConfig, setClutterConfig] = useState<ClutterConfig>(
+    getClutterConfig("balanced", 0.3),
+  );
   const [showTransformPanel, setShowTransformPanel] = useState(false);
-  const [lastTransform, setLastTransform] = useState<ContentTransformResult | null>(null);
+  const [lastTransform, setLastTransform] =
+    useState<ContentTransformResult | null>(null);
   const [safetyWarnings, setSafetyWarnings] = useState<string[]>([]);
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
-  const [sessionMemory, setSessionMemory] = useState<ReturnType<typeof createCrossSessionMemory> | null>(null);
-  const [ttsState, setTtsState] = useState<VoiceTtsState>(createDefaultTtsState());
+  const [sessionMemory, setSessionMemory] = useState<ReturnType<
+    typeof createCrossSessionMemory
+  > | null>(null);
+  const [ttsState, setTtsState] = useState<VoiceTtsState>(
+    createDefaultTtsState(),
+  );
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showLearning, setShowLearning] = useState(false);
-  const [learningModule, setLearningModule] = useState<LearningModule | null>(null);
+  const [learningModule, setLearningModule] = useState<LearningModule | null>(
+    null,
+  );
   const [learningStep, setLearningStep] = useState(0);
   const [taskProgress, setTaskProgress] = useState<TaskProgress | null>(null);
   const [showProgressPanel, setShowProgressPanel] = useState(false);
-  const [persistentMemory, setPersistentMemory] = useState<PersistentMemoryEntry[]>([]);
+  const [persistentMemory, setPersistentMemory] = useState<
+    PersistentMemoryEntry[]
+  >([]);
   const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
   const [showOutcomePanel, setShowOutcomePanel] = useState(false);
   const [contextGraph, setContextGraph] = useState<ContextGraph3D | null>(null);
   const [showGraphPanel, setShowGraphPanel] = useState(false);
   const [showMeetingPanel, setShowMeetingPanel] = useState(false);
-  const [meetingState, setMeetingState] = useState<MeetingIntelligenceState | null>(null);
+  const [meetingState, setMeetingState] =
+    useState<MeetingIntelligenceState | null>(null);
   const [graphLayout, setGraphLayout] = useState<GraphLayout3D | null>(null);
   const graphCanvasRef = useRef<HTMLCanvasElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -209,13 +261,15 @@ export function AniChat({
     const sessionCount = conversations.length + 1;
     if (sessionCount <= 1) {
       setUserSegment("new");
-      setGuideCards([{
-        id: "guide_welcome",
-        icon: "◆",
-        title: "Welcome to N0VA ANI",
-        body: "Try asking a complex question and enable Deep Think mode for step-by-step reasoning.",
-        feature: "welcome",
-      }]);
+      setGuideCards([
+        {
+          id: "guide_welcome",
+          icon: "◆",
+          title: "Welcome to N0VA ANI",
+          body: "Try asking a complex question and enable Deep Think mode for step-by-step reasoning.",
+          feature: "welcome",
+        },
+      ]);
     } else if (sessionCount > 10) {
       setUserSegment("power");
     }
@@ -224,49 +278,69 @@ export function AniChat({
   useEffect(() => {
     if (active && active.messages.length >= 3 && proactiveRecs.length === 0) {
       const tips = [
-        { id: "rec_trace", type: "tip", title: "See ANI's reasoning", body: "Click the 💭 icon to view how ANI arrived at its answer.", relevanceScore: 0.8 },
-        { id: "rec_depth", type: "tip", title: "Try Deep Think for complex tasks", body: "Use the depth selector for multi-step reasoning on hard problems.", relevanceScore: 0.75 },
+        {
+          id: "rec_trace",
+          type: "tip",
+          title: "See ANI's reasoning",
+          body: "Click the 💭 icon to view how ANI arrived at its answer.",
+          relevanceScore: 0.8,
+        },
+        {
+          id: "rec_depth",
+          type: "tip",
+          title: "Try Deep Think for complex tasks",
+          body: "Use the depth selector for multi-step reasoning on hard problems.",
+          relevanceScore: 0.75,
+        },
       ];
       setProactiveRecs(tips.slice(0, 1));
     }
   }, [active?.messages.length, proactiveRecs.length]);
 
-  const handleStreamMessage = useCallback((data: StreamChunk) => {
-    switch (data.type) {
-      case "chunk":
-        if (data.content) {
-          setStreamContent((prev) => prev + data.content);
-        }
-        break;
-      case "complete":
-        setTyping(false);
-        setStreamContent("");
-        if (data.citations) setCitations(data.citations);
-        if (data.consciousnessCoherence) setConsciousnessCoherence(data.consciousnessCoherence);
-        if (data.confidence) setEngagement(data.confidence);
-        router.refresh();
-        break;
-      case "tool_call":
-        if (data.toolCalls) {
-          setToolCalls(data.toolCalls.map((tc) => ({
-            ...tc,
-            status: (tc.status as AniToolCall["status"]) || "done",
-          })));
-        }
-        break;
-      case "consciousness":
-        if (data.consciousnessCoherence) setConsciousnessCoherence(data.consciousnessCoherence);
-        break;
-      case "error":
-        setTyping(false);
-        setStreamContent("");
-        break;
-    }
-  }, [router]);
+  const handleStreamMessage = useCallback(
+    (data: StreamChunk) => {
+      switch (data.type) {
+        case "chunk":
+          if (data.content) {
+            setStreamContent((prev) => prev + data.content);
+          }
+          break;
+        case "complete":
+          setTyping(false);
+          setStreamContent("");
+          if (data.citations) setCitations(data.citations);
+          if (data.consciousnessCoherence)
+            setConsciousnessCoherence(data.consciousnessCoherence);
+          if (data.confidence) setEngagement(data.confidence);
+          router.refresh();
+          break;
+        case "tool_call":
+          if (data.toolCalls) {
+            setToolCalls(
+              data.toolCalls.map((tc) => ({
+                ...tc,
+                status: (tc.status as AniToolCall["status"]) || "done",
+              })),
+            );
+          }
+          break;
+        case "consciousness":
+          if (data.consciousnessCoherence)
+            setConsciousnessCoherence(data.consciousnessCoherence);
+          break;
+        case "error":
+          setTyping(false);
+          setStreamContent("");
+          break;
+      }
+    },
+    [router],
+  );
 
-  const streamUrl = sending && active
-    ? `/api/ani/stream?content=${encodeURIComponent(draft)}`
-    : null;
+  const streamUrl =
+    sending && active
+      ? `/api/ani/stream?content=${encodeURIComponent(draft)}`
+      : null;
   useEventSource(streamUrl, handleStreamMessage);
 
   const send = useCallback(() => {
@@ -275,7 +349,10 @@ export function AniChat({
 
     const injectionCheck = detectInjectionRisk(content);
     if (injectionCheck.risk === "high") {
-      setSafetyWarnings([...safetyWarnings, `Blocked: ${injectionCheck.indicators.join(", ")}`]);
+      setSafetyWarnings([
+        ...safetyWarnings,
+        `Blocked: ${injectionCheck.indicators.join(", ")}`,
+      ]);
       setSending(false);
       return;
     }
@@ -296,7 +373,8 @@ export function AniChat({
     if (reasoningDepth === "deep" || reasoningDepth === "research") {
       depthSteps.push("Assessing complexity...");
       depthSteps.push("Gathering expanded context...");
-      if (reasoningDepth === "research") depthSteps.push("Performing deep research...");
+      if (reasoningDepth === "research")
+        depthSteps.push("Performing deep research...");
       depthSteps.push("Multi-pass reasoning in progress...");
     }
     setTraceThoughts(depthSteps);
@@ -312,23 +390,43 @@ export function AniChat({
       .then((r) => {
         if (r.toolCalls) {
           try {
-            const calls = JSON.parse(r.toolCalls) as Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
-            setToolCalls(calls.map((c) => ({ ...c, status: "loading" as const })));
+            const calls = JSON.parse(r.toolCalls) as Array<{
+              id: string;
+              name: string;
+              arguments: Record<string, unknown>;
+            }>;
+            setToolCalls(
+              calls.map((c) => ({ ...c, status: "loading" as const })),
+            );
             setTimeout(() => {
-              setToolCalls((prev) => prev.map((tc) => ({ ...tc, status: "done" as const })));
+              setToolCalls((prev) =>
+                prev.map((tc) => ({ ...tc, status: "done" as const })),
+              );
             }, 800);
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
         if (r.citations) {
-          try { setCitations(JSON.parse(r.citations) as AniCitation[]); } catch { /* */ }
+          try {
+            setCitations(JSON.parse(r.citations) as AniCitation[]);
+          } catch {
+            /* */
+          }
         }
         setConsciousnessCoherence(r.confidence ?? 0.95);
         setEngagement(r.confidence ?? 0.88);
         setTraceThoughts((prev) => [...prev, "Response finalized ✓"]);
         setFeedbackPanel({
           confidence: r.confidence ?? 0.85,
-          assumptions: [`Intent: ${localIntent}`, `Depth: ${autoDepth ? "auto" : reasoningDepth}`],
-          nextActions: r.confidence && r.confidence > 0.8 ? ["Ready for follow-up"] : ["Consider providing more context"],
+          assumptions: [
+            `Intent: ${localIntent}`,
+            `Depth: ${autoDepth ? "auto" : reasoningDepth}`,
+          ],
+          nextActions:
+            r.confidence && r.confidence > 0.8
+              ? ["Ready for follow-up"]
+              : ["Consider providing more context"],
         });
         setTimeout(() => setTyping(false), r.delayMs);
       })
@@ -349,7 +447,9 @@ export function AniChat({
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   };
 
-  useEffect(() => { autoResize(); }, [draft]);
+  useEffect(() => {
+    autoResize();
+  }, [draft]);
 
   useEffect(() => {
     if (!contextGraph || !graphLayout) return;
@@ -366,8 +466,22 @@ export function AniChat({
       const source = graphLayout.nodes.find((n) => n.id === edge.source);
       const target = graphLayout.nodes.find((n) => n.id === edge.target);
       if (!source || !target) continue;
-      const s2d = project3Dto2D(source.x, source.y, source.z, graphLayout.bounds, canvas.width, canvas.height);
-      const t2d = project3Dto2D(target.x, target.y, target.z, graphLayout.bounds, canvas.width, canvas.height);
+      const s2d = project3Dto2D(
+        source.x,
+        source.y,
+        source.z,
+        graphLayout.bounds,
+        canvas.width,
+        canvas.height,
+      );
+      const t2d = project3Dto2D(
+        target.x,
+        target.y,
+        target.z,
+        graphLayout.bounds,
+        canvas.width,
+        canvas.height,
+      );
       ctx.strokeStyle = "var(--nv-color-border)";
       ctx.lineWidth = edge.weight * 1.5;
       ctx.beginPath();
@@ -377,7 +491,14 @@ export function AniChat({
     }
 
     for (const node of graphLayout.nodes) {
-      const pos = project3Dto2D(node.x, node.y, node.z, graphLayout.bounds, canvas.width, canvas.height);
+      const pos = project3Dto2D(
+        node.x,
+        node.y,
+        node.z,
+        graphLayout.bounds,
+        canvas.width,
+        canvas.height,
+      );
       const radius = 4 + node.weight * 2;
       ctx.beginPath();
       ctx.arc(pos.sx, pos.sy, radius * pos.scale, 0, Math.PI * 2);
@@ -385,7 +506,11 @@ export function AniChat({
       ctx.fill();
       ctx.font = `${Math.round(9 * pos.scale)}px var(--nv-font-mono)`;
       ctx.fillStyle = "var(--nv-color-text)";
-      ctx.fillText(node.label.slice(0, 15), pos.sx + radius * pos.scale + 3, pos.sy + 3);
+      ctx.fillText(
+        node.label.slice(0, 15),
+        pos.sx + radius * pos.scale + 3,
+        pos.sy + 3,
+      );
     }
   }, [contextGraph, graphLayout]);
 
@@ -400,7 +525,9 @@ export function AniChat({
 
   useEffect(() => {
     if (showMeetingPanel && !meetingState) {
-      setMeetingState(initializeMeetingIntelligence("meeting_1", ["You", "ANI"]));
+      setMeetingState(
+        initializeMeetingIntelligence("meeting_1", ["You", "ANI"]),
+      );
     }
   }, [showMeetingPanel, meetingState]);
 
@@ -417,7 +544,11 @@ export function AniChat({
               </div>
             </div>
           </div>
-          <Button size="sm" className="ani-new-chat-btn" onClick={() => setCreating(true)}>
+          <Button
+            size="sm"
+            className="ani-new-chat-btn"
+            onClick={() => setCreating(true)}
+          >
             <span>+</span> New conversation
           </Button>
           <div className="ani-conv-list">
@@ -432,7 +563,9 @@ export function AniChat({
               >
                 <div className="ani-conv-title">{c.title}</div>
                 <div className="ani-conv-preview">
-                  {c.messages[0] ? `${c.messages[0].content.slice(0, 40)}${c.messages[0].content.length > 40 ? "…" : ""}` : "Empty"}
+                  {c.messages[0]
+                    ? `${c.messages[0].content.slice(0, 40)}${c.messages[0].content.length > 40 ? "…" : ""}`
+                    : "Empty"}
                 </div>
               </button>
             ))}
@@ -447,20 +580,36 @@ export function AniChat({
 
       <main className="ani-main">
         <header className="ani-header">
-          <button className="ani-toggle-sidebar" onClick={() => setShowSidebar(!showSidebar)} title="Toggle sidebar">
+          <button
+            className="ani-toggle-sidebar"
+            onClick={() => setShowSidebar(!showSidebar)}
+            title="Toggle sidebar"
+          >
             {showSidebar ? "⟨" : "⟩"}
           </button>
           <div className="ani-header-info">
-            <span className="ani-header-title">{active ? active.title : "N0VA ANI"}</span>
+            <span className="ani-header-title">
+              {active ? active.title : "N0VA ANI"}
+            </span>
             <div className="ani-header-badges">
               <Badge tone="success">ANI</Badge>
               <Badge tone="primary">◆ Consciousness</Badge>
-              {intent !== "conversational" && <Badge tone="warning">{intent}</Badge>}
+              {intent !== "conversational" && (
+                <Badge tone="warning">{intent}</Badge>
+              )}
             </div>
           </div>
           <div className="ani-header-actions">
             <div className="ani-consciousness-pill">
-              <span className="ani-pill-dot" style={{ background: consciousnessCoherence > 0.9 ? "var(--nv-color-success)" : "var(--nv-color-warning)" }} />
+              <span
+                className="ani-pill-dot"
+                style={{
+                  background:
+                    consciousnessCoherence > 0.9
+                      ? "var(--nv-color-success)"
+                      : "var(--nv-color-warning)",
+                }}
+              />
               <span>{(consciousnessCoherence * 100).toFixed(0)}% coherent</span>
             </div>
             {active && (
@@ -497,16 +646,20 @@ export function AniChat({
         <div className="ani-messages">
           {!active && <AniEmptyState onCreate={() => setCreating(true)} />}
 
-          {active && active.messages.map((m) => (
-            <div key={m.id} className={`ani-msg ${m.role === "user" ? "ani-msg-user" : "ani-msg-assistant"}`}>
-              <div className="ani-msg-avatar">
-                {m.role === "user" ? "U" : "◆"}
+          {active &&
+            active.messages.map((m) => (
+              <div
+                key={m.id}
+                className={`ani-msg ${m.role === "user" ? "ani-msg-user" : "ani-msg-assistant"}`}
+              >
+                <div className="ani-msg-avatar">
+                  {m.role === "user" ? "U" : "◆"}
+                </div>
+                <div className="ani-msg-body">
+                  <div className="ani-msg-content">{m.content}</div>
+                </div>
               </div>
-              <div className="ani-msg-body">
-                <div className="ani-msg-content">{m.content}</div>
-              </div>
-            </div>
-          ))}
+            ))}
 
           {typing && (streamContent || !active) && (
             <div className="ani-msg ani-msg-assistant">
@@ -518,7 +671,9 @@ export function AniChat({
                       <span className="ani-thinking-dot" />
                       <span className="ani-thinking-dot" />
                       <span className="ani-thinking-dot" />
-                      <span className="ani-thinking-label">ANI is thinking</span>
+                      <span className="ani-thinking-label">
+                        ANI is thinking
+                      </span>
                     </div>
                   )}
                   {streamContent && <span className="ani-cursor">▌</span>}
@@ -535,15 +690,34 @@ export function AniChat({
                 <Badge tone="neutral">{toolCalls.length}</Badge>
               </div>
               {toolCalls.map((tc) => (
-                <div key={tc.id} className={`ani-tool-call ani-tool-${tc.status}`}>
+                <div
+                  key={tc.id}
+                  className={`ani-tool-call ani-tool-${tc.status}`}
+                >
                   <div className="ani-tool-status-icon">
-                    {tc.status === "loading" ? "⟳" : tc.status === "done" ? "✓" : tc.status === "error" ? "✕" : "○"}
+                    {tc.status === "loading"
+                      ? "⟳"
+                      : tc.status === "done"
+                        ? "✓"
+                        : tc.status === "error"
+                          ? "✕"
+                          : "○"}
                   </div>
                   <div className="ani-tool-info">
                     <div className="ani-tool-name">{tc.name}</div>
-                    <div className="ani-tool-args">{JSON.stringify(tc.arguments).slice(0, 80)}</div>
+                    <div className="ani-tool-args">
+                      {JSON.stringify(tc.arguments).slice(0, 80)}
+                    </div>
                   </div>
-                  <Badge tone={tc.status === "error" ? "danger" : tc.status === "loading" ? "warning" : "success"}>
+                  <Badge
+                    tone={
+                      tc.status === "error"
+                        ? "danger"
+                        : tc.status === "loading"
+                          ? "warning"
+                          : "success"
+                    }
+                  >
                     {tc.status}
                   </Badge>
                 </div>
@@ -557,7 +731,9 @@ export function AniChat({
               {citations.map((c, i) => (
                 <div key={i} className="ani-citation">
                   <span className="ani-citation-source">{c.source}</span>
-                  <span className="ani-citation-conf">{(c.confidence * 100).toFixed(0)}%</span>
+                  <span className="ani-citation-conf">
+                    {(c.confidence * 100).toFixed(0)}%
+                  </span>
                 </div>
               ))}
             </div>
@@ -566,19 +742,35 @@ export function AniChat({
           <div ref={messagesEndRef} />
         </div>
 
-        {(activeWalkthrough || guideCards.length > 0 || proactiveRecs.length > 0) && (
+        {(activeWalkthrough ||
+          guideCards.length > 0 ||
+          proactiveRecs.length > 0) && (
           <div className="ani-education-bar">
             {activeWalkthrough && (
               <div className="ani-walkthrough-card">
                 <div className="ani-wt-header">
                   <span className="ani-wt-icon">🎓</span>
-                  <span className="ani-wt-title">{activeWalkthrough.title}</span>
-                  <span className="ani-wt-steps">Step {activeWalkthrough.step}/{activeWalkthrough.totalSteps}</span>
+                  <span className="ani-wt-title">
+                    {activeWalkthrough.title}
+                  </span>
+                  <span className="ani-wt-steps">
+                    Step {activeWalkthrough.step}/{activeWalkthrough.totalSteps}
+                  </span>
                 </div>
-                <div className="ani-wt-body">{activeWalkthrough.description}</div>
+                <div className="ani-wt-body">
+                  {activeWalkthrough.description}
+                </div>
                 <div className="ani-wt-actions">
-                  <Button size="sm" onClick={() => setActiveWalkthrough(null)}>Got it</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setActiveWalkthrough(null)}>Dismiss</Button>
+                  <Button size="sm" onClick={() => setActiveWalkthrough(null)}>
+                    Got it
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setActiveWalkthrough(null)}
+                  >
+                    Dismiss
+                  </Button>
                 </div>
               </div>
             )}
@@ -589,17 +781,43 @@ export function AniChat({
                   <div className="ani-guide-title">{card.title}</div>
                   <div className="ani-guide-body">{card.body}</div>
                 </div>
-                <button className="ani-guide-close" onClick={() => setGuideCards((prev) => prev.filter((c) => c.id !== card.id))}>✕</button>
+                <button
+                  className="ani-guide-close"
+                  onClick={() =>
+                    setGuideCards((prev) =>
+                      prev.filter((c) => c.id !== card.id),
+                    )
+                  }
+                >
+                  ✕
+                </button>
               </div>
             ))}
             {proactiveRecs.slice(0, 1).map((rec) => (
               <div key={rec.id} className="ani-rec-card">
-                <span className="ani-rec-icon">{rec.type === "tip" ? "💡" : rec.type === "workflow" ? "⚡" : rec.type === "insight" ? "📊" : "⌨️"}</span>
+                <span className="ani-rec-icon">
+                  {rec.type === "tip"
+                    ? "💡"
+                    : rec.type === "workflow"
+                      ? "⚡"
+                      : rec.type === "insight"
+                        ? "📊"
+                        : "⌨️"}
+                </span>
                 <div className="ani-rec-content">
                   <div className="ani-rec-title">{rec.title}</div>
                   <div className="ani-rec-body">{rec.body}</div>
                 </div>
-                <button className="ani-rec-close" onClick={() => setProactiveRecs((prev) => prev.filter((r) => r.id !== rec.id))}>✕</button>
+                <button
+                  className="ani-rec-close"
+                  onClick={() =>
+                    setProactiveRecs((prev) =>
+                      prev.filter((r) => r.id !== rec.id),
+                    )
+                  }
+                >
+                  ✕
+                </button>
               </div>
             ))}
           </div>
@@ -607,59 +825,194 @@ export function AniChat({
 
         <div className="ani-capability-bar">
           <div className="ani-capability-buttons">
-            <button className={`ani-cap-btn ${showLearning ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowLearning(!showLearning); setShowProgressPanel(false); setShowOutcomePanel(false); setShowGraphPanel(false); }} title="Learning mode">📚</button>
-            <button className={`ani-cap-btn ${showProgressPanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowProgressPanel(!showProgressPanel); setShowLearning(false); setShowOutcomePanel(false); setShowGraphPanel(false); }} title="Task progress">📊</button>
-            <button className={`ani-cap-btn ${showOutcomePanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowOutcomePanel(!showOutcomePanel); setShowLearning(false); setShowProgressPanel(false); setShowGraphPanel(false); }} title="Outcomes">🏆</button>
-            <button className={`ani-cap-btn ${showGraphPanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowGraphPanel(!showGraphPanel); setShowLearning(false); setShowProgressPanel(false); setShowOutcomePanel(false); }} title="Context graph">🕸️</button>
-            <button className={`ani-cap-btn ${showMeetingPanel ? "ani-cap-btn-active" : ""}`} onClick={() => { setShowMeetingPanel(!showMeetingPanel); setShowLearning(false); setShowProgressPanel(false); setShowOutcomePanel(false); setShowGraphPanel(false); }} title="Meeting intelligence">👥</button>
+            <button
+              className={`ani-cap-btn ${showLearning ? "ani-cap-btn-active" : ""}`}
+              onClick={() => {
+                setShowLearning(!showLearning);
+                setShowProgressPanel(false);
+                setShowOutcomePanel(false);
+                setShowGraphPanel(false);
+              }}
+              title="Learning mode"
+            >
+              📚
+            </button>
+            <button
+              className={`ani-cap-btn ${showProgressPanel ? "ani-cap-btn-active" : ""}`}
+              onClick={() => {
+                setShowProgressPanel(!showProgressPanel);
+                setShowLearning(false);
+                setShowOutcomePanel(false);
+                setShowGraphPanel(false);
+              }}
+              title="Task progress"
+            >
+              📊
+            </button>
+            <button
+              className={`ani-cap-btn ${showOutcomePanel ? "ani-cap-btn-active" : ""}`}
+              onClick={() => {
+                setShowOutcomePanel(!showOutcomePanel);
+                setShowLearning(false);
+                setShowProgressPanel(false);
+                setShowGraphPanel(false);
+              }}
+              title="Outcomes"
+            >
+              🏆
+            </button>
+            <button
+              className={`ani-cap-btn ${showGraphPanel ? "ani-cap-btn-active" : ""}`}
+              onClick={() => {
+                setShowGraphPanel(!showGraphPanel);
+                setShowLearning(false);
+                setShowProgressPanel(false);
+                setShowOutcomePanel(false);
+              }}
+              title="Context graph"
+            >
+              🕸️
+            </button>
+            <button
+              className={`ani-cap-btn ${showMeetingPanel ? "ani-cap-btn-active" : ""}`}
+              onClick={() => {
+                setShowMeetingPanel(!showMeetingPanel);
+                setShowLearning(false);
+                setShowProgressPanel(false);
+                setShowOutcomePanel(false);
+                setShowGraphPanel(false);
+              }}
+              title="Meeting intelligence"
+            >
+              👥
+            </button>
             {ttsState.supported && active && active.messages.length > 0 && (
-              <button className={`ani-cap-btn ${isSpeaking ? "ani-cap-btn-active" : ""}`} onClick={() => {
-                if (isSpeaking) { stopSpeech(); setIsSpeaking(false); }
-                else { const last = active.messages.filter((m) => m.role === "assistant").pop(); if (last) { speakText(last.content, ttsState).then(() => setIsSpeaking(false)); setIsSpeaking(true); } }
-              }} title={isSpeaking ? "Stop speaking" : "Speak last response"}>{isSpeaking ? "🔊" : "🔈"}</button>
+              <button
+                className={`ani-cap-btn ${isSpeaking ? "ani-cap-btn-active" : ""}`}
+                onClick={() => {
+                  if (isSpeaking) {
+                    stopSpeech();
+                    setIsSpeaking(false);
+                  } else {
+                    const last = active.messages
+                      .filter((m) => m.role === "assistant")
+                      .pop();
+                    if (last) {
+                      speakText(last.content, ttsState).then(() =>
+                        setIsSpeaking(false),
+                      );
+                      setIsSpeaking(true);
+                    }
+                  }
+                }}
+                title={isSpeaking ? "Stop speaking" : "Speak last response"}
+              >
+                {isSpeaking ? "🔊" : "🔈"}
+              </button>
             )}
           </div>
         </div>
 
         {showLearning && (
           <div className="ani-capability-panel">
-            <div className="ani-panel-header"><span>📚 Learning Mode</span><button className="ani-panel-close" onClick={() => setShowLearning(false)}>✕</button></div>
+            <div className="ani-panel-header">
+              <span>📚 Learning Mode</span>
+              <button
+                className="ani-panel-close"
+                onClick={() => setShowLearning(false)}
+              >
+                ✕
+              </button>
+            </div>
             {!learningModule ? (
               <div className="ani-learning-topics">
-                {["architecture", "decision-making", "system-design"].map((topic) => (
-                  <button key={topic} className="ani-topic-btn" onClick={() => { setLearningModule(createLearningModule(topic, "beginner")); setLearningStep(0); }}>
-                    {topic}
-                  </button>
-                ))}
+                {["architecture", "decision-making", "system-design"].map(
+                  (topic) => (
+                    <button
+                      key={topic}
+                      className="ani-topic-btn"
+                      onClick={() => {
+                        setLearningModule(
+                          createLearningModule(topic, "beginner"),
+                        );
+                        setLearningStep(0);
+                      }}
+                    >
+                      {topic}
+                    </button>
+                  ),
+                )}
               </div>
             ) : (
               <div className="ani-learning-content">
                 <div className="ani-learning-header">
-                  <button className="ani-learning-back" onClick={() => setLearningModule(null)}>← Topics</button>
-                  <span className="ani-learning-title">{learningModule.title}</span>
-                  <span className="ani-learning-step">Step {learningStep + 1}/{learningModule.steps.length}</span>
+                  <button
+                    className="ani-learning-back"
+                    onClick={() => setLearningModule(null)}
+                  >
+                    ← Topics
+                  </button>
+                  <span className="ani-learning-title">
+                    {learningModule.title}
+                  </span>
+                  <span className="ani-learning-step">
+                    Step {learningStep + 1}/{learningModule.steps.length}
+                  </span>
                 </div>
                 {learningModule.steps[learningStep] && (
                   <div className="ani-learning-step-content">
-                    <div className="ani-step-title">{learningModule.steps[learningStep]!.title}</div>
-                    <div className="ani-step-body">{learningModule.steps[learningStep]!.content}</div>
+                    <div className="ani-step-title">
+                      {learningModule.steps[learningStep]!.title}
+                    </div>
+                    <div className="ani-step-body">
+                      {learningModule.steps[learningStep]!.content}
+                    </div>
                     <div className="ani-step-points">
-                      {learningModule.steps[learningStep]!.keyPoints.map((p, i) => (
-                        <span key={i} className="ani-step-point">• {p}</span>
-                      ))}
+                      {learningModule.steps[learningStep]!.keyPoints.map(
+                        (p, i) => (
+                          <span key={i} className="ani-step-point">
+                            • {p}
+                          </span>
+                        ),
+                      )}
                     </div>
                     {learningModule.steps[learningStep]!.checkQuestion && (
                       <div className="ani-step-check">
-                        <div className="ani-check-q">{learningModule.steps[learningStep]!.checkQuestion}</div>
-                        <div className="ani-check-hint">Think about the key points above, then continue to check your understanding.</div>
+                        <div className="ani-check-q">
+                          {learningModule.steps[learningStep]!.checkQuestion}
+                        </div>
+                        <div className="ani-check-hint">
+                          Think about the key points above, then continue to
+                          check your understanding.
+                        </div>
                       </div>
                     )}
                     <div className="ani-learning-nav">
-                      <Button size="sm" variant="ghost" onClick={() => setLearningStep(Math.max(0, learningStep - 1))} disabled={learningStep === 0}>← Previous</Button>
-                      <Button size="sm" onClick={() => {
-                        if (learningStep < learningModule.steps.length - 1) setLearningStep(learningStep + 1);
-                        else { setLearningModule(null); setLearningStep(0); }
-                      }}>{learningStep < learningModule.steps.length - 1 ? "Next →" : "Complete ✓"}</Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          setLearningStep(Math.max(0, learningStep - 1))
+                        }
+                        disabled={learningStep === 0}
+                      >
+                        ← Previous
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          if (learningStep < learningModule.steps.length - 1)
+                            setLearningStep(learningStep + 1);
+                          else {
+                            setLearningModule(null);
+                            setLearningStep(0);
+                          }
+                        }}
+                      >
+                        {learningStep < learningModule.steps.length - 1
+                          ? "Next →"
+                          : "Complete ✓"}
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -670,20 +1023,50 @@ export function AniChat({
 
         {showProgressPanel && (
           <div className="ani-capability-panel">
-            <div className="ani-panel-header"><span>📊 Task Progress</span><button className="ani-panel-close" onClick={() => setShowProgressPanel(false)}>✕</button></div>
+            <div className="ani-panel-header">
+              <span>📊 Task Progress</span>
+              <button
+                className="ani-panel-close"
+                onClick={() => setShowProgressPanel(false)}
+              >
+                ✕
+              </button>
+            </div>
             {!taskProgress ? (
-              <div className="ani-progress-empty">No active tasks. Autonomous workflows will show progress here.</div>
+              <div className="ani-progress-empty">
+                No active tasks. Autonomous workflows will show progress here.
+              </div>
             ) : (
               <div className="ani-progress-content">
                 <div className="ani-progress-header">
-                  <span className="ani-progress-label">{taskProgress.label}</span>
-                  <span className="ani-progress-pct">{Math.round(taskProgress.progress * 100)}%</span>
+                  <span className="ani-progress-label">
+                    {taskProgress.label}
+                  </span>
+                  <span className="ani-progress-pct">
+                    {Math.round(taskProgress.progress * 100)}%
+                  </span>
                 </div>
-                <div className="ani-progress-track"><div className="ani-progress-fill" style={{ width: `${taskProgress.progress * 100}%` }} /></div>
+                <div className="ani-progress-track">
+                  <div
+                    className="ani-progress-fill"
+                    style={{ width: `${taskProgress.progress * 100}%` }}
+                  />
+                </div>
                 <div className="ani-progress-steps">
                   {taskProgress.steps.map((s, i) => (
-                    <div key={i} className={`ani-progress-step ani-step-${s.status}`}>
-                      <span className="ani-step-icon">{s.status === "completed" ? "✓" : s.status === "active" ? "⟳" : s.status === "failed" ? "✕" : "○"}</span>
+                    <div
+                      key={i}
+                      className={`ani-progress-step ani-step-${s.status}`}
+                    >
+                      <span className="ani-step-icon">
+                        {s.status === "completed"
+                          ? "✓"
+                          : s.status === "active"
+                            ? "⟳"
+                            : s.status === "failed"
+                              ? "✕"
+                              : "○"}
+                      </span>
                       <span className="ani-step-label">{s.label}</span>
                     </div>
                   ))}
@@ -695,34 +1078,76 @@ export function AniChat({
 
         {showOutcomePanel && (
           <div className="ani-capability-panel">
-            <div className="ani-panel-header"><span>🏆 Outcome Tracker</span><button className="ani-panel-close" onClick={() => setShowOutcomePanel(false)}>✕</button></div>
+            <div className="ani-panel-header">
+              <span>🏆 Outcome Tracker</span>
+              <button
+                className="ani-panel-close"
+                onClick={() => setShowOutcomePanel(false)}
+              >
+                ✕
+              </button>
+            </div>
             {outcomes.length === 0 ? (
-              <div className="ani-outcome-empty">Outcomes will be tracked as you use ANI features. Metrics include time saved, decision quality, and satisfaction.</div>
-            ) : (() => {
-              const summary = summarizeOutcomes(outcomes);
-              return (
-                <div className="ani-outcome-content">
-                  <div className="ani-outcome-stats">
-                    <div className="ani-outcome-stat"><span className="ani-outcome-val">{summary.totalActions}</span><span className="ani-outcome-key">Actions</span></div>
-                    <div className="ani-outcome-stat"><span className="ani-outcome-val">{Math.round(summary.avgSatisfaction * 100)}%</span><span className="ani-outcome-key">Satisfaction</span></div>
-                    <div className="ani-outcome-stat"><span className="ani-outcome-val">{summary.trend === "improving" ? "📈" : summary.trend === "declining" ? "📉" : "➡️"}</span><span className="ani-outcome-key">Trend</span></div>
-                  </div>
-                  {summary.topFeatures.length > 0 && (
-                    <div className="ani-outcome-features">
-                      {summary.topFeatures.map((f) => (
-                        <span key={f.feature} className="ani-outcome-feature">{f.feature} ({f.count})</span>
-                      ))}
+              <div className="ani-outcome-empty">
+                Outcomes will be tracked as you use ANI features. Metrics
+                include time saved, decision quality, and satisfaction.
+              </div>
+            ) : (
+              (() => {
+                const summary = summarizeOutcomes(outcomes);
+                return (
+                  <div className="ani-outcome-content">
+                    <div className="ani-outcome-stats">
+                      <div className="ani-outcome-stat">
+                        <span className="ani-outcome-val">
+                          {summary.totalActions}
+                        </span>
+                        <span className="ani-outcome-key">Actions</span>
+                      </div>
+                      <div className="ani-outcome-stat">
+                        <span className="ani-outcome-val">
+                          {Math.round(summary.avgSatisfaction * 100)}%
+                        </span>
+                        <span className="ani-outcome-key">Satisfaction</span>
+                      </div>
+                      <div className="ani-outcome-stat">
+                        <span className="ani-outcome-val">
+                          {summary.trend === "improving"
+                            ? "📈"
+                            : summary.trend === "declining"
+                              ? "📉"
+                              : "➡️"}
+                        </span>
+                        <span className="ani-outcome-key">Trend</span>
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })()}
+                    {summary.topFeatures.length > 0 && (
+                      <div className="ani-outcome-features">
+                        {summary.topFeatures.map((f) => (
+                          <span key={f.feature} className="ani-outcome-feature">
+                            {f.feature} ({f.count})
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
+            )}
           </div>
         )}
 
         {showGraphPanel && (
           <div className="ani-capability-panel">
-            <div className="ani-panel-header"><span>🕸️ Context Graph</span><button className="ani-panel-close" onClick={() => setShowGraphPanel(false)}>✕</button></div>
+            <div className="ani-panel-header">
+              <span>🕸️ Context Graph</span>
+              <button
+                className="ani-panel-close"
+                onClick={() => setShowGraphPanel(false)}
+              >
+                ✕
+              </button>
+            </div>
             <div className="ani-graph-content">
               {graphLayout ? (
                 <>
@@ -730,10 +1155,17 @@ export function AniChat({
                     <span>{graphLayout.nodes.length} nodes</span>
                     <span>{graphLayout.edges.length} edges</span>
                   </div>
-                  <canvas ref={graphCanvasRef} width={700} height={350} className="ani-graph-canvas" />
+                  <canvas
+                    ref={graphCanvasRef}
+                    width={700}
+                    height={350}
+                    className="ani-graph-canvas"
+                  />
                 </>
               ) : (
-                <div className="ani-graph-empty">Building context graph from your workspace…</div>
+                <div className="ani-graph-empty">
+                  Building context graph from your workspace…
+                </div>
               )}
             </div>
           </div>
@@ -741,21 +1173,45 @@ export function AniChat({
 
         {showMeetingPanel && meetingState && (
           <div className="ani-capability-panel">
-            <div className="ani-panel-header"><span>👥 Meeting Intelligence</span><button className="ani-panel-close" onClick={() => setShowMeetingPanel(false)}>✕</button></div>
+            <div className="ani-panel-header">
+              <span>👥 Meeting Intelligence</span>
+              <button
+                className="ani-panel-close"
+                onClick={() => setShowMeetingPanel(false)}
+              >
+                ✕
+              </button>
+            </div>
             <div className="ani-meeting-content">
               <div className="ani-meeting-stats">
-                <div className="ani-meeting-stat"><span>{meetingState.participants.length}</span><label>Participants</label></div>
-                <div className="ani-meeting-stat"><span>{meetingState.decisions.length}</span><label>Decisions</label></div>
-                <div className="ani-meeting-stat"><span>{meetingState.actionItems.length}</span><label>Actions</label></div>
-                <div className="ani-meeting-stat"><span>{Math.round(meetingState.engagement * 100)}%</span><label>Engagement</label></div>
+                <div className="ani-meeting-stat">
+                  <span>{meetingState.participants.length}</span>
+                  <label>Participants</label>
+                </div>
+                <div className="ani-meeting-stat">
+                  <span>{meetingState.decisions.length}</span>
+                  <label>Decisions</label>
+                </div>
+                <div className="ani-meeting-stat">
+                  <span>{meetingState.actionItems.length}</span>
+                  <label>Actions</label>
+                </div>
+                <div className="ani-meeting-stat">
+                  <span>{Math.round(meetingState.engagement * 100)}%</span>
+                  <label>Engagement</label>
+                </div>
               </div>
               {meetingState.participants.length > 0 && (
                 <div className="ani-meeting-participants">
                   {meetingState.participants.map((p) => (
                     <div key={p.id} className="ani-participant">
                       <span className="ani-participant-name">{p.name}</span>
-                      <span className="ani-participant-talk">{p.talkTimePercent}%</span>
-                      <span className={`ani-participant-engagement eng-${p.engagement > 0.6 ? "high" : p.engagement > 0.3 ? "med" : "low"}`}>
+                      <span className="ani-participant-talk">
+                        {p.talkTimePercent}%
+                      </span>
+                      <span
+                        className={`ani-participant-engagement eng-${p.engagement > 0.6 ? "high" : p.engagement > 0.3 ? "med" : "low"}`}
+                      >
                         {Math.round(p.engagement * 100)}%
                       </span>
                     </div>
@@ -783,7 +1239,9 @@ export function AniChat({
                 <div className="ani-thought-bubble">
                   <div className="ani-thought-title">⚡ Reasoning Trace</div>
                   {traceThoughts.map((t, i) => (
-                    <div key={i} className="ani-thought-item">{t}</div>
+                    <div key={i} className="ani-thought-item">
+                      {t}
+                    </div>
                   ))}
                 </div>
               )}
@@ -794,7 +1252,9 @@ export function AniChat({
                   </div>
                   <div className="ani-feedback-actions">
                     {feedbackPanel.nextActions.map((a, i) => (
-                      <span key={i} className="ani-feedback-tag">{a}</span>
+                      <span key={i} className="ani-feedback-tag">
+                        {a}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -820,7 +1280,13 @@ export function AniChat({
                   onClick={() => setShowDepthPanel(!showDepthPanel)}
                   title="Reasoning depth"
                 >
-                  {reasoningDepth === "fast" ? "⚡" : reasoningDepth === "balanced" ? "◆" : reasoningDepth === "deep" ? "🔬" : "🔭"}
+                  {reasoningDepth === "fast"
+                    ? "⚡"
+                    : reasoningDepth === "balanced"
+                      ? "◆"
+                      : reasoningDepth === "deep"
+                        ? "🔬"
+                        : "🔭"}
                 </button>
                 <button
                   className={`ani-thought-toggle ${showThoughts ? "ani-thought-toggle-active" : ""}`}
@@ -833,12 +1299,21 @@ export function AniChat({
                   className={`ani-voice-toggle ${voiceState.isListening ? "ani-voice-toggle-active" : ""}`}
                   onClick={() => {
                     if (voiceState.isListening) {
-                      setVoiceState((prev) => ({ ...prev, isListening: false }));
+                      setVoiceState((prev) => ({
+                        ...prev,
+                        isListening: false,
+                      }));
                     } else {
-                      setVoiceState((prev) => ({ ...prev, isListening: true, transcript: "" }));
+                      setVoiceState((prev) => ({
+                        ...prev,
+                        isListening: true,
+                        transcript: "",
+                      }));
                     }
                   }}
-                  title={voiceState.isListening ? "Stop listening" : "Voice input"}
+                  title={
+                    voiceState.isListening ? "Stop listening" : "Voice input"
+                  }
                   disabled={!voiceState.supported}
                 >
                   {voiceState.isListening ? "🔴" : "🎤"}
@@ -860,7 +1335,13 @@ export function AniChat({
                     <span className="ani-send-spinner" />
                   ) : (
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 2L8 14M8 2L3 7M8 2L13 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path
+                        d="M8 2L8 14M8 2L3 7M8 2L13 7"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
                     </svg>
                   )}
                 </button>
@@ -881,22 +1362,39 @@ export function AniChat({
                   </label>
                 </div>
                 <div className="ani-depth-options">
-                  {(["fast", "balanced", "deep", "research"] as const).map((d) => (
-                    <button
-                      key={d}
-                      className={`ani-depth-option ${reasoningDepth === d && !autoDepth ? "ani-depth-option-active" : ""}`}
-                      onClick={() => { setReasoningDepth(d); setAutoDepth(false); }}
-                      disabled={autoDepth}
-                    >
-                      <span className="ani-depth-option-icon">
-                        {d === "fast" ? "⚡" : d === "balanced" ? "◆" : d === "deep" ? "🔬" : "🔭"}
-                      </span>
-                      <span className="ani-depth-option-name">{d}</span>
-                      <span className="ani-depth-option-desc">
-                        {d === "fast" ? "<1.5s" : d === "balanced" ? "<3s" : d === "deep" ? "<8s" : "<20s"}
-                      </span>
-                    </button>
-                  ))}
+                  {(["fast", "balanced", "deep", "research"] as const).map(
+                    (d) => (
+                      <button
+                        key={d}
+                        className={`ani-depth-option ${reasoningDepth === d && !autoDepth ? "ani-depth-option-active" : ""}`}
+                        onClick={() => {
+                          setReasoningDepth(d);
+                          setAutoDepth(false);
+                        }}
+                        disabled={autoDepth}
+                      >
+                        <span className="ani-depth-option-icon">
+                          {d === "fast"
+                            ? "⚡"
+                            : d === "balanced"
+                              ? "◆"
+                              : d === "deep"
+                                ? "🔬"
+                                : "🔭"}
+                        </span>
+                        <span className="ani-depth-option-name">{d}</span>
+                        <span className="ani-depth-option-desc">
+                          {d === "fast"
+                            ? "<1.5s"
+                            : d === "balanced"
+                              ? "<3s"
+                              : d === "deep"
+                                ? "<8s"
+                                : "<20s"}
+                        </span>
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
             )}
@@ -904,22 +1402,42 @@ export function AniChat({
             {showTransformPanel && active && active.messages.length > 0 && (
               <div className="ani-transform-panel">
                 <div className="ani-transform-header">
-                  <span className="ani-transform-label">Transform Last Response</span>
+                  <span className="ani-transform-label">
+                    Transform Last Response
+                  </span>
                 </div>
                 <div className="ani-transform-options">
-                  {(["sharpen", "clarify", "condense", "actionable", "executive"] as const).map((t) => (
+                  {(
+                    [
+                      "sharpen",
+                      "clarify",
+                      "condense",
+                      "actionable",
+                      "executive",
+                    ] as const
+                  ).map((t) => (
                     <button
                       key={t}
                       className="ani-transform-option"
                       onClick={() => {
-                        const lastMsg = active.messages.filter((m) => m.role === "assistant").pop();
+                        const lastMsg = active.messages
+                          .filter((m) => m.role === "assistant")
+                          .pop();
                         if (lastMsg) {
                           const result = transformContent(lastMsg.content, t);
                           setLastTransform(result);
                         }
                       }}
                     >
-                      {t === "sharpen" ? "🔪" : t === "clarify" ? "💡" : t === "condense" ? "🗜️" : t === "actionable" ? "→" : "📊"}
+                      {t === "sharpen"
+                        ? "🔪"
+                        : t === "clarify"
+                          ? "💡"
+                          : t === "condense"
+                            ? "🗜️"
+                            : t === "actionable"
+                              ? "→"
+                              : "📊"}
                       <span>{t}</span>
                     </button>
                   ))}
@@ -927,11 +1445,22 @@ export function AniChat({
                 {lastTransform && (
                   <div className="ani-transform-result">
                     <div className="ani-transform-stats">
-                      {lastTransform.wordCountBefore} → {lastTransform.wordCountAfter} words
-                      ({Math.round((1 - lastTransform.wordCountAfter / lastTransform.wordCountBefore) * 100)}% reduction)
+                      {lastTransform.wordCountBefore} →{" "}
+                      {lastTransform.wordCountAfter} words (
+                      {Math.round(
+                        (1 -
+                          lastTransform.wordCountAfter /
+                            lastTransform.wordCountBefore) *
+                          100,
+                      )}
+                      % reduction)
                     </div>
                     <div className="ani-transform-changes">
-                      {lastTransform.changes.map((c, i) => <span key={i} className="ani-transform-change">{c}</span>)}
+                      {lastTransform.changes.map((c, i) => (
+                        <span key={i} className="ani-transform-change">
+                          {c}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -942,14 +1471,20 @@ export function AniChat({
               <div className="ani-voice-status">
                 <span className="ani-voice-dot" />
                 <span>Listening…</span>
-                {voiceState.interimTranscript && <span className="ani-voice-interim">{voiceState.interimTranscript}</span>}
+                {voiceState.interimTranscript && (
+                  <span className="ani-voice-interim">
+                    {voiceState.interimTranscript}
+                  </span>
+                )}
               </div>
             )}
 
             {safetyWarnings.length > 0 && (
               <div className="ani-safety-warnings">
                 {safetyWarnings.map((w, i) => (
-                  <div key={i} className="ani-safety-warning">🛡️ {w}</div>
+                  <div key={i} className="ani-safety-warning">
+                    🛡️ {w}
+                  </div>
                 ))}
               </div>
             )}
@@ -961,7 +1496,9 @@ export function AniChat({
               <span>•</span>
               <span>{voiceState.isListening ? "🎤 Voice on" : ""}</span>
               <span>•</span>
-              <span>{active ? `${active.messages.length} messages` : "Ready"}</span>
+              <span>
+                {active ? `${active.messages.length} messages` : "Ready"}
+              </span>
             </div>
           </div>
         </div>
@@ -969,15 +1506,17 @@ export function AniChat({
 
       <aside className="ani-right-panel">
         <div className="ani-panel-tabs">
-          {(["chat", "consciousness", "tools", "memory"] as PanelTab[]).map((tab) => (
-            <button
-              key={tab}
-              className={`ani-panel-tab ${activeTab === tab ? "ani-panel-tab-active" : ""}`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab}
-            </button>
-          ))}
+          {(["chat", "consciousness", "tools", "memory"] as PanelTab[]).map(
+            (tab) => (
+              <button
+                key={tab}
+                className={`ani-panel-tab ${activeTab === tab ? "ani-panel-tab-active" : ""}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab}
+              </button>
+            ),
+          )}
         </div>
 
         {activeTab === "consciousness" && (
@@ -999,7 +1538,9 @@ export function AniChat({
               toolCalls.map((tc) => (
                 <div key={tc.id} className="ani-panel-tool-item">
                   <span className="ani-panel-tool-name">⚡ {tc.name}</span>
-                  <Badge tone={tc.status === "error" ? "danger" : "success"}>{tc.status}</Badge>
+                  <Badge tone={tc.status === "error" ? "danger" : "success"}>
+                    {tc.status}
+                  </Badge>
                 </div>
               ))
             )}
@@ -1023,12 +1564,26 @@ export function AniChat({
                 <div className="ani-memory-stat-label">Episodic</div>
               </div>
             </div>
-            <div className="ani-panel-section-title" style={{ marginTop: 16 }}>Engine Info</div>
+            <div className="ani-panel-section-title" style={{ marginTop: 16 }}>
+              Engine Info
+            </div>
             <div className="ani-engine-info">
-              <div className="ani-engine-row"><span>Model</span><span>N0VA-LM-T</span></div>
-              <div className="ani-engine-row"><span>Context</span><span>128K tokens</span></div>
-              <div className="ani-engine-row"><span>Tier</span><span>Reflective</span></div>
-              <div className="ani-engine-row"><span>Mode</span><span>External</span></div>
+              <div className="ani-engine-row">
+                <span>Model</span>
+                <span>N0VA-LM-T</span>
+              </div>
+              <div className="ani-engine-row">
+                <span>Context</span>
+                <span>128K tokens</span>
+              </div>
+              <div className="ani-engine-row">
+                <span>Tier</span>
+                <span>Reflective</span>
+              </div>
+              <div className="ani-engine-row">
+                <span>Mode</span>
+                <span>External</span>
+              </div>
             </div>
           </div>
         )}
@@ -1064,8 +1619,12 @@ export function AniChat({
         title="New conversation"
         actions={
           <>
-            <Button variant="secondary" onClick={() => setCreating(false)}>Cancel</Button>
-            <Button type="submit" form="create-conversation-form">Start</Button>
+            <Button variant="secondary" onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="create-conversation-form">
+              Start
+            </Button>
           </>
         }
       >
@@ -1077,9 +1636,20 @@ export function AniChat({
               router.refresh();
             });
           }}
-          style={{ minWidth: 340, display: "flex", flexDirection: "column", gap: 10 }}
+          style={{
+            minWidth: 340,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
         >
-          <input className="nv-input" name="title" placeholder="Conversation title" required autoFocus />
+          <input
+            className="nv-input"
+            name="title"
+            placeholder="Conversation title"
+            required
+            autoFocus
+          />
         </form>
       </Dialog>
     </div>
@@ -1105,26 +1675,53 @@ function ConsciousnessPanel({
       <div className="ani-consciousness-viz">
         <CoherenceRing label="Coherence" value={coherence} size={80} />
         <div className="ani-coherence-bars">
-          <CoherenceBar label="Coherence" value={coherence} color="var(--nv-color-success)" />
-          <CoherenceBar label="Cognitive Load" value={cognitiveLoad} color="var(--nv-color-warning)" />
-          <CoherenceBar label="Flow State" value={flowState} color="var(--nv-color-accent)" />
-          <CoherenceBar label="Engagement" value={engagement} color="var(--nv-color-primary)" />
+          <CoherenceBar
+            label="Coherence"
+            value={coherence}
+            color="var(--nv-color-success)"
+          />
+          <CoherenceBar
+            label="Cognitive Load"
+            value={cognitiveLoad}
+            color="var(--nv-color-warning)"
+          />
+          <CoherenceBar
+            label="Flow State"
+            value={flowState}
+            color="var(--nv-color-accent)"
+          />
+          <CoherenceBar
+            label="Engagement"
+            value={engagement}
+            color="var(--nv-color-primary)"
+          />
         </div>
       </div>
 
-      <div className="ani-panel-section-title" style={{ marginTop: 16 }}>Neural State</div>
+      <div className="ani-panel-section-title" style={{ marginTop: 16 }}>
+        Neural State
+      </div>
       <div className="ani-neural-grid">
         <div className="ani-neural-item">
           <div className="ani-neural-label">Attention Vector</div>
-          <div className="ani-neural-value">[{coherence.toFixed(2)}, {cognitiveLoad.toFixed(2)}]</div>
+          <div className="ani-neural-value">
+            [{coherence.toFixed(2)}, {cognitiveLoad.toFixed(2)}]
+          </div>
         </div>
         <div className="ani-neural-item">
           <div className="ani-neural-label">Flow Probability</div>
-          <div className="ani-neural-value">{(flowState * 100).toFixed(0)}%</div>
+          <div className="ani-neural-value">
+            {(flowState * 100).toFixed(0)}%
+          </div>
         </div>
         <div className="ani-neural-item">
           <div className="ani-neural-label">Intent</div>
-          <div className="ani-neural-value" style={{ textTransform: "capitalize" }}>{intent}</div>
+          <div
+            className="ani-neural-value"
+            style={{ textTransform: "capitalize" }}
+          >
+            {intent}
+          </div>
         </div>
         <div className="ani-neural-item">
           <div className="ani-neural-label">Consciousness Tier</div>
@@ -1132,11 +1729,22 @@ function ConsciousnessPanel({
         </div>
       </div>
 
-      <div className="ani-panel-section-title" style={{ marginTop: 16 }}>5-Layer Stack</div>
+      <div className="ani-panel-section-title" style={{ marginTop: 16 }}>
+        5-Layer Stack
+      </div>
       <div className="ani-layers">
-        {["Perceptual", "Working Memory", "Long-Term", "Metacognition", "Integration"].map((layer, i) => (
+        {[
+          "Perceptual",
+          "Working Memory",
+          "Long-Term",
+          "Metacognition",
+          "Integration",
+        ].map((layer, i) => (
           <div key={layer} className="ani-layer">
-            <div className="ani-layer-dot" style={{ opacity: i < 4 ? 1 : 0.5 }} />
+            <div
+              className="ani-layer-dot"
+              style={{ opacity: i < 4 ? 1 : 0.5 }}
+            />
             <span>{layer}</span>
           </div>
         ))}
@@ -1145,7 +1753,15 @@ function ConsciousnessPanel({
   );
 }
 
-function CoherenceRing({ label, value, size }: { label: string; value: number; size: number }) {
+function CoherenceRing({
+  label,
+  value,
+  size,
+}: {
+  label: string;
+  value: number;
+  size: number;
+}) {
   const radius = (size - 8) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - value);
@@ -1153,27 +1769,49 @@ function CoherenceRing({ label, value, size }: { label: string; value: number; s
   return (
     <div className="ani-coherence-ring" style={{ width: size, height: size }}>
       <svg width={size} height={size}>
-        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="var(--nv-color-border)" strokeWidth="3" />
         <circle
-          cx={size/2} cy={size/2} r={radius} fill="none"
-          stroke={value > 0.9 ? "var(--nv-color-success)" : "var(--nv-color-warning)"}
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="var(--nv-color-border)"
+          strokeWidth="3"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={
+            value > 0.9 ? "var(--nv-color-success)" : "var(--nv-color-warning)"
+          }
           strokeWidth="3"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          transform={`rotate(-90 ${size/2} ${size/2})`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
           style={{ transition: "stroke-dashoffset 0.6s ease" }}
         />
       </svg>
       <div className="ani-coherence-ring-label">
-        <div className="ani-coherence-ring-value">{(value * 100).toFixed(0)}%</div>
+        <div className="ani-coherence-ring-value">
+          {(value * 100).toFixed(0)}%
+        </div>
         <div className="ani-coherence-ring-name">{label}</div>
       </div>
     </div>
   );
 }
 
-function CoherenceBar({ label, value, color }: { label: string; value: number; color: string }) {
+function CoherenceBar({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
   return (
     <div className="ani-coherence-bar-row">
       <span className="ani-coherence-bar-label">{label}</span>
@@ -1183,7 +1821,9 @@ function CoherenceBar({ label, value, color }: { label: string; value: number; c
           style={{ width: `${value * 100}%`, background: color }}
         />
       </div>
-      <span className="ani-coherence-bar-value">{(value * 100).toFixed(0)}%</span>
+      <span className="ani-coherence-bar-value">
+        {(value * 100).toFixed(0)}%
+      </span>
     </div>
   );
 }
@@ -1196,42 +1836,54 @@ function AniEmptyState({ onCreate }: { onCreate: () => void }) {
         <div className="ani-empty-pulse" />
       </div>
       <div className="ani-empty-title">N0VA ANI</div>
-      <div className="ani-empty-subtitle">AI Native Intelligence — Consciousness Layer</div>
+      <div className="ani-empty-subtitle">
+        AI Native Intelligence — Consciousness Layer
+      </div>
       <div className="ani-empty-desc">
-        Your agentic assistant with consciousness awareness, RAG-powered retrieval,
-        N0VA1O tool orchestration, and cross-module hyper-context.
+        Your agentic assistant with consciousness awareness, RAG-powered
+        retrieval, N0VA1O tool orchestration, and cross-module hyper-context.
       </div>
       <div className="ani-empty-capabilities">
         <div className="ani-capability">
           <div className="ani-cap-icon">🧠</div>
           <div className="ani-cap-text">
             <div className="ani-cap-name">Consciousness</div>
-            <div className="ani-cap-desc">5-layer synthetic awareness with coherence tracking</div>
+            <div className="ani-cap-desc">
+              5-layer synthetic awareness with coherence tracking
+            </div>
           </div>
         </div>
         <div className="ani-capability">
           <div className="ani-cap-icon">⚡</div>
           <div className="ani-cap-text">
             <div className="ani-cap-name">Tool Orchestration</div>
-            <div className="ani-cap-desc">Autonomous multi-step workflows via N0VA1O gateway</div>
+            <div className="ani-cap-desc">
+              Autonomous multi-step workflows via N0VA1O gateway
+            </div>
           </div>
         </div>
         <div className="ani-capability">
           <div className="ani-cap-icon">🔍</div>
           <div className="ani-cap-text">
             <div className="ani-cap-name">RAG Pipeline</div>
-            <div className="ani-cap-desc">Hybrid retrieval across all workspace modules</div>
+            <div className="ani-cap-desc">
+              Hybrid retrieval across all workspace modules
+            </div>
           </div>
         </div>
         <div className="ani-capability">
           <div className="ani-cap-icon">🛡️</div>
           <div className="ani-cap-text">
             <div className="ani-cap-name">Safety & Ethics</div>
-            <div className="ani-cap-desc">Constitutional AI with HITL for critical actions</div>
+            <div className="ani-cap-desc">
+              Constitutional AI with HITL for critical actions
+            </div>
           </div>
         </div>
       </div>
-      <Button size="md" onClick={onCreate}>Start a conversation</Button>
+      <Button size="md" onClick={onCreate}>
+        Start a conversation
+      </Button>
     </div>
   );
 }
@@ -1239,8 +1891,10 @@ function AniEmptyState({ onCreate }: { onCreate: () => void }) {
 function classifyLocalIntent(input: string): string {
   const lower = input.toLowerCase();
   if (lower.match(/what|when|where|how many|define|explain/)) return "factual";
-  if (lower.match(/write|create|generate|design|compose|draft/)) return "creative";
-  if (lower.match(/analyze|compare|evaluate|assess|review|pattern/)) return "analytical";
+  if (lower.match(/write|create|generate|design|compose|draft/))
+    return "creative";
+  if (lower.match(/analyze|compare|evaluate|assess|review|pattern/))
+    return "analytical";
   if (lower.match(/schedule|send|update|delete|move|assign/)) return "action";
   return "conversational";
 }

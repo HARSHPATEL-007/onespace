@@ -73,55 +73,89 @@ export function buildMultiPassAnswer(
 
   const improvementScore = Math.min(0.95, critiqueRounds.length * 0.15 + 0.1);
 
-  return { finalAnswer: currentDraft, rounds: critiqueRounds, improvementScore };
+  return {
+    finalAnswer: currentDraft,
+    rounds: critiqueRounds,
+    improvementScore,
+  };
 }
 
 function _generateCritique(draft: string, round: number): string {
   const wordCount = draft.split(/\s+/).length;
-  const hasStructure = draft.includes("\n") || draft.includes("-") || draft.includes(".");
-  const hasSpecifics = /\d+|specifically|for example|such as|instance/i.test(draft);
+  const hasStructure =
+    draft.includes("\n") || draft.includes("-") || draft.includes(".");
+  const hasSpecifics = /\d+|specifically|for example|such as|instance/i.test(
+    draft,
+  );
 
   const issues: string[] = [];
 
   if (wordCount < 50) issues.push("Response lacks sufficient depth and detail");
-  if (!hasStructure) issues.push("Could benefit from clearer structure and organization");
+  if (!hasStructure)
+    issues.push("Could benefit from clearer structure and organization");
   if (!hasSpecifics) issues.push("Needs more concrete examples or specifics");
   if (!draft.includes("?")) issues.push("Could anticipate follow-up questions");
 
   if (round > 1) {
-    if (draft.length < 200) issues.push("Second pass: still too concise for the depth level");
-    if (!draft.toLowerCase().includes("however") && !draft.toLowerCase().includes("consider")) {
+    if (draft.length < 200)
+      issues.push("Second pass: still too concise for the depth level");
+    if (
+      !draft.toLowerCase().includes("however") &&
+      !draft.toLowerCase().includes("consider")
+    ) {
       issues.push("Missing nuance or alternative perspectives");
     }
   }
 
-  return issues.length > 0 ? issues.join(". ") + "." : "Draft meets quality standards.";
+  return issues.length > 0
+    ? issues.join(". ") + "."
+    : "Draft meets quality standards.";
 }
 
-function _identifyImprovements(draft: string, critique: string, depth: ReasoningDepth): string[] {
+function _identifyImprovements(
+  draft: string,
+  critique: string,
+  depth: ReasoningDepth,
+): string[] {
   const improvements: string[] = [];
 
-  if (critique.includes("depth")) improvements.push("Expand with additional detail and examples");
-  if (critique.includes("structure")) improvements.push("Reorganize with clear sections and headers");
-  if (critique.includes("specifics")) improvements.push("Add concrete examples and data points");
-  if (critique.includes("follow-up")) improvements.push("Address likely follow-up concerns");
-  if (critique.includes("nuance") && depth !== "fast") improvements.push("Add balanced perspective with tradeoffs");
+  if (critique.includes("depth"))
+    improvements.push("Expand with additional detail and examples");
+  if (critique.includes("structure"))
+    improvements.push("Reorganize with clear sections and headers");
+  if (critique.includes("specifics"))
+    improvements.push("Add concrete examples and data points");
+  if (critique.includes("follow-up"))
+    improvements.push("Address likely follow-up concerns");
+  if (critique.includes("nuance") && depth !== "fast")
+    improvements.push("Add balanced perspective with tradeoffs");
 
-  return improvements.length > 0 ? improvements : ["Minor polish and clarity improvements"];
+  return improvements.length > 0
+    ? improvements
+    : ["Minor polish and clarity improvements"];
 }
 
 function _applyImprovements(draft: string, improvements: string[]): string {
   let result = draft;
 
-  if (improvements.some((i) => i.includes("structure")) && !draft.includes("\n\n")) {
+  if (
+    improvements.some((i) => i.includes("structure")) &&
+    !draft.includes("\n\n")
+  ) {
     const sentences = draft.split(/(?<=[.!?])\s+/);
     if (sentences.length > 3) {
       const mid = Math.floor(sentences.length / 2);
-      result = sentences.slice(0, mid).join(" ") + "\n\n" + sentences.slice(mid).join(" ");
+      result =
+        sentences.slice(0, mid).join(" ") +
+        "\n\n" +
+        sentences.slice(mid).join(" ");
     }
   }
 
-  if (improvements.some((i) => i.includes("examples")) && !draft.includes("For example")) {
+  if (
+    improvements.some((i) => i.includes("examples")) &&
+    !draft.includes("For example")
+  ) {
     result += "\n\nKey considerations to keep in mind as you evaluate this.";
   }
 
@@ -178,17 +212,26 @@ export function digestContext(
     relationships,
     compressedTokenCount: usedTokens,
     originalTokenCount: originalTokens,
-    relevanceScore: selected.length > 0 ? selected.reduce((a, s) => a + s.score, 0) / selected.length : 0.5,
+    relevanceScore:
+      selected.length > 0
+        ? selected.reduce((a, s) => a + s.score, 0) / selected.length
+        : 0.5,
   };
 }
 
-function _scoreSentenceRelevance(sentence: string, index: number, total: number): number {
+function _scoreSentenceRelevance(
+  sentence: string,
+  index: number,
+  total: number,
+): number {
   let score = 0.5;
   const lower = sentence.toLowerCase();
 
-  if (/\b(important|critical|key|must|essential|primary)\b/.test(lower)) score += 0.3;
+  if (/\b(important|critical|key|must|essential|primary)\b/.test(lower))
+    score += 0.3;
   if (/\b(decided|agreed|concluded|determined)\b/.test(lower)) score += 0.25;
-  if (/\b(\$[\d,]+|deadline|date|milestone|deliverable)\b/.test(lower)) score += 0.2;
+  if (/\b(\$[\d,]+|deadline|date|milestone|deliverable)\b/.test(lower))
+    score += 0.2;
   if (/\b(risk|issue|blocker|concern|warning)\b/.test(lower)) score += 0.25;
   if (index < total * 0.1 || index > total * 0.9) score += 0.1;
   if (sentence.length > 200) score += 0.05;
@@ -201,7 +244,11 @@ function _extractKeyFacts(content: string): string[] {
   const sentences = content.split(/(?<=[.!?])\s+/);
 
   for (const s of sentences) {
-    if (/\b(is|are|was|were|has|have|will|must|requires)\b/.test(s) && s.length > 20 && s.length < 200) {
+    if (
+      /\b(is|are|was|were|has|have|will|must|requires)\b/.test(s) &&
+      s.length > 20 &&
+      s.length < 200
+    ) {
       facts.push(s.trim());
     }
     if (facts.length >= 8) break;
@@ -210,7 +257,9 @@ function _extractKeyFacts(content: string): string[] {
   return facts;
 }
 
-function _extractEntities(content: string): Array<{ name: string; type: string; mentions: number }> {
+function _extractEntities(
+  content: string,
+): Array<{ name: string; type: string; mentions: number }> {
   const entityMap = new Map<string, { type: string; count: number }>();
 
   const namePatterns = [
@@ -240,7 +289,8 @@ function _extractRelationships(
   content: string,
   entities: Array<{ name: string; type: string }>,
 ): Array<{ from: string; to: string; relation: string }> {
-  const relationships: Array<{ from: string; to: string; relation: string }> = [];
+  const relationships: Array<{ from: string; to: string; relation: string }> =
+    [];
   const topEntities = entities.slice(0, 6).map((e) => e.name);
 
   for (let i = 0; i < topEntities.length; i++) {
@@ -272,22 +322,92 @@ export function buildAutonomousWorkflow(
   const lower = intent.toLowerCase();
 
   if (lower.includes("schedule") || lower.includes("meeting")) {
-    steps.push({ step: 1, action: "Check calendar availability", tool: "calendar:query", description: "Query attendee availability", status: "pending" });
-    steps.push({ step: 2, action: "Find optimal time slot", tool: "calendar:optimize", description: "Compute best meeting time", status: "pending" });
-    steps.push({ step: 3, action: "Create event", tool: "calendar:create", description: "Schedule the meeting", status: "pending" });
-    steps.push({ step: 4, action: "Send invites", tool: "mail:send", description: "Notify attendees", status: "pending" });
+    steps.push({
+      step: 1,
+      action: "Check calendar availability",
+      tool: "calendar:query",
+      description: "Query attendee availability",
+      status: "pending",
+    });
+    steps.push({
+      step: 2,
+      action: "Find optimal time slot",
+      tool: "calendar:optimize",
+      description: "Compute best meeting time",
+      status: "pending",
+    });
+    steps.push({
+      step: 3,
+      action: "Create event",
+      tool: "calendar:create",
+      description: "Schedule the meeting",
+      status: "pending",
+    });
+    steps.push({
+      step: 4,
+      action: "Send invites",
+      tool: "mail:send",
+      description: "Notify attendees",
+      status: "pending",
+    });
   } else if (lower.includes("report") || lower.includes("summarize")) {
-    steps.push({ step: 1, action: "Gather source documents", tool: "docs:query", description: "Find relevant documents", status: "pending" });
-    steps.push({ step: 2, action: "Extract key data", tool: "analyze", description: "Process document content", status: "pending" });
-    steps.push({ step: 3, action: "Generate summary", tool: "generate", description: "Produce report", status: "pending" });
-    steps.push({ step: 4, action: "Save output", tool: "docs:create", description: "Store final report", status: "pending" });
+    steps.push({
+      step: 1,
+      action: "Gather source documents",
+      tool: "docs:query",
+      description: "Find relevant documents",
+      status: "pending",
+    });
+    steps.push({
+      step: 2,
+      action: "Extract key data",
+      tool: "analyze",
+      description: "Process document content",
+      status: "pending",
+    });
+    steps.push({
+      step: 3,
+      action: "Generate summary",
+      tool: "generate",
+      description: "Produce report",
+      status: "pending",
+    });
+    steps.push({
+      step: 4,
+      action: "Save output",
+      tool: "docs:create",
+      description: "Store final report",
+      status: "pending",
+    });
   } else {
-    steps.push({ step: 1, action: "Analyze request", tool: "analyze", description: "Understand what needs to be done", status: "pending" });
-    steps.push({ step: 2, action: "Execute primary action", tool: toolsAvailable[0] || "process", description: "Perform main task", status: "pending" });
-    steps.push({ step: 3, action: "Verify result", tool: "verify", description: "Check output quality", status: "pending" });
+    steps.push({
+      step: 1,
+      action: "Analyze request",
+      tool: "analyze",
+      description: "Understand what needs to be done",
+      status: "pending",
+    });
+    steps.push({
+      step: 2,
+      action: "Execute primary action",
+      tool: toolsAvailable[0] || "process",
+      description: "Perform main task",
+      status: "pending",
+    });
+    steps.push({
+      step: 3,
+      action: "Verify result",
+      tool: "verify",
+      description: "Check output quality",
+      status: "pending",
+    });
   }
 
-  const hasHighRisk = steps.some((s) => ["create", "send", "delete"].some((a) => s.action.toLowerCase().includes(a)));
+  const hasHighRisk = steps.some((s) =>
+    ["create", "send", "delete"].some((a) =>
+      s.action.toLowerCase().includes(a),
+    ),
+  );
 
   return {
     id: `wf_${Date.now().toString(36)}`,

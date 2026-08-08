@@ -34,6 +34,9 @@ export async function POST(req: Request) {
       missingContext: result.missingContext,
     });
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : "Analysis failed" }, { status: 500 });
+    return Response.json(
+      { error: err instanceof Error ? err.message : "Analysis failed" },
+      { status: 500 },
+    );
   }
 }

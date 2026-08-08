@@ -60,7 +60,10 @@ export interface AdaptationResult {
   confidence: number;
 }
 
-const DEFAULT_PROFILE: Omit<UserProfile, "userId" | "workspaceId" | "createdAt" | "updatedAt"> = {
+const DEFAULT_PROFILE: Omit<
+  UserProfile,
+  "userId" | "workspaceId" | "createdAt" | "updatedAt"
+> = {
   communicationStyle: {
     verbosity: "balanced",
     tone: "neutral",
@@ -133,8 +136,13 @@ export class AdaptiveLearningEngine {
     const preferenceChanges: Partial<DecisionPreferences> = {};
     const newExpertise: Record<string, number> = {};
 
-    const ratings = recentFeedback.filter((f) => f.rating !== undefined).map((f) => f.rating!);
-    const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0.5;
+    const ratings = recentFeedback
+      .filter((f) => f.rating !== undefined)
+      .map((f) => f.rating!);
+    const avgRating =
+      ratings.length > 0
+        ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+        : 0.5;
 
     if (avgRating < 0.4) {
       styleChanges.verbosity = "detailed";
@@ -143,11 +151,19 @@ export class AdaptiveLearningEngine {
       styleChanges.verbosity = "concise";
     }
 
-    const confirmRate = recentFeedback.filter((f) => f.category === "confirmation").length / Math.max(1, recentFeedback.length);
+    const confirmRate =
+      recentFeedback.filter((f) => f.category === "confirmation").length /
+      Math.max(1, recentFeedback.length);
     if (confirmRate > 0.8) {
-      preferenceChanges.autoExecuteThreshold = Math.min(0.95, profile.decisionPreferences.autoExecuteThreshold + 0.05);
+      preferenceChanges.autoExecuteThreshold = Math.min(
+        0.95,
+        profile.decisionPreferences.autoExecuteThreshold + 0.05,
+      );
     } else if (confirmRate < 0.3) {
-      preferenceChanges.autoExecuteThreshold = Math.max(0.5, profile.decisionPreferences.autoExecuteThreshold - 0.05);
+      preferenceChanges.autoExecuteThreshold = Math.max(
+        0.5,
+        profile.decisionPreferences.autoExecuteThreshold - 0.05,
+      );
     }
 
     for (const fb of recentFeedback) {
@@ -177,7 +193,9 @@ export class AdaptiveLearningEngine {
     const mods: string[] = [];
 
     if (profile.communicationStyle.verbosity === "concise") {
-      mods.push("Keep responses brief — use short sentences and bullet points.");
+      mods.push(
+        "Keep responses brief — use short sentences and bullet points.",
+      );
     } else if (profile.communicationStyle.verbosity === "detailed") {
       mods.push("Provide thorough explanations with examples and context.");
     }
@@ -189,16 +207,22 @@ export class AdaptiveLearningEngine {
     }
 
     if (profile.communicationStyle.technicalLevel === "expert") {
-      mods.push("Use technical terminology freely — no need to explain basics.");
+      mods.push(
+        "Use technical terminology freely — no need to explain basics.",
+      );
     } else if (profile.communicationStyle.technicalLevel === "beginner") {
       mods.push("Explain concepts in simple terms with analogies.");
     }
 
     const hour = new Date().getUTCHours();
     if (profile.cognitiveProfile.peakHours.includes(hour)) {
-      mods.push("User is in peak productivity hours — full detail level appropriate.");
+      mods.push(
+        "User is in peak productivity hours — full detail level appropriate.",
+      );
     } else {
-      mods.push("User is outside peak hours — keep response minimal and actionable.");
+      mods.push(
+        "User is outside peak hours — keep response minimal and actionable.",
+      );
     }
 
     return mods;
@@ -207,12 +231,16 @@ export class AdaptiveLearningEngine {
   shouldProactiveAssist(userId: string, context: WorkspaceContext): boolean {
     const profile = this.getProfile(userId);
     const hour = new Date().getUTCHours();
-    const isActive = hour >= profile.temporalPatterns.activeHoursStart && hour <= profile.temporalPatterns.activeHoursEnd;
+    const isActive =
+      hour >= profile.temporalPatterns.activeHoursStart &&
+      hour <= profile.temporalPatterns.activeHoursEnd;
     const hasEnoughData = profile.feedbackHistory.length >= 5;
     return isActive && hasEnoughData;
   }
 }
 
-export function createAdaptiveEngine(workspaceId: string): AdaptiveLearningEngine {
+export function createAdaptiveEngine(
+  workspaceId: string,
+): AdaptiveLearningEngine {
   return new AdaptiveLearningEngine(workspaceId);
 }

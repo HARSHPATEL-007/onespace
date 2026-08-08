@@ -1,4 +1,5 @@
-﻿export type TransactionStatus = "pending" | "committed" | "rolled_back" | "failed";
+﻿export type TransactionStatus =
+  "pending" | "committed" | "rolled_back" | "failed";
 
 export interface TransactionStep {
   module: string;
@@ -12,8 +13,19 @@ export class CrossModuleTransaction {
   private steps: TransactionStep[] = [];
   private status: TransactionStatus = "pending";
 
-  addStep(module: string, action: string, target: string, rollbackAction?: string): void {
-    this.steps.push({ module, action, target, status: "pending", rollbackAction });
+  addStep(
+    module: string,
+    action: string,
+    target: string,
+    rollbackAction?: string,
+  ): void {
+    this.steps.push({
+      module,
+      action,
+      target,
+      status: "pending",
+      rollbackAction,
+    });
   }
 
   commit(): { success: boolean; completed: number; failed: number } {

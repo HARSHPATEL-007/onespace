@@ -1,4 +1,10 @@
-import { type InterfaceMode, type ANIConfig, type WorkspaceContext, type ANIResponse, type ConsciousnessState } from "./engine";
+import {
+  type InterfaceMode,
+  type ANIConfig,
+  type WorkspaceContext,
+  type ANIResponse,
+  type ConsciousnessState,
+} from "./engine";
 
 export interface ExternalInterfaceConfig {
   sidePanelEnabled: boolean;
@@ -70,7 +76,11 @@ export interface ProactiveTrigger {
 export class ExternalInterface {
   constructor(private config: ExternalInterfaceConfig) {}
 
-  async presentResponse(response: ANIResponse, context: WorkspaceContext, uiRec: AdaptiveUIRecommendation | null): Promise<Record<string, unknown>> {
+  async presentResponse(
+    response: ANIResponse,
+    context: WorkspaceContext,
+    uiRec: AdaptiveUIRecommendation | null,
+  ): Promise<Record<string, unknown>> {
     const formatting = this._getFormatting(uiRec);
     return {
       mode: "external",
@@ -80,63 +90,109 @@ export class ExternalInterface {
       actions: response.actionsTaken ?? [],
       recommendations: response.recommendations ?? [],
       ui: uiRec,
-      contextualSuggestions: await this._getContextSuggestions(context, response),
+      contextualSuggestions: await this._getContextSuggestions(
+        context,
+        response,
+      ),
       gestureControls: this.config.gestureControls,
       eyeTracking: this.config.eyeTracking,
     };
   }
 
-  private _getFormatting(uiRec: AdaptiveUIRecommendation | null): Record<string, unknown> {
-    if (!uiRec) return { layout: "standard", pacing: "normal", content: "detailed", tone: "neutral" };
-    return { layout: uiRec.layout, pacing: uiRec.pacing, content: uiRec.content, tone: uiRec.tone };
+  private _getFormatting(
+    uiRec: AdaptiveUIRecommendation | null,
+  ): Record<string, unknown> {
+    if (!uiRec)
+      return {
+        layout: "standard",
+        pacing: "normal",
+        content: "detailed",
+        tone: "neutral",
+      };
+    return {
+      layout: uiRec.layout,
+      pacing: uiRec.pacing,
+      content: uiRec.content,
+      tone: uiRec.tone,
+    };
   }
 
-  private async _getContextSuggestions(context: WorkspaceContext, response: ANIResponse): Promise<string[]> {
+  private async _getContextSuggestions(
+    context: WorkspaceContext,
+    response: ANIResponse,
+  ): Promise<string[]> {
     const suggestions: string[] = [];
 
-    if (context.activeModule === "mail" && response.actionsTaken?.some((a) => a.tool.includes("calendar"))) {
+    if (
+      context.activeModule === "mail" &&
+      response.actionsTaken?.some((a) => a.tool.includes("calendar"))
+    ) {
       suggestions.push("Would you like me to schedule a follow-up meeting?");
     }
 
     if (context.activeModule === "docs" && response.content.length > 500) {
-      suggestions.push("Would you like me to create an outline from this content?");
+      suggestions.push(
+        "Would you like me to create an outline from this content?",
+      );
     }
 
-    if (context.activeModule === "sheets" && response.content.includes("forecast")) {
-      suggestions.push("Would you like me to generate a chart from the forecasted data?");
+    if (
+      context.activeModule === "sheets" &&
+      response.content.includes("forecast")
+    ) {
+      suggestions.push(
+        "Would you like me to generate a chart from the forecasted data?",
+      );
     }
 
     return suggestions;
   }
 
   adaptToGesture(gesture: string): { action: string; confirmation: boolean } {
-    const gestures: Record<string, { action: string; confirmation: boolean }> = {
-      swipe_left: { action: "navigate_previous", confirmation: false },
-      swipe_right: { action: "navigate_next", confirmation: false },
-      long_press: { action: "show_options", confirmation: false },
-      double_tap: { action: "quick_action_suggested", confirmation: true },
-    };
-    return gestures[gesture] ?? { action: "unknown_gesture", confirmation: false };
+    const gestures: Record<string, { action: string; confirmation: boolean }> =
+      {
+        swipe_left: { action: "navigate_previous", confirmation: false },
+        swipe_right: { action: "navigate_next", confirmation: false },
+        long_press: { action: "show_options", confirmation: false },
+        double_tap: { action: "quick_action_suggested", confirmation: true },
+      };
+    return (
+      gestures[gesture] ?? { action: "unknown_gesture", confirmation: false }
+    );
   }
 
-  eyeTrackingResponse(fixationPoint: { x: number; y: number }, dwellTime: number): string[] {
+  eyeTrackingResponse(
+    fixationPoint: { x: number; y: number },
+    dwellTime: number,
+  ): string[] {
     const responses: string[] = [];
     if (dwellTime > 2000) {
-      responses.push("You've been reviewing this section for a while — would you like me to explain it in more detail?");
+      responses.push(
+        "You've been reviewing this section for a while — would you like me to explain it in more detail?",
+      );
     }
     if (dwellTime > 5000) {
-      responses.push("I notice sustained attention here — shall I dive deeper into this topic?");
+      responses.push(
+        "I notice sustained attention here — shall I dive deeper into this topic?",
+      );
     }
     return responses;
   }
 }
 
 export class InternalInterface {
-  private alertHistory: Array<{ timestamp: string; severity: string; message: string }> = [];
+  private alertHistory: Array<{
+    timestamp: string;
+    severity: string;
+    message: string;
+  }> = [];
 
   constructor(private config: InternalInterfaceConfig) {}
 
-  async generateOpsBriefing(context: WorkspaceContext, consciousness: ConsciousnessState): Promise<Record<string, unknown>> {
+  async generateOpsBriefing(
+    context: WorkspaceContext,
+    consciousness: ConsciousnessState,
+  ): Promise<Record<string, unknown>> {
     const healthMetrics = await this._collectHealthMetrics();
     const anomalies = await this._detectAnomalies(healthMetrics);
 
@@ -157,7 +213,12 @@ export class InternalInterface {
     };
   }
 
-  private async _collectHealthMetrics(): Promise<{ systemHealth: number; errorRate: number; cpuUsage: number; memoryUsage: number }> {
+  private async _collectHealthMetrics(): Promise<{
+    systemHealth: number;
+    errorRate: number;
+    cpuUsage: number;
+    memoryUsage: number;
+  }> {
     return {
       systemHealth: 0.98,
       errorRate: 0.001,
@@ -166,16 +227,24 @@ export class InternalInterface {
     };
   }
 
-  private async _detectAnomalies(metrics: { systemHealth: number; errorRate: number; cpuUsage: number; memoryUsage: number }): Promise<string[]> {
+  private async _detectAnomalies(metrics: {
+    systemHealth: number;
+    errorRate: number;
+    cpuUsage: number;
+    memoryUsage: number;
+  }): Promise<string[]> {
     const anomalies: string[] = [];
-    if (metrics.systemHealth < 0.95) anomalies.push("System health below threshold");
+    if (metrics.systemHealth < 0.95)
+      anomalies.push("System health below threshold");
     if (metrics.errorRate > 0.01) anomalies.push("Error rate elevated");
     if (metrics.cpuUsage > 0.8) anomalies.push("CPU usage high");
     if (metrics.memoryUsage > 0.85) anomalies.push("Memory usage high");
     return anomalies;
   }
 
-  private async _generateOpsRecommendations(anomalies: string[]): Promise<string[]> {
+  private async _generateOpsRecommendations(
+    anomalies: string[],
+  ): Promise<string[]> {
     const recs: string[] = [];
     if (anomalies.length > 0) {
       recs.push("Initiate root-cause analysis");
@@ -187,7 +256,11 @@ export class InternalInterface {
     return recs;
   }
 
-  async rootCauseAnalysis(failure: { component: string; symptoms: string[]; timestamp: string }): Promise<Record<string, unknown>> {
+  async rootCauseAnalysis(failure: {
+    component: string;
+    symptoms: string[];
+    timestamp: string;
+  }): Promise<Record<string, unknown>> {
     const timeline = await this._buildFailureTimeline(failure.timestamp);
     const correlations = await this._findCorrelations(timeline);
 
@@ -202,32 +275,53 @@ export class InternalInterface {
     };
   }
 
-  private async _buildFailureTimeline(since: string): Promise<Array<{ timestamp: string; event: string; severity: string }>> {
+  private async _buildFailureTimeline(
+    since: string,
+  ): Promise<Array<{ timestamp: string; event: string; severity: string }>> {
     return [
       { timestamp: since, event: "Failure detected", severity: "high" },
-      { timestamp: new Date().toISOString(), event: "ANI root cause analysis initiated", severity: "info" },
+      {
+        timestamp: new Date().toISOString(),
+        event: "ANI root cause analysis initiated",
+        severity: "info",
+      },
     ];
   }
 
-  private async _findCorrelations(timeline: Array<{ timestamp: string; event: string; severity: string }>): Promise<string[]> {
+  private async _findCorrelations(
+    timeline: Array<{ timestamp: string; event: string; severity: string }>,
+  ): Promise<string[]> {
     return timeline.filter((e) => e.severity === "high").map((e) => e.event);
   }
 
-  private _identifyRootCause(correlations: string[], failure: { component: string; symptoms: string[] }): string {
-    if (correlations.length > 0) return `Root cause: ${correlations[0]} in ${failure.component}`;
+  private _identifyRootCause(
+    correlations: string[],
+    failure: { component: string; symptoms: string[] },
+  ): string {
+    if (correlations.length > 0)
+      return `Root cause: ${correlations[0]} in ${failure.component}`;
     return `Root cause not identified — requires human investigation of ${failure.component}`;
   }
 
-  private _suggestRemediation(failure: { component: string; symptoms: string[] }): string[] {
+  private _suggestRemediation(failure: {
+    component: string;
+    symptoms: string[];
+  }): string[] {
     const steps: string[] = [];
-    if (failure.symptoms.includes("timeout")) steps.push("Increase timeout threshold");
-    if (failure.symptoms.includes("error")) steps.push("Restart affected service");
-    if (failure.symptoms.includes("security")) steps.push("Initiate security incident response");
+    if (failure.symptoms.includes("timeout"))
+      steps.push("Increase timeout threshold");
+    if (failure.symptoms.includes("error"))
+      steps.push("Restart affected service");
+    if (failure.symptoms.includes("security"))
+      steps.push("Initiate security incident response");
     steps.push("Monitor for recurrence");
     return steps;
   }
 
-  private _packageEvidence(failure: { component: string; symptoms: string[] }): Record<string, unknown> {
+  private _packageEvidence(failure: {
+    component: string;
+    symptoms: string[];
+  }): Record<string, unknown> {
     return {
       component: failure.component,
       symptoms: failure.symptoms,
@@ -241,13 +335,20 @@ export class InternalInterface {
     this.alertHistory.push({ timestamp: new Date().toISOString(), ...alert });
   }
 
-  getAlertHistory(): Array<{ timestamp: string; severity: string; message: string }> {
+  getAlertHistory(): Array<{
+    timestamp: string;
+    severity: string;
+    message: string;
+  }> {
     return [...this.alertHistory];
   }
 }
 
 export class AutonomousInterface {
-  private agentRegistry: Map<string, { id: string; capabilities: string[]; status: "active" | "idle" | "error" }> = new Map();
+  private agentRegistry: Map<
+    string,
+    { id: string; capabilities: string[]; status: "active" | "idle" | "error" }
+  > = new Map();
 
   constructor(private config: AutonomousInterfaceConfig) {}
 
@@ -255,21 +356,60 @@ export class AutonomousInterface {
     task: string,
     context: WorkspaceContext,
     _existingPlan: string | null = null,
-  ): Promise<{ workflowId: string; steps: Array<{ step: number; action: string; tool: string; dependencies: number[] }> }> {
+  ): Promise<{
+    workflowId: string;
+    steps: Array<{
+      step: number;
+      action: string;
+      tool: string;
+      dependencies: number[];
+    }>;
+  }> {
     const workflowId = `wf_${Date.now().toString(36)}`;
 
     const steps = [
-      { step: 1, action: "Analyze task requirements", tool: "n0va-lm", dependencies: [] },
-      { step: 2, action: "Decompose into subtasks", tool: "n0va-agent", dependencies: [1] },
-      { step: 3, action: "Execute subtask 1", tool: context.activeModule, dependencies: [2] },
+      {
+        step: 1,
+        action: "Analyze task requirements",
+        tool: "n0va-lm",
+        dependencies: [],
+      },
+      {
+        step: 2,
+        action: "Decompose into subtasks",
+        tool: "n0va-agent",
+        dependencies: [1],
+      },
+      {
+        step: 3,
+        action: "Execute subtask 1",
+        tool: context.activeModule,
+        dependencies: [2],
+      },
       { step: 4, action: "Verify results", tool: "n0va-lm", dependencies: [3] },
-      { step: 5, action: "Compile final response", tool: "n0va-lm", dependencies: [3, 4] },
+      {
+        step: 5,
+        action: "Compile final response",
+        tool: "n0va-lm",
+        dependencies: [3, 4],
+      },
     ];
 
     return { workflowId, steps };
   }
 
-  async executeAutonomous(_context: WorkspaceContext, workflow: { workflowId: string; steps: Array<{ step: number; action: string; tool: string; dependencies: number[] }> }): Promise<Record<string, unknown>> {
+  async executeAutonomous(
+    _context: WorkspaceContext,
+    workflow: {
+      workflowId: string;
+      steps: Array<{
+        step: number;
+        action: string;
+        tool: string;
+        dependencies: number[];
+      }>;
+    },
+  ): Promise<Record<string, unknown>> {
     const results: Array<{ step: number; result: string; status: string }> = [];
 
     for (const step of workflow.steps) {
@@ -277,7 +417,11 @@ export class AutonomousInterface {
         const result = await this._executeStep(step);
         results.push({ step: step.step, result, status: "success" });
       } catch (error) {
-        results.push({ step: step.step, result: String(error), status: "error" });
+        results.push({
+          step: step.step,
+          result: String(error),
+          status: "error",
+        });
       }
     }
 
@@ -285,16 +429,24 @@ export class AutonomousInterface {
       mode: "autonomous",
       workflowId: workflow.workflowId,
       results,
-      successRate: results.filter((r) => r.status === "success").length / results.length,
+      successRate:
+        results.filter((r) => r.status === "success").length / results.length,
       recommendations: this._generateAutonomousRecommendations(results),
     };
   }
 
-  private async _executeStep(step: { step: number; action: string; tool: string; dependencies: number[] }): Promise<string> {
+  private async _executeStep(step: {
+    step: number;
+    action: string;
+    tool: string;
+    dependencies: number[];
+  }): Promise<string> {
     return `Executed step ${step.step}: ${step.action} using ${step.tool}`;
   }
 
-  private _generateAutonomousRecommendations(results: Array<{ step: number; result: string; status: string }>): string[] {
+  private _generateAutonomousRecommendations(
+    results: Array<{ step: number; result: string; status: string }>,
+  ): string[] {
     const recs: string[] = [];
     const failed = results.filter((r) => r.status === "error");
     if (failed.length > 0) {
@@ -304,7 +456,11 @@ export class AutonomousInterface {
     return recs;
   }
 
-  registerAgent(agent: { id: string; capabilities: string[]; status: "active" | "idle" | "error" }): void {
+  registerAgent(agent: {
+    id: string;
+    capabilities: string[];
+    status: "active" | "idle" | "error";
+  }): void {
     this.agentRegistry.set(agent.id, agent);
   }
 
@@ -312,7 +468,10 @@ export class AutonomousInterface {
     return [...this.agentRegistry.values()];
   }
 
-  async coordinateSwarm(task: string, agentIds: string[]): Promise<Record<string, unknown>> {
+  async coordinateSwarm(
+    task: string,
+    agentIds: string[],
+  ): Promise<Record<string, unknown>> {
     return {
       mode: "autonomous_swarm",
       task,
@@ -322,11 +481,17 @@ export class AutonomousInterface {
     };
   }
 
-  async selfImprove(feedback: { metric: string; current: number; target: number; suggestion: string }): Promise<Record<string, unknown>> {
+  async selfImprove(feedback: {
+    metric: string;
+    current: number;
+    target: number;
+    suggestion: string;
+  }): Promise<Record<string, unknown>> {
     return {
       mode: "autonomous_self_improvement",
       metric: feedback.metric,
-      improvement: ((feedback.target - feedback.current) / feedback.current) * 100,
+      improvement:
+        ((feedback.target - feedback.current) / feedback.current) * 100,
       suggestion: feedback.suggestion,
       applied: true,
     };
@@ -339,9 +504,20 @@ export class NeuralInterface {
 
   constructor(private config: NeuralInterfaceConfig) {}
 
-  async processNeuralInput(signals: Array<{ source: string; metric: string; value: number; timestamp: string }>): Promise<Record<string, unknown>> {
+  async processNeuralInput(
+    signals: Array<{
+      source: string;
+      metric: string;
+      value: number;
+      timestamp: string;
+    }>,
+  ): Promise<Record<string, unknown>> {
     const engagementValues = signals.filter((s) => s.metric === "engagement");
-    const avgEngagement = engagementValues.length > 0 ? engagementValues.reduce((a, s) => a + s.value, 0) / engagementValues.length : 0.5;
+    const avgEngagement =
+      engagementValues.length > 0
+        ? engagementValues.reduce((a, s) => a + s.value, 0) /
+          engagementValues.length
+        : 0.5;
 
     const attentionVector = [avgEngagement, 1 - avgEngagement, 0.5, 0.8];
 
@@ -349,7 +525,13 @@ export class NeuralInterface {
 
     return {
       mode: "neural",
-      cognitiveMetrics: { cognitiveLoadIndex: 0.3, flowStateProbability: avgEngagement > 0.6 ? 0.8 : 0.3, stressLevel: 0.2, attentionVector, engagementScore: avgEngagement },
+      cognitiveMetrics: {
+        cognitiveLoadIndex: 0.3,
+        flowStateProbability: avgEngagement > 0.6 ? 0.8 : 0.3,
+        stressLevel: 0.2,
+        attentionVector,
+        engagementScore: avgEngagement,
+      },
       attentionVector,
       coherence: avgEngagement > 0.6 ? 0.8 : 0.4,
       requiresCalibration: !this.calibrated,
@@ -361,13 +543,16 @@ export class NeuralInterface {
     this.neuralPatterns.set(patternId, attentionVector);
   }
 
-  async interpretThoughtPattern(attentionVector: number[], _context: WorkspaceContext): Promise<{ intent: string; confidence: number; action: string }> {
+  async interpretThoughtPattern(
+    attentionVector: number[],
+    _context: WorkspaceContext,
+  ): Promise<{ intent: string; confidence: number; action: string }> {
     const pattern = this._matchPattern(attentionVector);
     const actions: Record<string, string> = {
-      "email": "Draft email response",
-      "schedule": "Schedule calendar event",
-      "analyze": "Run data analysis",
-      "create": "Create new document",
+      email: "Draft email response",
+      schedule: "Schedule calendar event",
+      analyze: "Run data analysis",
+      create: "Create new document",
     };
 
     return {
@@ -377,7 +562,10 @@ export class NeuralInterface {
     };
   }
 
-  private _matchPattern(attentionVector: number[]): { type: string; confidence: number } {
+  private _matchPattern(attentionVector: number[]): {
+    type: string;
+    confidence: number;
+  } {
     let bestMatch = "conversational";
     let bestConfidence = 0.5;
 
@@ -394,7 +582,9 @@ export class NeuralInterface {
 
   private _cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) return 0;
-    let dot = 0, magA = 0, magB = 0;
+    let dot = 0,
+      magA = 0,
+      magB = 0;
     for (let i = 0; i < a.length; i++) {
       dot += (a[i] ?? 0) * (b[i] ?? 0);
       magA += (a[i] ?? 0) ** 2;
@@ -404,19 +594,31 @@ export class NeuralInterface {
     return dot / (Math.sqrt(magA) * Math.sqrt(magB));
   }
 
-  async calibrate(subject: { stress: number; engagement: number; attention: number }): Promise<{ calibrated: boolean; confidence: number }> {
+  async calibrate(subject: {
+    stress: number;
+    engagement: number;
+    attention: number;
+  }): Promise<{ calibrated: boolean; confidence: number }> {
     this.calibrated = true;
-    const confidence = 0.95 - (Math.abs(subject.stress - 0.3) + Math.abs(subject.engagement - 0.7) + Math.abs(subject.attention - 0.8)) / 3;
+    const confidence =
+      0.95 -
+      (Math.abs(subject.stress - 0.3) +
+        Math.abs(subject.engagement - 0.7) +
+        Math.abs(subject.attention - 0.8)) /
+        3;
     return { calibrated: true, confidence: Math.max(0.5, confidence) };
   }
 
-  handleBCISignal(signalType: string, _data: Record<string, unknown>): { processed: boolean; response: string } {
+  handleBCISignal(
+    signalType: string,
+    _data: Record<string, unknown>,
+  ): { processed: boolean; response: string } {
     const responses: Record<string, string> = {
-      "attention_high": "AI attention detected — preparing contextual assistance",
-      "attention_low": "User fatigue detected — switching to simplified mode",
-      "stress_high": "Stress detected — offering wellness suggestions",
-      "flow_enter": "Flow state detected — minimizing interruptions",
-      "subvocal_command": "Sub-vocal command received — processing",
+      attention_high: "AI attention detected — preparing contextual assistance",
+      attention_low: "User fatigue detected — switching to simplified mode",
+      stress_high: "Stress detected — offering wellness suggestions",
+      flow_enter: "Flow state detected — minimizing interruptions",
+      subvocal_command: "Sub-vocal command received — processing",
     };
 
     return {
@@ -428,18 +630,39 @@ export class NeuralInterface {
 
 export class AmbientInterface {
   private environmentalState: Record<string, number> = {};
-  private iotDevices: Map<string, { id: string; type: string; connected: boolean }> = new Map();
+  private iotDevices: Map<
+    string,
+    { id: string; type: string; connected: boolean }
+  > = new Map();
 
   constructor(private config: AmbientInterfaceConfig) {}
 
   async initializeIoT(): Promise<void> {
-    this.iotDevices.set("sensor_light", { id: "light_01", type: "light", connected: true });
-    this.iotDevices.set("sensor_noise", { id: "noise_01", type: "noise", connected: true });
-    this.iotDevices.set("sensor_motion", { id: "motion_01", type: "motion", connected: true });
-    this.iotDevices.set("sensor_biometrics", { id: "bio_01", type: "biometrics", connected: true });
+    this.iotDevices.set("sensor_light", {
+      id: "light_01",
+      type: "light",
+      connected: true,
+    });
+    this.iotDevices.set("sensor_noise", {
+      id: "noise_01",
+      type: "noise",
+      connected: true,
+    });
+    this.iotDevices.set("sensor_motion", {
+      id: "motion_01",
+      type: "motion",
+      connected: true,
+    });
+    this.iotDevices.set("sensor_biometrics", {
+      id: "bio_01",
+      type: "biometrics",
+      connected: true,
+    });
   }
 
-  async processEnvironmentalData(data: Record<string, number>): Promise<Record<string, unknown>> {
+  async processEnvironmentalData(
+    data: Record<string, number>,
+  ): Promise<Record<string, unknown>> {
     this.environmentalState = { ...this.environmentalState, ...data };
 
     const suggestions: string[] = [];
@@ -449,10 +672,16 @@ export class AmbientInterface {
     if (data.noise !== undefined && data.noise > 65) {
       suggestions.push("Noise level high — suggest noise-canceling or break");
     }
-    if (data.temperature !== undefined && (data.temperature < 18 || data.temperature > 26)) {
+    if (
+      data.temperature !== undefined &&
+      (data.temperature < 18 || data.temperature > 26)
+    ) {
       suggestions.push("Temperature outside optimal range (18-26°C)");
     }
-    if (data.humidity !== undefined && (data.humidity < 30 || data.humidity > 60)) {
+    if (
+      data.humidity !== undefined &&
+      (data.humidity < 30 || data.humidity > 60)
+    ) {
       suggestions.push("Humidity outside optimal range (30-60%)");
     }
 
@@ -465,17 +694,41 @@ export class AmbientInterface {
     };
   }
 
-  async triggerContextualAction(trigger: string, _context: WorkspaceContext): Promise<{ action: string; executed: boolean; result: string }> {
-    const actions: Record<string, () => Promise<{ executed: boolean; result: string }>> = {
-      "enter_office": async () => ({ executed: true, result: "Good morning! Loading your daily briefing..." }),
-      "leave_office": async () => ({ executed: true, result: "Saving workspace state and scheduling tomorrow's tasks..." }),
-      "meeting_detected": async () => ({ executed: true, result: "Pre-loading meeting materials and setting phone to Do Not Disturb..." }),
-      "lunch_break": async () => ({ executed: true, result: "Pausing non-critical workflows. Reminder: take prescribed vitamins." }),
+  async triggerContextualAction(
+    trigger: string,
+    _context: WorkspaceContext,
+  ): Promise<{ action: string; executed: boolean; result: string }> {
+    const actions: Record<
+      string,
+      () => Promise<{ executed: boolean; result: string }>
+    > = {
+      enter_office: async () => ({
+        executed: true,
+        result: "Good morning! Loading your daily briefing...",
+      }),
+      leave_office: async () => ({
+        executed: true,
+        result: "Saving workspace state and scheduling tomorrow's tasks...",
+      }),
+      meeting_detected: async () => ({
+        executed: true,
+        result:
+          "Pre-loading meeting materials and setting phone to Do Not Disturb...",
+      }),
+      lunch_break: async () => ({
+        executed: true,
+        result:
+          "Pausing non-critical workflows. Reminder: take prescribed vitamins.",
+      }),
     };
 
     const action = actions[trigger];
     if (!action) {
-      return { action: trigger, executed: false, result: "Unknown ambient trigger" };
+      return {
+        action: trigger,
+        executed: false,
+        result: "Unknown ambient trigger",
+      };
     }
 
     const result = await action();
@@ -558,11 +811,15 @@ export class PentAudienceManager {
 
     this.state = {
       activeModes: ["external"],
-      external: this.external.constructor.name as unknown as ExternalInterfaceConfig,
-      internal: this.internal.constructor.name as unknown as InternalInterfaceConfig,
-      autonomous: this.autonomous.constructor.name as unknown as AutonomousInterfaceConfig,
+      external: this.external.constructor
+        .name as unknown as ExternalInterfaceConfig,
+      internal: this.internal.constructor
+        .name as unknown as InternalInterfaceConfig,
+      autonomous: this.autonomous.constructor
+        .name as unknown as AutonomousInterfaceConfig,
       neural: this.neural.constructor.name as unknown as NeuralInterfaceConfig,
-      ambient: this.ambient.constructor.name as unknown as AmbientInterfaceConfig,
+      ambient: this.ambient.constructor
+        .name as unknown as AmbientInterfaceConfig,
       currentRecommendations: null,
       proactiveTriggers: [],
     };
@@ -582,14 +839,34 @@ export class PentAudienceManager {
     return [...this.state.activeModes];
   }
 
-  async getAllResponses(response: ANIResponse, context: WorkspaceContext, consciousness: ConsciousnessState): Promise<Record<string, unknown>> {
-    const signals: Array<{ source: string; metric: string; value: number; timestamp: string }> = [
-      { source: "interaction_history", metric: "engagement", value: 0.7, timestamp: new Date().toISOString() },
-      { source: "interaction_history", metric: "stress", value: 0.2, timestamp: new Date().toISOString() },
+  async getAllResponses(
+    response: ANIResponse,
+    context: WorkspaceContext,
+    consciousness: ConsciousnessState,
+  ): Promise<Record<string, unknown>> {
+    const signals: Array<{
+      source: string;
+      metric: string;
+      value: number;
+      timestamp: string;
+    }> = [
+      {
+        source: "interaction_history",
+        metric: "engagement",
+        value: 0.7,
+        timestamp: new Date().toISOString(),
+      },
+      {
+        source: "interaction_history",
+        metric: "stress",
+        value: 0.2,
+        timestamp: new Date().toISOString(),
+      },
     ];
 
     const uiRec: AdaptiveUIRecommendation = {
-      layout: consciousness.cognitiveLoadIndex > 0.6 ? "simplified" : "standard",
+      layout:
+        consciousness.cognitiveLoadIndex > 0.6 ? "simplified" : "standard",
       pacing: consciousness.flowStateProbability > 0.7 ? "adaptive" : "normal",
       content: consciousness.coherence > 0.9 ? "detailed" : "concise",
       tone: "neutral",
@@ -600,9 +877,17 @@ export class PentAudienceManager {
       activeModes: this.state.activeModes,
       external: await this.external.presentResponse(response, context, uiRec),
       internal: await this.internal.generateOpsBriefing(context, consciousness),
-      autonomous: await this.autonomous.planWorkflow(context.activeModule, context),
+      autonomous: await this.autonomous.planWorkflow(
+        context.activeModule,
+        context,
+      ),
       neural: await this.neural.processNeuralInput(signals),
-      ambient: await this.ambient.processEnvironmentalData({ light: 500, noise: 45, temperature: 22, humidity: 45 }),
+      ambient: await this.ambient.processEnvironmentalData({
+        light: 500,
+        noise: 45,
+        temperature: 22,
+        humidity: 45,
+      }),
       proactiveTriggers: this.state.proactiveTriggers,
       uiRecommendation: uiRec,
     };

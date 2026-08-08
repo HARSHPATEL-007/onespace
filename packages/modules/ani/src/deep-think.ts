@@ -74,28 +74,99 @@ export interface FeedbackPanel {
 }
 
 const COMPLEXITY_INDICATORS = {
-  ambiguous: ["might", "maybe", "possibly", "unclear", "not sure", "could be", "or", "versus", "vs", "tradeoff", "compare", "which is better"],
-  technical: ["architecture", "design pattern", "algorithm", "performance", "optimization", "database", "api", "refactor", "migrate", "scale", "infrastructure", "security", "encryption", "latency"],
-  highStakes: ["production", "revenue", "customer", "deadline", "launch", "deploy", "payment", "contract", "legal", "compliance", "migration", "outage"],
-  multiPart: ["and then", "also", "additionally", "first", "second", "step", "after that", "finally", "meanwhile", "parallel", "workflow", "process"],
+  ambiguous: [
+    "might",
+    "maybe",
+    "possibly",
+    "unclear",
+    "not sure",
+    "could be",
+    "or",
+    "versus",
+    "vs",
+    "tradeoff",
+    "compare",
+    "which is better",
+  ],
+  technical: [
+    "architecture",
+    "design pattern",
+    "algorithm",
+    "performance",
+    "optimization",
+    "database",
+    "api",
+    "refactor",
+    "migrate",
+    "scale",
+    "infrastructure",
+    "security",
+    "encryption",
+    "latency",
+  ],
+  highStakes: [
+    "production",
+    "revenue",
+    "customer",
+    "deadline",
+    "launch",
+    "deploy",
+    "payment",
+    "contract",
+    "legal",
+    "compliance",
+    "migration",
+    "outage",
+  ],
+  multiPart: [
+    "and then",
+    "also",
+    "additionally",
+    "first",
+    "second",
+    "step",
+    "after that",
+    "finally",
+    "meanwhile",
+    "parallel",
+    "workflow",
+    "process",
+  ],
 };
 
 const MISSING_CONTEXT_PATTERNS = [
   { pattern: /^(what|how|why)\b/i, needs: "specific subject reference" },
   { pattern: /(it|that|this|they)\b/i, needs: "entity disambiguation" },
-  { pattern: /\b(best|recommend|suggest)\b/i, needs: "criteria or constraints" },
+  {
+    pattern: /\b(best|recommend|suggest)\b/i,
+    needs: "criteria or constraints",
+  },
   { pattern: /\b(compare|versus|vs)\b/i, needs: "comparison dimensions" },
   { pattern: /\b(fix|resolve|solve)\b/i, needs: "error details or symptoms" },
 ];
 
-export function assessComplexity(input: string, intent: UserIntent, contextWindow: number): ComplexityAssessment {
+export function assessComplexity(
+  input: string,
+  intent: UserIntent,
+  contextWindow: number,
+): ComplexityAssessment {
   const lower = input.toLowerCase();
   const words = lower.split(/\s+/);
 
-  const isAmbiguous = COMPLEXITY_INDICATORS.ambiguous.filter((w) => lower.includes(w)).length >= 2;
-  const isTechnical = COMPLEXITY_INDICATORS.technical.filter((w) => lower.includes(w)).length >= 1;
-  const isHighStakes = COMPLEXITY_INDICATORS.highStakes.filter((w) => lower.includes(w)).length >= 1 || intent.riskLevel === "high" || intent.riskLevel === "critical";
-  const isMultiPart = COMPLEXITY_INDICATORS.multiPart.filter((w) => lower.includes(w)).length >= 2 || words.length > 30;
+  const isAmbiguous =
+    COMPLEXITY_INDICATORS.ambiguous.filter((w) => lower.includes(w)).length >=
+    2;
+  const isTechnical =
+    COMPLEXITY_INDICATORS.technical.filter((w) => lower.includes(w)).length >=
+    1;
+  const isHighStakes =
+    COMPLEXITY_INDICATORS.highStakes.filter((w) => lower.includes(w)).length >=
+      1 ||
+    intent.riskLevel === "high" ||
+    intent.riskLevel === "critical";
+  const isMultiPart =
+    COMPLEXITY_INDICATORS.multiPart.filter((w) => lower.includes(w)).length >=
+      2 || words.length > 30;
 
   let score = 0;
   if (isAmbiguous) score += 0.25;
@@ -123,7 +194,16 @@ export function assessComplexity(input: string, intent: UserIntent, contextWindo
     }
   }
 
-  return { score, isAmbiguous, isTechnical, isHighStakes, isMultiPart, recommendedDepth, detectedTopics, missingContext };
+  return {
+    score,
+    isAmbiguous,
+    isTechnical,
+    isHighStakes,
+    isMultiPart,
+    recommendedDepth,
+    detectedTopics,
+    missingContext,
+  };
 }
 
 export function getDepthSettings(depth: ReasoningDepth): {
@@ -136,7 +216,10 @@ export function getDepthSettings(depth: ReasoningDepth): {
   reasoningSteps: number;
   latencyBudgetMs: number;
 } {
-  const settings: Record<ReasoningDepth, ReturnType<typeof getDepthSettings>> = {
+  const settings: Record<
+    ReasoningDepth,
+    ReturnType<typeof getDepthSettings>
+  > = {
     fast: {
       maxTokens: 1024,
       temperature: 0.5,
@@ -181,43 +264,119 @@ export function getDepthSettings(depth: ReasoningDepth): {
   return settings[depth];
 }
 
-export function buildReasoningSteps(depth: ReasoningDepth, intent: UserIntent): ReasoningStep[] {
+export function buildReasoningSteps(
+  depth: ReasoningDepth,
+  intent: UserIntent,
+): ReasoningStep[] {
   const allSteps: ReasoningStep[] = [
-    { phase: "understand", label: "Understanding query", durationMs: 200, detail: "Parsing intent and entities", status: "pending" },
-    { phase: "context", label: "Gathering context", durationMs: 300, detail: "Retrieving relevant history and documents", status: "pending" },
-    { phase: "analyze", label: "Analyzing", durationMs: 400, detail: `Processing ${intent.classification} intent`, status: "pending" },
-    { phase: "reason", label: "Reasoning", durationMs: 500, detail: "Multi-step logical analysis", status: "pending" },
-    { phase: "verify", label: "Verifying", durationMs: 300, detail: "Cross-checking facts and logic", status: "pending" },
-    { phase: "synthesize", label: "Synthesizing", durationMs: 300, detail: "Assembling coherent response", status: "pending" },
-    { phase: "critique", label: "Self-critique", durationMs: 400, detail: "Evaluating response quality", status: "pending" },
-    { phase: "finalize", label: "Finalizing", durationMs: 200, detail: "Polishing output", status: "pending" },
+    {
+      phase: "understand",
+      label: "Understanding query",
+      durationMs: 200,
+      detail: "Parsing intent and entities",
+      status: "pending",
+    },
+    {
+      phase: "context",
+      label: "Gathering context",
+      durationMs: 300,
+      detail: "Retrieving relevant history and documents",
+      status: "pending",
+    },
+    {
+      phase: "analyze",
+      label: "Analyzing",
+      durationMs: 400,
+      detail: `Processing ${intent.classification} intent`,
+      status: "pending",
+    },
+    {
+      phase: "reason",
+      label: "Reasoning",
+      durationMs: 500,
+      detail: "Multi-step logical analysis",
+      status: "pending",
+    },
+    {
+      phase: "verify",
+      label: "Verifying",
+      durationMs: 300,
+      detail: "Cross-checking facts and logic",
+      status: "pending",
+    },
+    {
+      phase: "synthesize",
+      label: "Synthesizing",
+      durationMs: 300,
+      detail: "Assembling coherent response",
+      status: "pending",
+    },
+    {
+      phase: "critique",
+      label: "Self-critique",
+      durationMs: 400,
+      detail: "Evaluating response quality",
+      status: "pending",
+    },
+    {
+      phase: "finalize",
+      label: "Finalizing",
+      durationMs: 200,
+      detail: "Polishing output",
+      status: "pending",
+    },
   ];
 
-  const countMap: Record<ReasoningDepth, number> = { fast: 2, balanced: 4, deep: 6, research: 8 };
+  const countMap: Record<ReasoningDepth, number> = {
+    fast: 2,
+    balanced: 4,
+    deep: 6,
+    research: 8,
+  };
   return allSteps.slice(0, countMap[depth]);
 }
 
-export function needsClarification(input: string, complexity: ComplexityAssessment): { needsTo: boolean; question?: string } {
+export function needsClarification(
+  input: string,
+  complexity: ComplexityAssessment,
+): { needsTo: boolean; question?: string } {
   if (complexity.missingContext.length > 0 && complexity.score > 0.3) {
     const questionMap: Record<string, string> = {
-      "specific subject reference": "Could you clarify what specific subject or item you're referring to?",
-      "entity disambiguation": "Which specific entity or item should I focus on?",
-      "criteria or constraints": "What criteria or constraints should I consider for this recommendation?",
+      "specific subject reference":
+        "Could you clarify what specific subject or item you're referring to?",
+      "entity disambiguation":
+        "Which specific entity or item should I focus on?",
+      "criteria or constraints":
+        "What criteria or constraints should I consider for this recommendation?",
       "comparison dimensions": "What aspects matter most for this comparison?",
-      "error details or symptoms": "Can you share the specific error message or symptoms you're seeing?",
+      "error details or symptoms":
+        "Can you share the specific error message or symptoms you're seeing?",
     };
     const topMissing = complexity.missingContext[0]!;
-    return { needsTo: true, question: questionMap[topMissing] || "Could you provide more details so I can give you the best answer?" };
+    return {
+      needsTo: true,
+      question:
+        questionMap[topMissing] ||
+        "Could you provide more details so I can give you the best answer?",
+    };
   }
 
   if (complexity.isAmbiguous && input.split(/\s+/).length < 8) {
-    return { needsTo: true, question: "I want to make sure I understand — could you tell me more about what you're trying to achieve?" };
+    return {
+      needsTo: true,
+      question:
+        "I want to make sure I understand — could you tell me more about what you're trying to achieve?",
+    };
   }
 
   return { needsTo: false };
 }
 
-export function generateMemoryMarks(input: string, response: string, intent: UserIntent): MemoryMark[] {
+export function generateMemoryMarks(
+  input: string,
+  response: string,
+  intent: UserIntent,
+): MemoryMark[] {
   const marks: MemoryMark[] = [];
   const now = new Date().toISOString();
 
@@ -263,14 +422,24 @@ export function buildFeedbackPanel(
     depth === "research" ? "strong" : depth === "deep" ? "moderate" : "weak";
 
   const nextBestActions: string[] = [];
-  if (intent.classification === "action") nextBestActions.push("Review proposed actions and confirm execution");
-  if (complexity.isTechnical) nextBestActions.push("Verify technical recommendations against current architecture");
-  if (intent.toolsNeeded.length > 0) nextBestActions.push("Check connected integrations for relevant live data");
-  if (complexity.isHighStakes) nextBestActions.push("Have a team member review before proceeding");
-  if (nextBestActions.length === 0) nextBestActions.push("Continue the conversation for follow-up questions");
+  if (intent.classification === "action")
+    nextBestActions.push("Review proposed actions and confirm execution");
+  if (complexity.isTechnical)
+    nextBestActions.push(
+      "Verify technical recommendations against current architecture",
+    );
+  if (intent.toolsNeeded.length > 0)
+    nextBestActions.push("Check connected integrations for relevant live data");
+  if (complexity.isHighStakes)
+    nextBestActions.push("Have a team member review before proceeding");
+  if (nextBestActions.length === 0)
+    nextBestActions.push("Continue the conversation for follow-up questions");
 
   return {
-    confidence: Math.min(0.98, 0.5 + complexity.score * 0.3 + (depth === "fast" ? 0.1 : 0)),
+    confidence: Math.min(
+      0.98,
+      0.5 + complexity.score * 0.3 + (depth === "fast" ? 0.1 : 0),
+    ),
     assumptions: [
       `Intent classified as "${intent.classification}"`,
       `Complexity score: ${(complexity.score * 100).toFixed(0)}%`,
@@ -278,6 +447,10 @@ export function buildFeedbackPanel(
     ],
     nextBestActions,
     evidenceQuality,
-    sources: intent.toolsNeeded.map((t: string) => ({ name: t, type: "tool", confidence: 0.85 })),
+    sources: intent.toolsNeeded.map((t: string) => ({
+      name: t,
+      type: "tool",
+      confidence: 0.85,
+    })),
   };
 }

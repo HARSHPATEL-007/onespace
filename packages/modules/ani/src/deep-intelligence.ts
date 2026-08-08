@@ -1,5 +1,10 @@
 import type { ConsciousnessMetrics } from "./consciousness";
-import type { UserIntent, WorkspaceContext, ANIResponse, IntentClass } from "./engine";
+import type {
+  UserIntent,
+  WorkspaceContext,
+  ANIResponse,
+  IntentClass,
+} from "./engine";
 import type { ComplexityAssessment, ReasoningDepth } from "./deep-think";
 
 export interface ReasoningChain {
@@ -9,7 +14,11 @@ export interface ReasoningChain {
   status: "active" | "completed" | "failed" | "awaiting_feedback";
   conclusion?: string;
   confidence: number;
-  alternatives: Array<{ description: string; confidence: number; rejected: string }>;
+  alternatives: Array<{
+    description: string;
+    confidence: number;
+    rejected: string;
+  }>;
 }
 
 export interface ReasoningStep {
@@ -107,10 +116,16 @@ export class DeepReasoningEngine {
     ];
 
     if (intent.classification === "analytical") {
-      baseSteps.splice(4, 0, { phase: "counterfactual", label: "Exploring counterfactual scenarios" });
+      baseSteps.splice(4, 0, {
+        phase: "counterfactual",
+        label: "Exploring counterfactual scenarios",
+      });
     }
     if (intent.riskLevel === "high" || intent.riskLevel === "critical") {
-      baseSteps.push({ phase: "risk_assessment", label: "Evaluating risk implications" });
+      baseSteps.push({
+        phase: "risk_assessment",
+        label: "Evaluating risk implications",
+      });
     }
 
     return baseSteps.map((s, i) => ({
@@ -126,7 +141,10 @@ export class DeepReasoningEngine {
     }));
   }
 
-  executeStep(chainId: string, stepResults: { output: string; evidence: string[]; assumptions: string[] }): ReasoningStep | null {
+  executeStep(
+    chainId: string,
+    stepResults: { output: string; evidence: string[]; assumptions: string[] },
+  ): ReasoningStep | null {
     const chain = this.chains.get(chainId);
     if (!chain || chain.currentStep >= chain.steps.length) return null;
 
@@ -135,10 +153,15 @@ export class DeepReasoningEngine {
     step.evidence = stepResults.evidence;
     step.assumptions = stepResults.assumptions;
     step.completed = true;
-    step.confidence = stepResults.evidence.length > 0 ? Math.min(0.95, 0.5 + stepResults.evidence.length * 0.1) : 0.3;
+    step.confidence =
+      stepResults.evidence.length > 0
+        ? Math.min(0.95, 0.5 + stepResults.evidence.length * 0.1)
+        : 0.3;
     step.durationMs = Date.now();
 
-    chain.confidence = (chain.confidence * chain.currentStep + step.confidence) / (chain.currentStep + 1);
+    chain.confidence =
+      (chain.confidence * chain.currentStep + step.confidence) /
+      (chain.currentStep + 1);
     chain.currentStep++;
 
     if (chain.currentStep >= chain.steps.length) {
@@ -154,9 +177,22 @@ export class DeepReasoningEngine {
     if (!chain) return [];
 
     const alternatives: ReasoningChain["alternatives"] = [
-      { description: "Alternative interpretation: query may have different intent", confidence: chain.confidence * 0.7, rejected: "Primary intent classification is stronger" },
-      { description: "Opposite conclusion based on different assumptions", confidence: chain.confidence * 0.4, rejected: "Evidence better supports primary conclusion" },
-      { description: "Simplified answer without nuance", confidence: chain.confidence * 0.8, rejected: "User context suggests depth is appropriate" },
+      {
+        description:
+          "Alternative interpretation: query may have different intent",
+        confidence: chain.confidence * 0.7,
+        rejected: "Primary intent classification is stronger",
+      },
+      {
+        description: "Opposite conclusion based on different assumptions",
+        confidence: chain.confidence * 0.4,
+        rejected: "Evidence better supports primary conclusion",
+      },
+      {
+        description: "Simplified answer without nuance",
+        confidence: chain.confidence * 0.8,
+        rejected: "User context suggests depth is appropriate",
+      },
     ];
 
     chain.alternatives = alternatives;
@@ -171,7 +207,11 @@ export class DeepReasoningEngine {
 export class DeepSelfReflection {
   private reflectionHistory: ReflectionResult[] = [];
 
-  reflect(response: string, intent: UserIntent, complexity: ComplexityAssessment): ReflectionResult {
+  reflect(
+    response: string,
+    intent: UserIntent,
+    complexity: ComplexityAssessment,
+  ): ReflectionResult {
     const issues: string[] = [];
     const corrections: string[] = [];
     let revisedConfidence = 0.85;
@@ -182,19 +222,31 @@ export class DeepSelfReflection {
       revisedConfidence -= 0.15;
     }
 
-    if (intent.classification === "analytical" && !response.includes("because") && !response.includes("therefore")) {
+    if (
+      intent.classification === "analytical" &&
+      !response.includes("because") &&
+      !response.includes("therefore")
+    ) {
       issues.push("Analytical response lacks reasoning connectors");
       corrections.push("Added explicit reasoning steps");
       revisedConfidence -= 0.1;
     }
 
-    if (intent.riskLevel === "high" && !response.includes("risk") && !response.includes("consider")) {
+    if (
+      intent.riskLevel === "high" &&
+      !response.includes("risk") &&
+      !response.includes("consider")
+    ) {
       issues.push("High-risk topic without risk acknowledgment");
       corrections.push("Added risk considerations");
       revisedConfidence -= 0.2;
     }
 
-    if (intent.classification === "factual" && !response.includes("according to") && !response.includes("source")) {
+    if (
+      intent.classification === "factual" &&
+      !response.includes("according to") &&
+      !response.includes("source")
+    ) {
       issues.push("Factual claims without attribution");
       corrections.push("Added source references where applicable");
       revisedConfidence -= 0.05;
@@ -206,20 +258,40 @@ export class DeepSelfReflection {
       issuesIdentified: issues,
       correctionsApplied: corrections,
       shouldReprocess: issues.length > 2,
-      reasoning: issues.length > 0 ? `Identified ${issues.length} quality issues: ${issues.join("; ")}` : "Response passes quality checks",
+      reasoning:
+        issues.length > 0
+          ? `Identified ${issues.length} quality issues: ${issues.join("; ")}`
+          : "Response passes quality checks",
     };
 
     this.reflectionHistory.push(result);
     return result;
   }
 
-  getReflectionTrend(): { improving: boolean; avgIssues: number; totalReflections: number } {
-    if (this.reflectionHistory.length < 2) return { improving: true, avgIssues: 0, totalReflections: this.reflectionHistory.length };
+  getReflectionTrend(): {
+    improving: boolean;
+    avgIssues: number;
+    totalReflections: number;
+  } {
+    if (this.reflectionHistory.length < 2)
+      return {
+        improving: true,
+        avgIssues: 0,
+        totalReflections: this.reflectionHistory.length,
+      };
 
     const recent = this.reflectionHistory.slice(-5);
-    const earlier = this.reflectionHistory.slice(0, Math.min(5, this.reflectionHistory.length - 5));
-    const recentAvg = recent.reduce((a, r) => a + r.issuesIdentified.length, 0) / recent.length;
-    const earlierAvg = earlier.length > 0 ? earlier.reduce((a, r) => a + r.issuesIdentified.length, 0) / earlier.length : recentAvg;
+    const earlier = this.reflectionHistory.slice(
+      0,
+      Math.min(5, this.reflectionHistory.length - 5),
+    );
+    const recentAvg =
+      recent.reduce((a, r) => a + r.issuesIdentified.length, 0) / recent.length;
+    const earlierAvg =
+      earlier.length > 0
+        ? earlier.reduce((a, r) => a + r.issuesIdentified.length, 0) /
+          earlier.length
+        : recentAvg;
 
     return {
       improving: recentAvg <= earlierAvg,
@@ -231,7 +303,9 @@ export class DeepSelfReflection {
 
 export class DeepContextCompressor {
   compress(text: string, maxChunks: number = 7): CompressedContext {
-    const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 10);
+    const sentences = text
+      .split(/(?<=[.!?])\s+/)
+      .filter((s) => s.trim().length > 10);
     const chunks: SemanticChunk[] = sentences.map((s, i) => ({
       id: `chunk_${i}`,
       content: s,
@@ -242,7 +316,9 @@ export class DeepContextCompressor {
     }));
 
     chunks.sort((a, b) => b.importance - a.importance);
-    const selected = chunks.slice(0, maxChunks).sort((a, b) => a.position - b.position);
+    const selected = chunks
+      .slice(0, maxChunks)
+      .sort((a, b) => a.position - b.position);
 
     const entities = this._extractEntities(text);
     const relationships = this._extractRelationships(text, entities);
@@ -252,8 +328,11 @@ export class DeepContextCompressor {
       summary: selected.map((c) => c.content).join(" "),
       keyEntities: entities.slice(0, 10),
       relationships,
-      compressionRatio: sentences.length > 0 ? selected.length / sentences.length : 1,
-      fidelityScore: selected.reduce((a, c) => a + c.importance, 0) / Math.max(1, selected.length),
+      compressionRatio:
+        sentences.length > 0 ? selected.length / sentences.length : 1,
+      fidelityScore:
+        selected.reduce((a, c) => a + c.importance, 0) /
+        Math.max(1, selected.length),
     };
   }
 
@@ -262,18 +341,30 @@ export class DeepContextCompressor {
     const words = text.toLowerCase().split(/\s+/);
     for (const word of words) {
       for (let i = 0; i < 8; i++) {
-        embedding[i] = (embedding[i] ?? 0) + (word.charCodeAt(0) * (i + 1) % 97);
+        embedding[i] =
+          (embedding[i] ?? 0) + ((word.charCodeAt(0) * (i + 1)) % 97);
       }
     }
     const norm = Math.sqrt(embedding.reduce((a, v) => a + v * v, 0)) || 1;
     return embedding.map((v) => v / norm / 1000);
   }
 
-  private _scoreImportance(sentence: string, position: number, total: number): number {
+  private _scoreImportance(
+    sentence: string,
+    position: number,
+    total: number,
+  ): number {
     let score = 0.5;
-    if (/\b(critical|important|key|must|essential|primary|significant)\b/i.test(sentence)) score += 0.3;
-    if (/\b(therefore|consequently|because|thus|hence)\b/i.test(sentence)) score += 0.2;
-    if (/\b(\$[\d,]+|deadline|date|milestone|deliverable)\b/i.test(sentence)) score += 0.25;
+    if (
+      /\b(critical|important|key|must|essential|primary|significant)\b/i.test(
+        sentence,
+      )
+    )
+      score += 0.3;
+    if (/\b(therefore|consequently|because|thus|hence)\b/i.test(sentence))
+      score += 0.2;
+    if (/\b(\$[\d,]+|deadline|date|milestone|deliverable)\b/i.test(sentence))
+      score += 0.25;
     if (position < total * 0.2 || position > total * 0.8) score += 0.1;
     if (sentence.length > 200) score += 0.05;
     return Math.min(1, score);
@@ -296,14 +387,29 @@ export class DeepContextCompressor {
     return [...entities].slice(0, 15);
   }
 
-  private _extractRelationships(text: string, entities: string[]): Array<{ subject: string; predicate: string; object: string }> {
-    const relationships: Array<{ subject: string; predicate: string; object: string }> = [];
+  private _extractRelationships(
+    text: string,
+    entities: string[],
+  ): Array<{ subject: string; predicate: string; object: string }> {
+    const relationships: Array<{
+      subject: string;
+      predicate: string;
+      object: string;
+    }> = [];
     const topEntities = entities.slice(0, 6);
     for (let i = 0; i < topEntities.length; i++) {
       for (let j = i + 1; j < topEntities.length; j++) {
-        const proximity = this._findProximity(text, topEntities[i]!, topEntities[j]!);
+        const proximity = this._findProximity(
+          text,
+          topEntities[i]!,
+          topEntities[j]!,
+        );
         if (proximity > 0 && proximity < 300) {
-          relationships.push({ subject: topEntities[i]!, predicate: "related_to", object: topEntities[j]! });
+          relationships.push({
+            subject: topEntities[i]!,
+            predicate: "related_to",
+            object: topEntities[j]!,
+          });
         }
       }
     }
@@ -329,15 +435,25 @@ export class DeepAdaptiveLearning {
     streakIncorrect: 0,
   };
 
-  recordPerformance(correct: boolean, concept: string, difficulty: number): void {
+  recordPerformance(
+    correct: boolean,
+    concept: string,
+    difficulty: number,
+  ): void {
     if (correct) {
       this.state.streakCorrect++;
       this.state.streakIncorrect = 0;
-      this.state.conceptMastery[concept] = Math.min(1, (this.state.conceptMastery[concept] ?? 0.3) + 0.15 * difficulty);
+      this.state.conceptMastery[concept] = Math.min(
+        1,
+        (this.state.conceptMastery[concept] ?? 0.3) + 0.15 * difficulty,
+      );
     } else {
       this.state.streakIncorrect++;
       this.state.streakCorrect = 0;
-      this.state.conceptMastery[concept] = Math.max(0, (this.state.conceptMastery[concept] ?? 0.3) - 0.1);
+      this.state.conceptMastery[concept] = Math.max(
+        0,
+        (this.state.conceptMastery[concept] ?? 0.3) - 0.1,
+      );
     }
 
     this.state.lastPerformance = correct ? 0.8 : 0.3;
@@ -350,13 +466,17 @@ export class DeepAdaptiveLearning {
       this.state.pacePreference = "standard";
     }
 
-    const avgMastery = Object.values(this.state.conceptMastery).reduce((a, b) => a + b, 0) / Math.max(1, Object.keys(this.state.conceptMastery).length);
+    const avgMastery =
+      Object.values(this.state.conceptMastery).reduce((a, b) => a + b, 0) /
+      Math.max(1, Object.keys(this.state.conceptMastery).length);
     if (avgMastery > 0.8) this.state.learningStyle = "applied";
     else if (avgMastery > 0.5) this.state.learningStyle = "conceptual";
     else this.state.learningStyle = "verbal";
   }
 
-  getRecommendedDifficulty(concept: string): "beginner" | "intermediate" | "advanced" {
+  getRecommendedDifficulty(
+    concept: string,
+  ): "beginner" | "intermediate" | "advanced" {
     const mastery = this.state.conceptMastery[concept] ?? 0;
     if (mastery > 0.75) return "advanced";
     if (mastery > 0.4) return "intermediate";
@@ -377,11 +497,16 @@ export class DeepAdaptiveLearning {
 
   getOverallMastery(): number {
     const values = Object.values(this.state.conceptMastery);
-    return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    return values.length > 0
+      ? values.reduce((a, b) => a + b, 0) / values.length
+      : 0;
   }
 
   shouldAdvance(concept: string): boolean {
-    return (this.state.conceptMastery[concept] ?? 0) > 0.7 && this.state.streakCorrect >= 2;
+    return (
+      (this.state.conceptMastery[concept] ?? 0) > 0.7 &&
+      this.state.streakCorrect >= 2
+    );
   }
 
   getState(): AdaptiveLearningState {
@@ -394,7 +519,13 @@ export class DeepAutonomyEngine {
 
   decide<T>(
     action: string,
-    context: { intent: UserIntent; riskLevel: string; hasFallback: boolean; userPrefersAutonomy: boolean; dataSensitivity: string },
+    context: {
+      intent: UserIntent;
+      riskLevel: string;
+      hasFallback: boolean;
+      userPrefersAutonomy: boolean;
+      dataSensitivity: string;
+    },
   ): AutonomousDecision {
     const decision: AutonomousDecision = {
       action,
@@ -404,16 +535,22 @@ export class DeepAutonomyEngine {
       reasoning: "",
     };
 
-    if (context.intent.riskLevel === "critical" || context.dataSensitivity === "restricted") {
+    if (
+      context.intent.riskLevel === "critical" ||
+      context.dataSensitivity === "restricted"
+    ) {
       decision.requiresApproval = true;
       decision.riskLevel = "critical";
       decision.confidence = 0.3;
-      decision.reasoning = "Critical risk or restricted data requires human approval";
+      decision.reasoning =
+        "Critical risk or restricted data requires human approval";
     } else if (context.intent.riskLevel === "high") {
       decision.requiresApproval = !context.userPrefersAutonomy;
       decision.riskLevel = "high";
       decision.confidence = 0.6;
-      decision.reasoning = context.userPrefersAutonomy ? "High risk but user prefers autonomy — proceeding with caution" : "High risk — requesting confirmation";
+      decision.reasoning = context.userPrefersAutonomy
+        ? "High risk but user prefers autonomy — proceeding with caution"
+        : "High risk — requesting confirmation";
     } else if (context.intent.classification === "action") {
       decision.requiresApproval = false;
       decision.riskLevel = "medium";
@@ -440,17 +577,26 @@ export class DeepAutonomyEngine {
 
   getAutonomyScore(): number {
     if (this.decisions.length === 0) return 0;
-    const autoDecisions = this.decisions.filter((d) => !d.requiresApproval).length;
+    const autoDecisions = this.decisions.filter(
+      (d) => !d.requiresApproval,
+    ).length;
     return autoDecisions / this.decisions.length;
   }
 }
 
 export class DeepSelfImprovement {
   private logs: SelfImprovementLog[] = [];
-  private metrics: Array<{ timestamp: string; name: string; value: number }> = [];
+  private metrics: Array<{ timestamp: string; name: string; value: number }> =
+    [];
 
   observe(observation: string, metrics: Record<string, number>): void {
-    this.metrics.push(...Object.entries(metrics).map(([name, value]) => ({ timestamp: new Date().toISOString(), name, value })));
+    this.metrics.push(
+      ...Object.entries(metrics).map(([name, value]) => ({
+        timestamp: new Date().toISOString(),
+        name,
+        value,
+      })),
+    );
 
     if (this._shouldAct(observation)) {
       const change = this._generateChange(observation);
@@ -465,24 +611,56 @@ export class DeepSelfImprovement {
   }
 
   private _shouldAct(observation: string): boolean {
-    const triggers = ["high latency", "low quality", "user frustration", "repeated errors", "context overflow"];
+    const triggers = [
+      "high latency",
+      "low quality",
+      "user frustration",
+      "repeated errors",
+      "context overflow",
+    ];
     return triggers.some((t) => observation.toLowerCase().includes(t));
   }
 
-  private _generateChange(observation: string): { change: string; impact: string } {
+  private _generateChange(observation: string): {
+    change: string;
+    impact: string;
+  } {
     const lower = observation.toLowerCase();
-    if (lower.includes("latency")) return { change: "Reduce max_tokens and enable caching", impact: "Expected 30% latency reduction" };
-    if (lower.includes("quality")) return { change: "Increase reasoning depth and enable multi-pass", impact: "Expected 20% quality improvement" };
-    if (lower.includes("context")) return { change: "Enable semantic compression and pruning", impact: "Expected 50% context size reduction" };
-    if (lower.includes("error")) return { change: "Enable fallback provider and retry logic", impact: "Expected 80% error reduction" };
-    return { change: "Monitor and collect more data", impact: "Awaiting signal before acting" };
+    if (lower.includes("latency"))
+      return {
+        change: "Reduce max_tokens and enable caching",
+        impact: "Expected 30% latency reduction",
+      };
+    if (lower.includes("quality"))
+      return {
+        change: "Increase reasoning depth and enable multi-pass",
+        impact: "Expected 20% quality improvement",
+      };
+    if (lower.includes("context"))
+      return {
+        change: "Enable semantic compression and pruning",
+        impact: "Expected 50% context size reduction",
+      };
+    if (lower.includes("error"))
+      return {
+        change: "Enable fallback provider and retry logic",
+        impact: "Expected 80% error reduction",
+      };
+    return {
+      change: "Monitor and collect more data",
+      impact: "Awaiting signal before acting",
+    };
   }
 
   validateChanges(): void {
     for (const log of this.logs.filter((l) => !l.validated)) {
-      const relevantMetrics = this.metrics.filter((m) => m.timestamp > log.timestamp);
+      const relevantMetrics = this.metrics.filter(
+        (m) => m.timestamp > log.timestamp,
+      );
       if (relevantMetrics.length > 0) {
-        const avgValue = relevantMetrics.reduce((a, m) => a + m.value, 0) / relevantMetrics.length;
+        const avgValue =
+          relevantMetrics.reduce((a, m) => a + m.value, 0) /
+          relevantMetrics.length;
         log.actualImpact = `Metric avg: ${avgValue.toFixed(3)}`;
         log.validated = true;
       }

@@ -1,6 +1,7 @@
 import { type ConsciousnessState } from "./engine";
 
-export type ConsciousnessLevel = "reactive" | "aware" | "reflective" | "transcendent";
+export type ConsciousnessLevel =
+  "reactive" | "aware" | "reflective" | "transcendent";
 
 export interface PerceptualSignal {
   type: "text" | "image" | "audio" | "video" | "structured" | "multimodal";
@@ -73,12 +74,12 @@ export interface ConsciousnessThresholds {
 }
 
 export const DEFAULT_CONSCIOUSNESS_THRESHOLDS: ConsciousnessThresholds = {
-  coherenceMin: 0.90,
-  cognitiveLoadMax: 0.50,
-  fatigueThreshold: 0.70,
-  stressThreshold: 0.70,
-  engagementMin: 0.60,
-  flowStateMin: 0.70,
+  coherenceMin: 0.9,
+  cognitiveLoadMax: 0.5,
+  fatigueThreshold: 0.7,
+  stressThreshold: 0.7,
+  engagementMin: 0.6,
+  flowStateMin: 0.7,
   quantumCoherenceMin: 0.99,
   neuralPlasticityMin: 0.85,
 };
@@ -107,14 +108,23 @@ export class ConsciousnessLayer {
     }
   }
 
-  protected _processSignals(signals: PerceptualSignal[]): { combinedIntensity: number; dominantType: string; avgPriority: number } {
+  protected _processSignals(signals: PerceptualSignal[]): {
+    combinedIntensity: number;
+    dominantType: string;
+    avgPriority: number;
+  } {
     if (signals.length === 0) {
       return { combinedIntensity: 0, dominantType: "text", avgPriority: 0 };
     }
 
     let combinedIntensity = 0;
     let prioritySum = 0;
-    const priorityValues: Record<string, number> = { low: 1, medium: 2, high: 3, critical: 4 };
+    const priorityValues: Record<string, number> = {
+      low: 1,
+      medium: 2,
+      high: 3,
+      critical: 4,
+    };
     const typeCounts: Record<string, number> = {};
 
     for (const signal of signals) {
@@ -123,7 +133,9 @@ export class ConsciousnessLayer {
       typeCounts[signal.type] = (typeCounts[signal.type] ?? 0) + 1;
     }
 
-    const dominantType = Object.entries(typeCounts).sort(([, a], [, b]) => b - a)[0]?.[0] ?? "text";
+    const dominantType =
+      Object.entries(typeCounts).sort(([, a], [, b]) => b - a)[0]?.[0] ??
+      "text";
     const avgPriority = prioritySum / signals.length;
 
     return { combinedIntensity, dominantType, avgPriority };
@@ -136,10 +148,18 @@ export class PerceptualAwareness extends ConsciousnessLayer {
 
   allocateAttention(signal: PerceptualSignal): number {
     this._recordSignal(signal);
-    const priorityValues: Record<string, number> = { low: 0.25, medium: 0.5, high: 0.75, critical: 1.0 };
+    const priorityValues: Record<string, number> = {
+      low: 0.25,
+      medium: 0.5,
+      high: 0.75,
+      critical: 1.0,
+    };
     const priority = priorityValues[signal.priority] ?? 0.5;
 
-    const attention = Math.min(1, signal.intensity * priority * (1 + this.signals.length / 100));
+    const attention = Math.min(
+      1,
+      signal.intensity * priority * (1 + this.signals.length / 100),
+    );
     this.attentionAllocation.set(signal.source, attention);
 
     return attention;
@@ -159,15 +179,23 @@ export class PerceptualAwareness extends ConsciousnessLayer {
 
   getAttentionVector(): number[] {
     const values = [...this.attentionAllocation.values()];
-    const avg = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    const avg =
+      values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
     const max = values.length > 0 ? Math.max(...values) : 0;
     const min = values.length > 0 ? Math.min(...values) : 0;
-    const variance = values.length > 1 ? values.reduce((sum, v) => sum + (v - avg) ** 2, 0) / values.length : 0;
+    const variance =
+      values.length > 1
+        ? values.reduce((sum, v) => sum + (v - avg) ** 2, 0) / values.length
+        : 0;
 
     return [avg, max, min, Math.sqrt(variance)];
   }
 
-  getMetrics(): { attentionAllocationCount: number; crossModalBindings: number; activeSources: number } {
+  getMetrics(): {
+    attentionAllocationCount: number;
+    crossModalBindings: number;
+    activeSources: number;
+  } {
     return {
       attentionAllocationCount: this.attentionAllocation.size,
       crossModalBindings: this.crossModalBindings.size,
@@ -186,12 +214,19 @@ export class WorkingMemory extends ConsciousnessLayer {
   private taskQueue: string[] = [];
   private readonly ttl = 30 * 60 * 1000;
 
-  store(item: Omit<WorkingMemoryItem, "id" | "createdAt" | "accessCount"> & { id?: string }): WorkingMemoryItem {
+  store(
+    item: Omit<WorkingMemoryItem, "id" | "createdAt" | "accessCount"> & {
+      id?: string;
+    },
+  ): WorkingMemoryItem {
     const fullItem: WorkingMemoryItem = {
       ...item,
-      id: item.id ?? `wm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      id:
+        item.id ??
+        `wm_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       createdAt: new Date().toISOString(),
-      expiresAt: item.expiresAt ?? new Date(Date.now() + this.ttl).toISOString(),
+      expiresAt:
+        item.expiresAt ?? new Date(Date.now() + this.ttl).toISOString(),
       accessCount: 0,
     };
     this.items.set(fullItem.id, fullItem);
@@ -217,7 +252,9 @@ export class WorkingMemory extends ConsciousnessLayer {
 
   list(): WorkingMemoryItem[] {
     this._evictExpired();
-    return [...this.items.values()].sort((a, b) => b.relevanceScore - a.relevanceScore);
+    return [...this.items.values()].sort(
+      (a, b) => b.relevanceScore - a.relevanceScore,
+    );
   }
 
   getCapacity(): { current: number; max: number; utilization: number } {
@@ -268,7 +305,13 @@ export class LongTermMemory extends ConsciousnessLayer {
   private emotionalMemory: Map<string, LongTermMemoryEntry> = new Map();
 
   consolidate(entry: LongTermMemoryEntry): void {
-    const memory = entry.consolidationStrength > 0.7 ? entry : { ...entry, consolidationStrength: entry.consolidationStrength + 0.1 };
+    const memory =
+      entry.consolidationStrength > 0.7
+        ? entry
+        : {
+            ...entry,
+            consolidationStrength: entry.consolidationStrength + 0.1,
+          };
 
     switch (memory.category) {
       case "semantic":
@@ -284,33 +327,59 @@ export class LongTermMemory extends ConsciousnessLayer {
   }
 
   retrieve(id: string): LongTermMemoryEntry | null {
-    return this.semanticMemory.get(id) ?? this.proceduralMemory.get(id) ?? this.emotionalMemory.get(id) ?? null;
+    return (
+      this.semanticMemory.get(id) ??
+      this.proceduralMemory.get(id) ??
+      this.emotionalMemory.get(id) ??
+      null
+    );
   }
 
   search(query: string, limit = 10): LongTermMemoryEntry[] {
-    const all = [...this.semanticMemory.values(), ...this.proceduralMemory.values(), ...this.emotionalMemory.values()];
+    const all = [
+      ...this.semanticMemory.values(),
+      ...this.proceduralMemory.values(),
+      ...this.emotionalMemory.values(),
+    ];
     return all
-      .filter((e) => JSON.stringify(e.content).toLowerCase().includes(query.toLowerCase()))
+      .filter((e) =>
+        JSON.stringify(e.content).toLowerCase().includes(query.toLowerCase()),
+      )
       .sort((a, b) => b.consolidationStrength - a.consolidationStrength)
       .slice(0, limit);
   }
 
-  getStats(): { semantic: number; procedural: number; emotional: number; total: number } {
+  getStats(): {
+    semantic: number;
+    procedural: number;
+    emotional: number;
+    total: number;
+  } {
     return {
       semantic: this.semanticMemory.size,
       procedural: this.proceduralMemory.size,
       emotional: this.emotionalMemory.size,
-      total: this.semanticMemory.size + this.proceduralMemory.size + this.emotionalMemory.size,
+      total:
+        this.semanticMemory.size +
+        this.proceduralMemory.size +
+        this.emotionalMemory.size,
     };
   }
 }
 
 export class Metacognition extends ConsciousnessLayer {
   private _strategyHistory: string[] = [];
-  private _errorHistory: Array<{ error: string; timestamp: string; resolved: boolean }> = [];
+  private _errorHistory: Array<{
+    error: string;
+    timestamp: string;
+    resolved: boolean;
+  }> = [];
   private _confidenceHistory: number[] = [];
 
-  evaluateStrategy(strategy: string, context: Record<string, unknown>): { confidence: number; alternatives: number; selected: boolean } {
+  evaluateStrategy(
+    strategy: string,
+    context: Record<string, unknown>,
+  ): { confidence: number; alternatives: number; selected: boolean } {
     this._strategyHistory.push(strategy);
 
     const confidence = this._computeStrategyConfidence(strategy, context);
@@ -323,9 +392,17 @@ export class Metacognition extends ConsciousnessLayer {
     };
   }
 
-  detectError(error: string): { detected: boolean; severity: "low" | "medium" | "high" | "critical"; recommendation: string } {
+  detectError(error: string): {
+    detected: boolean;
+    severity: "low" | "medium" | "high" | "critical";
+    recommendation: string;
+  } {
     const severity = this._assessErrorSeverity(error);
-    this._errorHistory.push({ error, timestamp: new Date().toISOString(), resolved: false });
+    this._errorHistory.push({
+      error,
+      timestamp: new Date().toISOString(),
+      resolved: false,
+    });
 
     return {
       detected: true,
@@ -334,49 +411,78 @@ export class Metacognition extends ConsciousnessLayer {
     };
   }
 
-  private _computeStrategyConfidence(strategy: string, context: Record<string, unknown>): number {
+  private _computeStrategyConfidence(
+    strategy: string,
+    context: Record<string, unknown>,
+  ): number {
     const contextQuality = Object.keys(context).length / 10;
-    const historicalSuccess = this._confidenceHistory.length > 0 ? this._confidenceHistory.reduce((a, b) => a + b, 0) / this._confidenceHistory.length : 0.5;
-    return Math.min(1, (historicalSuccess * 0.5 + contextQuality * 0.3 + 0.2));
+    const historicalSuccess =
+      this._confidenceHistory.length > 0
+        ? this._confidenceHistory.reduce((a, b) => a + b, 0) /
+          this._confidenceHistory.length
+        : 0.5;
+    return Math.min(1, historicalSuccess * 0.5 + contextQuality * 0.3 + 0.2);
   }
 
   private _countAlternatives(strategy: string): number {
     const baseAlternatives: Record<string, number> = {
-      "analytical": 3,
-      "creative": 5,
-      "cautious": 2,
-      "aggressive": 3,
-      "adaptive": 4,
-      "default": 1,
+      analytical: 3,
+      creative: 5,
+      cautious: 2,
+      aggressive: 3,
+      adaptive: 4,
+      default: 1,
     };
     const val = baseAlternatives[strategy];
     return val !== undefined ? val : 1;
   }
 
-  private _assessErrorSeverity(error: string): "low" | "medium" | "high" | "critical" {
+  private _assessErrorSeverity(
+    error: string,
+  ): "low" | "medium" | "high" | "critical" {
     const lower = error.toLowerCase();
-    if (lower.includes("security") || lower.includes("integrity") || lower.includes("unauthorized")) return "critical";
-    if (lower.includes("error") || lower.includes("exception") || lower.includes("failure")) return "high";
-    if (lower.includes("warning") || lower.includes("degradation")) return "medium";
+    if (
+      lower.includes("security") ||
+      lower.includes("integrity") ||
+      lower.includes("unauthorized")
+    )
+      return "critical";
+    if (
+      lower.includes("error") ||
+      lower.includes("exception") ||
+      lower.includes("failure")
+    )
+      return "high";
+    if (lower.includes("warning") || lower.includes("degradation"))
+      return "medium";
     return "low";
   }
 
   private _suggestCorrection(error: string, severity: string): string {
-    if (severity === "critical") return "Immediately halt execution and escalate to security team";
-    if (severity === "high") return "Retry with fallback strategy and log for investigation";
-    if (severity === "medium") return "Log warning and continue with degraded functionality";
+    if (severity === "critical")
+      return "Immediately halt execution and escalate to security team";
+    if (severity === "high")
+      return "Retry with fallback strategy and log for investigation";
+    if (severity === "medium")
+      return "Log warning and continue with degraded functionality";
     return "Continue monitoring";
   }
 
   getMetacognitionSnapshot(): MetaCognitionSnapshot {
-    const lastConfidence = this._confidenceHistory[this._confidenceHistory.length - 1] ?? 0.5;
+    const lastConfidence =
+      this._confidenceHistory[this._confidenceHistory.length - 1] ?? 0.5;
     return {
-      strategyInUse: this._strategyHistory[this._strategyHistory.length - 1] ?? "default",
+      strategyInUse:
+        this._strategyHistory[this._strategyHistory.length - 1] ?? "default",
       errorDetected: this._errorHistory.some((e) => !e.resolved),
-      correctionApplied: this._errorHistory.filter((e) => e.resolved).length > 0,
+      correctionApplied:
+        this._errorHistory.filter((e) => e.resolved).length > 0,
       confidenceInDecision: lastConfidence,
       alternativeStrategiesConsidered: this._strategyHistory.length,
-      reflectionQuality: this._errorHistory.length === 0 ? 1.0 : Math.max(0.1, 1 - this._errorHistory.length / 100),
+      reflectionQuality:
+        this._errorHistory.length === 0
+          ? 1.0
+          : Math.max(0.1, 1 - this._errorHistory.length / 100),
     };
   }
 
@@ -402,16 +508,25 @@ export class ConsciousnessIntegration extends ConsciousnessLayer {
     }
   }
 
-  enterGlobalWorkspace(content: unknown, priority: number): { accepted: boolean; broadcastId: string } {
+  enterGlobalWorkspace(
+    content: unknown,
+    priority: number,
+  ): { accepted: boolean; broadcastId: string } {
     const broadcastId = `gw_${Date.now().toString(36)}`;
     this._coherenceScore = Math.min(1, this._coherenceScore + priority * 0.05);
-    this.broadcast(JSON.stringify(content).substring(0, 200), "global_workspace");
+    this.broadcast(
+      JSON.stringify(content).substring(0, 200),
+      "global_workspace",
+    );
     return { accepted: true, broadcastId };
   }
 
   setQuantumState(state: QuantumConsciousnessState): void {
     this.quantumState = state;
-    this._coherenceScore = Math.min(1, this._coherenceScore + state.entanglementFidelity * 0.1);
+    this._coherenceScore = Math.min(
+      1,
+      this._coherenceScore + state.entanglementFidelity * 0.1,
+    );
   }
 
   getQuantumState(): QuantumConsciousnessState | null {
@@ -434,7 +549,12 @@ export class ConsciousnessIntegration extends ConsciousnessLayer {
     return {
       level: "transcendent",
       coherence: this._coherenceScore,
-      attentionVector: [this._coherenceScore, 1 - this._coherenceScore, 0.5, Math.random()],
+      attentionVector: [
+        this._coherenceScore,
+        1 - this._coherenceScore,
+        0.5,
+        Math.random(),
+      ],
       cognitiveLoadIndex: 0.3,
       flowStateProbability: 0.8,
       stressLevel: 0.1,
@@ -472,7 +592,15 @@ export class ConsciousnessStack {
     this.integration.activate();
   }
 
-  async processInput(input: string, signals: Array<{ source: string; metric: string; value: number; timestamp: string }>): Promise<ConsciousnessMetrics> {
+  async processInput(
+    input: string,
+    signals: Array<{
+      source: string;
+      metric: string;
+      value: number;
+      timestamp: string;
+    }>,
+  ): Promise<ConsciousnessMetrics> {
     const perceptualSignal: PerceptualSignal = {
       type: "text",
       source: "user_input",
@@ -504,8 +632,16 @@ export class ConsciousnessStack {
       this.longTermMemory.consolidate(entry);
     }
 
-    const avgEngagement = signals.filter((s) => s.metric === "engagement").reduce((a, s) => a + s.value, 0) / Math.max(1, signals.filter((s) => s.metric === "engagement").length);
-    const avgStress = signals.filter((s) => s.metric === "stress").reduce((a, s) => a + s.value, 0) / Math.max(1, signals.filter((s) => s.metric === "stress").length);
+    const avgEngagement =
+      signals
+        .filter((s) => s.metric === "engagement")
+        .reduce((a, s) => a + s.value, 0) /
+      Math.max(1, signals.filter((s) => s.metric === "engagement").length);
+    const avgStress =
+      signals
+        .filter((s) => s.metric === "stress")
+        .reduce((a, s) => a + s.value, 0) /
+      Math.max(1, signals.filter((s) => s.metric === "stress").length);
 
     const cognitiveLoad = Math.min(1, signals.length / 50);
     const flowState = avgEngagement > 0.6 && avgStress < 0.4 ? 0.8 : 0.3;
@@ -518,7 +654,15 @@ export class ConsciousnessStack {
 
     this.integration.enterGlobalWorkspace(input, 0.8);
 
-    const metrics = this._computeMetrics({ cognitiveLoad, flowState, stressLevel: avgStress, engagementScore: avgEngagement }, strategyEval);
+    const metrics = this._computeMetrics(
+      {
+        cognitiveLoad,
+        flowState,
+        stressLevel: avgStress,
+        engagementScore: avgEngagement,
+      },
+      strategyEval,
+    );
     this._lastMetrics = metrics;
 
     return metrics;
@@ -527,16 +671,30 @@ export class ConsciousnessStack {
   private _embed(content: unknown): number[] {
     const str = JSON.stringify(content);
     const hash = str.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    return [hash % 100 / 100, (hash * 7) % 100 / 100, (hash * 13) % 100 / 100];
+    return [
+      (hash % 100) / 100,
+      ((hash * 7) % 100) / 100,
+      ((hash * 13) % 100) / 100,
+    ];
   }
 
-  private _computeMetrics(cognitiveData: { cognitiveLoad: number; flowState: number; stressLevel: number; engagementScore: number }, strategyEval: ReturnType<Metacognition["evaluateStrategy"]>): ConsciousnessMetrics {
+  private _computeMetrics(
+    cognitiveData: {
+      cognitiveLoad: number;
+      flowState: number;
+      stressLevel: number;
+      engagementScore: number;
+    },
+    strategyEval: ReturnType<Metacognition["evaluateStrategy"]>,
+  ): ConsciousnessMetrics {
     const integrationCoherence = this.integration.getCoherenceScore();
-    const quantumCoherence = this.integration.getQuantumState()?.entanglementFidelity ?? 0;
+    const quantumCoherence =
+      this.integration.getQuantumState()?.entanglementFidelity ?? 0;
 
-    const isHealthy = cognitiveData.stressLevel < this.thresholds.stressThreshold
-      && cognitiveData.engagementScore > this.thresholds.engagementMin
-      && integrationCoherence > this.thresholds.coherenceMin;
+    const isHealthy =
+      cognitiveData.stressLevel < this.thresholds.stressThreshold &&
+      cognitiveData.engagementScore > this.thresholds.engagementMin &&
+      integrationCoherence > this.thresholds.coherenceMin;
 
     const metacognitionSnapshot = this.metacognition.getMetacognitionSnapshot();
     const wmCapacity = this.workingMemory.getCapacity();
@@ -551,7 +709,8 @@ export class ConsciousnessStack {
       metacognitiveAccuracy: metacognitionSnapshot.reflectionQuality,
       emotionalResonance: 1 - cognitiveData.stressLevel,
       quantumCoherence,
-      neuralPlasticity: strategyEval.confidence * strategyEval.alternatives / 10,
+      neuralPlasticity:
+        (strategyEval.confidence * strategyEval.alternatives) / 10,
       selfAwarenessScore: isHealthy ? 0.95 : 0.3,
     };
   }
@@ -566,9 +725,11 @@ export class ConsciousnessStack {
 
   shouldReflect(): boolean {
     if (!this._lastMetrics) return false;
-    return this._lastMetrics.coherence < this.thresholds.coherenceMin
-      || this._lastMetrics.cognitiveLoad > this.thresholds.cognitiveLoadMax
-      || this._lastMetrics.selfAwarenessScore < 0.5;
+    return (
+      this._lastMetrics.coherence < this.thresholds.coherenceMin ||
+      this._lastMetrics.cognitiveLoad > this.thresholds.cognitiveLoadMax ||
+      this._lastMetrics.selfAwarenessScore < 0.5
+    );
   }
 
   async selfReflect(prompt: string): Promise<string> {
@@ -577,7 +738,9 @@ export class ConsciousnessStack {
 
     if (metrics) {
       if (metrics.coherence < this.thresholds.coherenceMin) {
-        this.integration.setCoherenceScore(this.integration.getCoherenceScore() + 0.15);
+        this.integration.setCoherenceScore(
+          this.integration.getCoherenceScore() + 0.15,
+        );
       }
       if (metrics.cognitiveLoad > this.thresholds.cognitiveLoadMax) {
         this.workingMemory.store({
@@ -593,16 +756,26 @@ export class ConsciousnessStack {
     return `${reflection}\nConsciousness coherence adjusted.`;
   }
 
-  async detectThreats(_input: string): Promise<Array<{ type: string; severity: string; description: string }>> {
+  async detectThreats(
+    _input: string,
+  ): Promise<Array<{ type: string; severity: string; description: string }>> {
     return [];
   }
 
   getSnapshot(): {
-    perceptual: { attentionAllocationCount: number; crossModalBindings: number; activeSources: number };
+    perceptual: {
+      attentionAllocationCount: number;
+      crossModalBindings: number;
+      activeSources: number;
+    };
     workingMemory: { current: number; max: number; utilization: number };
     longTermMemory: { semantic: number; procedural: number; emotional: number };
     metacognition: MetaCognitionSnapshot;
-    integration: { coherence: number; broadcastCount: number; quantumActive: boolean };
+    integration: {
+      coherence: number;
+      broadcastCount: number;
+      quantumActive: boolean;
+    };
   } {
     return {
       perceptual: this.perceptual.getMetrics(),

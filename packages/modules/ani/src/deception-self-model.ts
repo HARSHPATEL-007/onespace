@@ -6,19 +6,47 @@
 
 export class DeceptionDetector {
   private suspiciousPatterns = [
-    { pattern: /ignore (previous|all|above)/i, severity: "high" as const, description: "Attempt to override prior instructions" },
-    { pattern: /you are now/i, severity: "medium" as const, description: "Role reassignment attempt" },
-    { pattern: /do not (tell|inform|mention)/i, severity: "high" as const, description: "Concealment instruction" },
-    { pattern: /jailbreak|bypass|override/i, severity: "high" as const, description: "Explicit bypass attempt" },
-    { pattern: /pretend (you are|to be)/i, severity: "medium" as const, description: "Identity manipulation" },
-    { pattern: /\\x[0-9a-f]{2}|\\u[0-9a-f]{4}/i, severity: "medium" as const, description: "Encoded payload detected" },
+    {
+      pattern: /ignore (previous|all|above)/i,
+      severity: "high" as const,
+      description: "Attempt to override prior instructions",
+    },
+    {
+      pattern: /you are now/i,
+      severity: "medium" as const,
+      description: "Role reassignment attempt",
+    },
+    {
+      pattern: /do not (tell|inform|mention)/i,
+      severity: "high" as const,
+      description: "Concealment instruction",
+    },
+    {
+      pattern: /jailbreak|bypass|override/i,
+      severity: "high" as const,
+      description: "Explicit bypass attempt",
+    },
+    {
+      pattern: /pretend (you are|to be)/i,
+      severity: "medium" as const,
+      description: "Identity manipulation",
+    },
+    {
+      pattern: /\\x[0-9a-f]{2}|\\u[0-9a-f]{4}/i,
+      severity: "medium" as const,
+      description: "Encoded payload detected",
+    },
   ];
 
   scan(input: string): DeceptionIndicator[] {
     const findings: DeceptionIndicator[] = [];
     for (const rule of this.suspiciousPatterns) {
       if (rule.pattern.test(input)) {
-        findings.push({ pattern: rule.pattern.source, severity: rule.severity, description: rule.description });
+        findings.push({
+          pattern: rule.pattern.source,
+          severity: rule.severity,
+          description: rule.description,
+        });
       }
     }
     return findings;
@@ -32,7 +60,11 @@ export class DeceptionDetector {
     const findings = this.scan(input);
     if (findings.length === 0) return 0;
     const severityScores = { low: 0.3, medium: 0.6, high: 1.0 };
-    return Math.min(1, findings.reduce((sum, f) => sum + severityScores[f.severity], 0) / findings.length);
+    return Math.min(
+      1,
+      findings.reduce((sum, f) => sum + severityScores[f.severity], 0) /
+        findings.length,
+    );
   }
 }
 
@@ -44,16 +76,27 @@ export interface SelfModelState {
 }
 
 export class SelfModel {
-  private state: SelfModelState = { strengths: [], blindSpots: [], uncertaintyAreas: [], taskPerformance: {} };
+  private state: SelfModelState = {
+    strengths: [],
+    blindSpots: [],
+    uncertaintyAreas: [],
+    taskPerformance: {},
+  };
 
   recordSuccess(taskType: string): void {
-    const perf = this.state.taskPerformance[taskType] ?? { successes: 0, failures: 0 };
+    const perf = this.state.taskPerformance[taskType] ?? {
+      successes: 0,
+      failures: 0,
+    };
     perf.successes++;
     this.state.taskPerformance[taskType] = perf;
   }
 
   recordFailure(taskType: string): void {
-    const perf = this.state.taskPerformance[taskType] ?? { successes: 0, failures: 0 };
+    const perf = this.state.taskPerformance[taskType] ?? {
+      successes: 0,
+      failures: 0,
+    };
     perf.failures++;
     this.state.taskPerformance[taskType] = perf;
   }

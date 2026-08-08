@@ -38,12 +38,19 @@ export async function POST(req: Request) {
         confidence: result.confidence ?? null,
       });
     } catch (err) {
-      return Response.json({ error: err instanceof Error ? err.message : "Send failed" }, { status: 500 });
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Send failed" },
+        { status: 500 },
+      );
     }
   }
 
-  const depth = (body.depth as "fast" | "balanced" | "deep" | "research" | "auto" | undefined) ?? undefined;
-  const autoDepth = body.autoDepth === true || body.autoDepth === "true" || depth === "auto";
+  const depth =
+    (body.depth as
+      "fast" | "balanced" | "deep" | "research" | "auto" | undefined) ??
+    undefined;
+  const autoDepth =
+    body.autoDepth === true || body.autoDepth === "true" || depth === "auto";
 
   if (depth && depth !== "auto") {
     try {
@@ -67,10 +74,15 @@ export async function POST(req: Request) {
         memoryMarks: result.memoryMarks,
         feedbackPanel: result.feedbackPanel,
         clarificationNeeded: !result.thought.passedClarification,
-        clarificationQuestion: result.response.content.includes("?") ? result.response.content : undefined,
+        clarificationQuestion: result.response.content.includes("?")
+          ? result.response.content
+          : undefined,
       });
     } catch (err) {
-      return Response.json({ error: err instanceof Error ? err.message : "Deep think failed" }, { status: 500 });
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Deep think failed" },
+        { status: 500 },
+      );
     }
   }
 
@@ -98,7 +110,10 @@ export async function POST(req: Request) {
         clarificationNeeded: !result.thought.passedClarification,
       });
     } catch (err) {
-      return Response.json({ error: err instanceof Error ? err.message : "Auto-think failed" }, { status: 500 });
+      return Response.json(
+        { error: err instanceof Error ? err.message : "Auto-think failed" },
+        { status: 500 },
+      );
     }
   }
 
@@ -116,6 +131,9 @@ export async function POST(req: Request) {
       recommendations: result.recommendations ?? [],
     });
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : "Process failed" }, { status: 500 });
+    return Response.json(
+      { error: err instanceof Error ? err.message : "Process failed" },
+      { status: 500 },
+    );
   }
 }

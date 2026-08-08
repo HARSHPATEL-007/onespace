@@ -3,7 +3,13 @@ import { type MemoryEntry } from "./memory";
 
 export interface ExplanationRequest {
   userType: "end_user" | "analyst" | "technical" | "compliance";
-  depth: "summary" | "citation" | "attention" | "feature" | "counterfactual" | "model_card";
+  depth:
+    | "summary"
+    | "citation"
+    | "attention"
+    | "feature"
+    | "counterfactual"
+    | "model_card";
   output: ANIResponse;
   context: WorkspaceContext;
 }
@@ -95,11 +101,13 @@ export class XAIFramework {
     }));
   }
 
-  private _computeFeatureImportance(output: ANIResponse): Array<{ feature: string; importance: number }> {
+  private _computeFeatureImportance(
+    output: ANIResponse,
+  ): Array<{ feature: string; importance: number }> {
     return [
       { feature: "retrieved_context", importance: 0.35 },
       { feature: "conversation_history", importance: 0.25 },
-      { feature: "intent_classification", importance: 0.20 },
+      { feature: "intent_classification", importance: 0.2 },
       { feature: "tool_results", importance: 0.15 },
       { feature: "workspace_context", importance: 0.05 },
     ];
@@ -113,7 +121,9 @@ export class XAIFramework {
     ];
   }
 
-  private _computeAttentionMap(output: ANIResponse): Array<{ token: string; weight: number }> {
+  private _computeAttentionMap(
+    output: ANIResponse,
+  ): Array<{ token: string; weight: number }> {
     const words = output.content.split(/\s+/).slice(0, 20);
     return words.map((word, i) => ({
       token: word,
@@ -134,9 +144,12 @@ export class XAIFramework {
   }
 
   private _generateUncertainty(output: ANIResponse): string {
-    if (output.confidenceScore > 0.9) return "High confidence — response is well-grounded in retrieved context.";
-    if (output.confidenceScore > 0.7) return "Moderate confidence — some claims may lack direct source attribution.";
-    if (output.confidenceScore > 0.5) return "Low confidence — response contains speculative elements.";
+    if (output.confidenceScore > 0.9)
+      return "High confidence — response is well-grounded in retrieved context.";
+    if (output.confidenceScore > 0.7)
+      return "Moderate confidence — some claims may lack direct source attribution.";
+    if (output.confidenceScore > 0.5)
+      return "Low confidence — response contains speculative elements.";
     return "Very low confidence — human review recommended.";
   }
 
@@ -147,8 +160,12 @@ export class XAIFramework {
       citations: result.citations,
       methodology: result.methodology,
       uncertainty: result.uncertainty,
-      ...(result.featureImportances ? { featureImportance: result.featureImportances } : {}),
-      ...(result.counterfactuals ? { counterfactuals: result.counterfactuals } : {}),
+      ...(result.featureImportances
+        ? { featureImportance: result.featureImportances }
+        : {}),
+      ...(result.counterfactuals
+        ? { counterfactuals: result.counterfactuals }
+        : {}),
       ...(result.attentionMap ? { attentionMap: result.attentionMap } : {}),
     };
   }

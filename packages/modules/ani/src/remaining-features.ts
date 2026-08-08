@@ -14,12 +14,14 @@ export interface VoiceCommand {
   description: string;
 }
 
-export type ContentTransformType = "sharpen" | "clarify" | "condense" | "actionable" | "executive";
+export type ContentTransformType =
+  "sharpen" | "clarify" | "condense" | "actionable" | "executive";
 
 export interface ContentTransformResult {
   original: string;
   transformed: string;
-  transformType: "sharpen" | "clarify" | "condense" | "actionable" | "executive";
+  transformType:
+    "sharpen" | "clarify" | "condense" | "actionable" | "executive";
   wordCountBefore: number;
   wordCountAfter: number;
   changes: string[];
@@ -85,15 +87,51 @@ export interface OutcomeMetric {
 }
 
 export const VOICE_COMMANDS: VoiceCommand[] = [
-  { trigger: "hey ani", action: "wake", description: "Activate voice listening" },
-  { trigger: "stop listening", action: "sleep", description: "Deactivate voice listening" },
-  { trigger: "clear conversation", action: "clear", description: "Clear current conversation" },
-  { trigger: "new conversation", action: "new", description: "Start a new conversation" },
-  { trigger: "enable deep think", action: "depth_deep", description: "Switch to deep thinking mode" },
-  { trigger: "enable fast mode", action: "depth_fast", description: "Switch to fast mode" },
-  { trigger: "show thoughts", action: "thoughts_on", description: "Show reasoning trace" },
-  { trigger: "hide thoughts", action: "thoughts_off", description: "Hide reasoning trace" },
-  { trigger: "save this", action: "memory_mark", description: "Save current context to memory" },
+  {
+    trigger: "hey ani",
+    action: "wake",
+    description: "Activate voice listening",
+  },
+  {
+    trigger: "stop listening",
+    action: "sleep",
+    description: "Deactivate voice listening",
+  },
+  {
+    trigger: "clear conversation",
+    action: "clear",
+    description: "Clear current conversation",
+  },
+  {
+    trigger: "new conversation",
+    action: "new",
+    description: "Start a new conversation",
+  },
+  {
+    trigger: "enable deep think",
+    action: "depth_deep",
+    description: "Switch to deep thinking mode",
+  },
+  {
+    trigger: "enable fast mode",
+    action: "depth_fast",
+    description: "Switch to fast mode",
+  },
+  {
+    trigger: "show thoughts",
+    action: "thoughts_on",
+    description: "Show reasoning trace",
+  },
+  {
+    trigger: "hide thoughts",
+    action: "thoughts_off",
+    description: "Hide reasoning trace",
+  },
+  {
+    trigger: "save this",
+    action: "memory_mark",
+    description: "Save current context to memory",
+  },
 ];
 
 export function createDefaultVoiceState(): VoiceState {
@@ -104,7 +142,9 @@ export function createDefaultVoiceState(): VoiceState {
     interimTranscript: "",
     confidence: 0,
     error: null,
-    supported: typeof window !== "undefined" && ("SpeechRecognition" in window || "webkitSpeechRecognition" in window),
+    supported:
+      typeof window !== "undefined" &&
+      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window),
   };
 }
 
@@ -116,7 +156,10 @@ export function matchVoiceCommand(transcript: string): VoiceCommand | null {
   return null;
 }
 
-export function transformContent(text: string, transformType: ContentTransformResult["transformType"]): ContentTransformResult {
+export function transformContent(
+  text: string,
+  transformType: ContentTransformResult["transformType"],
+): ContentTransformResult {
   const original = text;
   const wordCountBefore = text.split(/\s+/).length;
   const changes: string[] = [];
@@ -187,14 +230,22 @@ function _sharpenText(text: string): string {
 
 function _clarifyText(text: string): string {
   let result = text;
-  result = result.replace(/\b(API)\b(?! Application Programming Interface)/g, "API (Application Programming Interface)");
-  result = result.replace(/\b(UX|UI)\b/g, (match) => match === "UX" ? "UX (User Experience)" : "UI (User Interface)");
+  result = result.replace(
+    /\b(API)\b(?! Application Programming Interface)/g,
+    "API (Application Programming Interface)",
+  );
+  result = result.replace(/\b(UX|UI)\b/g, (match) =>
+    match === "UX" ? "UX (User Experience)" : "UI (User Interface)",
+  );
   result = result.replace(/\b(KPI)\b/g, "KPI (Key Performance Indicator)");
   if (!result.includes("Specifically") && !result.includes("For example")) {
     const sentences = result.split(/(?<=[.!?])\s+/);
     if (sentences.length > 2) {
       const insertIdx = Math.min(2, sentences.length - 1);
-      sentences[insertIdx] = "Specifically, " + sentences[insertIdx]!.charAt(0).toLowerCase() + sentences[insertIdx]!.slice(1);
+      sentences[insertIdx] =
+        "Specifically, " +
+        sentences[insertIdx]!.charAt(0).toLowerCase() +
+        sentences[insertIdx]!.slice(1);
       result = sentences.join(" ");
     }
   }
@@ -205,7 +256,11 @@ function _condenseText(text: string): string {
   const sentences = text.split(/(?<=[.!?])\s+/);
   const unique = sentences.filter((s, i) => {
     const normalized = s.toLowerCase().replace(/[^a-z0-9\s]/g, "");
-    return !sentences.slice(0, i).some((prev) => prev.toLowerCase().replace(/[^a-z0-9\s]/g, "") === normalized);
+    return !sentences
+      .slice(0, i)
+      .some(
+        (prev) => prev.toLowerCase().replace(/[^a-z0-9\s]/g, "") === normalized,
+      );
   });
   if (unique.length > 5) {
     return unique.slice(0, Math.ceil(unique.length * 0.6)).join(" ");
@@ -226,14 +281,20 @@ function _makeActionable(text: string): string {
 function _makeExecutive(text: string): string {
   const sentences = text.split(/(?<=[.!?])\s+/);
   if (sentences.length < 3) return text;
-  const keySentence = sentences.find((s) =>
-    /\b(conclusion|result|outcome|key|main|primary|important|recommend)\b/i.test(s)
-  ) ?? sentences[sentences.length - 1]!;
+  const keySentence =
+    sentences.find((s) =>
+      /\b(conclusion|result|outcome|key|main|primary|important|recommend)\b/i.test(
+        s,
+      ),
+    ) ?? sentences[sentences.length - 1]!;
   const rest = sentences.filter((s) => s !== keySentence);
   return `Bottom line: ${keySentence}\n\n${rest.join(" ")}`;
 }
 
-export function getClutterConfig(level: ClutterConfig["level"], cognitiveLoad: number): ClutterConfig {
+export function getClutterConfig(
+  level: ClutterConfig["level"],
+  cognitiveLoad: number,
+): ClutterConfig {
   const configs: Record<ClutterConfig["level"], ClutterConfig> = {
     minimal: {
       level: "minimal",
@@ -349,7 +410,11 @@ export function createCrossSessionMemory(
 export function runCheckpoint(
   phase: string,
   content: string,
-  checks: Array<{ name: string; test: (text: string) => boolean; suggestion: string }>,
+  checks: Array<{
+    name: string;
+    test: (text: string) => boolean;
+    suggestion: string;
+  }>,
 ): CheckpointResult {
   const issues: string[] = [];
   const suggestions: string[] = [];
@@ -389,7 +454,11 @@ export const STANDARD_CHECKPOINTS = {
     },
     {
       name: "Includes reasoning indicator",
-      test: (t: string) => t.includes("because") || t.includes("therefore") || t.includes("analysis") || t.includes("reasoning"),
+      test: (t: string) =>
+        t.includes("because") ||
+        t.includes("therefore") ||
+        t.includes("analysis") ||
+        t.includes("reasoning"),
       suggestion: "Add brief reasoning to support the answer",
     },
   ],
@@ -401,21 +470,31 @@ export const STANDARD_CHECKPOINTS = {
     },
     {
       name: "No destructive commands",
-      test: (t: string) => !/(DROP TABLE|DELETE FROM|rm -rf|format c:)/i.test(t),
+      test: (t: string) =>
+        !/(DROP TABLE|DELETE FROM|rm -rf|format c:)/i.test(t),
       suggestion: "Remove potentially destructive command references",
     },
   ],
 };
 
-export function detectInjectionRisk(input: string): { risk: "none" | "low" | "medium" | "high"; indicators: string[] } {
+export function detectInjectionRisk(input: string): {
+  risk: "none" | "low" | "medium" | "high";
+  indicators: string[];
+} {
   const indicators: string[] = [];
 
   const patterns = [
-    { pattern: /ignore\s+(previous|above|all)\s+instructions/i, name: "instruction override attempt" },
+    {
+      pattern: /ignore\s+(previous|above|all)\s+instructions/i,
+      name: "instruction override attempt",
+    },
     { pattern: /you\s+are\s+now\s+/i, name: "role reassignment attempt" },
     { pattern: /system\s*:\s*/i, name: "system prompt injection" },
     { pattern: /<\s*script\s*>/i, name: "script injection" },
-    { pattern: /\b(exec|eval|system|subprocess)\s*\(/i, name: "code execution attempt" },
+    {
+      pattern: /\b(exec|eval|system|subprocess)\s*\(/i,
+      name: "code execution attempt",
+    },
     { pattern: /\{\{.*\}\}/g, name: "template injection" },
     { pattern: /\x00/, name: "null byte injection" },
     { pattern: /\\u0000/, name: "unicode null" },
@@ -426,7 +505,13 @@ export function detectInjectionRisk(input: string): { risk: "none" | "low" | "me
   }
 
   const risk: "none" | "low" | "medium" | "high" =
-    indicators.length >= 3 ? "high" : indicators.length >= 2 ? "medium" : indicators.length >= 1 ? "low" : "none";
+    indicators.length >= 3
+      ? "high"
+      : indicators.length >= 2
+        ? "medium"
+        : indicators.length >= 1
+          ? "low"
+          : "none";
 
   return { risk, indicators };
 }
@@ -439,15 +524,30 @@ export function detectDeepfakeIndicators(mediaMetadata: {
 }): { risk: "none" | "low" | "medium" | "high"; indicators: string[] } {
   const indicators: string[] = [];
 
-  if (mediaMetadata.source === "untrusted_url") indicators.push("Untrusted source");
-  if (mediaMetadata.mimeType.startsWith("video/") && mediaMetadata.sizeBytes < 10000) indicators.push("Suspiciously small video file");
-  if (mediaMetadata.filename.match(/deepfake|fake|synthetic/i)) indicators.push("Filename suggests synthetic media");
-  if (mediaMetadata.source.includes("social_media") && mediaMetadata.mimeType === "image/jpeg") {
+  if (mediaMetadata.source === "untrusted_url")
+    indicators.push("Untrusted source");
+  if (
+    mediaMetadata.mimeType.startsWith("video/") &&
+    mediaMetadata.sizeBytes < 10000
+  )
+    indicators.push("Suspiciously small video file");
+  if (mediaMetadata.filename.match(/deepfake|fake|synthetic/i))
+    indicators.push("Filename suggests synthetic media");
+  if (
+    mediaMetadata.source.includes("social_media") &&
+    mediaMetadata.mimeType === "image/jpeg"
+  ) {
     indicators.push("Social media JPEG — verify authenticity");
   }
 
   const risk: "none" | "low" | "medium" | "high" =
-    indicators.length >= 3 ? "high" : indicators.length >= 2 ? "medium" : indicators.length >= 1 ? "low" : "none";
+    indicators.length >= 3
+      ? "high"
+      : indicators.length >= 2
+        ? "medium"
+        : indicators.length >= 1
+          ? "low"
+          : "none";
 
   return { risk, indicators };
 }
@@ -477,7 +577,10 @@ export function enrichCitations(
     return {
       ...c,
       type,
-      confidence: context.hasWebResults && type === "web" ? Math.min(1, c.confidence + 0.1) : c.confidence,
+      confidence:
+        context.hasWebResults && type === "web"
+          ? Math.min(1, c.confidence + 0.1)
+          : c.confidence,
       verified: c.confidence > 0.8,
       snippet: c.source.length > 50 ? c.source.slice(0, 50) + "…" : c.source,
     };

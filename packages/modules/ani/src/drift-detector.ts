@@ -3,7 +3,8 @@
   baseline: number;
   current: number;
   driftPercentage: number;
-  direction: "slower" | "faster" | "less_accurate" | "more_verbose" | "less_consistent";
+  direction:
+    "slower" | "faster" | "less_accurate" | "more_verbose" | "less_consistent";
 }
 
 export class BehavioralDriftDetector {
@@ -21,8 +22,23 @@ export class BehavioralDriftDetector {
     const drift = Math.abs(currentValue - baseline) / baseline;
     if (drift < this.driftThreshold) return null;
 
-    const direction: DriftSignal["direction"] = currentValue > baseline ? (metric.includes("latency") ? "slower" : metric.includes("verbosity") ? "more_verbose" : "faster") : (metric.includes("accuracy") ? "less_accurate" : "less_consistent");
+    const direction: DriftSignal["direction"] =
+      currentValue > baseline
+        ? metric.includes("latency")
+          ? "slower"
+          : metric.includes("verbosity")
+            ? "more_verbose"
+            : "faster"
+        : metric.includes("accuracy")
+          ? "less_accurate"
+          : "less_consistent";
 
-    return { metric, baseline, current: currentValue, driftPercentage: drift, direction };
+    return {
+      metric,
+      baseline,
+      current: currentValue,
+      driftPercentage: drift,
+      direction,
+    };
   }
 }

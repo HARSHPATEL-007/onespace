@@ -1,22 +1,95 @@
 export { AniService } from "./server";
 export { AniChat } from "./components";
 export type { AniActions } from "./components";
-export { N0VA_ANI, createANI, classifyIntent, createWorkspaceContext, buildWorkspaceContext } from "./engine";
-export type { ANIConfig, ANIResponse, ANISnapshot, WorkspaceContext, UserIntent, ConsciousnessState, IntentClass, InterfaceMode, ConsciousnessTier } from "./engine";
-export { ConsciousnessStack, PerceptualAwareness, WorkingMemory, LongTermMemory, Metacognition, ConsciousnessIntegration } from "./consciousness";
-export type { ConsciousnessMetrics, ConsciousnessThresholds, PerceptualSignal, WorkingMemoryItem, LongTermMemoryEntry } from "./consciousness";
-export { PentAudienceManager, ExternalInterface, InternalInterface, AutonomousInterface, NeuralInterface, AmbientInterface } from "./interfaces";
-export type { PentAudienceState, ExternalInterfaceConfig, InternalInterfaceConfig, AutonomousInterfaceConfig, NeuralInterfaceConfig, AmbientInterfaceConfig } from "./interfaces";
-export { callLlm, callOpenaiLike, callAnthropic, callGemini, DEFAULT_SYSTEM_PROMPT, composeFallbackReply, getTypingDelay } from "./providers";
-export type { LlmCallResult, ToolCallRequest, ToolExecutionResult } from "./providers";
+export {
+  N0VA_ANI,
+  createANI,
+  classifyIntent,
+  createWorkspaceContext,
+  buildWorkspaceContext,
+} from "./engine";
+export type {
+  ANIConfig,
+  ANIResponse,
+  ANISnapshot,
+  WorkspaceContext,
+  UserIntent,
+  ConsciousnessState,
+  IntentClass,
+  InterfaceMode,
+  ConsciousnessTier,
+} from "./engine";
+export {
+  ConsciousnessStack,
+  PerceptualAwareness,
+  WorkingMemory,
+  LongTermMemory,
+  Metacognition,
+  ConsciousnessIntegration,
+} from "./consciousness";
+export type {
+  ConsciousnessMetrics,
+  ConsciousnessThresholds,
+  PerceptualSignal,
+  WorkingMemoryItem,
+  LongTermMemoryEntry,
+} from "./consciousness";
+export {
+  PentAudienceManager,
+  ExternalInterface,
+  InternalInterface,
+  AutonomousInterface,
+  NeuralInterface,
+  AmbientInterface,
+} from "./interfaces";
+export type {
+  PentAudienceState,
+  ExternalInterfaceConfig,
+  InternalInterfaceConfig,
+  AutonomousInterfaceConfig,
+  NeuralInterfaceConfig,
+  AmbientInterfaceConfig,
+} from "./interfaces";
+export {
+  callLlm,
+  callOpenaiLike,
+  callAnthropic,
+  callGemini,
+  DEFAULT_SYSTEM_PROMPT,
+  composeFallbackReply,
+  getTypingDelay,
+} from "./providers";
+export type {
+  LlmCallResult,
+  ToolCallRequest,
+  ToolExecutionResult,
+} from "./providers";
 export { retrieveRagContext, buildRagPrompt, rankRagResults } from "./rag";
 export type { RagContext, RagDocument } from "./rag";
 export { PersistentMemorySystem, createMemorySystem } from "./memory";
-export type { MemoryEntry, MemoryStats, ConsolidationResult, RetrievalQuery, RetrievalResult } from "./memory";
+export type {
+  MemoryEntry,
+  MemoryStats,
+  ConsolidationResult,
+  RetrievalQuery,
+  RetrievalResult,
+} from "./memory";
 export { XAIFramework, createXAI } from "./xai";
-export type { ExplanationRequest, ExplanationResult, CitationDetail } from "./xai";
+export type {
+  ExplanationRequest,
+  ExplanationResult,
+  CitationDetail,
+} from "./xai";
 export { AdaptiveLearningEngine, createAdaptiveEngine } from "./adaptive";
-export type { UserProfile, CommunicationStyle, DecisionPreferences, CognitiveProfile, TemporalPatterns, FeedbackEntry, AdaptationResult } from "./adaptive";
+export type {
+  UserProfile,
+  CommunicationStyle,
+  DecisionPreferences,
+  CognitiveProfile,
+  TemporalPatterns,
+  FeedbackEntry,
+  AdaptationResult,
+} from "./adaptive";
 export {
   CircuitBreaker,
   withRetry,
@@ -31,15 +104,37 @@ export type {
   ResilienceResult,
 } from "./resilience";
 export { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
-export type { KnowledgeEntity, Relationship, GraphPath, GraphQueryResult } from "./knowledge-graph";
-export { PredictiveIntelligenceEngine, createPredictiveEngine } from "./predictive";
-export type { ProactiveTrigger, BehavioralPrediction, AnomalyPrediction } from "./predictive";
+export type {
+  KnowledgeEntity,
+  Relationship,
+  GraphPath,
+  GraphQueryResult,
+} from "./knowledge-graph";
+export {
+  PredictiveIntelligenceEngine,
+  createPredictiveEngine,
+} from "./predictive";
+export type {
+  ProactiveTrigger,
+  BehavioralPrediction,
+  AnomalyPrediction,
+} from "./predictive";
 export { DEFAULT_ANI_SETTINGS } from "./types";
-export type { AniSettings, ToolCallRecord, Sensitivity, MemoryTier } from "./types";
+export type {
+  AniSettings,
+  ToolCallRecord,
+  Sensitivity,
+  MemoryTier,
+} from "./types";
 export { TwinManager } from "./twins";
 export type { DigitalTwin, TwinType, TwinSimulation } from "./twins";
 export { CausalReasoningEngine } from "./causal";
-export type { CausalNode, CausalEdge, CounterfactualResult, CausalLevel } from "./causal";
+export type {
+  CausalNode,
+  CausalEdge,
+  CounterfactualResult,
+  CausalLevel,
+} from "./causal";
 export { HyperdimensionalComputer } from "./hyperdimensional";
 export type { HyperVector, HDC_DIMENSION } from "./hyperdimensional";
 export { TwinSimulationEngine } from "./v5-twin";
@@ -81,21 +176,35 @@ export type { SensitivityLevel, RedactionRule } from "./risk-redaction";
 export { PreferenceEvolutionEngine } from "./preference-evolution";
 export type { TaskCategoryPreference } from "./preference-evolution";
 export { AutonomousCodeEvolution } from "./code-evolution";
-export type { CodeIssue, PatchResult, CodeIssueSeverity } from "./code-evolution";
+export type {
+  CodeIssue,
+  PatchResult,
+  CodeIssueSeverity,
+} from "./code-evolution";
 export { MultiModalMemory } from "./multimodal-memory";
 export type { ExperienceNode, ModalityType } from "./multimodal-memory";
 export { CollaborationIntelligence } from "./collaboration-intel";
-export type { CollaborationState, ParticipantSignal } from "./collaboration-intel";
+export type {
+  CollaborationState,
+  ParticipantSignal,
+} from "./collaboration-intel";
 export { SelfOptimizationGovernor } from "./self-optimization";
 export type { PerformanceSnapshot } from "./self-optimization";
 export { FailureTaxonomy } from "./failure-taxonomy";
-export type { FailureType, FailureEvent as TaxonomyFailureEvent } from "./failure-taxonomy";
+export type {
+  FailureType,
+  FailureEvent as TaxonomyFailureEvent,
+} from "./failure-taxonomy";
 export { BehavioralDriftDetector } from "./drift-detector";
 export type { DriftSignal } from "./drift-detector";
 export { ContinuousQAHarness } from "./qa-harness";
 export type { QAScore } from "./qa-harness";
 export { CrisisAutopilot } from "./crisis-autopilot";
-export type { CrisisLevel, FallbackMode, CrisisState } from "./crisis-autopilot";
+export type {
+  CrisisLevel,
+  FallbackMode,
+  CrisisState,
+} from "./crisis-autopilot";
 export { MarketplaceRanker } from "./marketplace-ranker";
 export type { MarketplaceItem } from "./marketplace-ranker";
 export { TokenEconomyManager } from "./token-economy";
@@ -118,14 +227,58 @@ export { NeuralCoherenceMonitor } from "./neural-coherence";
 export type { CoherenceMetrics } from "./neural-coherence";
 export { PolicyCompiler } from "./policy-compiler";
 export type { PolicyRule } from "./policy-compiler";
-export { CrossTenantVerifier, FederatedLearningLoop, DeploymentTopologyOptimizer } from "./governance-platform";
+export {
+  CrossTenantVerifier,
+  FederatedLearningLoop,
+  DeploymentTopologyOptimizer,
+} from "./governance-platform";
 export type { FederatedUpdate, Topology } from "./governance-platform";
-export { assessComplexity, getDepthSettings, buildReasoningSteps, needsClarification, generateMemoryMarks, buildFeedbackPanel } from "./deep-think";
-export type { ReasoningDepth, ExplanationLevel, ComplexityAssessment, TraceableThought, DeepThinkResult, AutonomousAction, MemoryMark, FeedbackPanel } from "./deep-think";
-export { buildMultiPassAnswer, digestContext, buildAutonomousWorkflow } from "./context-engine";
-export type { MultiPassResult, CritiqueRound, ContextDigestionResult, AutonomousWorkflow, AutonomousWorkflowStep } from "./context-engine";
-export { getEligibleWalkthroughs, classifyUserSegment, buildSegmentProfile, generateRecommendations, getFeaturePriorityVotes } from "./education";
-export type { UserSegment, Walkthrough, ContextualGuide, GuideCard, ProactiveRecommendation, UserSegmentProfile, FeatureRequestVote } from "./education";
+export {
+  assessComplexity,
+  getDepthSettings,
+  buildReasoningSteps,
+  needsClarification,
+  generateMemoryMarks,
+  buildFeedbackPanel,
+} from "./deep-think";
+export type {
+  ReasoningDepth,
+  ExplanationLevel,
+  ComplexityAssessment,
+  TraceableThought,
+  DeepThinkResult,
+  AutonomousAction,
+  MemoryMark,
+  FeedbackPanel,
+} from "./deep-think";
+export {
+  buildMultiPassAnswer,
+  digestContext,
+  buildAutonomousWorkflow,
+} from "./context-engine";
+export type {
+  MultiPassResult,
+  CritiqueRound,
+  ContextDigestionResult,
+  AutonomousWorkflow,
+  AutonomousWorkflowStep,
+} from "./context-engine";
+export {
+  getEligibleWalkthroughs,
+  classifyUserSegment,
+  buildSegmentProfile,
+  generateRecommendations,
+  getFeaturePriorityVotes,
+} from "./education";
+export type {
+  UserSegment,
+  Walkthrough,
+  ContextualGuide,
+  GuideCard,
+  ProactiveRecommendation,
+  UserSegmentProfile,
+  FeatureRequestVote,
+} from "./education";
 export {
   createDefaultVoiceState,
   matchVoiceCommand,
@@ -244,7 +397,11 @@ export type {
   AdaptiveExercise,
 } from "./deep-enhanced";
 export { MultiResolutionRenderer, NeuralEthicsBoard } from "./multi-resolution";
-export type { ResolutionLevel, RenderedResponse, EthicsReview } from "./multi-resolution";
+export type {
+  ResolutionLevel,
+  RenderedResponse,
+  EthicsReview,
+} from "./multi-resolution";
 export { ToolHealthSentinel } from "./tool-sentinel";
 export type { IntegrationHealth } from "./tool-sentinel";
 export { DecisionJustificationChain } from "./tool-sentinel";
@@ -252,4 +409,7 @@ export type { DecisionJustification } from "./tool-sentinel";
 export { CognitionLedger } from "./cognition-ledger";
 export type { CognitionLedgerEntry } from "./cognition-ledger";
 export { DeceptionDetector, SelfModel } from "./deception-self-model";
-export type { DeceptionIndicator, SelfModelState } from "./deception-self-model";
+export type {
+  DeceptionIndicator,
+  SelfModelState,
+} from "./deception-self-model";

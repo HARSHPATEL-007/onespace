@@ -1,4 +1,5 @@
-﻿export type LoopPhase = "planning" | "executing" | "observing" | "revising" | "complete";
+﻿export type LoopPhase =
+  "planning" | "executing" | "observing" | "revising" | "complete";
 
 export interface LoopStep {
   id: string;
@@ -26,26 +27,44 @@ export class PlannerExecutorObserverLoop {
 
   startLoop(goal: string, maxIterations = 5): LoopState {
     const loop: LoopState = {
-      id: "loop_" + Date.now().toString(36), goal, phase: "planning",
-      steps: [], iteration: 0, maxIterations, success: false,
+      id: "loop_" + Date.now().toString(36),
+      goal,
+      phase: "planning",
+      steps: [],
+      iteration: 0,
+      maxIterations,
+      success: false,
     };
     this.loops.set(loop.id, loop);
     return loop;
   }
 
-  planStep(loopId: string, action: string, expectedOutcome: string): LoopStep | null {
+  planStep(
+    loopId: string,
+    action: string,
+    expectedOutcome: string,
+  ): LoopStep | null {
     const loop = this.loops.get(loopId);
     if (!loop) return null;
     loop.phase = "planning";
     const step: LoopStep = {
-      id: "ps_" + Date.now().toString(36), phase: "planning",
-      action, expectedOutcome, success: false, timestamp: new Date().toISOString(),
+      id: "ps_" + Date.now().toString(36),
+      phase: "planning",
+      action,
+      expectedOutcome,
+      success: false,
+      timestamp: new Date().toISOString(),
     };
     loop.steps.push(step);
     return step;
   }
 
-  executeStep(loopId: string, stepId: string, actualOutcome: string, success: boolean): LoopStep | null {
+  executeStep(
+    loopId: string,
+    stepId: string,
+    actualOutcome: string,
+    success: boolean,
+  ): LoopStep | null {
     const loop = this.loops.get(loopId);
     if (!loop) return null;
     loop.phase = "executing";
@@ -56,7 +75,9 @@ export class PlannerExecutorObserverLoop {
     return step;
   }
 
-  observeAndRevise(loopId: string): { shouldRevise: boolean; reason: string } | null {
+  observeAndRevise(
+    loopId: string,
+  ): { shouldRevise: boolean; reason: string } | null {
     const loop = this.loops.get(loopId);
     if (!loop) return null;
     loop.phase = "observing";
@@ -65,16 +86,24 @@ export class PlannerExecutorObserverLoop {
     const lastStep = loop.steps[loop.steps.length - 1];
     if (lastStep && !lastStep.success && loop.iteration < loop.maxIterations) {
       loop.phase = "revising";
-      lastStep.revision = "Retrying with alternate strategy after failure: " + (lastStep.actualOutcome ?? "unknown");
+      lastStep.revision =
+        "Retrying with alternate strategy after failure: " +
+        (lastStep.actualOutcome ?? "unknown");
       return { shouldRevise: true, reason: lastStep.revision };
     }
 
-    if (loop.iteration >= loop.maxIterations || loop.steps.every((s) => s.success)) {
+    if (
+      loop.iteration >= loop.maxIterations ||
+      loop.steps.every((s) => s.success)
+    ) {
       loop.phase = "complete";
       loop.success = loop.steps.every((s) => s.success);
     }
 
-    return { shouldRevise: false, reason: loop.success ? "All steps completed" : "Max iterations reached" };
+    return {
+      shouldRevise: false,
+      reason: loop.success ? "All steps completed" : "Max iterations reached",
+    };
   }
 
   getLoop(loopId: string): LoopState | null {

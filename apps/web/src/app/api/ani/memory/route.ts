@@ -7,7 +7,22 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const { workspaceId, userId, role } = await actionContext();
 
-  let body: { action?: string; type?: string; content?: string; importance?: number; tags?: string[]; feature?: string; timeSavedMs?: number; satisfaction?: number; meetingId?: string; title?: string; participants?: string[]; decisions?: number; actions?: number; engagement?: number };
+  let body: {
+    action?: string;
+    type?: string;
+    content?: string;
+    importance?: number;
+    tags?: string[];
+    feature?: string;
+    timeSavedMs?: number;
+    satisfaction?: number;
+    meetingId?: string;
+    title?: string;
+    participants?: string[];
+    decisions?: number;
+    actions?: number;
+    engagement?: number;
+  };
   try {
     body = await req.json();
   } catch {
@@ -18,8 +33,17 @@ export async function POST(req: Request) {
 
   switch (body.action) {
     case "save_memory": {
-      if (!body.type || !body.content) return Response.json({ error: "Missing type or content" }, { status: 400 });
-      const id = await svc.persistMemoryMark(body.type, body.content, body.importance ?? 0.5, body.tags ?? []);
+      if (!body.type || !body.content)
+        return Response.json(
+          { error: "Missing type or content" },
+          { status: 400 },
+        );
+      const id = await svc.persistMemoryMark(
+        body.type,
+        body.content,
+        body.importance ?? 0.5,
+        body.tags ?? [],
+      );
       return Response.json({ id });
     }
     case "get_memories": {
@@ -27,8 +51,14 @@ export async function POST(req: Request) {
       return Response.json({ marks });
     }
     case "record_outcome": {
-      if (!body.feature) return Response.json({ error: "Missing feature" }, { status: 400 });
-      await svc.recordOutcome(body.feature, body.action ?? "use", body.timeSavedMs ?? 0, body.satisfaction ?? 0.5);
+      if (!body.feature)
+        return Response.json({ error: "Missing feature" }, { status: 400 });
+      await svc.recordOutcome(
+        body.feature,
+        body.action ?? "use",
+        body.timeSavedMs ?? 0,
+        body.satisfaction ?? 0.5,
+      );
       return Response.json({ ok: true });
     }
     case "get_outcomes": {
@@ -36,8 +66,16 @@ export async function POST(req: Request) {
       return Response.json({ outcomes });
     }
     case "save_meeting": {
-      if (!body.meetingId) return Response.json({ error: "Missing meetingId" }, { status: 400 });
-      await svc.saveMeetingSession(body.meetingId, body.title ?? "Meeting", body.participants ?? [], body.decisions ?? 0, body.actions ?? 0, body.engagement ?? 0.5);
+      if (!body.meetingId)
+        return Response.json({ error: "Missing meetingId" }, { status: 400 });
+      await svc.saveMeetingSession(
+        body.meetingId,
+        body.title ?? "Meeting",
+        body.participants ?? [],
+        body.decisions ?? 0,
+        body.actions ?? 0,
+        body.engagement ?? 0.5,
+      );
       return Response.json({ ok: true });
     }
     case "get_meetings": {

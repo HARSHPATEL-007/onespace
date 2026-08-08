@@ -11,10 +11,16 @@ export class PreferenceEvolutionEngine {
   private preferences: Map<string, TaskCategoryPreference> = new Map();
 
   getPreference(category: string): TaskCategoryPreference {
-    return this.preferences.get(category) ?? {
-      category, tone: "neutral", verbosity: "balanced",
-      formatPreference: "bullets", successCount: 0, totalUses: 0,
-    };
+    return (
+      this.preferences.get(category) ?? {
+        category,
+        tone: "neutral",
+        verbosity: "balanced",
+        formatPreference: "bullets",
+        successCount: 0,
+        totalUses: 0,
+      }
+    );
   }
 
   recordUsage(category: string, success: boolean): void {
@@ -24,11 +30,16 @@ export class PreferenceEvolutionEngine {
     this.preferences.set(category, pref);
   }
 
-  evolve(category: string, feedback: { tone?: string; verbosity?: string; format?: string }): void {
+  evolve(
+    category: string,
+    feedback: { tone?: string; verbosity?: string; format?: string },
+  ): void {
     const pref = this.getPreference(category);
     if (feedback.tone) pref.tone = feedback.tone as typeof pref.tone;
-    if (feedback.verbosity) pref.verbosity = feedback.verbosity as typeof pref.verbosity;
-    if (feedback.format) pref.formatPreference = feedback.format as typeof pref.formatPreference;
+    if (feedback.verbosity)
+      pref.verbosity = feedback.verbosity as typeof pref.verbosity;
+    if (feedback.format)
+      pref.formatPreference = feedback.format as typeof pref.formatPreference;
     this.preferences.set(category, pref);
   }
 

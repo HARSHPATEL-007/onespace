@@ -28,7 +28,9 @@ export interface HydratedContext {
   tokenEstimate: number;
 }
 
-export async function hydrateContext(base: WorkspaceContext): Promise<HydratedContext> {
+export async function hydrateContext(
+  base: WorkspaceContext,
+): Promise<HydratedContext> {
   const dims: ContextDimensions = {
     activeModule: base.activeModule,
     tenantHierarchy: base.tenantTier,
@@ -58,7 +60,9 @@ export async function hydrateContext(base: WorkspaceContext): Promise<HydratedCo
     if (recentDocs.length > 0) {
       dims.projectMilestones.push(...recentDocs.map((d) => d.title));
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 
   try {
     const recentTasks = await prisma.task.findMany({
@@ -68,15 +72,22 @@ export async function hydrateContext(base: WorkspaceContext): Promise<HydratedCo
       orderBy: { createdAt: "desc" },
     });
     if (recentTasks.length > 0) {
-      dims.projectMilestones.push(...recentTasks.map((t) => `${t.title} (${t.priority})`));
+      dims.projectMilestones.push(
+        ...recentTasks.map((t) => `${t.title} (${t.priority})`),
+      );
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 
   try {
     const upcomingEvents = await prisma.calendarEvent.findMany({
       where: {
         workspaceId: base.workspaceId,
-        startAt: { gte: new Date(), lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+        startAt: {
+          gte: new Date(),
+          lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
       },
       take: 3,
       select: { title: true },
@@ -85,14 +96,18 @@ export async function hydrateContext(base: WorkspaceContext): Promise<HydratedCo
     if (upcomingEvents.length > 0) {
       dims.meetingSentiment = `${upcomingEvents.length} upcoming events`;
     }
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 
   try {
     const integrations = await prisma.integration.count({
       where: { workspaceId: base.workspaceId, enabled: true },
     });
     dims.ecosystemQuotas = { activeIntegrations: integrations };
-  } catch { /* */ }
+  } catch {
+    /* */
+  }
 
   const tokenEstimate = JSON.stringify(dims).length / 4;
 

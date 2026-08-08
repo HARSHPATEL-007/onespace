@@ -8,7 +8,14 @@
 export class CrossAppSchemaMapper {
   private mappings: SchemaMapping[] = [];
 
-  learn(sourceApp: string, targetApp: string, examples: Array<{ source: Record<string, unknown>; target: Record<string, unknown> }>): void {
+  learn(
+    sourceApp: string,
+    targetApp: string,
+    examples: Array<{
+      source: Record<string, unknown>;
+      target: Record<string, unknown>;
+    }>,
+  ): void {
     if (examples.length === 0) return;
     const fieldMap: Record<string, string> = {};
     const sourceKeys = Object.keys(examples[0]?.source ?? {});
@@ -19,8 +26,14 @@ export class CrossAppSchemaMapper {
     this.mappings.push({ sourceApp, targetApp, fieldMap, transformations: [] });
   }
 
-  mapData(sourceApp: string, targetApp: string, data: Record<string, unknown>): Record<string, unknown> {
-    const mapping = this.mappings.find((m) => m.sourceApp === sourceApp && m.targetApp === targetApp);
+  mapData(
+    sourceApp: string,
+    targetApp: string,
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const mapping = this.mappings.find(
+      (m) => m.sourceApp === sourceApp && m.targetApp === targetApp,
+    );
     if (!mapping) return data;
     const result: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(data)) {

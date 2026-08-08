@@ -13,7 +13,8 @@ export class ContextDecayModel {
   addItem(content: string, importance: number): MemoryItem {
     const item: MemoryItem = {
       id: "mem_" + Date.now().toString(36),
-      content, importance,
+      content,
+      importance,
       lastAccessed: new Date().toISOString(),
       accessCount: 0,
       createdAt: new Date().toISOString(),
@@ -45,9 +46,15 @@ export class ContextDecayModel {
 
   private _decayScore(item: MemoryItem, now: number): number {
     const ageHours = (now - Date.parse(item.createdAt)) / (1000 * 60 * 60);
-    const recencyHours = (now - Date.parse(item.lastAccessed)) / (1000 * 60 * 60);
+    const recencyHours =
+      (now - Date.parse(item.lastAccessed)) / (1000 * 60 * 60);
     const accessBoost = Math.log2(item.accessCount + 1) * 0.1;
-    return item.importance * Math.exp(-ageHours / 168) * Math.exp(-recencyHours / 24) + accessBoost;
+    return (
+      item.importance *
+        Math.exp(-ageHours / 168) *
+        Math.exp(-recencyHours / 24) +
+      accessBoost
+    );
   }
 
   getActiveItems(): MemoryItem[] {

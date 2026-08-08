@@ -15,23 +15,34 @@ export class ToolHealthSentinel {
     this.health.set(integration.integrationId, integration);
   }
 
-  updateHealth(id: string, metrics: { errorRate?: number; latency?: number; authStatus?: string }): void {
+  updateHealth(
+    id: string,
+    metrics: { errorRate?: number; latency?: number; authStatus?: string },
+  ): void {
     const current = this.health.get(id);
     if (!current) return;
     if (metrics.errorRate !== undefined) current.errorRate = metrics.errorRate;
     if (metrics.latency !== undefined) current.latencyP95 = metrics.latency;
-    if (metrics.authStatus) current.authStatus = metrics.authStatus as typeof current.authStatus;
+    if (metrics.authStatus)
+      current.authStatus = metrics.authStatus as typeof current.authStatus;
     current.lastCheck = new Date().toISOString();
   }
 
   getUnhealthy(): IntegrationHealth[] {
-    return [...this.health.values()].filter((h) => h.errorRate > 0.1 || h.latencyP95 > 2000 || h.authStatus !== "active");
+    return [...this.health.values()].filter(
+      (h) =>
+        h.errorRate > 0.1 || h.latencyP95 > 2000 || h.authStatus !== "active",
+    );
   }
 
   shouldDefer(integrationId: string): boolean {
     const health = this.health.get(integrationId);
     if (!health) return true;
-    return health.errorRate > 0.3 || health.latencyP95 > 5000 || health.authStatus === "revoked";
+    return (
+      health.errorRate > 0.3 ||
+      health.latencyP95 > 5000 ||
+      health.authStatus === "revoked"
+    );
   }
 }
 
@@ -47,8 +58,14 @@ export interface DecisionJustification {
 export class DecisionJustificationChain {
   private decisions: DecisionJustification[] = [];
 
-  record(decision: Omit<DecisionJustification, "decisionId" | "timestamp">): DecisionJustification {
-    const full: DecisionJustification = { ...decision, decisionId: "dj_" + Date.now().toString(36), timestamp: new Date().toISOString() };
+  record(
+    decision: Omit<DecisionJustification, "decisionId" | "timestamp">,
+  ): DecisionJustification {
+    const full: DecisionJustification = {
+      ...decision,
+      decisionId: "dj_" + Date.now().toString(36),
+      timestamp: new Date().toISOString(),
+    };
     this.decisions.push(full);
     return full;
   }
@@ -58,6 +75,12 @@ export class DecisionJustificationChain {
   }
 
   getAuditTrail(): string[] {
-    return this.decisions.map((d) => "[" + d.chosenTool + "] rejected: " + d.rejectedAlternatives.map((a) => a.tool).join(", "));
+    return this.decisions.map(
+      (d) =>
+        "[" +
+        d.chosenTool +
+        "] rejected: " +
+        d.rejectedAlternatives.map((a) => a.tool).join(", "),
+    );
   }
 }

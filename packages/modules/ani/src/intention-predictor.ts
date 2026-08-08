@@ -9,10 +9,16 @@
 }
 
 export class SessionIntentionPredictor {
-  private history: Array<{ intent: string; nextIntent: string; count: number }> = [];
+  private history: Array<{
+    intent: string;
+    nextIntent: string;
+    count: number;
+  }> = [];
 
   recordTransition(from: string, to: string): void {
-    const existing = this.history.find((h) => h.intent === from && h.nextIntent === to);
+    const existing = this.history.find(
+      (h) => h.intent === from && h.nextIntent === to,
+    );
     if (existing) existing.count++;
     else this.history.push({ intent: from, nextIntent: to, count: 1 });
   }
@@ -37,7 +43,9 @@ export class SessionIntentionPredictor {
       sessionId,
       predictedIntent: topPrediction?.nextIntent ?? "conversational",
       confidence: total > 0 ? (topPrediction?.count ?? 0) / total : 0.3,
-      suggestedTools: toolMap[topPrediction?.nextIntent ?? ""] ?? ["rag_retrieval"],
+      suggestedTools: toolMap[topPrediction?.nextIntent ?? ""] ?? [
+        "rag_retrieval",
+      ],
       prefetchDocs: [],
       timestamp: new Date().toISOString(),
     };

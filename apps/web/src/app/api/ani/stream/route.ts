@@ -1,5 +1,11 @@
 import { actionContext } from "@/lib/action-context";
-import { createANI, createWorkspaceContext, classifyIntent, assessComplexity, getDepthSettings } from "@n0va/modules-ani";
+import {
+  createANI,
+  createWorkspaceContext,
+  classifyIntent,
+  assessComplexity,
+  getDepthSettings,
+} from "@n0va/modules-ani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,10 +23,17 @@ export async function GET(req: Request) {
 
   const enc = new TextEncoder();
   const ani = createANI({ workspaceId });
-  const ctx = createWorkspaceContext(workspaceId, userId, `sess_stream_${Date.now()}`, { activeModule: "ani" });
+  const ctx = createWorkspaceContext(
+    workspaceId,
+    userId,
+    `sess_stream_${Date.now()}`,
+    { activeModule: "ani" },
+  );
   const intent = classifyIntent(content, ctx);
   const complexity = assessComplexity(content, intent, 128000);
-  const depthSettings = getDepthSettings(depth as "fast" | "balanced" | "deep" | "research");
+  const depthSettings = getDepthSettings(
+    depth as "fast" | "balanced" | "deep" | "research",
+  );
 
   let seq = 0;
   const intervalIds: NodeJS.Timeout[] = [];
@@ -30,18 +43,32 @@ export async function GET(req: Request) {
       const send = (data: unknown) => {
         try {
           controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`));
-        } catch { /* disconnected */ }
+        } catch {
+          /* disconnected */
+        }
       };
 
       try {
-        send({ type: "thinking", phase: "start", message: "Processing your request...", seq: seq++ });
+        send({
+          type: "thinking",
+          phase: "start",
+          message: "Processing your request...",
+          seq: seq++,
+        });
 
         for (const step of ["decompose", "retrieve", "analyze", "reason"]) {
-          send({ type: "thinking", phase: step, message: _phaseMessage(step), seq: seq++ });
+          send({
+            type: "thinking",
+            phase: step,
+            message: _phaseMessage(step),
+            seq: seq++,
+          });
           await _delay(150 + Math.random() * 200);
         }
 
-        const result = await ani.processDeepThink(content, ctx, { depth: depth as "fast" | "balanced" | "deep" | "research" });
+        const result = await ani.processDeepThink(content, ctx, {
+          depth: depth as "fast" | "balanced" | "deep" | "research",
+        });
 
         const words = result.response.content.split(" ");
         const chunkSize = Math.max(1, Math.floor(words.length / 8));
@@ -79,7 +106,8 @@ export async function GET(req: Request) {
           tokens: result.response.tokens,
           latencyMs: result.response.latencyMs,
           confidence: result.response.confidenceScore,
-          consciousnessCoherence: result.response.consciousnessCoherence ?? null,
+          consciousnessCoherence:
+            result.response.consciousnessCoherence ?? null,
           thoughtSummary: result.thought?.summary,
           proactiveFollowups: result.proactiveFollowups,
           depth: depth,
@@ -98,7 +126,11 @@ export async function GET(req: Request) {
       }
 
       const ping = setInterval(() => {
-        try { controller.enqueue(enc.encode(`: ping\n\n`)); } catch { /* ok */ }
+        try {
+          controller.enqueue(enc.encode(`: ping\n\n`));
+        } catch {
+          /* ok */
+        }
       }, 25000);
       intervalIds.push(ping);
 

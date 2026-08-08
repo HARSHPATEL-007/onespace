@@ -1,15 +1,31 @@
 ﻿export interface WorkspaceState {
-  modules: Record<string, { lastUpdate: string; status: string; keyEntities: string[] }>;
+  modules: Record<
+    string,
+    { lastUpdate: string; status: string; keyEntities: string[] }
+  >;
   activeGoals: string[];
   recentActions: string[];
   timestamp: string;
 }
 
 export class HyperContextEngine {
-  private state: WorkspaceState = { modules: {}, activeGoals: [], recentActions: [], timestamp: new Date().toISOString() };
+  private state: WorkspaceState = {
+    modules: {},
+    activeGoals: [],
+    recentActions: [],
+    timestamp: new Date().toISOString(),
+  };
 
-  updateModule(moduleName: string, status: string, keyEntities: string[]): void {
-    this.state.modules[moduleName] = { lastUpdate: new Date().toISOString(), status, keyEntities };
+  updateModule(
+    moduleName: string,
+    status: string,
+    keyEntities: string[],
+  ): void {
+    this.state.modules[moduleName] = {
+      lastUpdate: new Date().toISOString(),
+      status,
+      keyEntities,
+    };
     this.state.timestamp = new Date().toISOString();
   }
 

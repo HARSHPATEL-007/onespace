@@ -18,14 +18,22 @@ export class AuditLogger {
   log(entry: Omit<AuditEntry, "id" | "timestamp">): AuditEntry {
     const full: AuditEntry = {
       ...entry,
-      id: "audit_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6),
+      id:
+        "audit_" +
+        Date.now().toString(36) +
+        "_" +
+        Math.random().toString(36).slice(2, 6),
       timestamp: new Date().toISOString(),
     };
     this.entries.push(full);
     return full;
   }
 
-  getEntries(filters?: { actorId?: string; action?: string; riskLevel?: string }): AuditEntry[] {
+  getEntries(filters?: {
+    actorId?: string;
+    action?: string;
+    riskLevel?: string;
+  }): AuditEntry[] {
     return this.entries.filter((e) => {
       if (filters?.actorId && e.actorId !== filters.actorId) return false;
       if (filters?.action && e.action !== filters.action) return false;

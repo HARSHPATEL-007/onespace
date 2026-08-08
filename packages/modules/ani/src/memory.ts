@@ -133,7 +133,9 @@ export class PersistentMemorySystem {
           score: 0.8,
           tier,
         });
-      } catch { /* skip malformed entries */ }
+      } catch {
+        /* skip malformed entries */
+      }
     }
 
     return results;
@@ -145,7 +147,13 @@ export class PersistentMemorySystem {
       select: { content: true },
     });
 
-    const stats: MemoryStats = { working: 0, episodic: 0, semantic: 0, procedural: 0, total: all.length };
+    const stats: MemoryStats = {
+      working: 0,
+      episodic: 0,
+      semantic: 0,
+      procedural: 0,
+      total: all.length,
+    };
 
     for (const msg of all) {
       try {
@@ -155,7 +163,9 @@ export class PersistentMemorySystem {
         else if (tier === "episodic") stats.episodic++;
         else if (tier === "semantic") stats.semantic++;
         else if (tier === "procedural") stats.procedural++;
-      } catch { /* */ }
+      } catch {
+        /* */
+      }
     }
 
     return stats;
@@ -163,7 +173,11 @@ export class PersistentMemorySystem {
 
   async consolidate(): Promise<ConsolidationResult> {
     const working = await prisma.aniMessage.findMany({
-      where: { workspaceId: this.workspaceId, role: "memory", content: { contains: "\"working\"" } },
+      where: {
+        workspaceId: this.workspaceId,
+        role: "memory",
+        content: { contains: '"working"' },
+      },
       orderBy: { createdAt: "asc" },
       take: 20,
     });
@@ -178,7 +192,9 @@ export class PersistentMemorySystem {
           data: { content: JSON.stringify(parsed) },
         });
         workingToEpisodic++;
-      } catch { /* */ }
+      } catch {
+        /* */
+      }
     }
 
     return {
@@ -199,6 +215,8 @@ export class PersistentMemorySystem {
   }
 }
 
-export function createMemorySystem(workspaceId: string): PersistentMemorySystem {
+export function createMemorySystem(
+  workspaceId: string,
+): PersistentMemorySystem {
   return new PersistentMemorySystem(workspaceId);
 }

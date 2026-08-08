@@ -17,24 +17,46 @@ export interface TwinSimulation {
   twinId: string;
   scenario: string;
   branches: number;
-  results: Array<{ branch: number; outcome: string; probability: number; impact: Record<string, number> }>;
+  results: Array<{
+    branch: number;
+    outcome: string;
+    probability: number;
+    impact: Record<string, number>;
+  }>;
   createdAt: string;
 }
 
 export class TwinManager {
   private twins: Map<string, DigitalTwin> = new Map();
 
-  createTwin(config: Omit<DigitalTwin, "id" | "lastSync" | "status">): DigitalTwin {
-    const twin: DigitalTwin = { ...config, id: "twin_" + Date.now().toString(36), lastSync: new Date().toISOString(), status: "synced" };
+  createTwin(
+    config: Omit<DigitalTwin, "id" | "lastSync" | "status">,
+  ): DigitalTwin {
+    const twin: DigitalTwin = {
+      ...config,
+      id: "twin_" + Date.now().toString(36),
+      lastSync: new Date().toISOString(),
+      status: "synced",
+    };
     this.twins.set(twin.id, twin);
     return twin;
   }
 
   simulate(twinId: string, scenario: string, branches = 10): TwinSimulation {
     const results = Array.from({ length: branches }, (_, i) => ({
-      branch: i + 1, outcome: "Simulated outcome " + (i + 1) + " for: " + scenario, probability: 1 / branches, impact: { cost: Math.random() * 1000, risk: Math.random() },
+      branch: i + 1,
+      outcome: "Simulated outcome " + (i + 1) + " for: " + scenario,
+      probability: 1 / branches,
+      impact: { cost: Math.random() * 1000, risk: Math.random() },
     }));
-    return { id: "sim_" + Date.now().toString(36), twinId, scenario, branches, results, createdAt: new Date().toISOString() };
+    return {
+      id: "sim_" + Date.now().toString(36),
+      twinId,
+      scenario,
+      branches,
+      results,
+      createdAt: new Date().toISOString(),
+    };
   }
 
   rollback(twinId: string, timestamp: string): boolean {

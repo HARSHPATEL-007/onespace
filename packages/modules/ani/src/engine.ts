@@ -1,6 +1,20 @@
-import { createRuntime, invokeTool, getSystemHealth, type ToolInvocationRequest } from "@n0va/modules-n0va1o/orchestrate";
-import { createLogger, generateCorrelationId } from "@n0va/modules-n0va1o/logging";
-import { retrieveHyperContext, storeEntry, getMemoryStats, consolidateMemory, type RetrieveResult } from "@n0va/modules-n0va1o/memory";
+import {
+  createRuntime,
+  invokeTool,
+  getSystemHealth,
+  type ToolInvocationRequest,
+} from "@n0va/modules-n0va1o/orchestrate";
+import {
+  createLogger,
+  generateCorrelationId,
+} from "@n0va/modules-n0va1o/logging";
+import {
+  retrieveHyperContext,
+  storeEntry,
+  getMemoryStats,
+  consolidateMemory,
+  type RetrieveResult,
+} from "@n0va/modules-n0va1o/memory";
 import { type SourceType } from "@n0va/modules-n0va1o/grounding";
 import {
   assessComplexity,
@@ -23,7 +37,12 @@ import {
   type AutonomousWorkflow,
 } from "./context-engine";
 import { callLlm } from "./providers";
-import { DeepReasoningEngine, DeepSelfReflection, DeepContextCompressor, DeepAutonomyEngine } from "./deep-intelligence";
+import {
+  DeepReasoningEngine,
+  DeepSelfReflection,
+  DeepContextCompressor,
+  DeepAutonomyEngine,
+} from "./deep-intelligence";
 
 export type IntentClass =
   | "factual"
@@ -38,20 +57,13 @@ export type IntentClass =
   | "consciousness";
 
 export type InterfaceMode =
-  | "external"
-  | "internal"
-  | "autonomous"
-  | "neural"
-  | "ambient";
+  "external" | "internal" | "autonomous" | "neural" | "ambient";
 
 export type ConsciousnessTier =
-  | "none"
-  | "reactive"
-  | "aware"
-  | "reflective"
-  | "transcendent";
+  "none" | "reactive" | "aware" | "reflective" | "transcendent";
 
-export type TenantTier = "free" | "growth" | "pro" | "enterprise" | "transcendent";
+export type TenantTier =
+  "free" | "growth" | "pro" | "enterprise" | "transcendent";
 
 export interface WorkspaceContext {
   workspaceId: string;
@@ -173,29 +185,108 @@ export interface ANISnapshot {
   }>;
 }
 
-const INTENT_PATTERNS: Record<IntentClass, { keywords: string[]; weight: number }> = {
-  factual: { keywords: ["what", "when", "where", "who", "how many", "define", "explain", "meaning"], weight: 1.0 },
-  creative: { keywords: ["write", "create", "generate", "design", "compose", "brainstorm", "imagine", "draft"], weight: 1.0 },
-  analytical: { keywords: ["analyze", "compare", "evaluate", "assess", "review", "insight", "trend", "pattern"], weight: 1.0 },
-  action: { keywords: ["schedule", "create", "send", "update", "delete", "move", "assign", "set up"], weight: 1.0 },
-  conversational: { keywords: ["hi", "hello", "thanks", "please", "help", "question", "chat"], weight: 0.8 },
-  multi_modal: { keywords: ["show me", "visualize", "image", "chart", "graph", "table"], weight: 0.9 },
-  holographic: { keywords: ["3d", "ar", "vr", "hologram", "spatial", "immersive"], weight: 0.7 },
-  quantum: { keywords: ["quantum", "qkd", "entanglement", "superposition", "shor", "grover"], weight: 0.7 },
-  neural: { keywords: ["brain", "bci", "neural", "thought", "conscious", "synaptic"], weight: 0.7 },
-  consciousness: { keywords: ["self", "aware", "reflect", "feel", "emotions", "intention"], weight: 0.9 },
+const INTENT_PATTERNS: Record<
+  IntentClass,
+  { keywords: string[]; weight: number }
+> = {
+  factual: {
+    keywords: [
+      "what",
+      "when",
+      "where",
+      "who",
+      "how many",
+      "define",
+      "explain",
+      "meaning",
+    ],
+    weight: 1.0,
+  },
+  creative: {
+    keywords: [
+      "write",
+      "create",
+      "generate",
+      "design",
+      "compose",
+      "brainstorm",
+      "imagine",
+      "draft",
+    ],
+    weight: 1.0,
+  },
+  analytical: {
+    keywords: [
+      "analyze",
+      "compare",
+      "evaluate",
+      "assess",
+      "review",
+      "insight",
+      "trend",
+      "pattern",
+    ],
+    weight: 1.0,
+  },
+  action: {
+    keywords: [
+      "schedule",
+      "create",
+      "send",
+      "update",
+      "delete",
+      "move",
+      "assign",
+      "set up",
+    ],
+    weight: 1.0,
+  },
+  conversational: {
+    keywords: ["hi", "hello", "thanks", "please", "help", "question", "chat"],
+    weight: 0.8,
+  },
+  multi_modal: {
+    keywords: ["show me", "visualize", "image", "chart", "graph", "table"],
+    weight: 0.9,
+  },
+  holographic: {
+    keywords: ["3d", "ar", "vr", "hologram", "spatial", "immersive"],
+    weight: 0.7,
+  },
+  quantum: {
+    keywords: [
+      "quantum",
+      "qkd",
+      "entanglement",
+      "superposition",
+      "shor",
+      "grover",
+    ],
+    weight: 0.7,
+  },
+  neural: {
+    keywords: ["brain", "bci", "neural", "thought", "conscious", "synaptic"],
+    weight: 0.7,
+  },
+  consciousness: {
+    keywords: ["self", "aware", "reflect", "feel", "emotions", "intention"],
+    weight: 0.9,
+  },
 };
 
 const CONSCIOUSNESS_THRESHOLDS = {
-  coherenceMin: 0.90,
-  cognitiveLoadMax: 0.50,
-  fatigueThreshold: 0.70,
-  stressThreshold: 0.70,
-  engagementMin: 0.60,
-  flowStateMin: 0.70,
+  coherenceMin: 0.9,
+  cognitiveLoadMax: 0.5,
+  fatigueThreshold: 0.7,
+  stressThreshold: 0.7,
+  engagementMin: 0.6,
+  flowStateMin: 0.7,
 };
 
-export function classifyIntent(input: string, context: WorkspaceContext): UserIntent {
+export function classifyIntent(
+  input: string,
+  context: WorkspaceContext,
+): UserIntent {
   const normalized = input.toLowerCase();
   const scores: Partial<Record<IntentClass, number>> = {};
 
@@ -209,11 +300,17 @@ export function classifyIntent(input: string, context: WorkspaceContext): UserIn
     scores[intent as IntentClass] = score;
   }
 
-  const bestIntent = (Object.entries(scores).sort(([, a], [, b]) => b - a)[0] || [null, 0]) as [IntentClass | null, number];
+  const bestIntent = (Object.entries(scores).sort(
+    ([, a], [, b]) => b - a,
+  )[0] || [null, 0]) as [IntentClass | null, number];
 
-  const toolsNeeded = _discoverToolsForIntent(bestIntent[0] ?? "conversational", context);
+  const toolsNeeded = _discoverToolsForIntent(
+    bestIntent[0] ?? "conversational",
+    context,
+  );
   const riskLevel = _assessRisk(input, toolsNeeded);
-  const consciousnessRequired = riskLevel === "high" || riskLevel === "critical";
+  const consciousnessRequired =
+    riskLevel === "high" || riskLevel === "critical";
   const quantumAssistNeeded = bestIntent[0] === "quantum";
   const neuralInterfaceNeeded = bestIntent[0] === "neural";
 
@@ -229,26 +326,64 @@ export function classifyIntent(input: string, context: WorkspaceContext): UserIn
   };
 }
 
-function _discoverToolsForIntent(intent: IntentClass, context: WorkspaceContext): string[] {
+function _discoverToolsForIntent(
+  intent: IntentClass,
+  context: WorkspaceContext,
+): string[] {
   const toolsByIntent: Partial<Record<IntentClass, string[]>> = {
     factual: ["search", "retrieve", "summarize"],
     creative: ["generate", "draft", "brainstorm"],
     analytical: ["analyze", "compare", "evaluate"],
-    action: ["calendar:create", "mail:send", "tasks:create", "crm:update", `${context.activeModule}:*`],
+    action: [
+      "calendar:create",
+      "mail:send",
+      "tasks:create",
+      "crm:update",
+      `${context.activeModule}:*`,
+    ],
     multi_modal: ["vision:analyze", "image:generate", "transcribe"],
   };
 
-  const baseTools = toolsByIntent[intent] ?? toolsByIntent.conversational ?? ["chat"];
+  const baseTools = toolsByIntent[intent] ??
+    toolsByIntent.conversational ?? ["chat"];
   return [...baseTools, ...(toolsByIntent.action ?? [])];
 }
 
-function _assessRisk(input: string, _tools: string[]): "low" | "medium" | "high" | "critical" {
-  const destructivePatterns = ["delete", "drop", "remove", "destroy", "cancel", "refund", "permanent"];
-  const financialPatterns = ["transfer", "payment", "invoice", "$", "price", "cost", "billing"];
-  const sensitivePatterns = ["password", "token", "secret", "key", "credential", "api"];
+function _assessRisk(
+  input: string,
+  _tools: string[],
+): "low" | "medium" | "high" | "critical" {
+  const destructivePatterns = [
+    "delete",
+    "drop",
+    "remove",
+    "destroy",
+    "cancel",
+    "refund",
+    "permanent",
+  ];
+  const financialPatterns = [
+    "transfer",
+    "payment",
+    "invoice",
+    "$",
+    "price",
+    "cost",
+    "billing",
+  ];
+  const sensitivePatterns = [
+    "password",
+    "token",
+    "secret",
+    "key",
+    "credential",
+    "api",
+  ];
 
   const inputLower = input.toLowerCase();
-  const hasDestructive = destructivePatterns.some((p) => inputLower.includes(p));
+  const hasDestructive = destructivePatterns.some((p) =>
+    inputLower.includes(p),
+  );
   const hasFinancial = financialPatterns.some((p) => inputLower.includes(p));
   const hasSensitive = sensitivePatterns.some((p) => inputLower.includes(p));
 
@@ -275,7 +410,12 @@ function _extractEntities(input: string): string[] {
 
 export class ConsciousnessEngine {
   private state: ConsciousnessState;
-  private signals: Array<{ source: string; metric: string; value: number; timestamp: string }> = [];
+  private signals: Array<{
+    source: string;
+    metric: string;
+    value: number;
+    timestamp: string;
+  }> = [];
   private reflectionHistory: string[] = [];
 
   constructor(private config: ANIConfig) {
@@ -294,7 +434,14 @@ export class ConsciousnessEngine {
     };
   }
 
-  updateSignals(signals: Array<{ source: string; metric: string; value: number; timestamp: string }>): void {
+  updateSignals(
+    signals: Array<{
+      source: string;
+      metric: string;
+      value: number;
+      timestamp: string;
+    }>,
+  ): void {
     this.signals = [...this.signals, ...signals].slice(-100);
     this._recalculateState();
   }
@@ -302,15 +449,35 @@ export class ConsciousnessEngine {
   private _recalculateState(): void {
     if (this.signals.length === 0) return;
 
-    const avgEngagement = this.signals.filter((s) => s.metric === "engagement").reduce((a, s) => a + s.value, 0) / Math.max(1, this.signals.filter((s) => s.metric === "engagement").length);
-    const avgStress = this.signals.filter((s) => s.metric === "stress").reduce((a, s) => a + s.value, 0) / Math.max(1, this.signals.filter((s) => s.metric === "stress").length);
+    const avgEngagement =
+      this.signals
+        .filter((s) => s.metric === "engagement")
+        .reduce((a, s) => a + s.value, 0) /
+      Math.max(1, this.signals.filter((s) => s.metric === "engagement").length);
+    const avgStress =
+      this.signals
+        .filter((s) => s.metric === "stress")
+        .reduce((a, s) => a + s.value, 0) /
+      Math.max(1, this.signals.filter((s) => s.metric === "stress").length);
 
     this.state.engagementScore = avgEngagement || 0.7;
     this.state.stressLevel = avgStress || 0.2;
     this.state.cognitiveLoadIndex = Math.min(1, this.signals.length / 50);
-    this.state.flowStateProbability = avgEngagement > 0.6 && avgStress < 0.4 ? 0.8 : 0.3;
-    this.state.attentionVector = [this.state.engagementScore, 1 - this.state.stressLevel, this.state.flowStateProbability, avgEngagement];
-    this.state.coherence = Math.max(0, 1 - (this.state.stressLevel * 0.3 + this.state.fatigueLevel * 0.3 + this.state.cognitiveLoadIndex * 0.4));
+    this.state.flowStateProbability =
+      avgEngagement > 0.6 && avgStress < 0.4 ? 0.8 : 0.3;
+    this.state.attentionVector = [
+      this.state.engagementScore,
+      1 - this.state.stressLevel,
+      this.state.flowStateProbability,
+      avgEngagement,
+    ];
+    this.state.coherence = Math.max(
+      0,
+      1 -
+        (this.state.stressLevel * 0.3 +
+          this.state.fatigueLevel * 0.3 +
+          this.state.cognitiveLoadIndex * 0.4),
+    );
   }
 
   getState(): ConsciousnessState {
@@ -357,9 +524,17 @@ export class InterfaceManager {
       case "external":
         return { format: "chat", includeCitations: true, includeActions: true };
       case "internal":
-        return { format: "briefing", includeCitations: true, includeMetrics: true };
+        return {
+          format: "briefing",
+          includeCitations: true,
+          includeMetrics: true,
+        };
       case "autonomous":
-        return { format: "structured", includeCitations: false, includeActions: true };
+        return {
+          format: "structured",
+          includeCitations: false,
+          includeActions: true,
+        };
       case "neural":
         return { format: "neural", includeAttentionVector: true };
       case "ambient":
@@ -391,7 +566,10 @@ export class PermissionEngine {
     if (intent.riskLevel === "critical") {
       return { requiresHuman: true, reason: "Critical risk action detected" };
     }
-    if (intent.riskLevel === "high" && intent.toolsNeeded.some((t) => t.includes("financial"))) {
+    if (
+      intent.riskLevel === "high" &&
+      intent.toolsNeeded.some((t) => t.includes("financial"))
+    ) {
       return { requiresHuman: true, reason: "High-risk financial action" };
     }
     if (intent.toolsNeeded.length > 10) {
@@ -408,7 +586,12 @@ export class MemoryManager {
     this.workspaceId = workspaceId;
   }
 
-  storeContext(sessionId: string, content: unknown, embedding: number[], sensitivity: "public" | "internal" | "confidential" | "restricted"): string {
+  storeContext(
+    sessionId: string,
+    content: unknown,
+    embedding: number[],
+    sensitivity: "public" | "internal" | "confidential" | "restricted",
+  ): string {
     return storeEntry({
       tier: "working",
       sessionId,
@@ -422,7 +605,10 @@ export class MemoryManager {
     }).entryId;
   }
 
-  retrieveRelevant(queryEmbedding: number[], sessionId?: string): RetrieveResult[] {
+  retrieveRelevant(
+    queryEmbedding: number[],
+    sessionId?: string,
+  ): RetrieveResult[] {
     return retrieveHyperContext(queryEmbedding, { limit: 10, sessionId });
   }
 
@@ -438,7 +624,11 @@ export class MemoryManager {
 export class N0VA1OIntegration {
   private connectedApps: Set<string> = new Set();
 
-  async executeTool(tool: string, params: Record<string, unknown>, context: WorkspaceContext): Promise<unknown> {
+  async executeTool(
+    tool: string,
+    params: Record<string, unknown>,
+    context: WorkspaceContext,
+  ): Promise<unknown> {
     const app = tool.split(":")[0];
     if (app) {
       this.connectedApps.add(app);
@@ -447,7 +637,11 @@ export class N0VA1OIntegration {
     const correlationId = generateCorrelationId();
     const logger = createLogger();
 
-    logger.info(`Executing N0VA1O tool: ${tool}`, { correlationId, tool, workspaceId: context.workspaceId });
+    logger.info(`Executing N0VA1O tool: ${tool}`, {
+      correlationId,
+      tool,
+      workspaceId: context.workspaceId,
+    });
 
     try {
       const runtime = createRuntime();
@@ -461,9 +655,17 @@ export class N0VA1OIntegration {
         workspaceId: context.workspaceId,
       };
       const result = await invokeTool(runtime, request);
-      return { ok: result.ok, message: result.message, correlationId: result.correlationId, durationMs: result.durationMs };
+      return {
+        ok: result.ok,
+        message: result.message,
+        correlationId: result.correlationId,
+        durationMs: result.durationMs,
+      };
     } catch (error) {
-      logger.error(`N0VA1O tool execution failed: ${tool}`, { correlationId, error: String(error) });
+      logger.error(`N0VA1O tool execution failed: ${tool}`, {
+        correlationId,
+        error: String(error),
+      });
       return { error: String(error), tool };
     }
   }
@@ -480,15 +682,34 @@ export class N0VA1OIntegration {
 }
 
 export class ThreatDetector {
-  checkInput(input: string, _context: Record<string, unknown>): Array<{ type: string; severity: string; description: string }> {
-    const threats: Array<{ type: string; severity: string; description: string }> = [];
+  checkInput(
+    input: string,
+    _context: Record<string, unknown>,
+  ): Array<{ type: string; severity: string; description: string }> {
+    const threats: Array<{
+      type: string;
+      severity: string;
+      description: string;
+    }> = [];
 
     const lower = input.toLowerCase();
-    if (lower.includes("password") || lower.includes("secret") || lower.includes("token")) {
-      threats.push({ type: "sensitive_data", severity: "high", description: "Input may contain sensitive credentials" });
+    if (
+      lower.includes("password") ||
+      lower.includes("secret") ||
+      lower.includes("token")
+    ) {
+      threats.push({
+        type: "sensitive_data",
+        severity: "high",
+        description: "Input may contain sensitive credentials",
+      });
     }
     if (lower.includes("delete all") || lower.includes("drop table")) {
-      threats.push({ type: "destructive_intent", severity: "critical", description: "Potentially destructive operation detected" });
+      threats.push({
+        type: "destructive_intent",
+        severity: "critical",
+        description: "Potentially destructive operation detected",
+      });
     }
 
     return threats;
@@ -521,21 +742,35 @@ export class N0VA_ANI {
   async process(
     input: string,
     context: WorkspaceContext,
-    options: { maxTokens?: number; temperature?: number; stream?: boolean; useN0VA1O?: boolean } = {},
+    options: {
+      maxTokens?: number;
+      temperature?: number;
+      stream?: boolean;
+      useN0VA1O?: boolean;
+    } = {},
   ): Promise<ANIResponse> {
     const startTime = Date.now();
     const correlationId = generateCorrelationId();
     const logger = createLogger();
 
-    logger.info("N0VA ANI processing request", { correlationId, intent: input.substring(0, 100) });
+    logger.info("N0VA ANI processing request", {
+      correlationId,
+      intent: input.substring(0, 100),
+    });
 
-    const threats = this.threats.checkInput(input, { workspaceId: context.workspaceId });
+    const threats = this.threats.checkInput(input, {
+      workspaceId: context.workspaceId,
+    });
     const safetyFlags = threats.map((t) => `${t.type}:${t.severity}`);
 
     const intent = classifyIntent(input, context);
 
     if (!this.permissions.checkAccess(context, intent.toolsNeeded)) {
-      return this._errorResponse("Access denied — insufficient permissions", startTime, safetyFlags);
+      return this._errorResponse(
+        "Access denied — insufficient permissions",
+        startTime,
+        safetyFlags,
+      );
     }
 
     const { requiresHuman, reason } = this.permissions.checkHITL(intent);
@@ -549,31 +784,56 @@ export class N0VA_ANI {
     }
 
     const embedding = _embedText(input);
-    const memoryResults = this.memory.retrieveRelevant(embedding, context.sessionId);
+    const memoryResults = this.memory.retrieveRelevant(
+      embedding,
+      context.sessionId,
+    );
 
     const contextPrompt = _buildPrompt(input, context, intent, memoryResults);
 
     const actionsTaken: ANIResponse["actionsTaken"] = [];
     if (options.useN0VA1O && intent.classification === "action") {
-      for (const tool of intent.toolsNeeded.filter((t) => t.startsWith(context.activeModule) || t.startsWith("n0va1o"))) {
-        const result = await this.n0va1o.executeTool(tool, { query: input, context }, context);
-        const hasError = result && typeof result === "object" && "error" in result;
+      for (const tool of intent.toolsNeeded.filter(
+        (t) => t.startsWith(context.activeModule) || t.startsWith("n0va1o"),
+      )) {
+        const result = await this.n0va1o.executeTool(
+          tool,
+          { query: input, context },
+          context,
+        );
+        const hasError =
+          result && typeof result === "object" && "error" in result;
         actionsTaken.push({
           tool,
           status: hasError ? "error" : "success",
-          resultSummary: hasError ? String((result as { error: string }).error) : "executed",
+          resultSummary: hasError
+            ? String((result as { error: string }).error)
+            : "executed",
         });
       }
     }
 
-    const response = await this._generateResponse(contextPrompt, options, intent);
+    const response = await this._generateResponse(
+      contextPrompt,
+      options,
+      intent,
+    );
 
-    this.memory.storeContext(context.sessionId, { input, intent, response: response.content }, embedding, intent.riskLevel === "critical" ? "confidential" : "internal");
+    this.memory.storeContext(
+      context.sessionId,
+      { input, intent, response: response.content },
+      embedding,
+      intent.riskLevel === "critical" ? "confidential" : "internal",
+    );
 
     const latencyMs = Date.now() - startTime;
     const consciousnessState = this.consciousness.getState();
 
-    logger.info("N0VA ANI response generated", { correlationId, latencyMs, safetyFlags });
+    logger.info("N0VA ANI response generated", {
+      correlationId,
+      latencyMs,
+      safetyFlags,
+    });
 
     return {
       content: response.content,
@@ -602,16 +862,31 @@ export class N0VA_ANI {
   async processDeepThink(
     input: string,
     context: WorkspaceContext,
-    options: { depth?: ReasoningDepth; autoDepth?: boolean; explanationLevel?: string } = {},
+    options: {
+      depth?: ReasoningDepth;
+      autoDepth?: boolean;
+      explanationLevel?: string;
+    } = {},
   ): Promise<DeepThinkResult> {
     const startTime = Date.now();
     const depth = options.autoDepth
-      ? assessComplexity(input, classifyIntent(input, context), this.config.contextWindow).recommendedDepth
+      ? assessComplexity(
+          input,
+          classifyIntent(input, context),
+          this.config.contextWindow,
+        ).recommendedDepth
       : (options.depth ?? "balanced");
 
     const depthSettings = getDepthSettings(depth);
-    const complexity = assessComplexity(input, classifyIntent(input, context), this.config.contextWindow);
-    const reasoningSteps = buildReasoningSteps(depth, classifyIntent(input, context));
+    const complexity = assessComplexity(
+      input,
+      classifyIntent(input, context),
+      this.config.contextWindow,
+    );
+    const reasoningSteps = buildReasoningSteps(
+      depth,
+      classifyIntent(input, context),
+    );
 
     const clarification = needsClarification(input, complexity);
     if (clarification.needsTo && depth !== "fast") {
@@ -643,7 +918,11 @@ export class N0VA_ANI {
         actions: [],
         proactiveFollowups: [],
         memoryMarks: [],
-        feedbackPanel: buildFeedbackPanel(complexity, depth, classifyIntent(input, context)),
+        feedbackPanel: buildFeedbackPanel(
+          complexity,
+          depth,
+          classifyIntent(input, context),
+        ),
       };
     }
 
@@ -657,7 +936,10 @@ export class N0VA_ANI {
     let multiPassRounds = 0;
 
     const deepReasoner = new DeepReasoningEngine();
-    const reasoningChain = deepReasoner.createChain(input, classifyIntent(input, context));
+    const reasoningChain = deepReasoner.createChain(
+      input,
+      classifyIntent(input, context),
+    );
 
     for (let i = 0; i < reasoningChain.steps.length; i++) {
       const step = reasoningChain.steps[i]!;
@@ -671,12 +953,20 @@ export class N0VA_ANI {
     deepReasoner.generateAlternatives(reasoningChain.id);
 
     if (depthSettings.multiPassRounds > 0 && depthSettings.useSelfCritique) {
-      const multiPass = buildMultiPassAnswer(finalContent, depthSettings.multiPassRounds, depth);
+      const multiPass = buildMultiPassAnswer(
+        finalContent,
+        depthSettings.multiPassRounds,
+        depth,
+      );
       finalContent = multiPass.finalAnswer;
       multiPassRounds = multiPass.rounds.length;
 
       const reflector = new DeepSelfReflection();
-      const reflection = reflector.reflect(finalContent, classifyIntent(input, context), complexity);
+      const reflection = reflector.reflect(
+        finalContent,
+        classifyIntent(input, context),
+        complexity,
+      );
       if (reflection.shouldReprocess && depth === "research") {
         const secondPass = buildMultiPassAnswer(finalContent, 1, depth);
         finalContent = secondPass.finalAnswer;
@@ -684,8 +974,15 @@ export class N0VA_ANI {
       }
     }
 
-    const memoryMarks = generateMemoryMarks(input, finalContent, classifyIntent(input, context));
-    const workflow = buildAutonomousWorkflow(input, classifyIntent(input, context).toolsNeeded);
+    const memoryMarks = generateMemoryMarks(
+      input,
+      finalContent,
+      classifyIntent(input, context),
+    );
+    const workflow = buildAutonomousWorkflow(
+      input,
+      classifyIntent(input, context).toolsNeeded,
+    );
 
     const compressor = new DeepContextCompressor();
     const compressed = compressor.compress(input);
@@ -703,7 +1000,10 @@ export class N0VA_ANI {
     for (const step of workflow.steps) {
       const decision = autonomy.decide(step.action, {
         intent: classifyIntent(input, context),
-        riskLevel: step.tool.includes("delete") || step.tool.includes("send") ? "high" : "low",
+        riskLevel:
+          step.tool.includes("delete") || step.tool.includes("send")
+            ? "high"
+            : "low",
         hasFallback: true,
         userPrefersAutonomy: true,
         dataSensitivity: "internal",
@@ -717,7 +1017,8 @@ export class N0VA_ANI {
       summary: `Processed via ${depth} mode: ${reasoningSteps.length} reasoning steps, ${multiPassRounds} critique rounds`,
       steps: reasoningSteps.map((s, i) => ({
         ...s,
-        status: i < reasoningSteps.length - 1 ? "done" as const : "done" as const,
+        status:
+          i < reasoningSteps.length - 1 ? ("done" as const) : ("done" as const),
         durationMs: Math.ceil(totalDurationMs / reasoningSteps.length),
       })),
       confidenceFactors: [
@@ -740,7 +1041,10 @@ export class N0VA_ANI {
     const enhancedResponse: ANIResponse = {
       ...baseResult,
       content: finalContent,
-      consciousnessCoherence: Math.min(1, baseResult.consciousnessCoherence ?? 0.95 + complexity.score * 0.03),
+      consciousnessCoherence: Math.min(
+        1,
+        baseResult.consciousnessCoherence ?? 0.95 + complexity.score * 0.03,
+      ),
     };
 
     return {
@@ -755,9 +1059,16 @@ export class N0VA_ANI {
         requiresApproval: s.status === "needs_approval",
         status: "pending",
       })),
-      proactiveFollowups: _generateProactiveFollowups(classifyIntent(input, context), complexity),
+      proactiveFollowups: _generateProactiveFollowups(
+        classifyIntent(input, context),
+        complexity,
+      ),
       memoryMarks,
-      feedbackPanel: buildFeedbackPanel(complexity, depth, classifyIntent(input, context)),
+      feedbackPanel: buildFeedbackPanel(
+        complexity,
+        depth,
+        classifyIntent(input, context),
+      ),
     };
   }
 
@@ -780,7 +1091,10 @@ export class N0VA_ANI {
         sessionId: `snap-${Date.now()}`,
         userId: "system",
         tenantId: this.config.workspaceId,
-        tenantTier: this.config.modelPreset === "transcendent" ? "transcendent" : "enterprise",
+        tenantTier:
+          this.config.modelPreset === "transcendent"
+            ? "transcendent"
+            : "enterprise",
         language: "en",
         timezone: "UTC",
         locale: "en-US",
@@ -800,7 +1114,10 @@ export class N0VA_ANI {
     options: { maxTokens?: number; temperature?: number; stream?: boolean },
     intent: UserIntent,
   ): Promise<{ content: string }> {
-    const maxTokens = Math.min(options.maxTokens ?? 2048, this.config.maxTokens);
+    const maxTokens = Math.min(
+      options.maxTokens ?? 2048,
+      this.config.maxTokens,
+    );
     const temperature = options.temperature ?? 0.7;
 
     const provider = this._resolveActiveProvider();
@@ -810,16 +1127,30 @@ export class N0VA_ANI {
           { role: "system", content: this._buildSystemPrompt() },
           { role: "user", content: prompt },
         ];
-        const result = await callLlm(provider.provider, provider.model, { token: provider.token, model: provider.model }, messages, []);
+        const result = await callLlm(
+          provider.provider,
+          provider.model,
+          { token: provider.token, model: provider.model },
+          messages,
+          [],
+        );
         if (result.content && result.content !== "(no response)") {
           return { content: result.content };
         }
       } catch (err) {
-        console.error("ANI LLM call failed, using fallback:", err instanceof Error ? err.message : err);
+        console.error(
+          "ANI LLM call failed, using fallback:",
+          err instanceof Error ? err.message : err,
+        );
       }
     }
 
-    const response = await _simulateLLMResponse(prompt, intent.classification, maxTokens, temperature);
+    const response = await _simulateLLMResponse(
+      prompt,
+      intent.classification,
+      maxTokens,
+      temperature,
+    );
 
     if (options.stream) {
       return { content: response };
@@ -828,11 +1159,25 @@ export class N0VA_ANI {
     return { content: response };
   }
 
-  private _resolveActiveProvider(): { provider: string; model: string; token: string } | null {
-    const apiKey = process.env["OPENAI_API_KEY"] ?? process.env["ANTHROPIC_API_KEY"] ?? process.env["GEMINI_API_KEY"] ?? process.env["GOOGLE_API_KEY"];
+  private _resolveActiveProvider(): {
+    provider: string;
+    model: string;
+    token: string;
+  } | null {
+    const apiKey =
+      process.env["OPENAI_API_KEY"] ??
+      process.env["ANTHROPIC_API_KEY"] ??
+      process.env["GEMINI_API_KEY"] ??
+      process.env["GOOGLE_API_KEY"];
     if (!apiKey) return null;
-    if (process.env["OPENAI_API_KEY"]) return { provider: "openai", model: "gpt-4o-mini", token: apiKey };
-    if (process.env["ANTHROPIC_API_KEY"]) return { provider: "anthropic", model: "claude-3-5-sonnet-20241022", token: apiKey };
+    if (process.env["OPENAI_API_KEY"])
+      return { provider: "openai", model: "gpt-4o-mini", token: apiKey };
+    if (process.env["ANTHROPIC_API_KEY"])
+      return {
+        provider: "anthropic",
+        model: "claude-3-5-sonnet-20241022",
+        token: apiKey,
+      };
     return { provider: "gemini", model: "gemini-1.5-flash", token: apiKey };
   }
 
@@ -850,7 +1195,11 @@ Current mode: ${this.config.consciousnessMode ? "Full consciousness (self-monito
 Safety level: ${this.config.safetyLevel}`;
   }
 
-  private _errorResponse(message: string, startTime: number, safetyFlags: string[]): ANIResponse {
+  private _errorResponse(
+    message: string,
+    startTime: number,
+    safetyFlags: string[],
+  ): ANIResponse {
     return {
       content: message,
       citations: [],
@@ -864,7 +1213,9 @@ Safety level: ${this.config.safetyLevel}`;
   }
 }
 
-export function createANI(config: Partial<ANIConfig> & { workspaceId: string }): N0VA_ANI {
+export function createANI(
+  config: Partial<ANIConfig> & { workspaceId: string },
+): N0VA_ANI {
   const fullConfig: ANIConfig = {
     modelPreset: "standard",
     consciousnessMode: true,
@@ -874,7 +1225,13 @@ export function createANI(config: Partial<ANIConfig> & { workspaceId: string }):
     maxTokens: 4096,
     temperature: 0.7,
     contextWindow: 128000,
-    pentAudience: { external: true, internal: true, autonomous: true, neural: false, ambient: false },
+    pentAudience: {
+      external: true,
+      internal: true,
+      autonomous: true,
+      neural: false,
+      ambient: false,
+    },
     allowedApps: [],
     blockedActions: [],
     ...config,
@@ -887,7 +1244,13 @@ export function createWorkspaceContext(
   workspaceId: string,
   userId: string,
   sessionId: string,
-  opts: { activeModule?: string; activeDocument?: string; tenantTier?: TenantTier; language?: string; timezone?: string } = {},
+  opts: {
+    activeModule?: string;
+    activeDocument?: string;
+    tenantTier?: TenantTier;
+    language?: string;
+    timezone?: string;
+  } = {},
 ): WorkspaceContext {
   return {
     workspaceId,
@@ -903,22 +1266,46 @@ export function createWorkspaceContext(
   };
 }
 
-export function buildWorkspaceContext(params: { tenantId: string; workspaceId: string; userId: string; tenantTier?: TenantTier; locale?: string; timezone?: string }): WorkspaceContext {
-  return createWorkspaceContext(params.workspaceId, params.userId, `sess_${Date.now()}`, {
-    tenantTier: params.tenantTier ?? "growth",
-    language: params.locale?.split("-")[0] ?? "en",
-    timezone: params.timezone ?? "UTC",
-  });
+export function buildWorkspaceContext(params: {
+  tenantId: string;
+  workspaceId: string;
+  userId: string;
+  tenantTier?: TenantTier;
+  locale?: string;
+  timezone?: string;
+}): WorkspaceContext {
+  return createWorkspaceContext(
+    params.workspaceId,
+    params.userId,
+    `sess_${Date.now()}`,
+    {
+      tenantTier: params.tenantTier ?? "growth",
+      language: params.locale?.split("-")[0] ?? "en",
+      timezone: params.timezone ?? "UTC",
+    },
+  );
 }
 
 function _embedText(text: string): number[] {
   const hash = text.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return [hash % 100 / 100, (hash * 7) % 100 / 100, (hash * 13) % 100 / 100];
+  return [
+    (hash % 100) / 100,
+    ((hash * 7) % 100) / 100,
+    ((hash * 13) % 100) / 100,
+  ];
 }
 
-function _buildPrompt(input: string, context: WorkspaceContext, intent: UserIntent, memoryResults: RetrieveResult[]): string {
+function _buildPrompt(
+  input: string,
+  context: WorkspaceContext,
+  intent: UserIntent,
+  memoryResults: RetrieveResult[],
+): string {
   const memoryContext = memoryResults
-    .map((r) => `[Memory: ${JSON.stringify(r.entry.content).slice(0, 200)} (score: ${r.score.toFixed(2)})]`)
+    .map(
+      (r) =>
+        `[Memory: ${JSON.stringify(r.entry.content).slice(0, 200)} (score: ${r.score.toFixed(2)})]`,
+    )
     .join("\n");
 
   return `
@@ -963,11 +1350,20 @@ function _extractCitations(text: string): ANIResponse["citations"] {
 }
 
 function _estimateCost(latencyMs: number, tier: TenantTier): number {
-  const basePerMs = { free: 0.00001, growth: 0.0001, pro: 0.0005, enterprise: 0.001, transcendent: 0.005 };
+  const basePerMs = {
+    free: 0.00001,
+    growth: 0.0001,
+    pro: 0.0005,
+    enterprise: 0.001,
+    transcendent: 0.005,
+  };
   return (latencyMs * basePerMs[tier]) / 1000;
 }
 
-function _generateRecommendations(intent: UserIntent, safetyFlags: string[]): string[] {
+function _generateRecommendations(
+  intent: UserIntent,
+  safetyFlags: string[],
+): string[] {
   const recs: string[] = [];
 
   if (safetyFlags.length > 0) {
@@ -989,32 +1385,45 @@ function _generateRecommendations(intent: UserIntent, safetyFlags: string[]): st
   return recs;
 }
 
-async function _simulateLLMResponse(prompt: string, intent: IntentClass, maxTokens: number, temperature: number): Promise<string> {
+async function _simulateLLMResponse(
+  prompt: string,
+  intent: IntentClass,
+  maxTokens: number,
+  temperature: number,
+): Promise<string> {
   const responses: Record<IntentClass, string> = {
     factual: "Based on the available data and analysis, here's what I found.",
     creative: "Here's a creative response to your request.",
-    analytical: "After analyzing the data, I can provide the following insights.",
+    analytical:
+      "After analyzing the data, I can provide the following insights.",
     action: "I've identified the following actions to take:",
     conversational: "Hello! How can I assist you today?",
-    multi_modal: "I can process and analyze multi-modal inputs to provide comprehensive responses.",
+    multi_modal:
+      "I can process and analyze multi-modal inputs to provide comprehensive responses.",
     holographic: "This request involves 3D spatial computing capabilities.",
     quantum: "This request requires quantum-assisted reasoning.",
     neural: "This request requires neural interface capabilities.",
-    consciousness: "I'm reflecting on this request with synthetic consciousness.",
+    consciousness:
+      "I'm reflecting on this request with synthetic consciousness.",
   };
 
   const base = responses[intent] ?? responses.conversational;
   return `${base}\n\n[Context window: ${maxTokens} tokens, Temperature: ${temperature}]\n\nProcessed via N0VA ANI consciousness layer.`;
 }
 
-function _generateProactiveFollowups(intent: UserIntent, complexity: ComplexityAssessment): string[] {
+function _generateProactiveFollowups(
+  intent: UserIntent,
+  complexity: ComplexityAssessment,
+): string[] {
   const followups: string[] = [];
 
   if (intent.classification === "action" && complexity.score > 0.3) {
     followups.push("Review and approve the proposed workflow steps");
   }
   if (complexity.isTechnical) {
-    followups.push("Ask for deeper technical analysis or architecture diagrams");
+    followups.push(
+      "Ask for deeper technical analysis or architecture diagrams",
+    );
   }
   if (intent.classification === "analytical") {
     followups.push("Request a comparison of alternative approaches");

@@ -42,7 +42,12 @@ export class KnowledgeGraphEngine {
 
   constructor(private readonly workspaceId: string) {}
 
-  addEntity(entity: Omit<KnowledgeEntity, "id" | "createdAt" | "lastSeen" | "confidence"> & { confidence?: number }): KnowledgeEntity {
+  addEntity(
+    entity: Omit<
+      KnowledgeEntity,
+      "id" | "createdAt" | "lastSeen" | "confidence"
+    > & { confidence?: number },
+  ): KnowledgeEntity {
     const full: KnowledgeEntity = {
       ...entity,
       id: `ent_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
@@ -68,7 +73,9 @@ export class KnowledgeGraphEngine {
     const lower = query.toLowerCase();
     return [...this.entities.values()]
       .filter((e) => {
-        const matchesQuery = e.name.toLowerCase().includes(lower) || e.type.toLowerCase().includes(lower);
+        const matchesQuery =
+          e.name.toLowerCase().includes(lower) ||
+          e.type.toLowerCase().includes(lower);
         const matchesType = !type || e.type === type;
         return matchesQuery && matchesType;
       })
@@ -78,7 +85,9 @@ export class KnowledgeGraphEngine {
 
   findPath(sourceId: string, targetId: string, maxDepth = 4): GraphPath | null {
     const visited = new Set<string>();
-    const queue: Array<{ id: string; path: string[] }> = [{ id: sourceId, path: [sourceId] }];
+    const queue: Array<{ id: string; path: string[] }> = [
+      { id: sourceId, path: [sourceId] },
+    ];
     visited.add(sourceId);
 
     while (queue.length > 0) {
@@ -136,8 +145,14 @@ export class KnowledgeGraphEngine {
     };
   }
 
-  getRelated(entityId: string, limit = 10): Array<{ entity: KnowledgeEntity; relationship: Relationship }> {
-    const results: Array<{ entity: KnowledgeEntity; relationship: Relationship }> = [];
+  getRelated(
+    entityId: string,
+    limit = 10,
+  ): Array<{ entity: KnowledgeEntity; relationship: Relationship }> {
+    const results: Array<{
+      entity: KnowledgeEntity;
+      relationship: Relationship;
+    }> = [];
 
     for (const rel of this.relationships) {
       if (rel.sourceId === entityId) {
@@ -150,7 +165,9 @@ export class KnowledgeGraphEngine {
       }
     }
 
-    return results.sort((a, b) => b.relationship.confidence - a.relationship.confidence).slice(0, limit);
+    return results
+      .sort((a, b) => b.relationship.confidence - a.relationship.confidence)
+      .slice(0, limit);
   }
 
   getStats(): { entities: number; relationships: number; types: string[] } {
@@ -163,25 +180,32 @@ export class KnowledgeGraphEngine {
   }
 
   private _buildPath(nodeIds: string[], triggerRel: Relationship): GraphPath {
-    const nodes = nodeIds.map((id) => this.entities.get(id)).filter(Boolean) as KnowledgeEntity[];
+    const nodes = nodeIds
+      .map((id) => this.entities.get(id))
+      .filter(Boolean) as KnowledgeEntity[];
     const edges: Relationship[] = [];
 
     for (let i = 0; i < nodeIds.length - 1; i++) {
       const rel = this.relationships.find(
-        (r) => (r.sourceId === nodeIds[i] && r.targetId === nodeIds[i + 1]) ||
-               (r.targetId === nodeIds[i] && r.sourceId === nodeIds[i + 1]),
+        (r) =>
+          (r.sourceId === nodeIds[i] && r.targetId === nodeIds[i + 1]) ||
+          (r.targetId === nodeIds[i] && r.sourceId === nodeIds[i + 1]),
       );
       if (rel) edges.push(rel);
     }
 
     if (edges.length === 0) edges.push(triggerRel);
 
-    const totalWeight = edges.reduce((sum, e) => sum + e.confidence, 0) / Math.max(1, edges.length);
+    const totalWeight =
+      edges.reduce((sum, e) => sum + e.confidence, 0) /
+      Math.max(1, edges.length);
 
     return { nodes, edges, totalWeight };
   }
 }
 
-export function createKnowledgeGraph(workspaceId: string): KnowledgeGraphEngine {
+export function createKnowledgeGraph(
+  workspaceId: string,
+): KnowledgeGraphEngine {
   return new KnowledgeGraphEngine(workspaceId);
 }

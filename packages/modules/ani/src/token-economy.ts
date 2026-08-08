@@ -8,7 +8,10 @@
 
 export class TokenEconomyManager {
   private budget: TokenBudget = {
-    contextWindow: 128000, retrievalCalls: 10, toolCalls: 5, reasoningSteps: 20,
+    contextWindow: 128000,
+    retrievalCalls: 10,
+    toolCalls: 5,
+    reasoningSteps: 20,
     used: { context: 0, retrieval: 0, tool: 0, reasoning: 0 },
   };
 
@@ -16,8 +19,16 @@ export class TokenEconomyManager {
     this.budget = { ...this.budget, ...partial, used: { ...this.budget.used } };
   }
 
-  spend(category: "context" | "retrieval" | "tool" | "reasoning", amount: number): boolean {
-    const limits = { context: this.budget.contextWindow, retrieval: this.budget.retrievalCalls, tool: this.budget.toolCalls, reasoning: this.budget.reasoningSteps };
+  spend(
+    category: "context" | "retrieval" | "tool" | "reasoning",
+    amount: number,
+  ): boolean {
+    const limits = {
+      context: this.budget.contextWindow,
+      retrieval: this.budget.retrievalCalls,
+      tool: this.budget.toolCalls,
+      reasoning: this.budget.reasoningSteps,
+    };
     if (this.budget.used[category] + amount > limits[category]) return false;
     this.budget.used[category] += amount;
     return true;

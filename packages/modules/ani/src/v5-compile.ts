@@ -9,7 +9,11 @@
 }
 
 export class CompileEngine {
-  compileWorkflow(spec: string, arch = "wasm32-wasi", opt = "O3"): CompiledWorkflow {
+  compileWorkflow(
+    spec: string,
+    arch = "wasm32-wasi",
+    opt = "O3",
+  ): CompiledWorkflow {
     const lowerSpec = spec.toLowerCase();
     let generatedCode = "";
 

@@ -83,11 +83,30 @@ const NEW_FEATURE_WALKTHROUGHS: Walkthrough[] = [
     id: "wt_deep_think",
     featureId: "deep_think",
     title: "Introducing Deep Think Mode",
-    description: "ANI can now spend extra time on complex queries with multi-step reasoning, tradeoff analysis, and self-critique.",
+    description:
+      "ANI can now spend extra time on complex queries with multi-step reasoning, tradeoff analysis, and self-critique.",
     steps: [
-      { target: "ani-depth-toggle", title: "Depth Control", content: "Click the depth icon to choose between fast, balanced, deep, or research modes.", position: "bottom" },
-      { target: "ani-thought-toggle", title: "See Reasoning", content: "Toggle the thought bubble to watch ANI think through your problem step by step.", position: "bottom" },
-      { target: "ani-send-btn", title: "Try It", content: "Ask a complex question and see the difference deep reasoning makes.", position: "top" },
+      {
+        target: "ani-depth-toggle",
+        title: "Depth Control",
+        content:
+          "Click the depth icon to choose between fast, balanced, deep, or research modes.",
+        position: "bottom",
+      },
+      {
+        target: "ani-thought-toggle",
+        title: "See Reasoning",
+        content:
+          "Toggle the thought bubble to watch ANI think through your problem step by step.",
+        position: "bottom",
+      },
+      {
+        target: "ani-send-btn",
+        title: "Try It",
+        content:
+          "Ask a complex question and see the difference deep reasoning makes.",
+        position: "top",
+      },
     ],
     trigger: { type: "first_visit", module: "ani" },
     priority: 1,
@@ -100,9 +119,16 @@ const NEW_FEATURE_WALKTHROUGHS: Walkthrough[] = [
     id: "wt_memory_marks",
     featureId: "memory_marks",
     title: "Memory Marks",
-    description: "ANI automatically saves important facts, decisions, and insights during your conversation for easy recall.",
+    description:
+      "ANI automatically saves important facts, decisions, and insights during your conversation for easy recall.",
     steps: [
-      { target: "ani-panel-tab-memory", title: "Memory Panel", content: "Check the Memory tab to see everything ANI has marked from your conversation.", position: "left" },
+      {
+        target: "ani-panel-tab-memory",
+        title: "Memory Panel",
+        content:
+          "Check the Memory tab to see everything ANI has marked from your conversation.",
+        position: "left",
+      },
     ],
     trigger: { type: "action_count", value: 5 },
     priority: 3,
@@ -115,9 +141,16 @@ const NEW_FEATURE_WALKTHROUGHS: Walkthrough[] = [
     id: "wt_complexity_detection",
     featureId: "complexity_detection",
     title: "Smart Complexity Detection",
-    description: "ANI automatically detects when your query needs deeper reasoning and adjusts its thinking depth.",
+    description:
+      "ANI automatically detects when your query needs deeper reasoning and adjusts its thinking depth.",
     steps: [
-      { target: "ani-auto-toggle", title: "Auto Mode", content: "Keep auto-detect enabled and ANI will escalate to deep or research mode when needed.", position: "bottom" },
+      {
+        target: "ani-auto-toggle",
+        title: "Auto Mode",
+        content:
+          "Keep auto-detect enabled and ANI will escalate to deep or research mode when needed.",
+        position: "bottom",
+      },
     ],
     trigger: { type: "action_count", value: 3 },
     priority: 2,
@@ -159,21 +192,35 @@ export function classifyUserSegment(profile: {
 }): UserSegment {
   if (profile.sessionCount <= 2) return "new";
   if (profile.lastActiveDaysAgo > 14) return "casual";
-  if (profile.sessionCount > 20 && profile.avgSessionMinutes > 15 && profile.featuresUsed.length > 8) return "enterprise";
-  if (profile.sessionCount > 10 && profile.featuresUsed.length > 4) return "power";
+  if (
+    profile.sessionCount > 20 &&
+    profile.avgSessionMinutes > 15 &&
+    profile.featuresUsed.length > 8
+  )
+    return "enterprise";
+  if (profile.sessionCount > 10 && profile.featuresUsed.length > 4)
+    return "power";
   return "casual";
 }
 
 export function buildSegmentProfile(
-  sessions: Array<{ durationMinutes: number; featuresUsed: string[]; timestamp: string }>,
+  sessions: Array<{
+    durationMinutes: number;
+    featuresUsed: string[];
+    timestamp: string;
+  }>,
 ): UserSegmentProfile {
   const now = Date.now();
   const recentSessions = sessions.filter((s) => {
-    const daysSince = (now - new Date(s.timestamp).getTime()) / (1000 * 60 * 60 * 24);
+    const daysSince =
+      (now - new Date(s.timestamp).getTime()) / (1000 * 60 * 60 * 24);
     return daysSince <= 30;
   });
 
-  const totalMinutes = recentSessions.reduce((a, s) => a + s.durationMinutes, 0);
+  const totalMinutes = recentSessions.reduce(
+    (a, s) => a + s.durationMinutes,
+    0,
+  );
   const featureCounts: Record<string, number> = {};
   for (const s of recentSessions) {
     for (const f of s.featuresUsed) {
@@ -191,16 +238,25 @@ export function buildSegmentProfile(
     allRequested.push(...s.featuresUsed);
   }
 
-  const daysSinceLast = recentSessions.length > 0
-    ? (now - new Date(recentSessions[recentSessions.length - 1]!.timestamp).getTime()) / (1000 * 60 * 60 * 24)
-    : 999;
+  const daysSinceLast =
+    recentSessions.length > 0
+      ? (now -
+          new Date(
+            recentSessions[recentSessions.length - 1]!.timestamp,
+          ).getTime()) /
+        (1000 * 60 * 60 * 24)
+      : 999;
 
   const profile: UserSegmentProfile = {
     segment: "casual",
     featureUsage: featureCounts,
     sessionCount: recentSessions.length,
-    avgSessionMinutes: recentSessions.length > 0 ? totalMinutes / recentSessions.length : 0,
-    lastActive: recentSessions.length > 0 ? recentSessions[recentSessions.length - 1]!.timestamp : new Date().toISOString(),
+    avgSessionMinutes:
+      recentSessions.length > 0 ? totalMinutes / recentSessions.length : 0,
+    lastActive:
+      recentSessions.length > 0
+        ? recentSessions[recentSessions.length - 1]!.timestamp
+        : new Date().toISOString(),
     topFeatures,
     requestedFeatures: [...new Set(allRequested)],
     satisfactionSignal: Math.min(1, recentSessions.length / 10),
@@ -212,12 +268,20 @@ export function buildSegmentProfile(
 
 function classifyUserProfile(profile: UserSegmentProfile): UserSegment {
   if (profile.sessionCount <= 2) return "new";
-  if (profile.sessionCount > 20 && profile.avgSessionMinutes > 15 && Object.keys(profile.featureUsage).length > 8) return "enterprise";
-  if (profile.sessionCount > 10 && Object.keys(profile.featureUsage).length > 4) return "power";
+  if (
+    profile.sessionCount > 20 &&
+    profile.avgSessionMinutes > 15 &&
+    Object.keys(profile.featureUsage).length > 8
+  )
+    return "enterprise";
+  if (profile.sessionCount > 10 && Object.keys(profile.featureUsage).length > 4)
+    return "power";
   return "casual";
 }
 
-const RECOMMENDATION_TEMPLATES: Array<Omit<ProactiveRecommendation, "id" | "context" | "shown" | "dismissed">> = [
+const RECOMMENDATION_TEMPLATES: Array<
+  Omit<ProactiveRecommendation, "id" | "context" | "shown" | "dismissed">
+> = [
   {
     type: "tip",
     title: "Try Deep Think for complex questions",
@@ -263,7 +327,11 @@ const RECOMMENDATION_TEMPLATES: Array<Omit<ProactiveRecommendation, "id" | "cont
 export function generateRecommendations(
   profile: UserSegmentProfile,
   dismissedRecommendations: string[],
-  recentContext: { decisionsCount: number; hasComplexQuery: boolean; sessionMinutes: number },
+  recentContext: {
+    decisionsCount: number;
+    hasComplexQuery: boolean;
+    sessionMinutes: number;
+  },
 ): ProactiveRecommendation[] {
   const candidates: ProactiveRecommendation[] = [];
 
@@ -273,34 +341,55 @@ export function generateRecommendations(
     let score = template.relevanceScore;
 
     if (profile.segment === "new" && template.type === "shortcut") score += 0.2;
-    if (profile.segment === "power" && template.type === "workflow") score += 0.15;
-    if (profile.segment === "enterprise" && template.type === "insight") score += 0.2;
-    if (recentContext.hasComplexQuery && template.title.includes("Deep Think")) score += 0.25;
-    if (recentContext.decisionsCount > 2 && template.title.includes("decision")) score += 0.3;
+    if (profile.segment === "power" && template.type === "workflow")
+      score += 0.15;
+    if (profile.segment === "enterprise" && template.type === "insight")
+      score += 0.2;
+    if (recentContext.hasComplexQuery && template.title.includes("Deep Think"))
+      score += 0.25;
+    if (recentContext.decisionsCount > 2 && template.title.includes("decision"))
+      score += 0.3;
 
-    if (recentContext.sessionMinutes < 2 && template.timing === "end_of_session") score -= 0.3;
-    if (profile.sessionCount > 10 && template.title.includes("Shift+Enter")) score -= 0.4;
+    if (
+      recentContext.sessionMinutes < 2 &&
+      template.timing === "end_of_session"
+    )
+      score -= 0.3;
+    if (profile.sessionCount > 10 && template.title.includes("Shift+Enter"))
+      score -= 0.4;
 
     if (score >= 0.6 && template.confidence >= 0.7) {
       candidates.push({
         ...template,
         id: `rec_${template.title.toLowerCase().replace(/\s+/g, "_").slice(0, 40)}`,
         relevanceScore: score,
-        context: { segment: profile.segment, sessionMinutes: recentContext.sessionMinutes },
+        context: {
+          segment: profile.segment,
+          sessionMinutes: recentContext.sessionMinutes,
+        },
         shown: false,
         dismissed: false,
       });
     }
   }
 
-  return candidates.sort((a, b) => b.relevanceScore - a.relevanceScore).slice(0, 2);
+  return candidates
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .slice(0, 2);
 }
 
-export function getFeaturePriorityVotes(segmentProfiles: UserSegmentProfile[]): FeatureRequestVote[] {
+export function getFeaturePriorityVotes(
+  segmentProfiles: UserSegmentProfile[],
+): FeatureRequestVote[] {
   const featureVotes: Record<string, Record<UserSegment, number>> = {};
 
   for (const profile of segmentProfiles) {
-    const segmentWeight = profile.segment === "enterprise" ? 3 : profile.segment === "power" ? 2 : 1;
+    const segmentWeight =
+      profile.segment === "enterprise"
+        ? 3
+        : profile.segment === "power"
+          ? 2
+          : 1;
     for (const feature of profile.requestedFeatures) {
       if (!featureVotes[feature]) {
         featureVotes[feature] = { new: 0, casual: 0, power: 0, enterprise: 0 };
@@ -314,7 +403,9 @@ export function getFeaturePriorityVotes(segmentProfiles: UserSegmentProfile[]): 
       const totalScore = Object.values(segmentVotes).reduce((a, b) => a + b, 0);
       return {
         featureId,
-        featureName: featureId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+        featureName: featureId
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase()),
         segmentVotes,
         totalScore,
         trending: totalScore > 5,

@@ -6,21 +6,34 @@
 }
 
 export class TemporalReasoningEngine {
-  compareSnapshots(before: Record<string, unknown>, after: Record<string, unknown>): SnapshotComparison {
+  compareSnapshots(
+    before: Record<string, unknown>,
+    after: Record<string, unknown>,
+  ): SnapshotComparison {
     const additions: string[] = [];
     const removals: string[] = [];
     const modifications: SnapshotComparison["modifications"] = [];
 
     for (const [key, val] of Object.entries(after)) {
       if (!(key in before)) additions.push(key);
-      else if (JSON.stringify(before[key]) !== JSON.stringify(val)) modifications.push({ field: key, before: JSON.stringify(before[key])?.slice(0, 30) ?? "", after: JSON.stringify(val)?.slice(0, 30) ?? "" });
+      else if (JSON.stringify(before[key]) !== JSON.stringify(val))
+        modifications.push({
+          field: key,
+          before: JSON.stringify(before[key])?.slice(0, 30) ?? "",
+          after: JSON.stringify(val)?.slice(0, 30) ?? "",
+        });
     }
     for (const key of Object.keys(before)) {
       if (!(key in after)) removals.push(key);
     }
 
-    const totalChanges = additions.length + removals.length + modifications.length;
-    const driftScore = Math.min(1, totalChanges / Math.max(1, Object.keys(before).length + Object.keys(after).length));
+    const totalChanges =
+      additions.length + removals.length + modifications.length;
+    const driftScore = Math.min(
+      1,
+      totalChanges /
+        Math.max(1, Object.keys(before).length + Object.keys(after).length),
+    );
 
     return { additions, removals, modifications, driftScore };
   }

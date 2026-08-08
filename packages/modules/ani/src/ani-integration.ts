@@ -1,10 +1,17 @@
-import type { CollaborationState, ParticipantSignal } from "./collaboration-intel";
+import type {
+  CollaborationState,
+  ParticipantSignal,
+} from "./collaboration-intel";
 import type { CausalNode, CausalEdge, CounterfactualResult } from "./causal";
 import type { ModelTier, ModelRoute } from "./model-portfolio";
 import type { SituationType, ToneProfile } from "./tone-engine";
 import type { IntegrationHealth } from "./tool-sentinel";
 import type { PerformanceSnapshot } from "./self-optimization";
-import type { ContextGraph3D, ContextNode3D, ContextEdge3D } from "./remaining-capabilities";
+import type {
+  ContextGraph3D,
+  ContextNode3D,
+  ContextEdge3D,
+} from "./remaining-capabilities";
 import type { TaskProgress } from "./remaining-capabilities";
 import type { ReasoningDepth } from "./deep-think";
 import type { UserIntent, WorkspaceContext } from "./engine";
@@ -61,12 +68,31 @@ export interface MeetingActionItem {
 }
 
 export interface GraphLayout3D {
-  nodes: Array<ContextNode3D & { x: number; y: number; z: number; vx: number; vy: number; vz: number }>;
+  nodes: Array<
+    ContextNode3D & {
+      x: number;
+      y: number;
+      z: number;
+      vx: number;
+      vy: number;
+      vz: number;
+    }
+  >;
   edges: ContextEdge3D[];
-  bounds: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
+  bounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
+    minZ: number;
+    maxZ: number;
+  };
 }
 
-export function layoutForceDirected3D(graph: ContextGraph3D, iterations: number = 100): GraphLayout3D {
+export function layoutForceDirected3D(
+  graph: ContextGraph3D,
+  iterations: number = 100,
+): GraphLayout3D {
   const width = 800;
   const height = 600;
   const depth = 400;
@@ -76,7 +102,9 @@ export function layoutForceDirected3D(graph: ContextGraph3D, iterations: number 
     x: (Math.random() - 0.5) * width,
     y: (Math.random() - 0.5) * height,
     z: (Math.random() - 0.5) * depth,
-    vx: 0, vy: 0, vz: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
   }));
 
   const nodeMap = new Map(positioned.map((n) => [n.id, n]));
@@ -112,8 +140,12 @@ export function layoutForceDirected3D(graph: ContextGraph3D, iterations: number 
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
       const fz = (dz / dist) * force;
-      source.vx += fx; source.vy += fy; source.vz += fz;
-      target.vx -= fx; target.vy -= fy; target.vz -= fz;
+      source.vx += fx;
+      source.vy += fy;
+      source.vz += fz;
+      target.vx -= fx;
+      target.vy -= fy;
+      target.vz -= fz;
     }
 
     for (const node of positioned) {
@@ -136,12 +168,21 @@ export function layoutForceDirected3D(graph: ContextGraph3D, iterations: number 
   return {
     nodes: positioned,
     edges: graph.edges,
-    bounds: { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys), minZ: Math.min(...zs), maxZ: Math.max(...zs) },
+    bounds: {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+      minZ: Math.min(...zs),
+      maxZ: Math.max(...zs),
+    },
   };
 }
 
 export function project3Dto2D(
-  x: number, y: number, z: number,
+  x: number,
+  y: number,
+  z: number,
   bounds: GraphLayout3D["bounds"],
   canvasWidth: number,
   canvasHeight: number,
@@ -172,7 +213,10 @@ export function project3Dto2D(
   };
 }
 
-export function initializeMeetingIntelligence(meetingId: string, participants: string[]): MeetingIntelligenceState {
+export function initializeMeetingIntelligence(
+  meetingId: string,
+  participants: string[],
+): MeetingIntelligenceState {
   return {
     meetingId,
     startTime: new Date().toISOString(),
@@ -216,7 +260,8 @@ export function updateMeetingWithTranscript(
     };
   });
 
-  const totalWords = participants.reduce((a, p) => a + p.talkTimePercent, 0) || 1;
+  const totalWords =
+    participants.reduce((a, p) => a + p.talkTimePercent, 0) || 1;
   for (const p of participants) {
     p.talkTimePercent = Math.round((p.talkTimePercent / totalWords) * 100);
   }
@@ -264,15 +309,34 @@ export function updateMeetingWithTranscript(
 export function selectOptimalModel(
   intent: UserIntent,
   depth: ReasoningDepth,
-  providers: Array<{ id: string; tier: ModelTier; modelName: string; costPerToken: number; maxContext: number; speedMs: number; available: boolean }>,
+  providers: Array<{
+    id: string;
+    tier: ModelTier;
+    modelName: string;
+    costPerToken: number;
+    maxContext: number;
+    speedMs: number;
+    available: boolean;
+  }>,
 ): ModelRoute | null {
   const available = providers.filter((p) => p.available);
   if (available.length === 0) return null;
 
-  const tierPriority: Record<ModelTier, number> = { small: 0, medium: 1, frontier: 2 };
-  const requiredTier: ModelTier = depth === "research" || depth === "deep" ? "frontier" : depth === "balanced" ? "medium" : "small";
+  const tierPriority: Record<ModelTier, number> = {
+    small: 0,
+    medium: 1,
+    frontier: 2,
+  };
+  const requiredTier: ModelTier =
+    depth === "research" || depth === "deep"
+      ? "frontier"
+      : depth === "balanced"
+        ? "medium"
+        : "small";
 
-  const candidates = available.filter((p) => tierPriority[p.tier] >= tierPriority[requiredTier]);
+  const candidates = available.filter(
+    (p) => tierPriority[p.tier] >= tierPriority[requiredTier],
+  );
   const pool = candidates.length > 0 ? candidates : available;
 
   let best: ModelRoute | null = null;
@@ -283,12 +347,26 @@ export function selectOptimalModel(
     score += tierPriority[p.tier] * 10;
     score -= p.speedMs / 100;
     score -= p.costPerToken * 1000;
-    if (intent.riskLevel === "high" && tierPriority[p.tier] >= tierPriority.medium) score += 5;
-    if (intent.riskLevel === "critical" && tierPriority[p.tier] >= tierPriority.frontier) score += 10;
+    if (
+      intent.riskLevel === "high" &&
+      tierPriority[p.tier] >= tierPriority.medium
+    )
+      score += 5;
+    if (
+      intent.riskLevel === "critical" &&
+      tierPriority[p.tier] >= tierPriority.frontier
+    )
+      score += 10;
     if (depth === "fast" && p.speedMs < 100) score += 8;
     if (bestScore < score) {
       bestScore = score;
-      best = { tier: p.tier, modelName: p.modelName, costPerToken: p.costPerToken, maxContext: p.maxContext, speedMs: p.speedMs };
+      best = {
+        tier: p.tier,
+        modelName: p.modelName,
+        costPerToken: p.costPerToken,
+        maxContext: p.maxContext,
+        speedMs: p.speedMs,
+      };
     }
   }
 
@@ -317,11 +395,19 @@ export function buildCausalChain(
   for (let depth = 0; depth < maxDepth; depth++) {
     if (!currentId) break;
     const node = nodeMap.get(currentId);
-    if (!node) { gaps.push(`Missing node: ${currentId}`); break; }
+    if (!node) {
+      gaps.push(`Missing node: ${currentId}`);
+      break;
+    }
     chain.push(node);
     const incoming: CausalEdge[] = incomingEdges.get(currentId) ?? [];
-    if (incoming.length === 0) { gaps.push(`Root cause reached: ${node.name}`); break; }
-    const strongest = incoming.reduce((a: CausalEdge, b: CausalEdge) => a.strength > b.strength ? a : b);
+    if (incoming.length === 0) {
+      gaps.push(`Root cause reached: ${node.name}`);
+      break;
+    }
+    const strongest = incoming.reduce((a: CausalEdge, b: CausalEdge) =>
+      a.strength > b.strength ? a : b,
+    );
     strength *= strongest.strength;
     currentId = strongest.source;
   }
@@ -330,7 +416,15 @@ export function buildCausalChain(
 }
 
 export function monitorToolHealth(
-  integrations: Array<{ id: string; name: string; provider: string; lastCall: string; errorRate: number; latencyP95: number; authStatus: string }>,
+  integrations: Array<{
+    id: string;
+    name: string;
+    provider: string;
+    lastCall: string;
+    errorRate: number;
+    latencyP95: number;
+    authStatus: string;
+  }>,
 ): IntegrationHealth[] {
   return integrations.map((i) => ({
     integrationId: i.id,
@@ -364,12 +458,22 @@ export function adaptToneForContext(
 
 export function runSelfOptimizationCheck(
   snapshots: PerformanceSnapshot[],
-  currentSettings: { temperature: number; maxTokens: number; contextWindow: number },
-): { temperature: number; maxTokens: number; contextWindow: number; changes: string[] } {
+  currentSettings: {
+    temperature: number;
+    maxTokens: number;
+    contextWindow: number;
+  },
+): {
+  temperature: number;
+  maxTokens: number;
+  contextWindow: number;
+  changes: string[];
+} {
   if (snapshots.length < 3) return { ...currentSettings, changes: [] };
 
   const recent = snapshots.slice(-5);
-  const avgLatency = recent.reduce((a, s) => a + s.latencyMs, 0) / recent.length;
+  const avgLatency =
+    recent.reduce((a, s) => a + s.latencyMs, 0) / recent.length;
   const avgCost = recent.reduce((a, s) => a + s.costUsd, 0) / recent.length;
   const changes: string[] = [];
 

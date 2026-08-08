@@ -20,7 +20,11 @@ export class HyperdimensionalComputer {
     for (let i = 0; i < HDC_DIMENSION; i++) {
       result[i] = (a.dimensions[i] ?? 0) + (b.dimensions[i] ?? 0) > 0 ? 1 : -1;
     }
-    return { id: "hdc_b_" + Date.now().toString(36), dimensions: result, label: (a.label ?? "") + "+" + (b.label ?? "") };
+    return {
+      id: "hdc_b_" + Date.now().toString(36),
+      dimensions: result,
+      label: (a.label ?? "") + "+" + (b.label ?? ""),
+    };
   }
 
   bind(a: HyperVector, b: HyperVector): HyperVector {
@@ -28,7 +32,11 @@ export class HyperdimensionalComputer {
     for (let i = 0; i < HDC_DIMENSION; i++) {
       result[i] = (a.dimensions[i] ?? 0) * (b.dimensions[i] ?? 0);
     }
-    return { id: "hdc_x_" + Date.now().toString(36), dimensions: result, label: (a.label ?? "") + "x" + (b.label ?? "") };
+    return {
+      id: "hdc_x_" + Date.now().toString(36),
+      dimensions: result,
+      label: (a.label ?? "") + "x" + (b.label ?? ""),
+    };
   }
 
   similarity(a: HyperVector, b: HyperVector): number {
@@ -39,5 +47,3 @@ export class HyperdimensionalComputer {
     return dot / HDC_DIMENSION;
   }
 }
-
-

@@ -12,8 +12,14 @@
 export class CognitionLedger {
   private entries: CognitionLedgerEntry[] = [];
 
-  record(entry: Omit<CognitionLedgerEntry, "id" | "timestamp">): CognitionLedgerEntry {
-    const full: CognitionLedgerEntry = { ...entry, id: "cog_" + Date.now().toString(36), timestamp: new Date().toISOString() };
+  record(
+    entry: Omit<CognitionLedgerEntry, "id" | "timestamp">,
+  ): CognitionLedgerEntry {
+    const full: CognitionLedgerEntry = {
+      ...entry,
+      id: "cog_" + Date.now().toString(36),
+      timestamp: new Date().toISOString(),
+    };
     this.entries.push(full);
     return full;
   }
@@ -23,6 +29,13 @@ export class CognitionLedger {
   }
 
   getPolicyViolations(): Array<{ responseId: string; violations: string[] }> {
-    return this.entries.filter((e) => e.policyChecks.some((p) => !p.passed)).map((e) => ({ responseId: e.responseId, violations: e.policyChecks.filter((p) => !p.passed).map((p) => p.policy) }));
+    return this.entries
+      .filter((e) => e.policyChecks.some((p) => !p.passed))
+      .map((e) => ({
+        responseId: e.responseId,
+        violations: e.policyChecks
+          .filter((p) => !p.passed)
+          .map((p) => p.policy),
+      }));
   }
 }

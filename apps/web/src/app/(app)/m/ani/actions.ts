@@ -9,11 +9,18 @@ const svc = async () => {
 };
 
 export async function createConversationAction(formData: FormData) {
-  await (await svc()).create(String(formData.get("title") ?? "New conversation"));
+  await (
+    await svc()
+  ).create(String(formData.get("title") ?? "New conversation"));
 }
 
 export async function sendAniMessageAction(formData: FormData) {
-  return await (await svc()).send(String(formData.get("id") ?? ""), String(formData.get("content") ?? ""));
+  return await (
+    await svc()
+  ).send(
+    String(formData.get("id") ?? ""),
+    String(formData.get("content") ?? ""),
+  );
 }
 
 export async function clearConversationAction(formData: FormData) {
