@@ -216,6 +216,22 @@ export type {
 } from "./deep-intelligence";
 export { CrossAppSchemaMapper } from "./schema-mapper";
 export type { SchemaMapping } from "./schema-mapper";
+export {
+  EnhancedStreamController,
+  InteractiveGraphController,
+  RealTimeMeetingProcessor,
+  AdaptiveLearningEngine as AdaptiveLearningPathEngine,
+} from "./deep-enhanced";
+export type {
+  StreamEvent,
+  EnhancedStreamState,
+  InteractiveGraphState,
+  RealTimeMeetingUpdate,
+  AdaptiveLearningPath,
+  AdaptiveModule,
+  AdaptiveConcept,
+  AdaptiveExercise,
+} from "./deep-enhanced";
 export { MultiResolutionRenderer, NeuralEthicsBoard } from "./multi-resolution";
 export type { ResolutionLevel, RenderedResponse, EthicsReview } from "./multi-resolution";
 export { ToolHealthSentinel } from "./tool-sentinel";
