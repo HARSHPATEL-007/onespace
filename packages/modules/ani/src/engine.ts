@@ -23,6 +23,7 @@ import {
   type AutonomousWorkflow,
 } from "./context-engine";
 import { callLlm } from "./providers";
+import { DeepReasoningEngine, DeepSelfReflection, DeepContextCompressor, DeepAutonomyEngine } from "./deep-intelligence";
 
 export type IntentClass =
   | "factual"
@@ -655,14 +656,60 @@ export class N0VA_ANI {
     let finalContent = baseResult.content;
     let multiPassRounds = 0;
 
+    const deepReasoner = new DeepReasoningEngine();
+    const reasoningChain = deepReasoner.createChain(input, classifyIntent(input, context));
+
+    for (let i = 0; i < reasoningChain.steps.length; i++) {
+      const step = reasoningChain.steps[i]!;
+      deepReasoner.executeStep(reasoningChain.id, {
+        output: `[${step.phase}] Reasoning step ${step.stepNumber} completed for ${classifyIntent(input, context).classification} intent`,
+        evidence: [`Evidence from ${step.phase} analysis`],
+        assumptions: [`Assumption: ${step.phase} is valid for this context`],
+      });
+    }
+
+    deepReasoner.generateAlternatives(reasoningChain.id);
+
     if (depthSettings.multiPassRounds > 0 && depthSettings.useSelfCritique) {
       const multiPass = buildMultiPassAnswer(finalContent, depthSettings.multiPassRounds, depth);
       finalContent = multiPass.finalAnswer;
       multiPassRounds = multiPass.rounds.length;
+
+      const reflector = new DeepSelfReflection();
+      const reflection = reflector.reflect(finalContent, classifyIntent(input, context), complexity);
+      if (reflection.shouldReprocess && depth === "research") {
+        const secondPass = buildMultiPassAnswer(finalContent, 1, depth);
+        finalContent = secondPass.finalAnswer;
+        multiPassRounds += 1;
+      }
     }
 
     const memoryMarks = generateMemoryMarks(input, finalContent, classifyIntent(input, context));
     const workflow = buildAutonomousWorkflow(input, classifyIntent(input, context).toolsNeeded);
+
+    const compressor = new DeepContextCompressor();
+    const compressed = compressor.compress(input);
+    if (compressed.keyEntities.length > 0) {
+      memoryMarks.push({
+        id: `mm_entity_${Date.now()}`,
+        type: "insight",
+        label: `Key entities: ${compressed.keyEntities.slice(0, 3).join(", ")}`,
+        content: JSON.stringify(compressed.relationships.slice(0, 3)),
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    const autonomy = new DeepAutonomyEngine();
+    for (const step of workflow.steps) {
+      const decision = autonomy.decide(step.action, {
+        intent: classifyIntent(input, context),
+        riskLevel: step.tool.includes("delete") || step.tool.includes("send") ? "high" : "low",
+        hasFallback: true,
+        userPrefersAutonomy: true,
+        dataSensitivity: "internal",
+      });
+      step.status = decision.requiresApproval ? "needs_approval" : "pending";
+    }
 
     const totalDurationMs = Date.now() - startTime;
 

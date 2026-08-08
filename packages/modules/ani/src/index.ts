@@ -197,6 +197,23 @@ export type {
   MeetingActionItem,
   GraphLayout3D,
 } from "./ani-integration";
+export {
+  DeepReasoningEngine,
+  DeepSelfReflection,
+  DeepContextCompressor,
+  DeepAdaptiveLearning,
+  DeepAutonomyEngine,
+  DeepSelfImprovement,
+} from "./deep-intelligence";
+export type {
+  ReasoningChain,
+  ReflectionResult,
+  SemanticChunk,
+  CompressedContext,
+  AdaptiveLearningState,
+  AutonomousDecision,
+  SelfImprovementLog,
+} from "./deep-intelligence";
 export { CrossAppSchemaMapper } from "./schema-mapper";
 export type { SchemaMapping } from "./schema-mapper";
 export { MultiResolutionRenderer, NeuralEthicsBoard } from "./multi-resolution";
