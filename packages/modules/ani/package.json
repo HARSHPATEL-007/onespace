@@ -12,6 +12,12 @@
     "./interfaces": "./src/interfaces.ts",
     "./providers": "./src/providers.ts",
     "./rag": "./src/rag.ts",
+    "./memory": "./src/memory.ts",
+    "./xai": "./src/xai.ts",
+    "./adaptive": "./src/adaptive.ts",
+    "./resilience": "./src/resilience.ts",
+    "./knowledge-graph": "./src/knowledge-graph.ts",
+    "./predictive": "./src/predictive.ts",
     "./types": "./src/types.ts"
   },
   "dependencies": {
