@@ -9,6 +9,8 @@ import { PersistentMemorySystem, createMemorySystem } from "./memory";
 import { ConsciousnessStack } from "./consciousness";
 import { XAIFramework, createXAI } from "./xai";
 import { AdaptiveLearningEngine, createAdaptiveEngine } from "./adaptive";
+import { CrisisResilienceEngine, createCrisisEngine } from "./resilience";
+import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { DEFAULT_ANI_SETTINGS, type AniSettings, type ToolCallRecord } from "./types";
 
 const MODULE = "ani";
@@ -31,6 +33,7 @@ export class AniService {
   private memory: PersistentMemorySystem;
   private xai: XAIFramework;
   private adaptive: AdaptiveLearningEngine;
+  private crisis: CrisisResilienceEngine;
 
   constructor(
     private readonly workspaceId: string,
@@ -43,11 +46,17 @@ export class AniService {
     this.memory = createMemorySystem(workspaceId);
     this.xai = createXAI();
     this.adaptive = createAdaptiveEngine(workspaceId);
+    this.crisis = createCrisisEngine();
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
-    if (!(await can(this.workspaceId, this.role, MODULE, action))) {
-      throw new Error(`Missing ${action} permission for ani`);
+    try {
+      if (!(await can(this.workspaceId, this.role, MODULE, action))) {
+        throw new Error(`Missing ${action} permission for ani`);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("Missing")) throw err;
+      throw new Error(`Permission check failed: ${err instanceof Error ? err.message : "DB unavailable"}`);
     }
   }
 
@@ -127,12 +136,10 @@ export class AniService {
       await this._persistToolCalls(conversationId, assistantMsg.id, result.toolCalls);
     }
 
-    try {
-      await this.memory.store(
-         { query: content, response: result.content, ragResults: result.citations?.length ?? 0 },
-        { sessionId: conversationId, tier: "episodic", modality: "conversation", sensitivity: "internal" },
-      );
-    } catch { /* non-blocking */ }
+    await this.memory.store(
+      { query: content, response: result.content.slice(0, 500), ragResults: result.citations?.length ?? 0 },
+      { sessionId: conversationId, tier: "episodic", modality: "conversation", sensitivity: "internal" },
+    );
 
     this.adaptive.recordFeedback(this.userId, {
       timestamp: new Date().toISOString(),
@@ -186,6 +193,11 @@ export class AniService {
     await this.assert("READ");
     const stats = await this.memory.getStats();
     return { total: stats.total, working: stats.working, semantic: stats.semantic };
+  }
+
+  async getSystemHealth(): Promise<{ status: "healthy" | "degraded" | "critical"; openCircuits: string[]; degradedFeatures: string[]; recentFailures: Array<{ id: string; timestamp: string; severity: string; component: string; message: string }> }> {
+    await this.assert("READ");
+    return this.crisis.getSystemHealth();
   }
 
   async getSettings(): Promise<AniSettings> {

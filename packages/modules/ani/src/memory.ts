@@ -67,7 +67,7 @@ export class PersistentMemorySystem {
 
     const message = await prisma.aniMessage.create({
       data: {
-        conversationId: `memory_${tier}`,
+        conversationId: options.sessionId,
         workspaceId: this.workspaceId,
         role: "memory",
         content: JSON.stringify({
@@ -78,7 +78,6 @@ export class PersistentMemorySystem {
           sourceRef: options.sourceRef,
           metadata: options.metadata ?? {},
           data: content,
-          sessionId: options.sessionId,
         }),
       },
     });
@@ -105,7 +104,7 @@ export class PersistentMemorySystem {
       where: {
         workspaceId: query.workspaceId,
         role: "memory",
-        ...(query.sessionId ? { content: { contains: query.sessionId } } : {}),
+        ...(query.sessionId ? { conversationId: query.sessionId } : {}),
       },
       orderBy: { createdAt: "desc" },
       take: query.limit ?? 10,
@@ -121,7 +120,7 @@ export class PersistentMemorySystem {
           entry: {
             id: msg.id,
             workspaceId: msg.workspaceId,
-            sessionId: parsed.sessionId ?? "",
+            sessionId: msg.conversationId,
             tier,
             modality: parsed.modality ?? "text",
             content: parsed.data,

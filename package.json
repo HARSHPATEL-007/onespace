@@ -17,6 +17,7 @@
     "db:down": "docker compose -f infra/docker-compose.yml down",
     "db:migrate": "pnpm --filter @n0va/db run db:migrate",
     "db:seed": "pnpm --filter @n0va/db run db:seed",
+    "ani:smoke": "tsx packages/ani-smoke-test.ts",
     "format": "prettier --write ."
   },
   "devDependencies": {

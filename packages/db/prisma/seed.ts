@@ -28,6 +28,7 @@ async function main() {
   await seedPhase4Demo(workspace.id, owner.id, admin.id);
   await seedPhase6Demo(workspace.id, owner.id);
   await seedConnectionDemo(workspace.id, owner.id, admin.id);
+  await seedAniDemo(workspace.id, owner.id);
 
   const coreModules = [
     "mail",
@@ -771,6 +772,46 @@ async function seedConnectionDemo(workspaceId: string, ownerId: string, adminId:
         },
       });
     }
+  }
+}
+
+async function seedAniDemo(workspaceId: string, ownerId: string) {
+  const docCount = await prisma.doc.count({ where: { workspaceId } });
+  if (docCount === 0) {
+    await prisma.doc.createMany({
+      data: [
+        { workspaceId, createdById: ownerId, title: "N0VA Product Strategy", content: "N0VA Workspace is an enterprise modular suite. The product strategy focuses on four phases: Foundation (mail, docs, sheets, calendar, tasks), Creation (slides, drawings, pics, videos, meet), Platform (N0VA1O, admin, vault, studio), and Business Ops (sales, CRM, finance, HR, legal). Each module ships as an independent product while behaving as a single system." },
+        { workspaceId, createdById: ownerId, title: "Engineering Guidelines", content: "All modules follow the same pattern: service class with RBAC, client components with injected actions, and a barrel export. Every query is tenant-scoped by construction. The N0VA1O gateway is the single integration surface — modules never call third parties directly. Use zod for input validation in service layers." },
+        { workspaceId, createdById: ownerId, title: "Q4 Planning Document", content: "Q4 priorities: ship ANI (AI Native Intelligence) with consciousness layer, complete N0VA1O gateway with 100+ integrations, launch enterprise tier with dedicated GPU partitions, and achieve 99.99% uptime SLA. Budget allocated: $2.4M engineering, $800K infrastructure." },
+      ],
+    });
+  }
+
+  const taskCount = await prisma.task.count({ where: { workspaceId } });
+  if (taskCount === 0) {
+    const list = await prisma.taskList.upsert({
+      where: { id: `list-${workspaceId}-default` },
+      update: {},
+      create: { id: `list-${workspaceId}-default`, workspaceId, name: "N0VA Sprint" },
+    });
+    await prisma.task.createMany({
+      data: [
+        { workspaceId, listId: list.id, title: "Implement ANI consciousness layer", notes: "5-layer stack: perceptual, working memory, LTM, metacognition, integration. Target coherence >0.95.", priority: "HIGH" },
+        { workspaceId, listId: list.id, title: "Build RAG pipeline for ANI", notes: "Query workspace docs, tasks, notes, and calendar events. Use Prisma contains queries with case-insensitive mode.", priority: "HIGH" },
+        { workspaceId, listId: list.id, title: "Integrate N0VA1O gateway tools", notes: "Connect ANI to 1000+ third-party apps via MCP. Implement schema modifiers and before/after execution hooks.", priority: "MEDIUM" },
+        { workspaceId, listId: list.id, title: "Add memory persistence", notes: "Persist episodic and semantic memory to database. Implement consolidation from working to long-term memory.", priority: "MEDIUM" },
+      ],
+    });
+  }
+
+  const noteCount = await prisma.note.count({ where: { workspaceId } });
+  if (noteCount === 0) {
+    await prisma.note.createMany({
+      data: [
+        { workspaceId, createdById: ownerId, title: "ANI Design Notes", body: "ANI = AI Native Intelligence. Not a model — an abstraction layer. Penta-Audience consciousness: External, Internal, Autonomous, Neural, Ambient. The cognitive cortex of N0VA Workspace.", color: "purple" },
+        { workspaceId, createdById: ownerId, title: "Meeting Notes: Architecture Review", body: "Decided: ANI will use the N0VA1O gateway for all tool execution. Memory will persist to AniMessage table. RAG queries workspace docs, tasks, notes, calendar. Streaming via SSE.", color: "blue" },
+      ],
+    });
   }
 }
 
