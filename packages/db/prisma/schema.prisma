@@ -81,6 +81,11 @@ integrations    Integration[]
   incidentUpdates IncidentUpdate[]
   moduleSettings  WorkspaceModuleSetting[]
   invites         Invite[]
+  mailThreads     MailThread[]
+  mailDrafts      MailDraft[]
+  mailRules       MailRule[]
+  mailAttachments MailAttachment[]
+  mailDomains     MailDomain[]
 }
 
 /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -139,6 +144,8 @@ createdCalendarEvents CalendarEvent[]
   createdDealNotes      DealNote[] @relation("createdDealNotes")
   createdIncidentUpdates IncidentUpdate[] @relation("createdIncidentUpdates")
   createdInvites        Invite[] @relation("createdInvites")
+  createdMailDrafts     MailDraft[] @relation("createdMailDrafts")
+  createdMailRules      MailRule[] @relation("createdMailRules")
 }
 
 /// Seat within a workspace + assigned role.
@@ -565,8 +572,9 @@ model MailMessage {
   sentAt      DateTime      @default(now())
   createdAt   DateTime      @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   labels    MailLabelMap[]
+  attachments MailAttachment[]
 
   @@index([workspaceId, folder, sentAt(sort: Desc)])
   @@index([workspaceId, threadId])
@@ -605,6 +613,121 @@ enum MailFolder {
   SENT
   ARCHIVE
   TRASH
+}
+
+/// N0VA MAIL — thread-level conversation aggregate (denormalized for fast list rendering).
+model MailThread {
+  id          String     @id @default(uuid())
+  workspaceId String
+  threadId    String
+  folder      MailFolder @default(INBOX)
+  subject      String     @default("(no subject)")
+  isRead       Boolean    @default(false)
+  isStarred    Boolean    @default(false)
+  unreadCount  Int        @default(0)
+  messageCount Int        @default(0)
+  participants Json       @default("[]")
+  latestSentAt DateTime   @default(now())
+  latestMsgId  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, folder, latestSentAt(sort: Desc)])
+  @@index([workspaceId, isRead, unreadCount])
+  @@unique([workspaceId, threadId])
+}
+
+/// N0VA MAIL — saved draft messages.
+model MailDraft {
+  id          String            @id @default(uuid())
+  workspaceId String
+  createdById String?
+  subject     String            @default("(no subject)")
+  toEmails    String[]          @default([])
+  ccEmails    String[]          @default([])
+  body        String            @default("")
+  status      MailDraftStatus   @default(DRAFT)
+  threadId    String?
+  scheduledAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("createdMailDrafts", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, updatedAt(sort: Desc)])
+}
+
+enum MailDraftStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+}
+
+/// N0VA MAIL — automation rules for auto-label, auto-archive, forward, webhook.
+model MailRule {
+  id           String        @id @default(uuid())
+  workspaceId  String
+  createdById  String?
+  name         String
+  description  String        @default("")
+  enabled      Boolean       @default(true)
+  priority     Int           @default(100)
+  /// Array of condition clauses, each { field, operator, value(s), not?: boolean }
+  conditions   Json          @default("[]")
+  /// Array of action objects, each { type, ...params }
+  actions      Json          @default("[]")
+  lastRunAt    DateTime?
+  runCount     Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("createdMailRules", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, priority, enabled])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+/// N0VA MAIL — attachment references (metadata in DB, blobs in object storage).
+model MailAttachment {
+  id          String   @id @default(uuid())
+  workspaceId String
+  messageId   String
+  filename    String
+  mimeType    String
+  sizeBytes   Int      @default(0)
+  storageKey  String
+  checksum    String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  message   MailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+/// N0VA MAIL — custom domain configuration for inbound/outbound routing.
+model MailDomain {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  domain        String
+  dkimKey       String?
+  spfRecord     String?
+  dmarcPolicy   String?
+  mtaSts        String?
+  tlsRpt        String?
+  bimiUrl       String?
+  verified      Boolean  @default(false)
+  healthStatus  String   @default("unknown")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, domain])
 }
 
 /// N0VA SHEETS - workbooks with JSON cell grids.

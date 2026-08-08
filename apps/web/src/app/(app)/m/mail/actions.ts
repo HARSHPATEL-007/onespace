@@ -54,3 +54,67 @@ export async function assignLabelAction(formData: FormData) {
 export async function unassignLabelAction(formData: FormData) {
   await (await svc()).unassignLabel(String(formData.get("messageId") ?? ""), String(formData.get("labelId") ?? ""));
 }
+
+// ── AI Features ──
+
+export async function summarizeThreadAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  const result = await (await svc()).summarizeThread(threadId);
+  return { content: result.content };
+}
+
+export async function suggestReplyAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  const result = await (await svc()).suggestReply(threadId);
+  return { content: result.content };
+}
+
+export async function extractActionItemsAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  const items = await (await svc()).extractActionItems(threadId);
+  return { items };
+}
+
+export async function adjustToneAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  const content = String(formData.get("content") ?? "");
+  const tone = String(formData.get("tone") ?? "formal") as "formal" | "concise" | "friendly" | "persuasive";
+  const result = await (await svc()).adjustTone(threadId, content, tone);
+  return { content: result.content };
+}
+
+// ── Drafts ──
+
+export async function saveDraftAction(formData: FormData) {
+  const subject = String(formData.get("subject") ?? "");
+  const toEmails = String(formData.get("toEmails") ?? "").split(",").filter(Boolean);
+  const body = String(formData.get("body") ?? "");
+  const threadId = String(formData.get("threadId") ?? "");
+  await (await svc()).saveDraft({ subject, toEmails, body, threadId });
+}
+
+export async function sendDraftAction(formData: FormData) {
+  const draftId = String(formData.get("draftId") ?? "");
+  await (await svc()).sendDraft(draftId);
+}
+
+// ── Rules ──
+
+export async function createRuleAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "");
+  const description = String(formData.get("description") ?? "");
+  const conditions = JSON.parse(String(formData.get("conditions") ?? "{}"));
+  const actions = JSON.parse(String(formData.get("actions") ?? "[]"));
+  const priority = Number(formData.get("priority") ?? 100);
+  await (await svc()).createRule({ name, description, conditions, actions, priority });
+}
+
+export async function toggleRuleAction(formData: FormData) {
+  const ruleId = String(formData.get("ruleId") ?? "");
+  await (await svc()).toggleRule(ruleId);
+}
+
+export async function deleteRuleAction(formData: FormData) {
+  const ruleId = String(formData.get("ruleId") ?? "");
+  await (await svc()).deleteRule(ruleId);
+}

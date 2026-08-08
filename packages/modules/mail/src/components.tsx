@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Dialog, cn } from "@n0va/ui";
 import type { MailLabel, MailLabelMap, MailMessage } from "@n0va/db";
@@ -17,6 +17,14 @@ export interface MailActions {
   createLabel: (formData: FormData) => Promise<void>;
   assignLabel: (formData: FormData) => Promise<void>;
   unassignLabel: (formData: FormData) => Promise<void>;
+  summarizeThread: (formData: FormData) => Promise<{ content: string }>;
+  suggestReply: (formData: FormData) => Promise<{ content: string }>;
+  extractActionItems: (formData: FormData) => Promise<{ items: string[] }>;
+  adjustTone: (formData: FormData) => Promise<{ content: string }>;
+  saveDraft: (formData: FormData) => Promise<void>;
+  createRule: (formData: FormData) => Promise<void>;
+  toggleRule: (formData: FormData) => Promise<void>;
+  deleteRule: (formData: FormData) => Promise<void>;
 }
 
 type MessageWithLabels = MailMessage & { labels: Array<MailLabelMap & { label: MailLabel }> };
@@ -35,18 +43,36 @@ const FOLDERS = [
   { key: "TRASH", label: "Trash", glyph: "✕" },
 ] as const;
 
+const AI_TONES = [
+  { key: "formal", label: "Formal" },
+  { key: "concise", label: "Concise" },
+  { key: "friendly", label: "Friendly" },
+  { key: "persuasive", label: "Persuasive" },
+] as const;
+
+interface RuleItem {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  priority: number;
+  runCount: number;
+}
+
 export function MailApp({
   folder,
   threads,
   labels,
   unreadCounts,
   actions,
+  rules: initialRules,
 }: {
   folder: string;
   threads: MailThread[];
   labels: Array<MailLabel & { _count: { messages: number } }>;
   unreadCounts: MailUnreadCounts;
   actions: MailActions;
+  rules?: RuleItem[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -54,6 +80,16 @@ export function MailApp({
   const [composeOpen, setComposeOpen] = useState(false);
   const [replyOpen, setReplyOpen] = useState(false);
   const [newLabelOpen, setNewLabelOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [newRuleOpen, setNewRuleOpen] = useState(false);
+
+  // AI state
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiReply, setAiReply] = useState<string | null>(null);
+  const [aiActionItems, setAiActionItems] = useState<string[]>([]);
+  const [aiLoading, setAiLoading] = useState<string | null>(null);
 
   const activeThread = threads.find((t) => t.threadId === activeThreadId) ?? null;
 
@@ -66,6 +102,13 @@ export function MailApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId]);
 
+  // Clear AI state when thread changes
+  useEffect(() => {
+    setAiSummary(null);
+    setAiReply(null);
+    setAiActionItems([]);
+  }, [activeThreadId]);
+
   const toggleLabel = (messageId: string, labelId: string, isAssigned: boolean) => {
     const fd = new FormData();
     fd.set("messageId", messageId);
@@ -76,6 +119,70 @@ export function MailApp({
   const activeLabelIds = new Set(
     activeThread ? activeThread.messages[activeThread.messages.length - 1]!.labels.map((lm) => lm.labelId) : [],
   );
+
+  const runAi = useCallback(
+    async (kind: "summarize" | "reply" | "actions") => {
+      if (!activeThreadId) return;
+      setAiLoading(kind);
+      try {
+        const fd = new FormData();
+        fd.set("threadId", activeThreadId);
+        if (kind === "summarize") {
+          const result = await actions.summarizeThread(fd);
+          setAiSummary(result.content);
+        } else if (kind === "reply") {
+          const result = await actions.suggestReply(fd);
+          setAiReply(result.content);
+        } else if (kind === "actions") {
+          const result = await actions.extractActionItems(fd);
+          setAiActionItems(result.items);
+        }
+      } catch (err) {
+        console.error("AI action failed:", err);
+      } finally {
+        setAiLoading(null);
+      }
+    },
+    [activeThreadId, actions],
+  );
+
+  const handleAdjustTone = useCallback(
+    async (tone: string) => {
+      if (!activeThreadId || !aiReply) return;
+      setAiLoading("tone");
+      try {
+        const fd = new FormData();
+        fd.set("threadId", activeThreadId);
+        fd.set("content", aiReply);
+        fd.set("tone", tone);
+        const result = await actions.adjustTone(fd);
+        setAiReply(result.content);
+      } catch (err) {
+        console.error("Tone adjustment failed:", err);
+      } finally {
+        setAiLoading(null);
+      }
+    },
+    [activeThreadId, aiReply, actions],
+  );
+
+  const insertReply = useCallback(() => {
+    if (aiReply) {
+      setAiReply(null);
+      setReplyOpen(true);
+    }
+  }, [aiReply]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const params = new URLSearchParams(searchParams.toString());
+    if (searchQuery.trim()) {
+      params.set("q", searchQuery.trim());
+    } else {
+      params.delete("q");
+    }
+    router.push(`/m/mail?${params.toString()}`);
+  };
 
   return (
     <div style={{ display: "flex", gap: "var(--nv-space-4)", height: "calc(100dvh - 150px)", minHeight: 440 }}>
@@ -97,6 +204,22 @@ export function MailApp({
         <Button size="md" style={{ marginBottom: 10 }} onClick={() => setComposeOpen(true)}>
           + Compose
         </Button>
+        <Button variant="ghost" size="sm" onClick={() => setSearchOpen((o) => !o)} style={{ marginBottom: 4 }}>
+          {searchOpen ? "✕ Close search" : "🔍 Search"}
+        </Button>
+        {searchOpen && (
+          <form onSubmit={handleSearch} style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+            <input
+              className="nv-input"
+              type="text"
+              placeholder="Search mail…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ flex: 1, fontSize: 12, padding: "4px 8px" }}
+            />
+            <Button type="submit" size="sm" variant="secondary">Go</Button>
+          </form>
+        )}
         {FOLDERS.map((f) => (
           <a
             key={f.key}
@@ -131,6 +254,12 @@ export function MailApp({
         ))}
         <Button variant="ghost" size="sm" onClick={() => setNewLabelOpen(true)} style={{ alignSelf: "flex-start", marginTop: 4 }}>
           + New label
+        </Button>
+        <div style={{ marginTop: 14, fontWeight: 700, fontSize: 12, color: "var(--nv-color-text-faint)", padding: "0 10px 6px" }}>
+          AUTOMATION
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => setRulesOpen(true)} style={{ alignSelf: "flex-start", marginBottom: 4 }}>
+          ⚙ Manage rules ({initialRules?.length ?? 0})
         </Button>
       </div>
 
@@ -283,7 +412,67 @@ export function MailApp({
               )}
             </div>
 
+            {/* AI Toolbar */}
+            <div style={{ padding: "var(--nv-space-2) var(--nv-space-4)", borderBottom: "1px solid var(--nv-color-border)", display: "flex", gap: 6, flexWrap: "wrap", background: "var(--nv-color-surface-alt)" }}>
+              <Button variant="ghost" size="sm" disabled={aiLoading === "summarize"} onClick={() => runAi("summarize")}>
+                {aiLoading === "summarize" ? "…" : "📋 Summarize"}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={aiLoading === "reply"} onClick={() => runAi("reply")}>
+                {aiLoading === "reply" ? "…" : "💡 Smart Reply"}
+              </Button>
+              <Button variant="ghost" size="sm" disabled={aiLoading === "actions"} onClick={() => runAi("actions")}>
+                {aiLoading === "actions" ? "…" : "✅ Action Items"}
+              </Button>
+              {aiReply && (
+                <Button variant="ghost" size="sm" onClick={insertReply}>
+                  ↪ Use reply
+                </Button>
+              )}
+            </div>
+
             <div style={{ flex: 1, overflowY: "auto", padding: "var(--nv-space-4)", display: "flex", flexDirection: "column", gap: "var(--nv-space-4)" }}>
+              {/* AI Summary */}
+              {aiSummary && (
+                <div className="nv-card" style={{ padding: "var(--nv-space-4)", borderLeft: "3px solid var(--nv-color-primary)" }}>
+                  <div style={{ fontWeight: 700, fontSize: "var(--nv-font-sm)", color: "var(--nv-color-primary)", marginBottom: 6 }}>
+                    📋 Thread Summary
+                  </div>
+                  <div style={{ fontSize: "var(--nv-font-md)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{aiSummary}</div>
+                </div>
+              )}
+
+              {/* AI Action Items */}
+              {aiActionItems.length > 0 && (
+                <div className="nv-card" style={{ padding: "var(--nv-space-4)", borderLeft: "3px solid var(--nv-color-success)" }}>
+                  <div style={{ fontWeight: 700, fontSize: "var(--nv-font-sm)", color: "var(--nv-color-success)", marginBottom: 6 }}>
+                    ✅ Action Items
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--nv-font-md)", lineHeight: 1.8 }}>
+                    {aiActionItems.map((item, i) => (
+                      <li key={i}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* AI Suggested Reply */}
+              {aiReply && (
+                <div className="nv-card" style={{ padding: "var(--nv-space-4)", borderLeft: "3px solid var(--nv-color-accent)" }}>
+                  <div style={{ fontWeight: 700, fontSize: "var(--nv-font-sm)", color: "var(--nv-color-accent)", marginBottom: 6 }}>
+                    💡 Suggested Reply
+                  </div>
+                  <div style={{ fontSize: "var(--nv-font-md)", whiteSpace: "pre-wrap", lineHeight: 1.6, marginBottom: 8 }}>{aiReply}</div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)", alignSelf: "center" }}>Adjust tone:</span>
+                    {AI_TONES.map((t) => (
+                      <Button key={t.key} variant="ghost" size="sm" disabled={aiLoading === "tone"} onClick={() => handleAdjustTone(t.key)}>
+                        {t.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {activeThread.messages.map((m) => (
                 <div key={m.id} className="nv-card" style={{ padding: "var(--nv-space-4)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -318,9 +507,19 @@ export function MailApp({
               ))}
             </div>
 
-            <div style={{ padding: "var(--nv-space-3)", borderTop: "1px solid var(--nv-color-border)" }}>
+            <div style={{ padding: "var(--nv-space-3)", borderTop: "1px solid var(--nv-color-border)", display: "flex", gap: 8 }}>
               <Button variant="secondary" size="md" onClick={() => setReplyOpen(true)}>
                 Reply
+              </Button>
+              <Button
+                variant="ghost"
+                size="md"
+                onClick={() => {
+                  const body = activeThread.messages[activeThread.messages.length - 1]!.body;
+                  navigator.clipboard.writeText(body);
+                }}
+              >
+                Copy
               </Button>
             </div>
           </>
@@ -386,7 +585,14 @@ export function MailApp({
           }}
           style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 420 }}
         >
-          <textarea className="nv-input" name="body" placeholder="Write your reply…" rows={6} required autoFocus style={{ resize: "vertical" }} />
+          {aiReply && (
+            <div style={{ padding: "var(--nv-space-2)", background: "var(--nv-color-primary-alpha)", borderRadius: "var(--nv-radius-sm)", fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)" }}>
+              <span style={{ fontWeight: 600 }}>AI suggested: </span>
+              {aiReply.slice(0, 120)}
+              {aiReply.length > 120 ? "…" : ""}
+            </div>
+          )}
+          <textarea className="nv-input" name="body" placeholder="Write your reply…" rows={6} required autoFocus style={{ resize: "vertical" }} defaultValue={aiReply ?? ""} />
         </form>
       </Dialog>
 
@@ -418,6 +624,108 @@ export function MailApp({
         >
           <input className="nv-input" name="name" placeholder="Label name (e.g. Product)" required autoFocus />
           <input className="nv-input" name="color" type="color" defaultValue="#7c5cfc" style={{ padding: 4, height: 40 }} />
+        </form>
+      </Dialog>
+
+      {/* Rules management */}
+      <Dialog
+        open={rulesOpen}
+        onClose={() => setRulesOpen(false)}
+        title="Automation Rules"
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setNewRuleOpen(true)}>
+              + New Rule
+            </Button>
+            <Button variant="secondary" onClick={() => setRulesOpen(false)}>
+              Close
+            </Button>
+          </>
+        }
+      >
+        <div style={{ minWidth: 480, maxHeight: 400, overflowY: "auto" }}>
+          {(initialRules ?? []).length === 0 && (
+            <div style={{ padding: "var(--nv-space-4)", textAlign: "center", color: "var(--nv-color-text-faint)", fontSize: "var(--nv-font-sm)" }}>
+              No rules yet. Create one to automate your inbox.
+            </div>
+          )}
+          {(initialRules ?? []).map((rule) => (
+            <div key={rule.id} style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: "var(--nv-font-sm)" }}>{rule.name}</div>
+                <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+                  {rule.description || "No description"} · Priority {rule.priority} · Triggered {rule.runCount}×
+                </div>
+              </div>
+              <form
+                action={(fd) => {
+                  fd.set("ruleId", rule.id);
+                  void actions.toggleRule(fd).then(() => setTimeout(() => router.refresh(), 50));
+                }}
+              >
+                <Button variant={rule.enabled ? "secondary" : "ghost"} size="sm" type="submit">
+                  {rule.enabled ? "ON" : "OFF"}
+                </Button>
+              </form>
+              <form
+                action={(fd) => {
+                  fd.set("ruleId", rule.id);
+                  void actions.deleteRule(fd).then(() => setTimeout(() => router.refresh(), 50));
+                }}
+              >
+                <Button variant="danger" size="sm" type="submit">✕</Button>
+              </form>
+            </div>
+          ))}
+        </div>
+      </Dialog>
+
+      {/* New rule */}
+      <Dialog
+        open={newRuleOpen}
+        onClose={() => setNewRuleOpen(false)}
+        title="Create Rule"
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setNewRuleOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="rule-form-create">
+              Create
+            </Button>
+          </>
+        }
+      >
+        <form
+          id="rule-form-create"
+          action={(fd) => {
+            void actions.createRule(fd).then(() => {
+              setNewRuleOpen(false);
+              setRulesOpen(true);
+              router.refresh();
+            });
+          }}
+          style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 420 }}
+        >
+          <input className="nv-input" name="name" placeholder="Rule name (e.g. Auto-label newsletters)" required autoFocus />
+          <input className="nv-input" name="description" placeholder="Description (optional)" />
+          <input className="nv-input" name="priority" type="number" defaultValue={100} placeholder="Priority (lower = higher)" />
+          <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Conditions (JSON):</div>
+          <textarea
+            className="nv-input"
+            name="conditions"
+            placeholder='{"operator":"AND","conditions":[{"field":"subject","operator":"contains","value":"newsletter"}]}'
+            rows={3}
+            style={{ resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+          />
+          <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Actions (JSON array):</div>
+          <textarea
+            className="nv-input"
+            name="actions"
+            placeholder='[{"type":"moveToFolder","folder":"ARCHIVE"},{"type":"markRead"}]'
+            rows={3}
+            style={{ resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+          />
         </form>
       </Dialog>
     </div>

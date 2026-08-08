@@ -1063,6 +1063,9 @@ importers:
       '@n0va/db':
         specifier: workspace:*
         version: link:../../db
+      '@n0va/modules-ani':
+        specifier: workspace:*
+        version: link:../ani
       '@n0va/ui':
         specifier: workspace:*
         version: link:../../ui

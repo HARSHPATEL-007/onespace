@@ -6,10 +6,12 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./components": "./src/components.tsx"
+    "./components": "./src/components.tsx",
+    "./agents": "./src/agents.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
+    "@n0va/modules-ani": "workspace:*",
     "@n0va/authz": "workspace:*",
     "@n0va/ui": "workspace:*",
     "next": "^15.3.0",
