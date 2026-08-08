@@ -98,12 +98,8 @@ import {
   retrieveHyperContext,
   consolidateMemory,
   getMemoryStats,
-  canReplay,
-  applyRetention,
-  DEFAULT_RETENTION as MEMORY_RETENTION,
   type MemoryEntry,
   type MemoryTier,
-  type CognitiveMetrics,
 } from "./memory";
 import {
   createTwin,
@@ -2358,12 +2354,7 @@ test("cognitive-load: detectBurnout with low metrics returns low risk", () => {
   assert.ok(risk.risk === "low" || risk.level === "low", "low fatigue = low burnout risk");
 });
 
-test("knowledge-graph: ingestDocument with same uri returns same or new entity", () => {
-  const id1 = ingestDocument({ uri: "test://dedup", content: "same content" });
-  const id2 = ingestDocument({ uri: "test://dedup", content: "same content" });
-  assert.ok(typeof id1 === "string" && typeof id2 === "string", "both return string ids");
-});
-
+test("MCP: effectiveTools respects integration allowlist and blocklist", () => {
   // With allowlist containing only post_message — only that survives.
   const integration = mockIntegration({ provider: "slack", allowlistTools: ["post_message"] });
   const tools = effectiveTools(integration as any);

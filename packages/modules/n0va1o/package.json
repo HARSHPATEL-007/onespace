@@ -62,7 +62,16 @@
     "./logging": "./src/logging.ts",
     "./metrics": "./src/metrics.ts",
     "./integration": "./src/integration.ts",
-    "./orchestrate": "./src/orchestrate.ts"
+    "./orchestrate": "./src/orchestrate.ts",
+    "./synthetic-data": "./src/synthetic-data.ts",
+    "./code-evolution": "./src/code-evolution.ts",
+    "./memory": "./src/memory.ts",
+    "./digital-twin": "./src/digital-twin.ts",
+    "./green-ai": "./src/green-ai.ts",
+    "./compliance": "./src/compliance.ts",
+    "./threat-intel": "./src/threat-intel.ts",
+    "./cognitive-load": "./src/cognitive-load.ts",
+    "./knowledge-graph": "./src/knowledge-graph.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
