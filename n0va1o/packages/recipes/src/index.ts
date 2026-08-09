@@ -239,7 +239,7 @@ export class RecipeCompiler {
         stepNumber: call.stepNumber,
         tool: call.tool,
         parameters: call.parameters,
-        onError: 'continue' as const,
+        onError: 'skip' as const,
         retryCount: 3,
       }));
   }

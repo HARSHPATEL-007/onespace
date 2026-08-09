@@ -1,9 +1,8 @@
-import { N0VA1OClient, createClient } from '@n0va1o/sdk';
-import { listConnectors, getConnector, GoogleDriveConnector } from '@n0va1o/connectors';
-import { SandboxRuntime, handlePayload } from '@n0va1o/sandbox';
-import { createInterrogationRoom, assessRisk } from '@n0va1o/hitl';
-import { createCompiler, createScheduler, WorkflowCall } from '@n0va1o/recipes';
-import { N0VA1OGateway } from '@n0va1o/core';
+import { N0VA1OGateway, AgentConfig, SessionConfig } from '../packages/core/src';
+import { SandboxRuntime, handlePayload } from '../packages/sandbox/src';
+import { createInterrogationRoom, assessRisk } from '../packages/hitl/src';
+import { createCompiler, WorkflowCapture, WorkflowCall } from '../packages/recipes/src';
+import { listConnectors, getConnector } from '../packages/connectors/src';
 
 async function main() {
   console.log('='.repeat(72));
@@ -12,20 +11,9 @@ async function main() {
   console.log('='.repeat(72));
   console.log();
 
-  // ─── 1. Initialize Client ──────────────────────────────────────────────
-  console.log('[1] Initializing N0VA1O Client...');
-  const client = createClient({
-    apiKey: 'n0va_sk_demo_key_001',
-    tenantId: 'tenant_001',
-    endpoint: 'https://n0va1o.io',
-    transport: 'websocket',
-  });
-  console.log(`    Client initialized: ${client.getConfig().endpoint}`);
-  console.log();
-
-  // ─── 2. Register Agent ─────────────────────────────────────────────────
-  console.log('[2] Registering AI Agent...');
-  const agent = await client.registerAgent({
+  // ─── 1. Register Agent ─────────────────────────────────────────────────
+  console.log('[1] Registering AI Agent...');
+  const agent = await N0VA1OGateway.registerAgent('n0va_sk_demo_key_001', {
     name: 'Finance Automation Agent',
     type: 'workflow_orchestrator',
     description: 'Autonomous multi-app finance workflow execution agent',
@@ -44,9 +32,9 @@ async function main() {
   console.log(`    Session Endpoint: ${agent.sessionEndpoint}`);
   console.log();
 
-  // ─── 3. Create Session ──────────────────────────────────────────────────
-  console.log('[3] Creating Agent Session...');
-  const session = await client.createSession({
+  // ─── 2. Create Session ──────────────────────────────────────────────────
+  console.log('[2] Creating Agent Session...');
+  const session = await N0VA1OGateway.createSession({
     agentId: agent.agentId,
     context: {
       userId: 'user_001',
@@ -66,9 +54,9 @@ async function main() {
   console.log(`    Context Tokens Remaining: ${session.contextTokensRemaining}`);
   console.log();
 
-  // ─── 4. Discover Tools by Intent ───────────────────────────────────────
-  console.log('[4] Intent-Based Tool Discovery...');
-  const discovery = await client.discoverTools(
+  // ─── 3. Discover Tools by Intent ───────────────────────────────────────
+  console.log('[3] Intent-Based Tool Discovery...');
+  const discovery = await N0VA1OGateway.discoverTools(
     'Find Q3 invoices in Google Drive, convert to CSV, upload to Sheets, and notify #finance on Slack',
     agent.agentId,
     5
@@ -84,8 +72,8 @@ async function main() {
   }
   console.log();
 
-  // ─── 5. Provision Sandbox ──────────────────────────────────────────────
-  console.log('[5] Provisioning Ephemeral Sandbox...');
+  // ─── 4. Provision Sandbox ──────────────────────────────────────────────
+  console.log('[4] Provisioning Ephemeral Sandbox...');
   const runtime = new SandboxRuntime();
   const env = await runtime.provision(session.sessionId, {
     cpuQuota: 4,
@@ -100,8 +88,8 @@ async function main() {
   console.log(`    Network: ${env.config.networkMode}`);
   console.log();
 
-  // ─── 6. Execute Code in Sandbox ────────────────────────────────────────
-  console.log('[6] Executing Code in Sandbox...');
+  // ─── 5. Execute Code in Sandbox ────────────────────────────────────────
+  console.log('[5] Executing Code in Sandbox...');
   const execResult = await runtime.execute(env.id, `
 import pandas as pd
 data = pd.read_csv('/workspace/outputs/invoices.csv')
@@ -114,8 +102,8 @@ print(data.head(10).to_string())
   console.log(`    Output: ${execResult.stdout?.trim()}`);
   console.log();
 
-  // ─── 7. Large Payload Offloading ───────────────────────────────────────
-  console.log('[7] Large Payload Offloading...');
+  // ─── 6. Large Payload Offloading ───────────────────────────────────────
+  console.log('[6] Large Payload Offloading...');
   const largeCsv = 'id,amount,date\n' + Array(1000).fill(null).map((_, i) =>
     `${i + 1},${(Math.random() * 10000).toFixed(2)},2026-0${(i % 9) + 1}-15`
   ).join('\n');
@@ -129,8 +117,8 @@ print(data.head(10).to_string())
   }
   console.log();
 
-  // ─── 8. Schema Modifiers ────────────────────────────────────────────────
-  console.log('[8] Applying Schema Modifiers...');
+  // ─── 7. Schema Modifiers ────────────────────────────────────────────────
+  console.log('[7] Applying Schema Modifiers...');
   const connector = getConnector('google_drive');
   const tools = connector?.getTools() || [];
   const originalTool = tools[0];
@@ -141,8 +129,8 @@ print(data.head(10).to_string())
   console.log(`    Modified params: ${Object.keys(modifiedTool.parameters).join(', ')}`);
   console.log();
 
-  // ─── 9. HITL Risk Assessment ───────────────────────────────────────────
-  console.log('[9] Human-in-the-Loop Risk Assessment...');
+  // ─── 8. HITL Risk Assessment ───────────────────────────────────────────
+  console.log('[8] Human-in-the-Loop Risk Assessment...');
   const riskResult = assessRisk(
     'salesforce.update_opportunity',
     { opportunityId: '006001', amount: 75000, stage: 'Closed Won' },
@@ -155,11 +143,11 @@ print(data.head(10).to_string())
   console.log(`    Timeout: ${riskResult.timeoutMs / 3600000}h`);
   console.log();
 
-  // ─── 10. Interrogation Room ─────────────────────────────────────────────
-  console.log('[10] Interrogation Room Protocol...');
+  // ─── 9. Interrogation Room ─────────────────────────────────────────────
+  console.log('[9] Interrogation Room Protocol...');
   const ir = createInterrogationRoom(['compliance@acme.com', 'cfo@acme.com']);
   ir.onNotification((notif) => {
-    console.log(`    📬 Notification: ${notif.message}`);
+    console.log(`    Notification: ${notif.message}`);
   });
 
   const room = await ir.initiate(
@@ -183,13 +171,12 @@ print(data.head(10).to_string())
   console.log(`    Digital Signature: ${resolved.digitalSignature}`);
   console.log();
 
-  // ─── 11. Recipe Compilation ─────────────────────────────────────────────
-  console.log('[11] Recipe Compilation...');
+  // ─── 10. Recipe Compilation ─────────────────────────────────────────────
+  console.log('[10] Recipe Compilation...');
   const compiler = createCompiler();
   const capture = compiler.getCapture();
   capture.startCapture(session.sessionId, agent.agentId);
 
-  // Simulate workflow execution
   const simulatedCalls: WorkflowCall[] = [
     { stepNumber: 1, tool: 'google_drive.search_files', parameters: { query: 'name contains "invoice"' }, status: 'success', durationMs: 450, timestamp: new Date().toISOString() },
     { stepNumber: 2, tool: 'google_drive.read_file', parameters: { fileId: 'file_001' }, status: 'success', durationMs: 300, timestamp: new Date().toISOString() },
@@ -215,19 +202,20 @@ print(data.head(10).to_string())
   console.log(`    Estimated Latency: ${recipe.estimatedLatencyMs}ms`);
   console.log(`    Requires Approval: ${recipe.requiresApproval}`);
   console.log(`    Risk Score: ${recipe.riskScore.toFixed(2)}`);
-  console.log(`    Generated Code:\n${recipe.generatedCode.split('\n').slice(0, 8).join('\n')}...`);
+  console.log(`    Generated Code (first 6 lines):`);
+  recipe.generatedCode.split('\n').slice(0, 6).forEach(line => console.log(`      ${line}`));
   console.log();
 
-  // ─── 12. Execute Recipe ─────────────────────────────────────────────────
-  console.log('[12] Executing Compiled Recipe...');
+  // ─── 11. Execute Recipe ─────────────────────────────────────────────────
+  console.log('[11] Executing Compiled Recipe...');
   const recipeResult = await compiler.executeRecipe(recipe.recipeId);
   console.log(`    Status: ${recipeResult.status}`);
   console.log(`    Steps Completed: ${recipeResult.results.length}`);
   console.log(`    Total Latency: ${recipeResult.totalLatencyMs}ms`);
   console.log();
 
-  // ─── 13. Audit Log ──────────────────────────────────────────────────────
-  console.log('[13] Audit Trail...');
+  // ─── 12. Audit Log ──────────────────────────────────────────────────────
+  console.log('[12] Audit Trail...');
   N0VA1OGateway.logAction({
     tenantId: 'tenant_001',
     agentId: agent.agentId,
@@ -251,30 +239,30 @@ print(data.head(10).to_string())
     riskScore: 0.12,
   });
 
-  const auditLog = client.getAuditLog({ agentId: agent.agentId });
+  const auditLog = N0VA1OGateway.getAuditLog({ agentId: agent.agentId, tenantId: 'tenant_001' });
   console.log(`    Total Audit Entries: ${auditLog.length}`);
   for (const entry of auditLog) {
-    console.log(`      [${entry.timestamp}] ${entry.toolName} — ${entry.status} (${entry.latencyMs}ms)`);
+    console.log(`      [${entry.timestamp}] ${entry.toolName} - ${entry.status} (${entry.latencyMs}ms)`);
   }
   console.log();
 
-  // ─── 14. Webhook Events ─────────────────────────────────────────────────
-  console.log('[14] Webhook Events...');
-  client.onWebhookEvent('n0va1o.recipe_executed', (event) => {
-    console.log(`    🔔 Webhook: ${event.eventType} — Recipe ${event.payload.recipeId} executed`);
+  // ─── 13. Webhook Events ─────────────────────────────────────────────────
+  console.log('[13] Webhook Events...');
+  N0VA1OGateway.registerWebhookHandler('n0va1o.recipe_executed', (event) => {
+    console.log(`    Webhook: ${event.eventType} - Recipe ${event.payload.recipeId} executed`);
   });
-  await client.emitWebhook('n0va1o.recipe_executed', {
+  await N0VA1OGateway.emitWebhook('n0va1o.recipe_executed', 'tenant_001', {
     recipeId: recipe.recipeId,
     status: 'success',
     latencyMs: recipeResult.totalLatencyMs,
   });
   console.log();
 
-  // ─── 15. Connector Catalog ──────────────────────────────────────────────
-  console.log('[15] Available Connectors...');
+  // ─── 14. Connector Catalog ──────────────────────────────────────────────
+  console.log('[14] Available Connectors...');
   const connectors = listConnectors();
   for (const c of connectors) {
-    console.log(`    📦 ${c.getDisplayName()} (${c.getProvider()}) — ${c.getTools().length} tools`);
+    console.log(`    ${c.getDisplayName()} (${c.getProvider()}) - ${c.getTools().length} tools`);
   }
   console.log();
 

@@ -146,7 +146,7 @@ export interface InterrogationRoomState {
 
 export interface ReviewerNotification {
   requestId: string;
-  channels: ['push' | 'email' | 'slack'];
+  channels: ('push' | 'email' | 'slack')[];
   reviewers: string[];
   urgency: RiskLevel;
   message: string;

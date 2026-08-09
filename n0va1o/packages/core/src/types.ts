@@ -1,4 +1,4 @@
-import { z } from 'zag';
+import { z } from 'zod';
 
 // ─── Core Identifiers ────────────────────────────────────────────────────────
 

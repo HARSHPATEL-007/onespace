@@ -78,12 +78,12 @@ export function getAgent(agentId: string): Agent | undefined {
 
 function resolveAvailableTools(config: AgentConfig): string[] {
   return Array.from(tools.values())
-    .filter(tool => {
+    .filter((tool: ToolDefinition) => {
       if (tool.riskLevel === 'critical' && config.autonomyLevel !== 'full') return false;
       if (tool.riskLevel === 'high' && config.autonomyLevel === 'low') return false;
       return true;
     })
-    .map(t => t.name);
+    .map((t: ToolDefinition) => t.name);
 }
 
 // ─── Session Management ──────────────────────────────────────────────────────

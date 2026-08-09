@@ -41,7 +41,7 @@ export abstract class BaseConnector {
   abstract getTools(): ToolDefinition[];
   abstract authenticate(credentials: Record<string, unknown>): Promise<{ success: boolean; connectionId?: string }>;
   abstract execute(tool: string, parameters: Record<string, unknown>): Promise<Record<string, unknown>>;
-  abstract refresh?(connectionId: string): Promise<boolean>;
+  abstract refresh(connectionId: string): Promise<boolean>;
 
   getProvider(): string {
     return this.config.provider;
@@ -356,6 +356,13 @@ export class SlackConnector extends BaseConnector {
     }
   }
 
+  async refresh(connectionId: string): Promise<boolean> {
+    const conn = N0VA1OGateway.getConnection(connectionId);
+    if (!conn) return false;
+    conn.encryptedTokens.expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+    return true;
+  }
+
   private async postMessage(params: { channel: string; text: string }): Promise<Record<string, unknown>> {
     return {
       ok: true,
@@ -478,6 +485,13 @@ export class SalesforceConnector extends BaseConnector {
       default:
         throw new Error(`Unknown tool: ${tool}`);
     }
+  }
+
+  async refresh(connectionId: string): Promise<boolean> {
+    const conn = N0VA1OGateway.getConnection(connectionId);
+    if (!conn) return false;
+    conn.encryptedTokens.expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+    return true;
   }
 
   private async query(params: { query: string }): Promise<Record<string, unknown>> {
