@@ -5,7 +5,7 @@
  * phishing detection, and content analysis.
  */
 
-import { callLlm, composeFallbackReply } from "@n0va/modules-ani/providers";
+import { callLlm } from "@n0va/modules-ani/providers";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -90,16 +90,7 @@ export class ThreadSummarizer {
       }
     } catch { /* fall through */ }
 
-    return {
-      summary: composeFallbackReply("summarize thread", "summary"),
-      decisions: [],
-      actionItems: [],
-      participants,
-      sentiment: "neutral",
-      wordCount,
-      duration: this._calculateDuration(messages),
-      keyTopics: [],
-    };
+    throw new Error("AI not configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration.");
   }
 
   private _calculateDuration(messages: Array<{ from: string }>): string {
@@ -130,38 +121,22 @@ export class SmartReplyEngine {
   async generateReplies(message: { from: string; subject: string; body: string; direction: string }, context?: string): Promise<SmartReply[]> {
     const prompt = `Generate 3 contextual reply options for this email from ${message.from}. Return JSON array of {id, label, text, tone}. Labels: 2-3 words. Text: 1-2 sentences.\n\nSubject: ${message.subject}\nBody: ${message.body.slice(0, 500)}\n${context ? `Context: ${context}` : ""}\n\nJSON:`;
 
-    try {
-      const integration = await this._resolveIntegration();
-      if (integration) {
-        const cfg = integration.config as Record<string, unknown>;
-        const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
-        const parsed = JSON.parse(result.content);
-        if (Array.isArray(parsed)) {
-          return parsed.map((r: { id?: string; label: string; text: string; tone?: string }, i: number) => ({
-            id: r.id || `reply_${i}`,
-            label: r.label,
-            text: r.text,
-            tone: r.tone || "neutral",
-            confidence: 0.85,
-          }));
-        }
-      }
-    } catch { /* fall through */ }
+    const integration = await this._resolveIntegration();
+    if (!integration) throw new Error("AI not configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration.");
 
-    // Context-aware fallbacks
-    const lower = message.body.toLowerCase();
-    if (lower.includes("meeting") || lower.includes("schedule") || lower.includes("call")) {
-      return [
-        { id: "accept", label: "✓ I'll join", text: "Thanks — I'll be there.", tone: "positive", confidence: 0.9 },
-        { id: "reschedule", label: "↻ Reschedule", text: "That time doesn't work — can we find another slot?", tone: "neutral", confidence: 0.8 },
-        { id: "decline", label: "✕ Can't make it", text: "Thanks, but I won't be able to attend.", tone: "neutral", confidence: 0.85 },
-      ];
+    const cfg = integration.config as Record<string, unknown>;
+    const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
+    const parsed = JSON.parse(result.content);
+    if (Array.isArray(parsed)) {
+      return parsed.map((r: { id?: string; label: string; text: string; tone?: string }, i: number) => ({
+        id: r.id || `reply_${i}`,
+        label: r.label,
+        text: r.text,
+        tone: r.tone || "neutral",
+        confidence: 0.85,
+      }));
     }
-    return [
-      { id: "thanks", label: "👍 Thanks!", text: "Thanks for the update!", tone: "positive", confidence: 0.9 },
-      { id: "got_it", label: "✓ Got it", text: "Got it, thanks for letting me know.", tone: "neutral", confidence: 0.85 },
-      { id: "will_do", label: "✅ Will do", text: "Understood — I'll take care of it.", tone: "positive", confidence: 0.8 },
-    ];
+    throw new Error("AI returned invalid format for smart replies.");
   }
 
   private async _resolveIntegration() {

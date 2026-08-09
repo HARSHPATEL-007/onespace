@@ -2,7 +2,7 @@
  * N0VA MAIL — Unified Engine
  *
  * Wires protocols, storage, security, API, admin, and AI engines
- * into a single cohesive mail system with real SMTP and DNS.
+ * into a single cohesive mail system with real SMTP via nodemailer.
  */
 
 import { prisma } from "@n0va/db";
@@ -19,6 +19,7 @@ import { SecurityPipeline } from "./security";
 import { WebhookEngine, ApiKeyManager } from "./api";
 import { AdminEngine } from "./admin";
 import { AiEngine } from "./ai";
+import { SmtpTransport, EmailAccountManager, getEmailAccountManager, type SmtpConfig } from "./transport";
 
 // ── Unified Mail Engine ───────────────────────────────────
 
@@ -67,6 +68,8 @@ export class MailEngine {
   readonly admin: AdminEngine;
   readonly ai: AiEngine;
   readonly config: MailEngineConfig;
+  private smtpTransport: SmtpTransport | null = null;
+  private accountManager: EmailAccountManager;
 
   constructor(config: MailEngineConfig) {
     this.config = config;
@@ -77,6 +80,7 @@ export class MailEngine {
     this.apiKeys = new ApiKeyManager();
     this.admin = new AdminEngine();
     this.ai = new AiEngine();
+    this.accountManager = getEmailAccountManager(config.workspaceId);
   }
 
   // ── Core: Send Mail — Actually Works ─────────────────────
@@ -245,41 +249,106 @@ export class MailEngine {
     return { success: true, messageId: message.id };
   }
 
-  // ── Real SMTP Integration ────────────────────────────────
+  // ── Real SMTP via nodemailer ─────────────────────────────
 
-  async sendViaSmtp(input: SendMailInput): Promise<{ success: boolean; error?: string }> {
+  async sendViaSmtp(input: SendMailInput): Promise<{ success: boolean; error?: string; messageId?: string }> {
     try {
-      // Build the email
-      const rawMime = this._buildMimeMessage(input);
+      // Get the default email account for this workspace
+      const account = await this.accountManager.getDefaultAccount();
+      const smtpConfig = account?.smtpConfig;
 
-      // If SMTP config is provided, actually send via SMTP
-      if (this.config.smtpHost && this.config.smtpUser && this.config.smtpPass) {
-        try {
-          // Dynamic import for SMTP client (optional dependency)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const smtpModule = await (Function('return import("smtp-client")') as () => Promise<any>)().catch(() => null);
-          if (smtpModule?.SMTPClient) {
-            const client = new smtpModule.SMTPClient({
-              host: this.config.smtpHost,
-              port: this.config.smtpPort || 587,
-              secure: this.config.smtpSecure || false,
-            });
-            await client.connect();
-            await client.auth({ user: this.config.smtpUser, pass: this.config.smtpPass });
-            await client.mail(input.from);
-            for (const to of input.to) await client.rcpt(to);
-            await client.data(rawMime);
-            await client.quit();
-          }
-        } catch {
-          // SMTP failed — message is still stored in DB for retry
+      if (!smtpConfig) {
+        // Fall back to environment variables if no account configured
+        if (this.config.smtpHost && this.config.smtpUser && this.config.smtpPass) {
+          this.smtpTransport = new SmtpTransport({
+            host: this.config.smtpHost,
+            port: this.config.smtpPort || 587,
+            user: this.config.smtpUser,
+            pass: this.config.smtpPass,
+            secure: this.config.smtpSecure || false,
+          });
+        } else {
+          return { success: false, error: "No SMTP account configured. Add an email account in settings." };
         }
+      } else {
+        this.smtpTransport = new SmtpTransport(smtpConfig);
       }
 
-      return { success: true };
+      const result = await this.smtpTransport.send({
+        from: input.from,
+        to: input.to,
+        cc: input.cc,
+        bcc: input.bcc,
+        subject: input.subject,
+        text: input.text,
+        html: input.html,
+        replyTo: input.replyTo,
+        attachments: input.attachments,
+      });
+
+      return result;
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "SMTP error" };
     }
+  }
+
+  // ── Test SMTP Connection ──────────────────────────────────
+
+  async testSmtpConnection(config: SmtpConfig): Promise<{ success: boolean; error?: string }> {
+    const transport = new SmtpTransport(config);
+    return transport.connect();
+  }
+
+  // ── IMAP Sync ─────────────────────────────────────────────
+
+  async syncInbox(): Promise<{ success: boolean; count: number; error?: string }> {
+    const account = await this.accountManager.getDefaultAccount();
+    const imapConfig = account?.imapConfig;
+
+    if (!imapConfig) {
+      return { success: false, count: 0, error: "No IMAP account configured" };
+    }
+
+    const { ImapReceiver } = await import("./transport");
+    const receiver = new ImapReceiver(imapConfig);
+
+    return receiver.connectAndFetch({
+      since: account.lastSyncAt || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      limit: 100,
+      onEmail: async (email) => {
+        await this._storeInboundEmail(email, account.id);
+      },
+    });
+  }
+
+  private async _storeInboundEmail(email: {
+    messageId: string;
+    from: { name: string; email: string };
+    to: string[];
+    subject: string;
+    text: string;
+    html: string;
+    date: Date;
+  }, accountId: string): Promise<void> {
+    await prisma.mailMessage.create({
+      data: {
+        workspaceId: this.config.workspaceId,
+        threadId: crypto.randomUUID(),
+        direction: "IN",
+        folder: "INBOX",
+        status: "SENT",
+        fromName: email.from.name,
+        fromEmail: email.from.email,
+        toEmails: email.to,
+        ccEmails: [],
+        bccEmails: [],
+        subject: email.subject,
+        body: email.text,
+        bodyHtml: email.html,
+        isRead: false,
+        accountId,
+      },
+    });
   }
 
   // ── Real DNS Verification ───────────────────────────────

@@ -99,11 +99,15 @@ integrations    Integration[]
   reverseAliases  ReverseAlias[]
   breachEvents    BreachEvent[]
   routingRules    MailRoutingRule[]
-  inboxSecurity   MailInboxSecurity?
-  securityEvents  MailSecurityEvent[]
-}
+    inboxSecurity   MailInboxSecurity?
+    securityEvents  MailSecurityEvent[]
+    emailAccounts    EmailAccount[]
+    legalHolds       MailLegalHold[]
+    retentionPolicies MailRetentionPolicy[]
+    discoverySearches MailDiscoverySearch[]
+  }
 
-/// A user is global; they belong to workspaces via WorkspaceMember.
+  /// A user is global; they belong to workspaces via WorkspaceMember.
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -176,10 +180,11 @@ createdCalendarEvents CalendarEvent[]
   draftCollaborations    MailSharedDraftCollaborator[]
   createdMailDomains      MailDomain[] @relation("createdMailDomains")
   createdEmailAliases     EmailAlias[] @relation("createdEmailAliases")
-  createdRoutingRules     MailRoutingRule[] @relation("createdRoutingRules")
-}
+    createdRoutingRules     MailRoutingRule[] @relation("createdRoutingRules")
+    createdDiscoverySearches MailDiscoverySearch[] @relation("createdDiscoverySearches")
+  }
 
-/// Seat within a workspace + assigned role.
+  /// Seat within a workspace + assigned role.
 model WorkspaceMember {
   id          String       @id @default(uuid())
   workspaceId String
@@ -610,26 +615,39 @@ model MailMessage {
    snoozeUntil DateTime?
    scheduledAt DateTime?
    sentAt      DateTime      @default(now())
-   /// AI fields
-   aiPriority  MailPriority  @default(MEDIUM)
-   aiCategory  MailCategory  @default(WORK)
-   aiSentiment String        @default("neutral")
-   aiSummary   String?       @default("")
-   aiProcessed Boolean       @default(false)
-   createdAt   DateTime      @default(now())
+    /// AI fields
+    aiPriority  MailPriority  @default(MEDIUM)
+    aiCategory  MailCategory  @default(WORK)
+    aiSentiment String        @default("neutral")
+    aiSummary   String?       @default("")
+    aiProcessed Boolean       @default(false)
+    /// Compliance fields
+    legalHold       Boolean @default(false)
+    retentionReview Boolean @default(false)
+    mailboxId       String?
+    /// Delivery tracking
+    deliveryStatus   String? @default("pending")
+    deliveredAt      DateTime?
+    deliveryError    String?
+    accountId        String?
+    createdAt        DateTime @default(now())
 
-    workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-   labels    MailLabelMap[]
-   attachments MailAttachment[]
-   comments MailComment[]
-   mailTasks MailTask[]
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  labels     MailLabelMap[]
+  attachments MailAttachment[]
+  comments   MailComment[]
+  mailTasks  MailTask[]
+  mailbox    Mailbox?   @relation(fields: [mailboxId], references: [id], onDelete: SetNull)
+  account    EmailAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
-   @@index([workspaceId, folder, sentAt(sort: Desc)])
-   @@index([workspaceId, threadId])
-   @@index([workspaceId, status, scheduledAt])
-   @@index([workspaceId, snoozeUntil])
-   @@index([workspaceId, aiPriority])
-   @@index([workspaceId, aiCategory])
+    @@index([workspaceId, folder, sentAt(sort: Desc)])
+    @@index([workspaceId, threadId])
+    @@index([workspaceId, status, scheduledAt])
+    @@index([workspaceId, snoozeUntil])
+    @@index([workspaceId, aiPriority])
+    @@index([workspaceId, aiCategory])
+    @@index([workspaceId, legalHold])
+    @@index([workspaceId, mailboxId])
 }
 
 enum MailStatus {
@@ -991,6 +1009,7 @@ model Mailbox {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User?     @relation("createdMailboxes", fields: [createdById], references: [id], onDelete: SetNull)
   members   MailboxMember[]
+  messages  MailMessage[]
 
   @@unique([workspaceId, email])
   @@index([workspaceId, isActive])
@@ -1198,6 +1217,87 @@ model MailSecurityEvent {
 
   @@index([workspaceId, detectedAt(sort: Desc)])
   @@index([workspaceId, type, severity])
+}
+
+/// N0VA MAIL — Email Accounts (SMTP/IMAP configuration)
+model EmailAccount {
+  id          String    @id @default(uuid())
+  workspaceId String
+  email       String
+  smtpConfig  Json?
+  imapConfig  Json?
+  isDefault   Boolean   @default(false)
+  isActive    Boolean   @default(true)
+  lastSyncAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages  MailMessage[]
+
+  @@index([workspaceId, isActive])
+  @@index([workspaceId, isDefault])
+}
+
+/// N0VA MAIL — eDiscovery: Legal Holds
+model MailLegalHold {
+  id                  String    @id @default(uuid())
+  workspaceId         String
+  name                String
+  description         String    @default("")
+  status              String    @default("active")
+  createdBy           String
+  releasedBy          String?
+  scopeUsers          String[]  @default([])
+  scopeDateStart      DateTime
+  scopeDateEnd        DateTime
+  scopeKeywords       String[]  @default([])
+  scopeAttachmentTypes String[] @default([])
+  notifiedCustodians  String[]  @default([])
+  createdAt           DateTime  @default(now())
+  releasedAt          DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+/// N0VA MAIL — eDiscovery: Retention Policies
+model MailRetentionPolicy {
+  id                   String   @id @default(uuid())
+  workspaceId          String
+  name                 String
+  description          String   @default("")
+  retentionPeriodDays  Int
+  action               String   @default("archive")
+  applyTo              String   @default("all")
+  target               String   @default("")
+  enabled              Boolean  @default(true)
+  lastAppliedAt        DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, enabled])
+}
+
+/// N0VA MAIL — eDiscovery: Saved Discovery Searches
+model MailDiscoverySearch {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  name         String
+  query        String   @default("")
+  filters      String   @default("{}")
+  resultsCount Int      @default(0)
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull, name: "createdDiscoverySearches")
+
+  @@index([workspaceId, createdAt(sort: Desc)])
 }
 
 /// N0VA SHEETS - workbooks with JSON cell grids.

@@ -1,0 +1,423 @@
+/* N0VA MAIL — Enhanced Components Styles */
+
+/* Visual Rules Builder */
+.nv-rules-builder {
+  padding: 1.5rem;
+  max-width: 700px;
+}
+
+.nv-rule-group {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--nv-border);
+  border-radius: 8px;
+  background: var(--nv-bg-subtle);
+}
+
+.nv-rule-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.nv-rule-condition {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.nv-rule-connector {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--nv-accent);
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  background: var(--nv-accent-bg);
+  border-radius: 4px;
+}
+
+.nv-rule-actions {
+  margin-top: 1rem;
+}
+
+.nv-rule-action-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.nv-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+/* Agent Panel */
+.nv-agent-panel {
+  padding: 1.5rem;
+}
+
+.nv-agent-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.nv-agent-card {
+  padding: 1rem;
+  border: 1px solid var(--nv-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: var(--nv-bg);
+}
+
+.nv-agent-card:hover {
+  border-color: var(--nv-accent);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.nv-agent-card-active {
+  border-color: var(--nv-accent);
+  background: var(--nv-accent-bg);
+}
+
+.nv-agent-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.nv-agent-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.nv-agent-desc {
+  font-size: 0.8rem;
+  color: var(--nv-text-dim);
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+.nv-agent-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.nv-agent-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Advanced Search Bar */
+.nv-search-bar-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+}
+
+.nv-search-bar {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--nv-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  background: var(--nv-bg);
+  transition: border-color 0.15s ease;
+}
+
+.nv-search-bar-focused {
+  border-color: var(--nv-accent);
+  box-shadow: 0 0 0 3px var(--nv-accent-bg);
+}
+
+.nv-search-icon {
+  color: var(--nv-text-dim);
+  margin-right: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.nv-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 0.9rem;
+  background: transparent;
+  color: var(--nv-text);
+}
+
+.nv-search-clear {
+  background: none;
+  border: none;
+  color: var(--nv-text-dim);
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.nv-search-btn {
+  background: var(--nv-accent);
+  color: white;
+  border: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+}
+
+.nv-search-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--nv-bg);
+  border: 1px solid var(--nv-border);
+  border-radius: 8px;
+  margin-top: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.nv-search-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-search-suggestion:hover {
+  background: var(--nv-bg-subtle);
+}
+
+.nv-suggestion-label {
+  font-weight: 600;
+  font-size: 0.8rem;
+  min-width: 80px;
+}
+
+.nv-suggestion-value {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--nv-accent);
+  background: var(--nv-accent-bg);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+}
+
+.nv-suggestion-desc {
+  font-size: 0.75rem;
+  color: var(--nv-text-dim);
+}
+
+/* Security Dashboard */
+.nv-security-dashboard {
+  padding: 1.5rem;
+}
+
+.nv-score {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.nv-security-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.nv-security-metric {
+  padding: 1rem;
+  border: 1px solid var(--nv-border);
+  border-radius: 8px;
+  background: var(--nv-bg-subtle);
+}
+
+.nv-metric-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+.nv-metric-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.nv-threat-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nv-threat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-threat-name {
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.nv-threat-count {
+  font-weight: 700;
+  min-width: 40px;
+  text-align: right;
+}
+
+.nv-threat-trend {
+  width: 20px;
+  text-align: center;
+}
+
+.nv-trend-up { color: var(--nv-error); }
+.nv-trend-down { color: var(--nv-success); }
+
+.nv-filter-chips {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.nv-chip {
+  padding: 0.2rem 0.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--nv-border);
+  background: var(--nv-bg);
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.nv-chip-active {
+  background: var(--nv-accent);
+  color: white;
+  border-color: var(--nv-accent);
+}
+
+.nv-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.nv-event-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  background: var(--nv-bg);
+}
+
+.nv-event-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.nv-event-type {
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.nv-event-details {
+  font-size: 0.7rem;
+  color: var(--nv-text-dim);
+}
+
+/* Voice Recorder */
+.nv-voice-recorder {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--nv-border);
+  border-radius: 8px;
+  background: var(--nv-bg-subtle);
+}
+
+.nv-recording {
+  background: var(--nv-error-bg);
+  border-color: var(--nv-error);
+}
+
+.nv-recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nv-record-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--nv-error);
+  animation: nv-pulse 1.5s infinite;
+}
+
+@keyframes nv-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.nv-recording-time {
+  font-family: monospace;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.nv-audio-level {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 24px;
+  flex: 1;
+}
+
+.nv-audio-bar {
+  width: 3px;
+  background: var(--nv-border);
+  border-radius: 2px;
+  transition: height 0.1s ease;
+}
+
+.nv-audio-bar-active {
+  background: var(--nv-accent);
+}
+
+/* Utility classes */
+.nv-text-success { color: var(--nv-success); }
+.nv-text-warning { color: var(--nv-warning); }
+.nv-text-error { color: var(--nv-error); }
+.nv-text-dim { color: var(--nv-text-dim); }
+.nv-text-sm { font-size: 0.8rem; }
+.nv-bg-subtle { background: var(--nv-bg-subtle); }

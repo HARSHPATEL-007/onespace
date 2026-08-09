@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma, logAudit } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
-import { callLlm, composeFallbackReply, getTypingDelay } from "@n0va/modules-ani/providers";
+import { callLlm, getTypingDelay } from "@n0va/modules-ani/providers";
 
 const MODULE = "mail";
 
@@ -1711,23 +1711,12 @@ export class MailService {
     const prompt = `Summarize the following email thread in 5 concise bullets. Focus on decisions, action items, and key context.\n\n${threadText}`;
 
     const integration = await this._resolveAiIntegration();
-    let content: string;
+    if (!integration) throw new Error("AI not configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration in Settings.");
 
-    if (integration) {
-      const cfg = integration.config as Record<string, unknown>;
-      const result = await callLlm(
-        cfg.provider as string,
-        cfg.model as string,
-        cfg,
-        [{ role: "user", content: prompt }],
-        [],
-      );
-      content = result.content;
-    } else {
-      content = composeFallbackReply(prompt, "thread summary");
-    }
+    const cfg = integration.config as Record<string, unknown>;
+    const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
 
-    return { content, typingDelayMs: getTypingDelay(messages.length) };
+    return { content: result.content, typingDelayMs: getTypingDelay(messages.length) };
   }
 
   async suggestReply(threadId: string): Promise<AiSuggestion> {
@@ -1742,23 +1731,12 @@ export class MailService {
     const prompt = `Write a concise, professional reply to the latest message from ${latest.fromName || latest.fromEmail}. Context:\n\n${context}\n\nLatest message body: ${latest.body}\n\nReply:`;
 
     const integration = await this._resolveAiIntegration();
-    let content: string;
+    if (!integration) throw new Error("AI not configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration in Settings.");
 
-    if (integration) {
-      const cfg = integration.config as Record<string, unknown>;
-      const result = await callLlm(
-        cfg.provider as string,
-        cfg.model as string,
-        cfg,
-        [{ role: "user", content: prompt }],
-        [],
-      );
-      content = result.content;
-    } else {
-      content = composeFallbackReply(prompt, "smart reply");
-    }
+    const cfg = integration.config as Record<string, unknown>;
+    const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
 
-    return { content, typingDelayMs: getTypingDelay(messages.length) };
+    return { content: result.content, typingDelayMs: getTypingDelay(messages.length) };
   }
 
   async extractActionItems(threadId: string): Promise<string[]> {
@@ -1773,30 +1751,19 @@ export class MailService {
     const prompt = `Extract all action items and to-dos from this email thread. Return a JSON array of strings, each describing one action item. If none, return an empty array.\n\n${threadText}`;
 
     const integration = await this._resolveAiIntegration();
-    let content: string;
+    if (!integration) throw new Error("AI not configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration in Settings.");
 
-    if (integration) {
-      const cfg = integration.config as Record<string, unknown>;
-      const result = await callLlm(
-        cfg.provider as string,
-        cfg.model as string,
-        cfg,
-        [{ role: "user", content: prompt }],
-        [],
-      );
-      content = result.content;
-    } else {
-      content = composeFallbackReply(prompt, "action items");
-    }
+    const cfg = integration.config as Record<string, unknown>;
+    const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
 
     try {
-      const parsed = JSON.parse(content);
+      const parsed = JSON.parse(result.content);
       if (Array.isArray(parsed)) return parsed.map(String);
     } catch {
       /* fall through */
     }
 
-    return content.split("\n").filter(Boolean).slice(0, 10);
+    return result.content.split("\n").filter(Boolean).slice(0, 10);
   }
 
   async adjustTone(threadId: string, content: string, tone: "formal" | "concise" | "friendly" | "persuasive"): Promise<AiSuggestion> {
@@ -1807,23 +1774,12 @@ export class MailService {
     const prompt = `Rewrite the following text to be ${tone}. Preserve the meaning but adjust the tone and style accordingly.\n\nText:\n${content}\n\nRewritten:`;
 
     const integration = await this._resolveAiIntegration();
-    let aiContent: string;
+    if (!integration) throw new Error("AI not configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration in Settings.");
 
-    if (integration) {
-      const cfg = integration.config as Record<string, unknown>;
-      const result = await callLlm(
-        cfg.provider as string,
-        cfg.model as string,
-        cfg,
-        [{ role: "user", content: prompt }],
-        [],
-      );
-      aiContent = result.content;
-    } else {
-      aiContent = composeFallbackReply(prompt, `adjust tone to ${tone}`);
-    }
+    const cfg = integration.config as Record<string, unknown>;
+    const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
 
-    return { content: aiContent, typingDelayMs: getTypingDelay(3) };
+    return { content: result.content, typingDelayMs: getTypingDelay(3) };
   }
 
   // ── Smart Prioritization & Triage ──
@@ -1999,18 +1955,18 @@ export class MailService {
     const prompt = `Rewrite the following email text. ${actionText}. Return JSON with fields: rewritten (the improved text), changes (array of brief descriptions of what you changed).\n\nOriginal text:\n${input.content}\n\nJSON:`;
 
     const integration = await this._resolveAiIntegration();
+    if (!integration) throw new Error("AI not configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration in Settings.");
+
+    const cfg = integration.config as Record<string, unknown>;
+    const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
     let rewritten = input.content;
     const changes: string[] = [];
 
-    if (integration) {
-      const cfg = integration.config as Record<string, unknown>;
-      const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
-      try {
-        const parsed = JSON.parse(result.content);
-        if (parsed.rewritten) rewritten = parsed.rewritten;
-        if (Array.isArray(parsed.changes)) changes.push(...parsed.changes.map(String));
-      } catch { /* use original */ }
-    }
+    try {
+      const parsed = JSON.parse(result.content);
+      if (parsed.rewritten) rewritten = parsed.rewritten;
+      if (Array.isArray(parsed.changes)) changes.push(...parsed.changes.map(String));
+    } catch { /* use original */ }
 
     if (changes.length === 0) {
       changes.push(`Tone adjusted to ${tone}`);
@@ -2061,15 +2017,7 @@ export class MailService {
       } catch { /* fall through */ }
     }
 
-    // Fallback
-    return {
-      summary: `${messages.length} messages between ${participants.join(" and ")}. Latest: ${messages[messages.length - 1]!.subject}`,
-      decisions: [],
-      actionItems: [],
-      participants,
-      sentiment: "neutral",
-      wordCount,
-    };
+    throw new Error("AI not configured or returned invalid response. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration in Settings.");
   }
 
   // ── Process Incoming Message with AI ──
@@ -2481,15 +2429,11 @@ export class MailService {
     const prompt = `Read this email and suggest a single short label (max 3 words). Only return the label text.\n\nFrom: ${message.fromEmail}\nSubject: ${message.subject}\nBody: ${message.body.slice(0, 500)}`;
 
     const integration = await this._resolveAiIntegration();
-    let labelText: string;
+    if (!integration) return; // Silently skip if AI not configured
 
-    if (integration) {
-      const cfg = integration.config as Record<string, unknown>;
-      const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
-      labelText = result.content.trim().slice(0, 50);
-    } else {
-      labelText = composeFallbackReply(prompt, "label");
-    }
+    const cfg = integration.config as Record<string, unknown>;
+    const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
+    const labelText = result.content.trim().slice(0, 50);
 
     const existing = await prisma.mailLabel.findFirst({ where: { workspaceId: this.workspaceId, name: { equals: labelText, mode: "insensitive" } } });
     let label = existing;
@@ -2529,17 +2473,12 @@ export class MailService {
     const prompt = `Provide a 3-sentence summary of this email thread:\n\n${threadText}`;
 
     const integration = await this._resolveAiIntegration();
-    let content: string;
+    if (!integration) throw new Error("AI not configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, or add an integration in Settings.");
 
-    if (integration) {
-      const cfg = integration.config as Record<string, unknown>;
-      const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
-      content = result.content;
-    } else {
-      content = composeFallbackReply(prompt, "thread summary");
-    }
+    const cfg = integration.config as Record<string, unknown>;
+    const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
 
-    return content;
+    return result.content;
   }
 
   async upsertThread(threadId: string) {
@@ -2585,5 +2524,210 @@ export class MailService {
         latestMsgId: latest.id,
       },
     });
+  }
+
+  /* ── eDiscovery ──────────────────────────────────────────── */
+
+  async createLegalHold(input: {
+    name: string;
+    description: string;
+    createdBy: string;
+    users: string[];
+    dateRange: { start: Date; end: Date };
+    keywords: string[];
+    attachmentTypes?: string[];
+  }) {
+    await this.assert("CREATE");
+    const hold = await prisma.mailLegalHold.create({
+      data: {
+        workspaceId: this.workspaceId,
+        name: input.name,
+        description: input.description,
+        createdBy: input.createdBy,
+        status: "active",
+        scopeUsers: input.users,
+        scopeDateStart: input.dateRange.start,
+        scopeDateEnd: input.dateRange.end,
+        scopeKeywords: input.keywords,
+        scopeAttachmentTypes: input.attachmentTypes || [],
+        notifiedCustodians: input.users,
+      },
+    });
+
+    await prisma.mailMessage.updateMany({
+      where: {
+        workspaceId: this.workspaceId,
+        fromEmail: { in: input.users },
+        sentAt: { gte: input.dateRange.start, lte: input.dateRange.end },
+      },
+      data: { legalHold: true },
+    });
+
+    await this.audit("mail.legal_hold_created", hold.id);
+    return hold;
+  }
+
+  async getLegalHolds() {
+    await this.assert("READ");
+    return prisma.mailLegalHold.findMany({
+      where: { workspaceId: this.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async releaseLegalHold(holdId: string, releasedBy: string) {
+    await this.assert("UPDATE");
+    const hold = await prisma.mailLegalHold.update({
+      where: { id: holdId },
+      data: { status: "released", releasedAt: new Date(), releasedBy },
+    });
+    await this.audit("mail.legal_hold_released", hold.id);
+    return hold;
+  }
+
+  async createRetentionPolicy(input: {
+    name: string;
+    retentionPeriodDays: number;
+    action: string;
+    applyTo: string;
+    target?: string;
+  }) {
+    await this.assert("CREATE");
+    const policy = await prisma.mailRetentionPolicy.create({
+      data: {
+        workspaceId: this.workspaceId,
+        name: input.name,
+        retentionPeriodDays: input.retentionPeriodDays,
+        action: input.action,
+        applyTo: input.applyTo,
+        target: input.target ?? "",
+        enabled: true,
+      },
+    });
+    await this.audit("mail.retention_policy_created", policy.id);
+    return policy;
+  }
+
+  async getRetentionPolicies() {
+    await this.assert("READ");
+    return prisma.mailRetentionPolicy.findMany({
+      where: { workspaceId: this.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async applyRetentionPolicies() {
+    await this.assert("UPDATE");
+    const policies = await prisma.mailRetentionPolicy.findMany({
+      where: { workspaceId: this.workspaceId, enabled: true },
+    });
+
+    let archived = 0, deleted = 0, flagged = 0;
+    for (const policy of policies) {
+      const cutoff = new Date(Date.now() - policy.retentionPeriodDays * 86400000);
+      const where: Record<string, unknown> = {
+        workspaceId: this.workspaceId,
+        sentAt: { lt: cutoff },
+        legalHold: false,
+      };
+      if (policy.applyTo === "folder" && policy.target) where.folder = policy.target;
+
+      const messages = await prisma.mailMessage.findMany({ where });
+      for (const msg of messages) {
+        if (policy.action === "archive") {
+          await prisma.mailMessage.update({ where: { id: msg.id }, data: { folder: "ARCHIVE" } });
+          archived++;
+        } else if (policy.action === "delete") {
+          await prisma.mailMessage.delete({ where: { id: msg.id } });
+          deleted++;
+        } else {
+          await prisma.mailMessage.update({ where: { id: msg.id }, data: { retentionReview: true } });
+          flagged++;
+        }
+      }
+    }
+
+    await this.audit("mail.retention_applied", this.workspaceId);
+    return { archived, deleted, flagged };
+  }
+
+  async createDiscoverySearch(input: {
+    name: string;
+    query: string;
+    dateRange?: { start: Date; end: Date };
+    senders?: string[];
+    folders?: string[];
+  }) {
+    await this.assert("CREATE");
+    const where: Record<string, unknown> = { workspaceId: this.workspaceId };
+    const and: Record<string, unknown>[] = [];
+    if (input.query) {
+      and.push({
+        OR: [
+          { subject: { contains: input.query, mode: "insensitive" } },
+          { body: { contains: input.query, mode: "insensitive" } },
+        ],
+      });
+    }
+    if (input.dateRange) {
+      and.push({ sentAt: { gte: input.dateRange.start, lte: input.dateRange.end } });
+    }
+    if (input.senders?.length) and.push({ fromEmail: { in: input.senders } });
+    if (input.folders?.length) and.push({ folder: { in: input.folders } });
+    if (and.length > 0) where.AND = and;
+
+    const count = await prisma.mailMessage.count({ where });
+    const search = await prisma.mailDiscoverySearch.create({
+      data: {
+        workspaceId: this.workspaceId,
+        name: input.name,
+        query: input.query,
+        filters: JSON.stringify({ dateRange: input.dateRange, senders: input.senders, folders: input.folders }),
+        resultsCount: count,
+      },
+    });
+    await this.audit("mail.discovery_search_created", search.id);
+    return search;
+  }
+
+  async getDiscoverySearches() {
+    await this.assert("READ");
+    return prisma.mailDiscoverySearch.findMany({
+      where: { workspaceId: this.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async runDiscoverySearch(searchId: string) {
+    await this.assert("READ");
+    const search = await prisma.mailDiscoverySearch.findFirst({
+      where: { id: searchId, workspaceId: this.workspaceId },
+    });
+    if (!search) throw new Error("Discovery search not found");
+
+    const where: Record<string, unknown> = { workspaceId: this.workspaceId };
+    if (search.query) {
+      where.OR = [
+        { subject: { contains: search.query, mode: "insensitive" } },
+        { body: { contains: search.query, mode: "insensitive" } },
+      ];
+    }
+
+    const results = await prisma.mailMessage.findMany({
+      where,
+      orderBy: { sentAt: "desc" },
+      take: 1000,
+    });
+
+    return {
+      results: results.map((m) => ({
+        id: m.id,
+        subject: m.subject,
+        fromEmail: m.fromEmail,
+        sentAt: m.sentAt,
+        snippet: m.body.slice(0, 200),
+      })),
+      totalCount: results.length,
+    };
   }
 }

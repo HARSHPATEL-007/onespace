@@ -1,0 +1,14 @@
+{
+  "name": "@n0va1o/connectors",
+  "version": "2026.07.0",
+  "description": "N0VA1O Connectors — Platform integration framework with OAuth, webhooks, and protocol translation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@n0va1o/core": "2026.07.0"
+  }
+}

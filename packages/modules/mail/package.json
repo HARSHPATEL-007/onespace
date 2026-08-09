@@ -16,7 +16,11 @@
     "@n0va/authz": "workspace:*",
     "@n0va/ui": "workspace:*",
     "next": "^15.3.0",
-    "zod": "^3.24.0"
+    "zod": "^3.24.0",
+    "nodemailer": "^6.9.0",
+    "imap": "^0.8.19",
+    "mailparser": "^3.7.0",
+    "jszip": "^3.10.0"
   },
   "peerDependencies": {
     "react": "^19.0.0",
@@ -24,6 +28,8 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
+    "@types/nodemailer": "^6.4.0",
+    "@types/imap": "^0.8.0",
     "typescript": "^5.8.0"
   },
   "scripts": {

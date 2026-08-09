@@ -1,6 +1,5 @@
 export { MailService, type MailFolder, type MailUnreadCounts, type MailStatus, type MailThreadView, type AiSuggestion } from "./server";
 export { MailApp, type MailThread } from "./components";
-export { getMailAgentTools, executeMailAgentTool } from "./agents";
 export { MailProtocolEngine, defaultInboundConfig, defaultOutboundConfig } from "./protocols";
 export { StorageEngine, BlobStorage, SearchEngine, CacheLayer, DeduplicationEngine } from "./storage";
 export { SecurityPipeline, SpfEvaluator, DkimEngine, DmarcEvaluator, AntiSpamClassifier, AntivirusEngine, ContentSanitizer, ReputationEngine } from "./security";
@@ -8,3 +7,9 @@ export { WebhookEngine, SmtpRelayService, ApiKeyManager, restEndpoints, graphqlS
 export { AdminEngine, AuditLogger, LegalHoldManager, RetentionPolicyEngine, ExportEngine, RbacEngine, systemRoles } from "./admin";
 export { AiEngine, ThreadSummarizer, SmartReplyEngine, PhishingDetector, SemanticSearchEngine, ContentAnalyzer } from "./ai";
 export { MailEngine, getMailEngine, type MailEngineConfig, type SendMailInput, type MailStats } from "./engine";
+export { parseSearchQuery, executeSearch, getSearchSuggestions, type SearchQuery, type SearchResult, type SearchOptions } from "./search";
+export { EDiscoveryEngine, type LegalHold, type RetentionPolicy, type DiscoveryFilters, type LegalHoldScope } from "./ediscovery";
+export { getMailAgentTools, mailAgentWorkflows, AGENT_PERSONAS, type AgentPersona, type MailAgentTool, type AgentContext, type AgentWorkflow } from "./n0va1o-agent";
+export { VisualRulesBuilder, AgentPanel, AdvancedSearchBar, SecurityDashboard, VoiceNoteRecorder, type RuleCondition, type RuleGroup, type AgentPersona as AgentPersonaUI, type SecurityEvent } from "./components-enhanced";
+export { EmailAccountSetup } from "./account-setup";
+export { SmtpTransport, ImapReceiver, EmailAccountManager, createSmtpTransport, createImapReceiver, getEmailAccountManager, type SmtpConfig, type ImapConfig, type SendEmailInput, type SendEmailResult, type InboundEmail, type EmailAccount } from "./transport";
