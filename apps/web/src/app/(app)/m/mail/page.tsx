@@ -4,6 +4,8 @@ import { requireWorkspace } from "@/lib/context";
 import {
   sendMailAction,
   replyMailAction,
+  replyAllMailAction,
+  forwardMailAction,
   markThreadReadAction,
   toggleStarAction,
   archiveThreadAction,
@@ -20,6 +22,14 @@ import {
   createRuleAction,
   toggleRuleAction,
   deleteRuleAction,
+  snoozeThreadAction,
+  unsnoozeThreadAction,
+  createSignatureAction,
+  deleteSignatureAction,
+  setAutoResponderAction,
+  createContactAction,
+  deleteContactAction,
+  searchContactsAction,
 } from "./actions";
 
 const VALID_FOLDERS = ["INBOX", "SENT", "ARCHIVE", "TRASH"] as const;
@@ -46,10 +56,13 @@ export default async function MailPage({
     threads = threads.filter((t) => threadIds.includes(t.threadId));
   }
 
-  const [labels, unreadCounts, rules] = await Promise.all([
+  const [labels, unreadCounts, rules, signatures, folders, autoResponder] = await Promise.all([
     svc.labels(),
     svc.unreadCounts(),
     svc.getRules(),
+    svc.getSignatures(),
+    svc.getFolders(),
+    svc.getAutoResponder(),
   ]);
 
   return (
@@ -66,9 +79,29 @@ export default async function MailPage({
         priority: r.priority,
         runCount: r.runCount,
       }))}
+      signatures={signatures.map((s) => ({
+        id: s.id,
+        name: s.name,
+        content: s.content,
+        contentHtml: s.contentHtml,
+        isDefault: s.isDefault,
+      }))}
+      folders={folders.map((f) => ({
+        id: f.id,
+        name: f.name,
+        color: f.color,
+        parentFolderId: f.parentFolderId,
+      }))}
+      autoResponder={autoResponder ? {
+        enabled: autoResponder.enabled,
+        subject: autoResponder.subject,
+        body: autoResponder.body,
+      } : null}
       actions={{
         send: sendMailAction,
         reply: replyMailAction,
+        replyAll: replyAllMailAction,
+        forward: forwardMailAction,
         markRead: markThreadReadAction,
         toggleStar: toggleStarAction,
         archive: archiveThreadAction,
@@ -85,6 +118,14 @@ export default async function MailPage({
         createRule: createRuleAction,
         toggleRule: toggleRuleAction,
         deleteRule: deleteRuleAction,
+        snoozeThread: snoozeThreadAction,
+        unsnoozeThread: unsnoozeThreadAction,
+        createSignature: createSignatureAction,
+        deleteSignature: deleteSignatureAction,
+        setAutoResponder: setAutoResponderAction,
+        createContact: createContactAction,
+        deleteContact: deleteContactAction,
+        searchContacts: searchContactsAction,
       }}
     />
   );

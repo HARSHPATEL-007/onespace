@@ -8,19 +8,52 @@ const svc = async () => {
   return new MailService(workspaceId, userId, role);
 };
 
+// ── Core: Send / Reply / Forward ──
+
 export async function sendMailAction(formData: FormData) {
-  const { to, subject, body } = sendSchema.parse({
-    to: String(formData.get("to") ?? ""),
-    subject: String(formData.get("subject") ?? ""),
-    body: String(formData.get("body") ?? ""),
+  const to = String(formData.get("to") ?? "");
+  const subject = String(formData.get("subject") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const bodyHtml = String(formData.get("bodyHtml") || "");
+  const cc = String(formData.get("cc") || "");
+  const bcc = String(formData.get("bcc") || "");
+  const signatureId = String(formData.get("signatureId") || "");
+  const scheduledAt = String(formData.get("scheduledAt") || "");
+
+  sendSchema.parse({ to, subject, body });
+
+  await (await svc()).send({
+    to: to.split(",").map((e) => e.trim()).filter(Boolean)[0] || to,
+    subject,
+    body,
+    bodyHtml: bodyHtml || undefined,
+    cc: cc || undefined,
+    bcc: bcc || undefined,
+    signatureId: signatureId || undefined,
+    scheduledAt: scheduledAt || undefined,
   });
-  await (await svc()).send({ to, subject, body });
 }
 
 export async function replyMailAction(formData: FormData) {
   const threadId = String(formData.get("threadId") ?? "");
   const body = String(formData.get("body") ?? "");
-  await (await svc()).reply(threadId, body);
+  const bodyHtml = String(formData.get("bodyHtml") || "");
+  await (await svc()).reply(threadId, body, bodyHtml || undefined);
+}
+
+export async function replyAllMailAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const bodyHtml = String(formData.get("bodyHtml") || "");
+  await (await svc()).replyAll(threadId, body, bodyHtml || undefined);
+}
+
+export async function forwardMailAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  const to = String(formData.get("to") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const bodyHtml = String(formData.get("bodyHtml") || "");
+  await (await svc()).forward(threadId, to.split(",").map((e) => e.trim()).filter(Boolean), body, bodyHtml || undefined);
 }
 
 export async function markThreadReadAction(formData: FormData) {
@@ -55,18 +88,28 @@ export async function unassignLabelAction(formData: FormData) {
   await (await svc()).unassignLabel(String(formData.get("messageId") ?? ""), String(formData.get("labelId") ?? ""));
 }
 
+// ── Snooze ──
+
+export async function snoozeThreadAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  const until = String(formData.get("until") ?? "");
+  await (await svc()).snoozeThread(threadId, until);
+}
+
+export async function unsnoozeThreadAction(formData: FormData) {
+  await (await svc()).unsnoozeThread(String(formData.get("threadId") ?? ""));
+}
+
 // ── AI Features ──
 
 export async function summarizeThreadAction(formData: FormData) {
   const threadId = String(formData.get("threadId") ?? "");
-  const result = await (await svc()).summarizeThread(threadId);
-  return { content: result.content };
+  return (await svc()).summarizeThread(threadId);
 }
 
 export async function suggestReplyAction(formData: FormData) {
   const threadId = String(formData.get("threadId") ?? "");
-  const result = await (await svc()).suggestReply(threadId);
-  return { content: result.content };
+  return (await svc()).suggestReply(threadId);
 }
 
 export async function extractActionItemsAction(formData: FormData) {
@@ -79,8 +122,7 @@ export async function adjustToneAction(formData: FormData) {
   const threadId = String(formData.get("threadId") ?? "");
   const content = String(formData.get("content") ?? "");
   const tone = String(formData.get("tone") ?? "formal") as "formal" | "concise" | "friendly" | "persuasive";
-  const result = await (await svc()).adjustTone(threadId, content, tone);
-  return { content: result.content };
+  return (await svc()).adjustTone(threadId, content, tone);
 }
 
 // ── Drafts ──
@@ -94,8 +136,7 @@ export async function saveDraftAction(formData: FormData) {
 }
 
 export async function sendDraftAction(formData: FormData) {
-  const draftId = String(formData.get("draftId") ?? "");
-  await (await svc()).sendDraft(draftId);
+  await (await svc()).sendDraft(String(formData.get("draftId") ?? ""));
 }
 
 // ── Rules ──
@@ -110,11 +151,63 @@ export async function createRuleAction(formData: FormData) {
 }
 
 export async function toggleRuleAction(formData: FormData) {
-  const ruleId = String(formData.get("ruleId") ?? "");
-  await (await svc()).toggleRule(ruleId);
+  await (await svc()).toggleRule(String(formData.get("ruleId") ?? ""));
 }
 
 export async function deleteRuleAction(formData: FormData) {
-  const ruleId = String(formData.get("ruleId") ?? "");
-  await (await svc()).deleteRule(ruleId);
+  await (await svc()).deleteRule(String(formData.get("ruleId") ?? ""));
+}
+
+// ── Signatures ──
+
+export async function createSignatureAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "");
+  const content = String(formData.get("content") ?? "");
+  const isDefault = formData.get("isDefault") === "true";
+  await (await svc()).createSignature({ name, content, isDefault });
+}
+
+export async function deleteSignatureAction(formData: FormData) {
+  await (await svc()).deleteSignature(String(formData.get("signatureId") ?? ""));
+}
+
+// ── Auto-Responder ──
+
+export async function setAutoResponderAction(formData: FormData) {
+  const enabled = formData.get("enabled") === "true";
+  const subject = String(formData.get("subject") ?? "Out of Office");
+  const body = String(formData.get("body") ?? "I am currently out of office.");
+  const startTime = String(formData.get("startTime") || "");
+  const endTime = String(formData.get("endTime") || "");
+  await (await svc()).setAutoResponder({
+    enabled,
+    subject,
+    body,
+    startTime: startTime || undefined,
+    endTime: endTime || undefined,
+  });
+}
+
+// ── Contacts ──
+
+export async function createContactAction(formData: FormData) {
+  const firstName = String(formData.get("firstName") ?? "");
+  const lastName = String(formData.get("lastName") ?? "");
+  const email = String(formData.get("email") ?? "");
+  const phone = String(formData.get("phone") ?? "");
+  const company = String(formData.get("company") ?? "");
+  const jobTitle = String(formData.get("jobTitle") ?? "");
+  const notes = String(formData.get("notes") ?? "");
+  const isFavorite = formData.get("isFavorite") === "true";
+  await (await svc()).createContact({ firstName, lastName, email, phone, company, jobTitle, notes, isFavorite });
+}
+
+export async function deleteContactAction(formData: FormData) {
+  await (await svc()).deleteContact(String(formData.get("contactId") ?? ""));
+}
+
+export async function searchContactsAction(formData: FormData) {
+  const query = String(formData.get("query") ?? "");
+  const contacts = await (await svc()).getContacts(query || undefined);
+  return contacts.map((c) => ({ id: c.id, email: c.email, firstName: c.firstName, lastName: c.lastName }));
 }

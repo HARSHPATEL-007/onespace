@@ -86,6 +86,10 @@ integrations    Integration[]
   mailRules       MailRule[]
   mailAttachments MailAttachment[]
   mailDomains     MailDomain[]
+  mailContacts    MailContact[]
+  mailSignatures  MailSignature[]
+  mailAutoResponders MailAutoResponder[]
+  mailUserFolders MailUserFolder[]
 }
 
 /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -146,6 +150,10 @@ createdCalendarEvents CalendarEvent[]
   createdInvites        Invite[] @relation("createdInvites")
   createdMailDrafts     MailDraft[] @relation("createdMailDrafts")
   createdMailRules      MailRule[] @relation("createdMailRules")
+  createdMailContacts   MailContact[] @relation("createdMailContacts")
+  createdMailSignatures MailSignature[] @relation("createdMailSignatures")
+  createdMailAutoResponders MailAutoResponder[] @relation("createdMailAutoResponders")
+  createdMailUserFolders MailUserFolder[] @relation("createdMailUserFolders")
 }
 
 /// Seat within a workspace + assigned role.
@@ -561,23 +569,64 @@ model MailMessage {
   threadId    String
   direction   MailDirection @default(IN)
   folder      MailFolder    @default(INBOX)
+  status      MailStatus    @default(SENT)
   fromName    String        @default("")
   fromEmail   String
   toEmails    Json
+  ccEmails    Json          @default("[]")
+  bccEmails   Json          @default("[]")
   subject     String        @default("(no subject)")
   body        String        @default("")
+  bodyHtml    String?       @default("")
   isRead      Boolean       @default(false)
   isStarred   Boolean       @default(false)
+  isForwarded Boolean       @default(false)
   inReplyToId String?
-  sentAt      DateTime      @default(now())
-  createdAt   DateTime      @default(now())
+  signatureId String?
+  autoRespond Boolean       @default(false)
+   snoozeUntil DateTime?
+   scheduledAt DateTime?
+   sentAt      DateTime      @default(now())
+   /// AI fields
+   aiPriority  MailPriority  @default(MEDIUM)
+   aiCategory  MailCategory  @default(WORK)
+   aiSentiment String        @default("neutral")
+   aiSummary   String?       @default("")
+   aiProcessed Boolean       @default(false)
+   createdAt   DateTime      @default(now())
 
-   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  labels    MailLabelMap[]
-  attachments MailAttachment[]
+    workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+   labels    MailLabelMap[]
+   attachments MailAttachment[]
 
-  @@index([workspaceId, folder, sentAt(sort: Desc)])
-  @@index([workspaceId, threadId])
+   @@index([workspaceId, folder, sentAt(sort: Desc)])
+   @@index([workspaceId, threadId])
+   @@index([workspaceId, status, scheduledAt])
+   @@index([workspaceId, snoozeUntil])
+   @@index([workspaceId, aiPriority])
+   @@index([workspaceId, aiCategory])
+}
+
+enum MailStatus {
+   DRAFT
+   SCHEDULED
+   SENT
+   FAILED
+}
+
+enum MailPriority {
+   HIGH
+   MEDIUM
+   LOW
+}
+
+enum MailCategory {
+   PERSONAL
+   WORK
+   NEWSLETTER
+   NOTIFICATION
+   PROMOTIONAL
+   SPAM
 }
 
 model MailLabel {
@@ -728,6 +777,86 @@ model MailDomain {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, domain])
+}
+
+/// N0VA MAIL — contact / address book entries per workspace.
+model MailContact {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  firstName   String   @default("")
+  lastName    String   @default("")
+  email       String
+  phone       String   @default("")
+  company     String   @default("")
+  jobTitle    String   @default("")
+  notes       String   @default("")
+  isFavorite  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("createdMailContacts", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, email])
+  @@index([workspaceId, lastName, firstName])
+  @@index([workspaceId, isFavorite])
+}
+
+/// N0VA MAIL — custom signatures for outgoing mail.
+model MailSignature {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  name        String
+  content     String   @default("")
+  contentHtml String?  @default("")
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("createdMailSignatures", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, isDefault])
+}
+
+/// N0VA MAIL — auto-responder / out-of-office configuration.
+model MailAutoResponder {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  enabled     Boolean  @default(false)
+  subject     String   @default("Out of Office")
+  body        String   @default("I am currently out of office.")
+  startTime   DateTime?
+  endTime     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("createdMailAutoResponders", fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+/// N0VA MAIL — user-created nested folders.
+model MailUserFolder {
+  id          String   @id @default(uuid())
+  workspaceId String
+  createdById String?
+  name        String
+  parentFolderId String?
+  color       String   @default("#7c5cfc")
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy    User?         @relation("createdMailUserFolders", fields: [createdById], references: [id], onDelete: SetNull)
+  parentFolder MailUserFolder? @relation("FolderHierarchy", fields: [parentFolderId], references: [id], onDelete: Cascade)
+  childFolders MailUserFolder[]  @relation("FolderHierarchy")
+
+  @@unique([workspaceId, parentFolderId, name])
+  @@index([workspaceId, parentFolderId])
 }
 
 /// N0VA SHEETS - workbooks with JSON cell grids.

@@ -9,6 +9,13 @@ export const sendSchema = z.object({
   to: z.string().email(),
   subject: z.string().max(500).default("(no subject)"),
   body: z.string().max(100_000).default(""),
+  bodyHtml: z.string().max(200_000).optional(),
+  cc: z.string().optional(),
+  bcc: z.string().optional(),
+  signatureId: z.string().optional(),
+  scheduledAt: z.string().optional(),
+  replyToThreadId: z.string().optional(),
+  attachmentIds: z.array(z.string()).optional(),
 });
 
 export type MailFolder = "INBOX" | "SENT" | "ARCHIVE" | "TRASH";
@@ -38,6 +45,8 @@ export interface AiSuggestion {
   content: string;
   typingDelayMs: number;
 }
+
+export type { MailStatus } from "@n0va/db";
 
 export class MailService {
   constructor(
@@ -117,30 +126,65 @@ export class MailService {
     });
   }
 
-  async send(input: { to: string; subject: string; body: string; replyToThreadId?: string }) {
+  async send(input: {
+    to: string;
+    subject: string;
+    body: string;
+    bodyHtml?: string;
+    cc?: string;
+    bcc?: string;
+    signatureId?: string;
+    scheduledAt?: string;
+    replyToThreadId?: string;
+    attachmentIds?: string[];
+  }) {
     await this.assert("CREATE");
     const threadId = input.replyToThreadId ?? crypto.randomUUID();
+    const now = new Date();
+    const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
+    const status = scheduledAt && scheduledAt > now ? "SCHEDULED" : "SENT";
+
+    let signatureHtml = "";
+    if (input.signatureId) {
+      const sig = await prisma.mailSignature.findFirst({ where: { id: input.signatureId, workspaceId: this.workspaceId } });
+      if (sig) signatureHtml = sig.contentHtml || sig.content;
+    }
+
+    const finalBodyHtml = input.bodyHtml ? `${input.bodyHtml}<br><br>${signatureHtml}` : signatureHtml ? `${input.body}<br><br>${signatureHtml}` : input.bodyHtml || "";
+
+    const toEmails = [input.to, ...(input.cc ? input.cc.split(",").map(e => e.trim()).filter(Boolean) : [])];
+    const ccEmails = input.cc ? input.cc.split(",").map(e => e.trim()).filter(Boolean) : [];
+    const bccEmails = input.bcc ? input.bcc.split(",").map(e => e.trim()).filter(Boolean) : [];
+
     const message = await prisma.mailMessage.create({
       data: {
         workspaceId: this.workspaceId,
         threadId,
         direction: "OUT",
         folder: "SENT",
+        status,
         fromName: "N0VA Workspace",
         fromEmail: "outbox@n0va.workspace",
-        toEmails: [input.to],
+        toEmails: toEmails,
+        ccEmails: ccEmails,
+        bccEmails: bccEmails,
         subject: input.subject,
         body: input.body,
+        bodyHtml: finalBodyHtml,
+        signatureId: input.signatureId ?? null,
+        scheduledAt,
         inReplyToId: null,
         isRead: true,
+        sentAt: scheduledAt ?? now,
       },
     });
+
     await this.audit("mail.sent", message.id);
-    void this._applyRulesToMessage(message);
+    if (status === "SENT") void this._applyRulesToMessage(message);
     return message;
   }
 
-  async reply(threadId: string, body: string) {
+  async reply(threadId: string, body: string, bodyHtml?: string) {
     await this.assert("CREATE");
     const latest = await prisma.mailMessage.findFirst({
       where: { workspaceId: this.workspaceId, threadId },
@@ -157,12 +201,85 @@ export class MailService {
         fromName: "N0VA Workspace",
         fromEmail: "outbox@n0va.workspace",
         toEmails: [to],
+        ccEmails: [],
+        bccEmails: [],
         subject: `Re: ${latest.subject}`,
         body,
+        bodyHtml: bodyHtml || "",
         inReplyToId: latest.id,
         isRead: true,
       },
     });
+    void this._applyRulesToMessage(message);
+    return message;
+  }
+
+  async replyAll(threadId: string, body: string, bodyHtml?: string) {
+    await this.assert("CREATE");
+    const latest = await prisma.mailMessage.findFirst({
+      where: { workspaceId: this.workspaceId, threadId },
+      orderBy: { sentAt: "desc" },
+    });
+    if (!latest) throw new Error("Thread not found");
+
+    // Reply to sender + all original recipients (exclude ourselves)
+    const allTo = Array.isArray(latest.toEmails) ? latest.toEmails as string[] : [];
+    const allCc = Array.isArray(latest.ccEmails) ? latest.ccEmails as string[] : [];
+    const allEmails = [...new Set([latest.fromEmail, ...allTo, ...allCc])];
+    const selfEmail = "outbox@n0va.workspace";
+    const toEmails = allEmails.filter(e => e !== selfEmail);
+    const ccEmails: string[] = [];
+
+    const message = await prisma.mailMessage.create({
+      data: {
+        workspaceId: this.workspaceId,
+        threadId,
+        direction: "OUT",
+        folder: "SENT",
+        fromName: "N0VA Workspace",
+        fromEmail: selfEmail,
+        toEmails,
+        ccEmails,
+        bccEmails: [],
+        subject: `Re: ${latest.subject}`,
+        body,
+        bodyHtml: bodyHtml || "",
+        inReplyToId: latest.id,
+        isRead: true,
+      },
+    });
+    void this._applyRulesToMessage(message);
+    return message;
+  }
+
+  async forward(threadId: string, toEmails: string[], body: string = "", bodyHtml?: string) {
+    await this.assert("CREATE");
+    const original = await prisma.mailMessage.findFirst({
+      where: { workspaceId: this.workspaceId, threadId },
+      orderBy: { sentAt: "desc" },
+    });
+    if (!original) throw new Error("Thread not found");
+
+    const message = await prisma.mailMessage.create({
+      data: {
+        workspaceId: this.workspaceId,
+        threadId,
+        direction: "OUT",
+        folder: "SENT",
+        fromName: "N0VA Workspace",
+        fromEmail: "outbox@n0va.workspace",
+        toEmails,
+        ccEmails: [],
+        bccEmails: [],
+        subject: `Fwd: ${original.subject}`,
+        body,
+        bodyHtml: bodyHtml || "",
+        isForwarded: true,
+        inReplyToId: original.id,
+        isRead: true,
+      },
+    });
+    await this.audit("mail.forwarded", message.id);
     void this._applyRulesToMessage(message);
     return message;
   }
@@ -250,6 +367,370 @@ export class MailService {
       targetType: "MailMessage",
       targetId,
     });
+  }
+
+  /* ── Contacts / Address Book ──────────────────────────────── */
+
+  async createContact(input: {
+    firstName?: string;
+    lastName?: string;
+    email: string;
+    phone?: string;
+    company?: string;
+    jobTitle?: string;
+    notes?: string;
+    isFavorite?: boolean;
+  }) {
+    await this.assert("CREATE");
+    const contact = await prisma.mailContact.create({
+      data: {
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        firstName: input.firstName ?? "",
+        lastName: input.lastName ?? "",
+        email: input.email,
+        phone: input.phone ?? "",
+        company: input.company ?? "",
+        jobTitle: input.jobTitle ?? "",
+        notes: input.notes ?? "",
+        isFavorite: input.isFavorite ?? false,
+      },
+    });
+    await this.audit("mail.contact_created", contact.id);
+    return contact;
+  }
+
+  async getContacts(search?: string) {
+    await this.assert("READ");
+    const where: Record<string, unknown> = { workspaceId: this.workspaceId };
+    if (search) {
+      where.OR = [
+        { firstName: { contains: search, mode: "insensitive" } },
+        { lastName: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+        { company: { contains: search, mode: "insensitive" } },
+      ];
+    }
+    return prisma.mailContact.findMany({
+      where,
+      orderBy: [{ isFavorite: "desc" }, { lastName: "asc" }, { firstName: "asc" }],
+    });
+  }
+
+  async updateContact(contactId: string, input: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    company?: string;
+    jobTitle?: string;
+    notes?: string;
+    isFavorite?: boolean;
+  }) {
+    await this.assert("UPDATE");
+    const contact = await prisma.mailContact.findFirst({ where: { id: contactId, workspaceId: this.workspaceId } });
+    if (!contact) throw new Error("Contact not found");
+    return prisma.mailContact.update({ where: { id: contactId }, data: input });
+  }
+
+  async deleteContact(contactId: string) {
+    await this.assert("DELETE");
+    await prisma.mailContact.deleteMany({ where: { id: contactId, workspaceId: this.workspaceId } });
+  }
+
+  async searchContacts(query: string) {
+    await this.assert("READ");
+    const contacts = await prisma.mailContact.findMany({
+      where: {
+        workspaceId: this.workspaceId,
+        OR: [
+          { firstName: { contains: query, mode: "insensitive" } },
+          { lastName: { contains: query, mode: "insensitive" } },
+          { email: { contains: query, mode: "insensitive" } },
+          { company: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, email: true, firstName: true, lastName: true, company: true },
+      orderBy: [{ isFavorite: "desc" }, { lastName: "asc" }],
+      take: 20,
+    });
+    return contacts;
+  }
+
+  /* ── Signatures ───────────────────────────────────────────── */
+
+  async createSignature(input: { name: string; content: string; contentHtml?: string; isDefault?: boolean }) {
+    await this.assert("CREATE");
+    if (input.isDefault) {
+      await prisma.mailSignature.updateMany({
+        where: { workspaceId: this.workspaceId },
+        data: { isDefault: false },
+      });
+    }
+    const sig = await prisma.mailSignature.create({
+      data: {
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        name: input.name,
+        content: input.content,
+        contentHtml: input.contentHtml ?? "",
+        isDefault: input.isDefault ?? false,
+      },
+    });
+    await this.audit("mail.signature_created", sig.id);
+    return sig;
+  }
+
+  async getSignatures() {
+    await this.assert("READ");
+    return prisma.mailSignature.findMany({
+      where: { workspaceId: this.workspaceId },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+    });
+  }
+
+  async updateSignature(sigId: string, input: { name?: string; content?: string; contentHtml?: string; isDefault?: boolean }) {
+    await this.assert("UPDATE");
+    if (input.isDefault) {
+      await prisma.mailSignature.updateMany({
+        where: { workspaceId: this.workspaceId, id: { not: sigId } },
+        data: { isDefault: false },
+      });
+    }
+    return prisma.mailSignature.update({ where: { id: sigId }, data: input });
+  }
+
+  async deleteSignature(sigId: string) {
+    await this.assert("DELETE");
+    await prisma.mailSignature.deleteMany({ where: { id: sigId, workspaceId: this.workspaceId } });
+  }
+
+  async getDefaultSignature() {
+    await this.assert("READ");
+    return prisma.mailSignature.findFirst({
+      where: { workspaceId: this.workspaceId, isDefault: true },
+    });
+  }
+
+  /* ── Auto-Responder ───────────────────────────────────────── */
+
+  async setAutoResponder(input: {
+    enabled: boolean;
+    subject?: string;
+    body?: string;
+    startTime?: string;
+    endTime?: string;
+  }) {
+    await this.assert("CREATE");
+    const existing = await prisma.mailAutoResponder.findFirst({ where: { workspaceId: this.workspaceId } });
+    if (existing) {
+      const updated = await prisma.mailAutoResponder.update({
+        where: { id: existing.id },
+        data: {
+          enabled: input.enabled,
+          subject: input.subject ?? existing.subject,
+          body: input.body ?? existing.body,
+          startTime: input.startTime ? new Date(input.startTime) : existing.startTime,
+          endTime: input.endTime ? new Date(input.endTime) : existing.endTime,
+        },
+      });
+      await this.audit("mail.auto_responder_updated", updated.id);
+      return updated;
+    }
+    const ar = await prisma.mailAutoResponder.create({
+      data: {
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        enabled: input.enabled,
+        subject: input.subject ?? "Out of Office",
+        body: input.body ?? "I am currently out of office.",
+        startTime: input.startTime ? new Date(input.startTime) : null,
+        endTime: input.endTime ? new Date(input.endTime) : null,
+      },
+    });
+    await this.audit("mail.auto_responder_created", ar.id);
+    return ar;
+  }
+
+  async getAutoResponder() {
+    await this.assert("READ");
+    return prisma.mailAutoResponder.findFirst({ where: { workspaceId: this.workspaceId } });
+  }
+
+  async checkAndTriggerAutoResponder(fromEmail: string, threadId: string) {
+    await this.assert("READ");
+    const ar = await prisma.mailAutoResponder.findFirst({ where: { workspaceId: this.workspaceId, enabled: true } });
+    if (!ar) return null;
+
+    const now = new Date();
+    if (ar.startTime && now < ar.startTime) return null;
+    if (ar.endTime && now > ar.endTime) return null;
+
+    // Check if we already auto-responded to this sender recently (within 24h)
+    const recentAuto = await prisma.mailMessage.findFirst({
+      where: {
+        workspaceId: this.workspaceId,
+        fromEmail: "outbox@n0va.workspace",
+        autoRespond: true,
+        sentAt: { gte: new Date(now.getTime() - 24 * 60 * 60 * 1000) },
+      },
+    });
+    if (recentAuto) return null;
+
+    // Send auto-response
+    const message = await prisma.mailMessage.create({
+      data: {
+        workspaceId: this.workspaceId,
+        threadId,
+        direction: "OUT",
+        folder: "SENT",
+        status: "SENT",
+        fromName: "N0VA Auto-Responder",
+        fromEmail: "outbox@n0va.workspace",
+        toEmails: [fromEmail],
+        ccEmails: [],
+        bccEmails: [],
+        subject: ar.subject,
+        body: ar.body,
+        autoRespond: true,
+        isRead: true,
+      },
+    });
+    await this.audit("mail.auto_responded", message.id);
+    return message;
+  }
+
+  /* ── Snooze ───────────────────────────────────────────────── */
+
+  async snoozeThread(threadId: string, until: string) {
+    await this.assert("UPDATE");
+    await prisma.mailMessage.updateMany({
+      where: { workspaceId: this.workspaceId, threadId },
+      data: { snoozeUntil: new Date(until) },
+    });
+    await this.audit("mail.thread_snoozed", threadId);
+  }
+
+  async unsnoozeThread(threadId: string) {
+    await this.assert("UPDATE");
+    await prisma.mailMessage.updateMany({
+      where: { workspaceId: this.workspaceId, threadId },
+      data: { snoozeUntil: null },
+    });
+  }
+
+  async getSnoozedThreads() {
+    await this.assert("READ");
+    const now = new Date();
+    const messages = await prisma.mailMessage.findMany({
+      where: {
+        workspaceId: this.workspaceId,
+        folder: "INBOX",
+        snoozeUntil: { gt: now },
+      },
+      include: { labels: { include: { label: true } } },
+      orderBy: { snoozeUntil: "asc" },
+    });
+
+    const threads = new Map<string, { messages: typeof messages; unread: number; starred: boolean; latestSentAt: Date; snoozeUntil: Date | null }>();
+    for (const m of messages) {
+      const t = threads.get(m.threadId) ?? { messages: [], unread: 0, starred: false, latestSentAt: m.sentAt, snoozeUntil: m.snoozeUntil };
+      t.messages.push(m);
+      if (!m.isRead) t.unread++;
+      if (m.isStarred) t.starred = true;
+      if (m.sentAt > t.latestSentAt) t.latestSentAt = m.sentAt;
+      threads.set(m.threadId, t);
+    }
+    return [...threads.entries()].map(([threadId, t]) => ({
+      threadId, messages: t.messages, unread: t.unread, starred: t.starred, latestSentAt: t.latestSentAt, snoozeUntil: t.snoozeUntil,
+    }));
+  }
+
+  async getUnsnoozedThreads() {
+    await this.assert("READ");
+    const now = new Date();
+    await prisma.mailMessage.updateMany({
+      where: { workspaceId: this.workspaceId, folder: "INBOX", snoozeUntil: { lte: now } },
+      data: { snoozeUntil: null },
+    });
+  }
+
+  /* ── User Folders ─────────────────────────────────────────── */
+
+  async createFolder(input: { name: string; parentFolderId?: string; color?: string }) {
+    await this.assert("CREATE");
+    const folder = await prisma.mailUserFolder.create({
+      data: {
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        name: input.name,
+        parentFolderId: input.parentFolderId ?? null,
+        color: input.color ?? "#7c5cfc",
+      },
+    });
+    await this.audit("mail.folder_created", folder.id);
+    return folder;
+  }
+
+  async getFolders() {
+    await this.assert("READ");
+    return prisma.mailUserFolder.findMany({
+      where: { workspaceId: this.workspaceId },
+      include: { childFolders: { orderBy: { sortOrder: "asc" } } },
+      orderBy: [{ parentFolderId: "asc" }, { sortOrder: "asc" }],
+    });
+  }
+
+  async updateFolder(folderId: string, input: { name?: string; color?: string; parentFolderId?: string | null; sortOrder?: number }) {
+    await this.assert("UPDATE");
+    return prisma.mailUserFolder.update({ where: { id: folderId }, data: input });
+  }
+
+  async deleteFolder(folderId: string) {
+    await this.assert("DELETE");
+    await prisma.mailUserFolder.deleteMany({ where: { id: folderId, workspaceId: this.workspaceId } });
+  }
+
+  async moveThreadToFolder(threadId: string, folderId: string | null) {
+    await this.assert("UPDATE");
+    // folderId null = move to INBOX (default system folder)
+    await prisma.mailMessage.updateMany({
+      where: { workspaceId: this.workspaceId, threadId },
+      data: { folder: "INBOX" },
+    });
+    await this.audit("mail.thread_moved", threadId);
+  }
+
+  /* ── Scheduled Sending ────────────────────────────────────── */
+
+  async getScheduledMessages() {
+    await this.assert("READ");
+    return prisma.mailMessage.findMany({
+      where: { workspaceId: this.workspaceId, status: "SCHEDULED" },
+      include: { labels: { include: { label: true } } },
+      orderBy: { scheduledAt: "asc" },
+    });
+  }
+
+  async cancelScheduledMessage(messageId: string) {
+    await this.assert("UPDATE");
+    await prisma.mailMessage.update({
+      where: { id: messageId, workspaceId: this.workspaceId, status: "SCHEDULED" },
+      data: { status: "DRAFT", folder: "SENT" },
+    });
+  }
+
+  async sendScheduledMessage(messageId: string) {
+    await this.assert("CREATE");
+    const msg = await prisma.mailMessage.findFirst({ where: { id: messageId, workspaceId: this.workspaceId, status: "SCHEDULED" } });
+    if (!msg) throw new Error("Scheduled message not found");
+
+    const message = await prisma.mailMessage.update({
+      where: { id: messageId },
+      data: { status: "SENT", sentAt: new Date() },
+    });
+    void this._applyRulesToMessage(message);
+    return message;
   }
 
   /* ── AI Features ─────────────────────────────────────────── */
