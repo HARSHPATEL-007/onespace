@@ -62,6 +62,16 @@ import {
   deleteReverseAliasAction,
   reportBreachAction,
   resolveBreachAction,
+  // Routing & Security
+  createRoutingRuleAction,
+  toggleRoutingRuleAction,
+  deleteRoutingRuleAction,
+  setupMasterInboxAction,
+  calculateSecurityScoreAction,
+  logSecurityEventAction,
+  resolveSecurityEventAction,
+  blockAliasAction,
+  replyViaReverseAliasAction,
 } from "./actions";
 
 const VALID_FOLDERS = ["INBOX", "SENT", "ARCHIVE", "TRASH"] as const;
@@ -214,6 +224,16 @@ export default async function MailPage({
         deleteReverseAlias: deleteReverseAliasAction,
         reportBreach: reportBreachAction,
         resolveBreach: resolveBreachAction,
+        // Routing & Security
+        createRoutingRule: createRoutingRuleAction,
+        toggleRoutingRule: toggleRoutingRuleAction,
+        deleteRoutingRule: deleteRoutingRuleAction,
+        setupMasterInbox: setupMasterInboxAction,
+        calculateSecurityScore: calculateSecurityScoreAction,
+        logSecurityEvent: logSecurityEventAction,
+        resolveSecurityEvent: resolveSecurityEventAction,
+        blockAlias: blockAliasAction,
+        replyViaReverseAlias: replyViaReverseAliasAction,
       }}
     />
   );

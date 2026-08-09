@@ -389,3 +389,58 @@ export async function reportBreachAction(formData: FormData) {
 export async function resolveBreachAction(formData: FormData) {
   await (await svc()).resolveBreach(String(formData.get("breachId") ?? ""));
 }
+
+// — Routing & Security —
+
+export async function createRoutingRuleAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "");
+  const description = String(formData.get("description") ?? "");
+  const tier = String(formData.get("tier") ?? "TIER2");
+  const condition = String(formData.get("condition") ?? "to_contains");
+  const matchValue = String(formData.get("matchValue") ?? "");
+  const action = String(formData.get("action") ?? "tag");
+  const actionValue = String(formData.get("actionValue") ?? "");
+  await (await svc()).createRoutingRule({ name, description, tier, condition, matchValue, action, actionValue });
+}
+
+export async function toggleRoutingRuleAction(formData: FormData) {
+  await (await svc()).toggleRoutingRule(String(formData.get("ruleId") ?? ""));
+}
+
+export async function deleteRoutingRuleAction(formData: FormData) {
+  await (await svc()).deleteRoutingRule(String(formData.get("ruleId") ?? ""));
+}
+
+export async function setupMasterInboxAction(formData: FormData) {
+  const masterEmail = String(formData.get("masterEmail") ?? "");
+  const provider = String(formData.get("provider") ?? "");
+  const mfaEnabled = formData.get("mfaEnabled") === "true";
+  const hardwareKey = formData.get("hardwareKey") === "true";
+  const recoveryEmail = String(formData.get("recoveryEmail") ?? "");
+  await (await svc()).setupMasterInbox({ masterEmail, provider, mfaEnabled, hardwareKey, recoveryEmail });
+}
+
+export async function calculateSecurityScoreAction() {
+  return await (await svc()).calculateSecurityScore();
+}
+
+export async function logSecurityEventAction(formData: FormData) {
+  const type = String(formData.get("type") ?? "");
+  const source = String(formData.get("source") ?? "");
+  const aliasEmail = String(formData.get("aliasEmail") ?? "");
+  await (await svc()).logSecurityEvent({ type, source, aliasEmail });
+}
+
+export async function resolveSecurityEventAction(formData: FormData) {
+  await (await svc()).resolveSecurityEvent(String(formData.get("eventId") ?? ""));
+}
+
+export async function blockAliasAction(formData: FormData) {
+  await (await svc()).blockAlias(String(formData.get("aliasId") ?? ""));
+}
+
+export async function replyViaReverseAliasAction(formData: FormData) {
+  const reverseAliasId = String(formData.get("reverseAliasId") ?? "");
+  const body = String(formData.get("body") ?? "");
+  await (await svc()).replyViaReverseAlias(reverseAliasId, body);
+}

@@ -1358,6 +1358,300 @@ export class MailService {
     };
   }
 
+  /* ── Routing Rules & Tiered Inbox ──────────────────────── */
+
+  async createRoutingRule(input: {
+    name: string;
+    description?: string;
+    tier: string;
+    condition: string;
+    matchValue: string;
+    action: string;
+    actionValue?: string;
+    priority?: number;
+  }) {
+    await this.assert("CREATE");
+    const rule = await prisma.mailRoutingRule.create({
+      data: {
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        name: input.name,
+        description: input.description ?? "",
+        tier: input.tier as never,
+        condition: input.condition,
+        matchValue: input.matchValue,
+        action: input.action,
+        actionValue: input.actionValue ?? "",
+        priority: input.priority ?? 100,
+      },
+    });
+    await this.audit("mail.routing_rule_created", rule.id);
+    return rule;
+  }
+
+  async getRoutingRules(tier?: string) {
+    await this.assert("READ");
+    const where: Record<string, unknown> = { workspaceId: this.workspaceId, isActive: true };
+    if (tier) where.tier = tier;
+    return prisma.mailRoutingRule.findMany({
+      where,
+      orderBy: [{ priority: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  async updateRoutingRule(ruleId: string, input: {
+    name?: string;
+    description?: string;
+    tier?: string;
+    condition?: string;
+    matchValue?: string;
+    action?: string;
+    actionValue?: string;
+    isActive?: boolean;
+    priority?: number;
+  }) {
+    await this.assert("UPDATE");
+    const data: Record<string, unknown> = {};
+    if (input.name) data.name = input.name;
+    if (input.description) data.description = input.description;
+    if (input.tier) data.tier = input.tier;
+    if (input.condition) data.condition = input.condition;
+    if (input.matchValue) data.matchValue = input.matchValue;
+    if (input.action) data.action = input.action;
+    if (input.actionValue) data.actionValue = input.actionValue;
+    if (input.isActive !== undefined) data.isActive = input.isActive;
+    if (input.priority) data.priority = input.priority;
+    return prisma.mailRoutingRule.update({ where: { id: ruleId }, data });
+  }
+
+  async deleteRoutingRule(ruleId: string) {
+    await this.assert("DELETE");
+    await prisma.mailRoutingRule.deleteMany({ where: { id: ruleId, workspaceId: this.workspaceId } });
+  }
+
+  async toggleRoutingRule(ruleId: string) {
+    await this.assert("UPDATE");
+    const rule = await prisma.mailRoutingRule.findFirst({ where: { id: ruleId, workspaceId: this.workspaceId } });
+    if (!rule) throw new Error("Rule not found");
+    return prisma.mailRoutingRule.update({ where: { id: ruleId }, data: { isActive: !rule.isActive } });
+  }
+
+  async applyRoutingRules(toEmail: string, fromEmail: string, subject: string) {
+    await this.assert("READ");
+    const rules = await prisma.mailRoutingRule.findMany({
+      where: { workspaceId: this.workspaceId, isActive: true },
+      orderBy: { priority: "asc" },
+    });
+
+    const actions: Array<{ type: string; value: string; tier: string }> = [];
+
+    for (const rule of rules) {
+      let matched = false;
+      switch (rule.condition) {
+        case "to_contains":
+          matched = toEmail.includes(rule.matchValue);
+          break;
+        case "to_equals":
+          matched = toEmail === rule.matchValue;
+          break;
+        case "from_contains":
+          matched = fromEmail.includes(rule.matchValue);
+          break;
+        case "subject_contains":
+          matched = subject.toLowerCase().includes(rule.matchValue.toLowerCase());
+          break;
+        case "domain_matches":
+          matched = toEmail.endsWith(rule.matchValue) || fromEmail.endsWith(rule.matchValue);
+          break;
+      }
+
+      if (matched) {
+        actions.push({ type: rule.action, value: rule.actionValue, tier: rule.tier });
+        if (rule.action === "block") break; // Stop processing if blocked
+      }
+    }
+
+    return actions;
+  }
+
+  async setupDefaultRouting() {
+    await this.assert("CREATE");
+    const defaults = [
+      { name: "Tier 1 - Priority", tier: "TIER1", condition: "to_equals", matchValue: "", action: "tag", actionValue: "Priority / Important", priority: 10 },
+      { name: "Tier 2 - Services", tier: "TIER2", condition: "domain_matches", matchValue: "", action: "folder", actionValue: "Services & Shopping", priority: 50 },
+      { name: "Tier 3 - Low Trust", tier: "TIER3", condition: "domain_matches", matchValue: "", action: "folder", actionValue: "Low-Trust / Newsletters", priority: 100 },
+    ];
+    const created = [];
+    for (const d of defaults) {
+      const rule = await prisma.mailRoutingRule.create({
+        data: { workspaceId: this.workspaceId, createdById: this.userId, name: d.name, tier: d.tier as never, condition: d.condition, matchValue: d.matchValue, action: d.action, actionValue: d.actionValue, priority: d.priority },
+      });
+      created.push(rule);
+    }
+    await this.audit("mail.default_routing_setup", this.workspaceId);
+    return created;
+  }
+
+  /* ── Master Inbox Security ─────────────────────────────── */
+
+  async setupMasterInbox(input: {
+    masterEmail: string;
+    provider?: string;
+    mfaEnabled?: boolean;
+    mfaType?: string;
+    hardwareKey?: boolean;
+    recoveryEmail?: string;
+  }) {
+    await this.assert("CREATE");
+    const existing = await prisma.mailInboxSecurity.findFirst({ where: { workspaceId: this.workspaceId } });
+    if (existing) {
+      return prisma.mailInboxSecurity.update({
+        where: { id: existing.id },
+        data: {
+          masterEmail: input.masterEmail,
+          provider: input.provider ?? existing.provider,
+          mfaEnabled: input.mfaEnabled ?? existing.mfaEnabled,
+          mfaType: input.mfaType ?? existing.mfaType,
+          hardwareKey: input.hardwareKey ?? existing.hardwareKey,
+          recoveryEmail: input.recoveryEmail ?? existing.recoveryEmail,
+        },
+      });
+    }
+    const sec = await prisma.mailInboxSecurity.create({
+      data: {
+        workspaceId: this.workspaceId,
+        masterEmail: input.masterEmail,
+        provider: input.provider ?? "",
+        mfaEnabled: input.mfaEnabled ?? false,
+        mfaType: input.mfaType ?? "totp",
+        hardwareKey: input.hardwareKey ?? false,
+        recoveryEmail: input.recoveryEmail ?? "",
+      },
+    });
+    await this.audit("mail.master_inbox_setup", sec.id);
+    return sec;
+  }
+
+  async getMasterInbox() {
+    await this.assert("READ");
+    return prisma.mailInboxSecurity.findFirst({ where: { workspaceId: this.workspaceId } });
+  }
+
+  async calculateSecurityScore() {
+    await this.assert("READ");
+    const sec = await prisma.mailInboxSecurity.findFirst({ where: { workspaceId: this.workspaceId } });
+    if (!sec) return { score: 0, recommendations: ["Set up master inbox"] };
+
+    let score = 0;
+    const recommendations: string[] = [];
+
+    if (sec.masterEmail) score += 20; else recommendations.push("Set master inbox email");
+    if (sec.provider) score += 10;
+    if (sec.mfaEnabled) score += 30; else recommendations.push("Enable MFA");
+    if (sec.hardwareKey) score += 20; else recommendations.push("Add hardware security key");
+    if (sec.recoveryEmail) score += 10; else recommendations.push("Set recovery email");
+    if (sec.lastSecurityCheck && (Date.now() - sec.lastSecurityCheck.getTime()) < 30 * 24 * 60 * 60 * 1000) score += 10;
+
+    await prisma.mailInboxSecurity.update({ where: { id: sec.id }, data: { securityScore: score } });
+    return { score, recommendations };
+  }
+
+  async runSecurityCheck() {
+    await this.assert("UPDATE");
+    const sec = await prisma.mailInboxSecurity.findFirst({ where: { workspaceId: this.workspaceId } });
+    if (!sec) throw new Error("No master inbox configured");
+    return prisma.mailInboxSecurity.update({ where: { id: sec.id }, data: { lastSecurityCheck: new Date() } });
+  }
+
+  /* — Security Events & Operational Workflows —————————————— */
+
+  async logSecurityEvent(input: {
+    type: string;
+    severity?: string;
+    source?: string;
+    aliasEmail?: string;
+    details?: string;
+  }) {
+    await this.assert("CREATE");
+    const event = await prisma.mailSecurityEvent.create({
+      data: {
+        workspaceId: this.workspaceId,
+        type: input.type,
+        severity: input.severity ?? "medium",
+        source: input.source ?? "",
+        aliasEmail: input.aliasEmail ?? "",
+        details: input.details ?? "",
+      },
+    });
+    await this.audit("mail.security_event", event.id);
+    return event;
+  }
+
+  async getSecurityEvents(type?: string, severity?: string) {
+    await this.assert("READ");
+    const where: Record<string, unknown> = { workspaceId: this.workspaceId };
+    if (type) where.type = type;
+    if (severity) where.severity = severity;
+    return prisma.mailSecurityEvent.findMany({ where, orderBy: { detectedAt: "desc" } });
+  }
+
+  async resolveSecurityEvent(eventId: string) {
+    await this.assert("UPDATE");
+    return prisma.mailSecurityEvent.update({ where: { id: eventId }, data: { isResolved: true, resolvedAt: new Date() } });
+  }
+
+  async getSecurityDashboard() {
+    await this.assert("READ");
+    const events = await prisma.mailSecurityEvent.findMany({ where: { workspaceId: this.workspaceId } });
+    const score = await this.calculateSecurityScore();
+    return {
+      score,
+      totalEvents: events.length,
+      unresolvedEvents: events.filter(e => !e.isResolved).length,
+      recentEvents: events.slice(0, 10),
+      breachesByType: {
+        spam: events.filter(e => e.type === "spam").length,
+        phishing: events.filter(e => e.type === "phishing").length,
+        breach: events.filter(e => e.type === "breach").length,
+        auth: events.filter(e => e.type === "auth").length,
+      },
+    };
+  }
+
+  async blockAlias(aliasId: string) {
+    await this.assert("UPDATE");
+    const alias = await prisma.emailAlias.findFirst({ where: { id: aliasId, workspaceId: this.workspaceId } });
+    if (!alias) throw new Error("Alias not found");
+    await prisma.emailAlias.update({ where: { id: aliasId }, data: { isActive: false } });
+    await this.logSecurityEvent({ type: "block", source: "manual", aliasEmail: `${alias.localPart}@domain`, details: "Alias blocked by user" });
+    return alias;
+  }
+
+  async replyViaReverseAlias(reverseAliasId: string, body: string) {
+    await this.assert("CREATE");
+    const reverse = await prisma.reverseAlias.findFirst({ where: { id: reverseAliasId, workspaceId: this.workspaceId } });
+    if (!reverse) throw new Error("Reverse alias not found");
+
+    const message = await prisma.mailMessage.create({
+      data: {
+        workspaceId: this.workspaceId,
+        threadId: crypto.randomUUID(),
+        direction: "OUT",
+        folder: "SENT",
+        status: "SENT",
+        fromName: "N0VA Relay",
+        fromEmail: reverse.relayAddress,
+        toEmails: [reverse.targetEmail],
+        ccEmails: [],
+        bccEmails: [],
+        body,
+        isRead: true,
+      },
+    });
+    await this.audit("mail.reply_via_relay", message.id);
+    return message;
+  }
+
   /* ── AI Features ─────────────────────────────────────────── */
 
   private async _resolveAiIntegration() {

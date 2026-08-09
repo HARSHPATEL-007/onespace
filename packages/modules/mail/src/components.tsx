@@ -69,6 +69,16 @@ export interface MailActions {
   deleteReverseAlias: (formData: FormData) => Promise<void>;
   reportBreach: (formData: FormData) => Promise<void>;
   resolveBreach: (formData: FormData) => Promise<void>;
+  // Routing & Security
+  createRoutingRule: (formData: FormData) => Promise<void>;
+  toggleRoutingRule: (formData: FormData) => Promise<void>;
+  deleteRoutingRule: (formData: FormData) => Promise<void>;
+  setupMasterInbox: (formData: FormData) => Promise<void>;
+  calculateSecurityScore: () => Promise<{ score: number; recommendations: string[] }>;
+  logSecurityEvent: (formData: FormData) => Promise<void>;
+  resolveSecurityEvent: (formData: FormData) => Promise<void>;
+  blockAlias: (formData: FormData) => Promise<void>;
+  replyViaReverseAlias: (formData: FormData) => Promise<void>;
 }
 
 type MessageWithLabels = MailMessage & { labels: Array<MailLabelMap & { label: MailLabel }> };
@@ -257,6 +267,22 @@ export function MailApp({
   const [domainPanel, setDomainPanel] = useState<"none" | "domains" | "aliases" | "breaches">("none");
   const [showRegisterDomain, setShowRegisterDomain] = useState(false);
   const [newDomain, setNewDomain] = useState("");
+  // Routing & Security state
+  const [securityPanel, setSecurityPanel] = useState(false);
+  const [routingPanel, setRoutingPanel] = useState(false);
+  const [masterInboxOpen, setMasterInboxOpen] = useState(false);
+  const [securityScore, setSecurityScore] = useState<{ score: number; recommendations: string[] } | null>(null);
+  const [masterEmail, setMasterEmail] = useState("");
+  const [masterProvider, setMasterProvider] = useState("");
+  const [masterMfa, setMasterMfa] = useState(false);
+  const [masterHardwareKey, setMasterHardwareKey] = useState(false);
+  const [masterRecoveryEmail, setMasterRecoveryEmail] = useState("");
+  const [ruleName, setRuleName] = useState("");
+  const [ruleTier, setRuleTier] = useState("TIER2");
+  const [ruleCondition, setRuleCondition] = useState("to_contains");
+  const [ruleMatchValue, setRuleMatchValue] = useState("");
+  const [ruleAction, setRuleAction] = useState("tag");
+  const [ruleActionValue, setRuleActionValue] = useState("");
 
   const activeThread = threads.find((t) => t.threadId === activeThreadId) ?? null;
 
@@ -422,6 +448,65 @@ export function MailApp({
     }
   }, [actions, router]);
 
+  // — Routing & Security Handlers —
+
+  const handleSetupMasterInbox = useCallback(async () => {
+    setAiLoading("masterInbox");
+    try {
+      const fd = new FormData();
+      fd.set("masterEmail", masterEmail);
+      fd.set("provider", masterProvider);
+      fd.set("mfaEnabled", String(masterMfa));
+      fd.set("hardwareKey", String(masterHardwareKey));
+      fd.set("recoveryEmail", masterRecoveryEmail);
+      await actions.setupMasterInbox(fd);
+      const score = await actions.calculateSecurityScore();
+      setSecurityScore(score);
+      setMasterInboxOpen(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Master inbox setup failed:", err);
+    } finally {
+      setAiLoading(null);
+    }
+  }, [masterEmail, masterProvider, masterMfa, masterHardwareKey, masterRecoveryEmail, actions, router]);
+
+  const handleCreateRoutingRule = useCallback(async () => {
+    if (!ruleName.trim() || !ruleMatchValue.trim()) return;
+    setAiLoading("routing");
+    try {
+      const fd = new FormData();
+      fd.set("name", ruleName);
+      fd.set("tier", ruleTier);
+      fd.set("condition", ruleCondition);
+      fd.set("matchValue", ruleMatchValue);
+      fd.set("action", ruleAction);
+      fd.set("actionValue", ruleActionValue);
+      await actions.createRoutingRule(fd);
+      setRuleName(""); setRuleMatchValue(""); setRuleActionValue("");
+      router.refresh();
+    } catch (err) {
+      console.error("Create routing rule failed:", err);
+    } finally {
+      setAiLoading(null);
+    }
+  }, [ruleName, ruleTier, ruleCondition, ruleMatchValue, ruleAction, ruleActionValue, actions, router]);
+
+  const handleBlockAlias = useCallback(async (aliasId: string) => {
+    const fd = new FormData();
+    fd.set("aliasId", aliasId);
+    await actions.blockAlias(fd);
+    router.refresh();
+  }, [actions, router]);
+
+  const handleReplyViaReverse = useCallback(async (reverseId: string, body: string) => {
+    const fd = new FormData();
+    fd.set("reverseAliasId", reverseId);
+    fd.set("body", body);
+    await actions.replyViaReverseAlias(fd);
+    router.refresh();
+  }, [actions, router]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const params = new URLSearchParams(searchParams.toString());
@@ -494,6 +579,10 @@ export function MailApp({
         <Button variant="ghost" size="sm" onClick={() => setDomainPanel(domainPanel === "domains" ? "none" : "domains")} style={{ alignSelf: "flex-start" }}>🌐 Domains</Button>
         <Button variant="ghost" size="sm" onClick={() => setDomainPanel(domainPanel === "aliases" ? "none" : "aliases")} style={{ alignSelf: "flex-start" }}>📧 Aliases</Button>
         <Button variant="ghost" size="sm" onClick={() => setDomainPanel(domainPanel === "breaches" ? "none" : "breaches")} style={{ alignSelf: "flex-start" }}>🛡 Breaches</Button>
+        <div style={{ marginTop: 14, fontWeight: 700, fontSize: 12, color: "var(--nv-color-text-faint)", padding: "0 10px 6px" }}>ROUTING & SECURITY</div>
+        <Button variant="ghost" size="sm" onClick={() => setSecurityPanel(!securityPanel)} style={{ alignSelf: "flex-start" }}>🔐 Master Inbox</Button>
+        <Button variant="ghost" size="sm" onClick={() => setRoutingPanel(!routingPanel)} style={{ alignSelf: "flex-start" }}>⚡ Routing Rules</Button>
+        <Button variant="ghost" size="sm" onClick={() => setSecurityPanel(!securityPanel)} style={{ alignSelf: "flex-start" }}>🛡 Security Score</Button>
       </div>
 
       {/* Thread list */}
@@ -1048,6 +1137,114 @@ export function MailApp({
         </div>
       </Dialog>
     </div>
+  );
+}
+
+/* ── Master Inbox & Routing Dialogs ─────────────────────── */
+
+function SecurityDialog({ open, onClose, actions, onRefresh }: {
+  open: boolean; onClose: () => void; actions: MailActions; onRefresh: () => void;
+}) {
+  const [masterEmail, setMasterEmail] = useState("");
+  const [provider, setProvider] = useState("protonmail");
+  const [mfa, setMfa] = useState(false);
+  const [hwKey, setHwKey] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [score, setScore] = useState<{ score: number; recommendations: string[] } | null>(null);
+
+  return (
+    <Dialog open={open} onClose={onClose} title="🔐 Master Inbox Security" actions={<>
+      <Button variant="secondary" onClick={onClose}>Close</Button>
+      <Button onClick={async () => {
+        const fd = new FormData();
+        fd.set("masterEmail", masterEmail);
+        fd.set("provider", provider);
+        fd.set("mfaEnabled", String(mfa));
+        fd.set("hardwareKey", String(hwKey));
+        fd.set("recoveryEmail", recoveryEmail);
+        await actions.setupMasterInbox(fd);
+        const s = await actions.calculateSecurityScore();
+        setScore(s);
+        onRefresh();
+      }}>Save & Calculate</Button>
+    </>}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 440 }}>
+        <div style={{ padding: "var(--nv-space-3)", background: "var(--nv-color-surface-alt)", borderRadius: "var(--nv-radius-md)", fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)" }}>
+          ⚠️ Your master inbox email should NEVER be shared with third parties. It only receives forwarded mail from aliases.
+        </div>
+        <input className="nv-input" type="email" placeholder="master@your-private-provider.com" value={masterEmail} onChange={(e) => setMasterEmail(e.target.value)} />
+        <select className="nv-input" value={provider} onChange={(e) => setProvider(e.target.value)}>
+          <option value="protonmail">ProtonMail</option>
+          <option value="tutanota">Tutanota</option>
+          <option value="fastmail">Fastmail</option>
+          <option value="gmail">Gmail</option>
+          <option value="outlook">Outlook</option>
+          <option value="other">Other</option>
+        </select>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--nv-font-sm)" }}><input type="checkbox" checked={mfa} onChange={(e) => setMfa(e.target.checked)} /> Enable MFA (TOTP)</label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--nv-font-sm)" }}><input type="checkbox" checked={hwKey} onChange={(e) => setHwKey(e.target.checked)} /> Hardware Security Key (FIDO2)</label>
+        <input className="nv-input" type="email" placeholder="recovery@email.com (optional)" value={recoveryEmail} onChange={(e) => setRecoveryEmail(e.target.value)} />
+        {score && (
+          <div style={{ padding: "var(--nv-space-3)", background: score.score >= 80 ? "var(--nv-color-success-alpha)" : score.score >= 50 ? "var(--nv-color-warning-alpha)" : "var(--nv-color-danger-alpha)", borderRadius: "var(--nv-radius-md)" }}>
+            <div style={{ fontWeight: 700, fontSize: "var(--nv-font-md)" }}>Security Score: {score.score}/100</div>
+            {score.recommendations.length > 0 && (
+              <ul style={{ margin: "6px 0 0 20px", fontSize: "var(--nv-font-sm)" }}>{score.recommendations.map((r, i) => <li key={i}>{r}</li>)}</ul>
+            )}
+          </div>
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+function RoutingDialog({ open, onClose, actions, onRefresh }: {
+  open: boolean; onClose: () => void; actions: MailActions; onRefresh: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [tier, setTier] = useState("TIER2");
+  const [condition, setCondition] = useState("to_contains");
+  const [matchValue, setMatchValue] = useState("");
+  const [action, setAction] = useState("tag");
+  const [actionValue, setActionValue] = useState("");
+
+  return (
+    <Dialog open={open} onClose={onClose} title="⚡ Routing Rules" actions={<>
+      <Button variant="secondary" onClick={onClose}>Close</Button>
+      <Button onClick={async () => {
+        if (!name.trim() || !matchValue.trim()) return;
+        const fd = new FormData();
+        fd.set("name", name); fd.set("tier", tier); fd.set("condition", condition);
+        fd.set("matchValue", matchValue); fd.set("action", action); fd.set("actionValue", actionValue);
+        await actions.createRoutingRule(fd);
+        setName(""); setMatchValue(""); setActionValue("");
+        onRefresh();
+      }}>Create Rule</Button>
+    </>}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 460 }}>
+        <input className="nv-input" placeholder="Rule name" value={name} onChange={(e) => setName(e.target.value)} />
+        <select className="nv-input" value={tier} onChange={(e) => setTier(e.target.value)}>
+          <option value="TIER1">Tier 1 - Priority (banking, government)</option>
+          <option value="TIER2">Tier 2 - Services (shopping, newsletters)</option>
+          <option value="TIER3">Tier 3 - Low Trust (random signups)</option>
+        </select>
+        <select className="nv-input" value={condition} onChange={(e) => setCondition(e.target.value)}>
+          <option value="to_contains">To contains</option>
+          <option value="to_equals">To equals</option>
+          <option value="from_contains">From contains</option>
+          <option value="subject_contains">Subject contains</option>
+          <option value="domain_matches">Domain matches</option>
+        </select>
+        <input className="nv-input" placeholder="Match value (e.g., @banking.com)" value={matchValue} onChange={(e) => setMatchValue(e.target.value)} />
+        <select className="nv-input" value={action} onChange={(e) => setAction(e.target.value)}>
+          <option value="tag">Tag / Label</option>
+          <option value="folder">Move to folder</option>
+          <option value="priority">Set priority</option>
+          <option value="block">Block / Drop</option>
+          <option value="forward">Forward to</option>
+        </select>
+        <input className="nv-input" placeholder="Action value (e.g., Important, Folder name)" value={actionValue} onChange={(e) => setActionValue(e.target.value)} />
+      </div>
+    </Dialog>
   );
 }
 
