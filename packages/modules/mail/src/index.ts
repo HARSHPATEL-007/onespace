@@ -7,3 +7,4 @@ export { SecurityPipeline, SpfEvaluator, DkimEngine, DmarcEvaluator, AntiSpamCla
 export { WebhookEngine, SmtpRelayService, ApiKeyManager, restEndpoints, graphqlSchema } from "./api";
 export { AdminEngine, AuditLogger, LegalHoldManager, RetentionPolicyEngine, ExportEngine, RbacEngine, systemRoles } from "./admin";
 export { AiEngine, ThreadSummarizer, SmartReplyEngine, PhishingDetector, SemanticSearchEngine, ContentAnalyzer } from "./ai";
+export { MailEngine, getMailEngine, type MailEngineConfig, type SendMailInput, type MailStats } from "./engine";

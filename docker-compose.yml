@@ -1,0 +1,48 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: n0va
+      POSTGRES_PASSWORD: n0va_secret
+      POSTGRES_DB: n0va
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n0va"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://n0va:n0va_secret@postgres:5432/n0va
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "cd /app/packages/db && npx prisma db push --skip-generate && cd /app && pnpm dev"
+
+  smtp:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+
+volumes:
+  pgdata:

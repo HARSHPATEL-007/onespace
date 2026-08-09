@@ -252,12 +252,13 @@ export class WebhookEngine {
     this.subscriptions.delete(subscriptionId);
   }
 
-  async emit(event: Omit<WebhookEvent, "id" | "delivered" | "deliveryAttempts">): Promise<void> {
+  async emit(event: Omit<WebhookEvent, "id" | "delivered" | "deliveryAttempts" | "timestamp"> & { timestamp?: Date }): Promise<void> {
     const fullEvent: WebhookEvent = {
       ...event,
       id: crypto.randomUUID(),
       delivered: false,
       deliveryAttempts: 0,
+      timestamp: event.timestamp || new Date(),
     };
     this.eventQueue.push(fullEvent);
     await this.processQueue();
