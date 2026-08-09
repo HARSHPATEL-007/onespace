@@ -48,18 +48,42 @@ export interface MailStats {
   queueStats: { active: number; deferred: number; delivered: number };
 }
 
+export interface WebhookEvent {
+  type: string;
+  workspaceId: string;
+  data: Record<string, unknown>;
+  timestamp: Date;
+}
+
+export type WebhookHandler = (event: WebhookEvent) => void | Promise<void>;
+
 export class MailEngine {
   readonly security: SecurityPipeline;
   readonly ai: AiEngine;
   readonly config: MailEngineConfig;
+  readonly webhooks: { emit: (event: WebhookEvent) => Promise<void>; on: (type: string, handler: WebhookHandler) => void };
   private smtpTransport: SmtpTransport | null = null;
   private accountManager: EmailAccountManager;
+  private webhookHandlers: Map<string, WebhookHandler[]> = new Map();
 
   constructor(config: MailEngineConfig) {
     this.config = config;
     this.security = new SecurityPipeline();
     this.ai = new AiEngine();
     this.accountManager = getEmailAccountManager(config.workspaceId);
+    this.webhooks = {
+      emit: async (event: WebhookEvent) => {
+        const handlers = this.webhookHandlers.get(event.type) || [];
+        for (const handler of handlers) {
+          try { await handler(event); } catch { /* swallow handler errors */ }
+        }
+      },
+      on: (type: string, handler: WebhookHandler) => {
+        const existing = this.webhookHandlers.get(type) || [];
+        existing.push(handler);
+        this.webhookHandlers.set(type, existing);
+      },
+    };
   }
 
   // ── Core: Send Mail — Actually Works ─────────────────────

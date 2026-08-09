@@ -14,7 +14,7 @@ CREATE TABLE "EmailAccount" (
     "lastSyncAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "EmailAccount_pkey" PRIMARY KEY ("id" ASC)
+    CONSTRAINT "EmailAccount_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable: MailLegalHold
@@ -34,7 +34,7 @@ CREATE TABLE "MailLegalHold" (
     "notifiedCustodians" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "releasedAt" TIMESTAMP(3),
-    CONSTRAINT "MailLegalHold_pkey" PRIMARY KEY ("id" ASC)
+    CONSTRAINT "MailLegalHold_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable: MailRetentionPolicy
@@ -51,7 +51,7 @@ CREATE TABLE "MailRetentionPolicy" (
     "lastAppliedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "MailRetentionPolicy_pkey" PRIMARY KEY ("id" ASC)
+    CONSTRAINT "MailRetentionPolicy_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable: MailDiscoverySearch
@@ -64,7 +64,7 @@ CREATE TABLE "MailDiscoverySearch" (
     "resultsCount" INTEGER NOT NULL DEFAULT 0,
     "createdById" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "MailDiscoverySearch_pkey" PRIMARY KEY ("id" ASC)
+    CONSTRAINT "MailDiscoverySearch_pkey" PRIMARY KEY ("id")
 );
 
 -- AlterTable: MailMessage - add new fields
@@ -97,11 +97,42 @@ CREATE INDEX "MailMessage_mailboxId_idx" ON "MailMessage"("workspaceId", "mailbo
 CREATE INDEX "MailMessage_accountId_idx" ON "MailMessage"("workspaceId", "accountId");
 CREATE INDEX "MailMessage_deliveryStatus_idx" ON "MailMessage"("workspaceId", "deliveryStatus");
 
+-- CreateTable: Mailbox (needed for shared mailboxes)
+CREATE TABLE "Mailbox" (
+    "id" TEXT NOT NULL,
+    "workspaceId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "description" TEXT NOT NULL DEFAULT '',
+    "isShared" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "Mailbox_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX "Mailbox_workspaceId_idx" ON "Mailbox"("workspaceId");
+
+-- CreateTable: MailboxMember
+CREATE TABLE "MailboxMember" (
+    "id" TEXT NOT NULL,
+    "mailboxId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "role" TEXT NOT NULL DEFAULT 'viewer',
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "MailboxMember_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX "MailboxMember_mailboxId_idx" ON "MailboxMember"("mailboxId");
+CREATE INDEX "MailboxMember_userId_idx" ON "MailboxMember"("userId");
+
 -- AddForeignKey
 ALTER TABLE "EmailAccount" ADD CONSTRAINT "EmailAccount_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "MailLegalHold" ADD CONSTRAINT "MailLegalHold_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "MailRetentionPolicy" ADD CONSTRAINT "MailRetentionPolicy_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "MailDiscoverySearch" ADD CONSTRAINT "MailDiscoverySearch_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "MailDiscoverySearch" ADD CONSTRAINT "MailDiscoverySearch_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Mailbox" ADD CONSTRAINT "Mailbox_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "MailboxMember" ADD CONSTRAINT "MailboxMember_mailboxId_fkey" FOREIGN KEY ("mailboxId") REFERENCES "Mailbox"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "MailboxMember" ADD CONSTRAINT "MailboxMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "MailMessage" ADD CONSTRAINT "MailMessage_mailboxId_fkey" FOREIGN KEY ("mailboxId") REFERENCES "Mailbox"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "MailMessage" ADD CONSTRAINT "MailMessage_accountId_fkey" FOREIGN KEY ("accountId") REFERENCES "EmailAccount"("id") ON DELETE SET NULL ON UPDATE CASCADE;
