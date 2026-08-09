@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
     "./components": "./src/components.tsx",
-    "./agents": "./src/agents.ts"
+    "./agents": "./src/agents.ts",
+    "./engine": "./src/engine.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

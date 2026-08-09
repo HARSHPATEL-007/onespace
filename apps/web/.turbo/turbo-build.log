@@ -10,14 +10,14 @@ $ next build
    - Environments: .env
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 6.1s
+ ✓ Compiled successfully in 7.1s
    Linting and checking validity of types ...
    Collecting page data ...
-   Generating static pages (0/49) ...
-   Generating static pages (12/49) 
-   Generating static pages (24/49) 
-   Generating static pages (36/49) 
- ✓ Generating static pages (49/49)
+   Generating static pages (0/52) ...
+   Generating static pages (13/52) 
+   Generating static pages (26/52) 
+   Generating static pages (39/52) 
+ ✓ Generating static pages (52/52)
    Finalizing page optimization ...
    Collecting build traces ...
 
@@ -32,6 +32,8 @@ Route (app)                                 Size  First Load JS
 ├ ƒ /api/auth/[...nextauth]                188 B         103 kB
 ├ ƒ /api/chat/stream                       127 B         110 kB
 ├ ƒ /api/forms/[id]/responses              188 B         103 kB
+├ ƒ /api/mail/receive                      127 B         117 kB
+├ ƒ /api/mail/send                         127 B         117 kB
 ├ ƒ /api/meet/stream                       165 B         110 kB
 ├ ƒ /api/n0va1o/callback/[provider]        188 B         103 kB
 ├ ƒ /api/n0va1o/export                     188 B         103 kB
@@ -79,7 +81,8 @@ Route (app)                                 Size  First Load JS
 ├ ƒ /m/insights                          1.43 kB         104 kB
 ├ ƒ /m/keep                              2.38 kB         278 kB
 ├ ƒ /m/legal                             1.68 kB         108 kB
-├ ƒ /m/mail                              10.2 kB         117 kB
+├ ƒ /m/mail                                127 B         117 kB
+├ ƒ /m/mail-demo                         1.37 kB         104 kB
 ├ ƒ /m/meet                                163 B         110 kB
 ├ ƒ /m/meet/[id]                           164 B         110 kB
 ├ ƒ /m/n0va1o                            13.1 kB         120 kB
