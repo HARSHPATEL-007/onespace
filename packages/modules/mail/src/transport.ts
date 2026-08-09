@@ -152,9 +152,11 @@ export class ImapReceiver {
     limit?: number;
     onEmail: (email: InboundEmail) => Promise<void>;
   }): Promise<{ success: boolean; count: number; error?: string }> {
-    try {
-      const Imap = (await import("imap")).default;
-      const { simpleParser } = await import("mailparser");
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const Imap = (await import("imap")).default as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { simpleParser } = await import("mailparser") as any;
 
       return new Promise((resolve) => {
         const count = 0;
@@ -169,7 +171,7 @@ export class ImapReceiver {
 
         imap.once("ready", () => {
           const mailbox = options.mailbox || "INBOX";
-          imap.openBox(mailbox, false, (err, box) => {
+          imap.openBox(mailbox, false, (err: Error | null) => {
             if (err) {
               imap.end();
               resolve({ success: false, count: 0, error: err.message });
@@ -180,7 +182,7 @@ export class ImapReceiver {
               ? ["SINCE", options.since]
               : ["ALL"];
 
-            imap.search(searchCriteria, (err, results) => {
+            imap.search(searchCriteria, (err: Error | null, results: number[]) => {
               if (err || !results || results.length === 0) {
                 imap.end();
                 resolve({ success: true, count: 0 });
@@ -197,11 +199,11 @@ export class ImapReceiver {
                 markSeen: false,
               });
 
-              fetch.on("message", (msg) => {
+              fetch.on("message", (msg: any) => {
                 let buffer = "";
 
-                msg.on("body", (stream) => {
-                  stream.on("data", (chunk) => {
+                msg.on("body", (stream: any) => {
+                  stream.on("data", (chunk: any) => {
                     buffer += chunk.toString("utf8");
                   });
                 });
@@ -215,12 +217,12 @@ export class ImapReceiver {
                         name: parsed.from?.text || "",
                         email: parsed.from?.value?.[0]?.address || "",
                       },
-                      to: parsed.to?.value?.map((a) => a.address || "") || [],
+                      to: parsed.to?.value?.map((a: { address: string }) => a.address) || [],
                       subject: parsed.subject || "(no subject)",
                       text: parsed.text || "",
                       html: parsed.html || "",
                       date: parsed.date || new Date(),
-                      attachments: parsed.attachments?.map((a) => ({
+                      attachments: parsed.attachments?.map((a: { filename?: string; content: Buffer; contentType: string }) => ({
                         filename: a.filename || "attachment",
                         content: a.content,
                         contentType: a.contentType,
@@ -234,7 +236,7 @@ export class ImapReceiver {
                 });
               });
 
-              fetch.once("error", (err) => {
+              fetch.once("error", (err: Error) => {
                 imap.end();
                 resolve({ success: false, count: processed, error: err.message });
               });
@@ -247,7 +249,7 @@ export class ImapReceiver {
           });
         });
 
-        imap.once("error", (err) => {
+        imap.once("error", (err: Error) => {
           resolve({ success: false, count: 0, error: err.message });
         });
       });

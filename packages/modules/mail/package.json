@@ -7,7 +7,6 @@
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
     "./components": "./src/components.tsx",
-    "./agents": "./src/agents.ts",
     "./engine": "./src/engine.ts"
   },
   "dependencies": {

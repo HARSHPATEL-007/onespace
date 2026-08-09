@@ -1,23 +1,12 @@
 /**
  * N0VA MAIL — Unified Engine
  *
- * Wires protocols, storage, security, API, admin, and AI engines
- * into a single cohesive mail system with real SMTP via nodemailer.
+ * Wires security, AI, and real SMTP transport into a single cohesive mail system.
+ * All email is stored in PostgreSQL via Prisma. Real SMTP via nodemailer.
  */
 
-import { prisma } from "@n0va/db";
-import {
-  MailProtocolEngine,
-  defaultInboundConfig,
-  defaultOutboundConfig,
-  type InboundMessage,
-  type OutboundMessage,
-  type DeliveryResult,
-} from "./protocols";
-import { StorageEngine } from "./storage";
+import { prisma, logAudit } from "@n0va/db";
 import { SecurityPipeline } from "./security";
-import { WebhookEngine, ApiKeyManager } from "./api";
-import { AdminEngine } from "./admin";
 import { AiEngine } from "./ai";
 import { SmtpTransport, EmailAccountManager, getEmailAccountManager, type SmtpConfig } from "./transport";
 
@@ -60,12 +49,7 @@ export interface MailStats {
 }
 
 export class MailEngine {
-  readonly protocols: MailProtocolEngine;
-  readonly storage: StorageEngine;
   readonly security: SecurityPipeline;
-  readonly webhooks: WebhookEngine;
-  readonly apiKeys: ApiKeyManager;
-  readonly admin: AdminEngine;
   readonly ai: AiEngine;
   readonly config: MailEngineConfig;
   private smtpTransport: SmtpTransport | null = null;
@@ -73,12 +57,7 @@ export class MailEngine {
 
   constructor(config: MailEngineConfig) {
     this.config = config;
-    this.protocols = new MailProtocolEngine(defaultInboundConfig, defaultOutboundConfig);
-    this.storage = new StorageEngine(`n0va-mail-${config.workspaceId}`);
     this.security = new SecurityPipeline();
-    this.webhooks = new WebhookEngine();
-    this.apiKeys = new ApiKeyManager();
-    this.admin = new AdminEngine();
     this.ai = new AiEngine();
     this.accountManager = getEmailAccountManager(config.workspaceId);
   }
@@ -92,23 +71,17 @@ export class MailEngine {
       const now = new Date();
       const status = input.scheduledAt && input.scheduledAt > now ? "SCHEDULED" : "SENT";
 
-      // Build raw MIME message
+      // Build raw MIME message for spam check
       const rawMime = this._buildMimeMessage(input);
 
       // Run security checks
       const spamResult = await this.security.spam.classify(rawMime, { from: input.from, to: input.to.join(", ") });
       if (spamResult.isSpam && input.from.includes("n0va")) {
-        await this.admin.audit.log({
-          workspaceId: this.config.workspaceId,
-          actorId: userId,
-          actorType: "user",
-          action: "mail.blocked_spam",
-          resourceType: "MailMessage",
-          resourceId: messageId,
-          details: { score: spamResult.score, rules: spamResult.rules },
-        });
         return { success: false, messageId, error: "Message flagged as spam" };
       }
+
+      // Get the email account for delivery tracking
+      const account = await this.accountManager.getDefaultAccount();
 
       // Store in database
       const message = await prisma.mailMessage.create({
@@ -133,42 +106,19 @@ export class MailEngine {
           aiCategory: "WORK",
           aiSentiment: "neutral",
           aiProcessed: true,
+          accountId: account?.id || null,
+          deliveryStatus: "pending",
         },
       });
 
-      // Index for search
-      await this.storage.search.index({
-        id: messageId,
-        messageId: message.id,
-        threadId,
-        subject: input.subject,
-        body: input.text || "",
-        fromEmail: input.from,
-        fromName: input.from.split("@")[0] || "N0VA",
-        toEmails: input.to,
-        date: now,
-        hasAttachments: (input.attachments?.length || 0) > 0,
-        folder: "SENT",
-        labels: [],
-        workspaceId: this.config.workspaceId,
-      });
-
-      // Emit webhook
-      await this.webhooks.emit({
-        type: "email.sent",
-        workspaceId: this.config.workspaceId,
-        data: { messageId, to: input.to, subject: input.subject },
-      });
-
       // Audit
-      await this.admin.audit.log({
+      await logAudit({
         workspaceId: this.config.workspaceId,
         actorId: userId,
-        actorType: "user",
+        module: "mail",
         action: "mail.sent",
-        resourceType: "MailMessage",
-        resourceId: message.id,
-        details: { to: input.to, subject: input.subject },
+        targetType: "MailMessage",
+        targetId: message.id,
       });
 
       return { success: true, messageId: message.id };
@@ -220,30 +170,6 @@ export class MailEngine {
         aiSentiment: aiResult.content.sentiment.label,
         aiProcessed: true,
       },
-    });
-
-    // Index for search
-    await this.storage.search.index({
-      id: messageId,
-      messageId: message.id,
-      threadId: message.threadId,
-      subject: message.subject,
-      body: message.body,
-      fromEmail: envelopeFrom,
-      fromName: envelopeFrom.split("@")[0] || "",
-      toEmails: envelopeTo,
-      date: new Date(),
-      hasAttachments: rawMime.includes("Content-Disposition: attachment"),
-      folder: message.folder,
-      labels: [],
-      workspaceId: this.config.workspaceId,
-    });
-
-    // Emit webhook
-    await this.webhooks.emit({
-      type: "email.received",
-      workspaceId: this.config.workspaceId,
-      data: { messageId, from: envelopeFrom, subject: message.subject, spam: spam.score },
     });
 
     return { success: true, messageId: message.id };
@@ -421,7 +347,14 @@ export class MailEngine {
       prisma.emailAlias.count({ where: { workspaceId: this.config.workspaceId, isActive: true } }),
     ]);
 
-    const sec = await this.admin.rbac.getUserRoles(this.config.workspaceId, this.config.workspaceId);
+    // Compute security score based on real configuration
+    const accounts = await prisma.emailAccount.count({
+      where: { workspaceId: this.config.workspaceId, isActive: true },
+    });
+    const domainsVerified = await prisma.mailDomain.count({
+      where: { workspaceId: this.config.workspaceId, verified: true },
+    });
+    const securityScore = Math.min(100, (accounts > 0 ? 40 : 0) + (domainsVerified > 0 ? 30 : 0) + 30);
 
     return {
       totalMessages: total,
@@ -429,9 +362,9 @@ export class MailEngine {
       sentCount: sent,
       receivedCount: received,
       spamBlocked: 0,
-      domainsVerified: domains,
+      domainsVerified,
       activeAliases: aliases,
-      securityScore: 75,
+      securityScore,
       queueStats: { active: 0, deferred: 0, delivered: sent },
     };
   }

@@ -196,7 +196,7 @@ export class EDiscoveryEngine {
         workspaceId: this.workspaceId,
         name: input.name,
         query: input.query,
-        filters: JSON.stringify({ dateRange: input.dateRange, senders: input.senders, folders: input.folders }),
+        filters: JSON.stringify(input.filters),
         resultsCount: results.length,
       } as never,
     });
@@ -204,10 +204,11 @@ export class EDiscoveryEngine {
   }
 
   async getDiscoverySearches(): Promise<Array<{ id: string; name: string; query: string; resultsCount: number; savedAt: Date }>> {
-    return prisma.mailDiscoverySearch.findMany({
+    const searches = await prisma.mailDiscoverySearch.findMany({
       where: { workspaceId: this.workspaceId },
       orderBy: { createdAt: "desc" },
     });
+    return searches.map((s) => ({ id: s.id, name: s.name, query: s.query, resultsCount: s.resultsCount, savedAt: s.createdAt }));
   }
 
   async runDiscoverySearch(searchId: string): Promise<{
