@@ -270,6 +270,73 @@ export function getMailAgentTools(): MailAgentTool[] {
         return { counts };
       },
     },
+    {
+      name: "mail.smart_inbox",
+      description: "Get inbox organized by AI priority: urgent, important, newsletters, notifications, other.",
+      parameters: { type: "object", properties: {}, required: [] },
+      execute: async (_input, ctx) => {
+        const svc = makeService(ctx);
+        return await svc.getSmartInbox();
+      },
+    },
+    {
+      name: "mail.one_click_replies",
+      description: "Generate 3 contextual one-click reply options for a thread.",
+      parameters: {
+        type: "object",
+        properties: { threadId: { type: "string", description: "Thread ID" } },
+        required: ["threadId"],
+      },
+      execute: async (input, ctx) => {
+        const svc = makeService(ctx);
+        return { replies: await svc.oneClickReplies(String(input.threadId)) };
+      },
+    },
+    {
+      name: "mail.rewrite_draft",
+      description: "Rewrite email draft: adjust tone, fix grammar, shorten. Returns improved text with change list.",
+      parameters: {
+        type: "object",
+        properties: {
+          content: { type: "string", description: "Draft text to rewrite" },
+          tone: { type: "string", enum: ["formal", "friendly", "assertive", "concise", "empathetic"] },
+          fixGrammar: { type: "boolean" },
+          shorten: { type: "boolean" },
+        },
+        required: ["content"],
+      },
+      execute: async (input, ctx) => {
+        const svc = makeService(ctx);
+        return await svc.rewriteDraft({
+          content: String(input.content),
+          tone: input.tone as never,
+          fixGrammar: input.fixGrammar as boolean | undefined,
+          shorten: input.shorten as boolean | undefined,
+        });
+      },
+    },
+    {
+      name: "mail.summarize_thread_detailed",
+      description: "Generate detailed thread summary with decisions, action items, participants, sentiment.",
+      parameters: {
+        type: "object",
+        properties: { threadId: { type: "string" } },
+        required: ["threadId"],
+      },
+      execute: async (input, ctx) => {
+        const svc = makeService(ctx);
+        return await svc.summarizeThreadDetailed(String(input.threadId));
+      },
+    },
+    {
+      name: "mail.classify_inbox",
+      description: "Run AI classification on all unprocessed inbox messages. Returns count of processed messages.",
+      parameters: { type: "object", properties: {}, required: [] },
+      execute: async (_input, ctx) => {
+        const svc = makeService(ctx);
+        return await svc.classifyInbox();
+      },
+    },
   ];
 }
 

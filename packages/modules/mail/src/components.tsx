@@ -35,6 +35,40 @@ export interface MailActions {
   createContact: (formData: FormData) => Promise<void>;
   deleteContact: (formData: FormData) => Promise<void>;
   searchContacts: (formData: FormData) => Promise<Array<{ id: string; email: string; firstName: string; lastName: string }>>;
+  // AI actions
+  oneClickReplies: (formData: FormData) => Promise<Array<{ id: string; label: string; text: string }>>;
+  rewriteDraft: (formData: FormData) => Promise<{ original: string; rewritten: string; changes: string[] }>;
+  classifyInbox: () => Promise<{ processed: number }>;
+  summarizeThreadDetailed: (formData: FormData) => Promise<{ summary: string; decisions: string[]; actionItems: string[]; participants: string[]; sentiment: string }>;
+  useQuickReply: (formData: FormData) => Promise<void>;
+  // Team collaboration
+  createMailbox: (formData: FormData) => Promise<void>;
+  deleteMailbox: (formData: FormData) => Promise<void>;
+  addComment: (formData: FormData) => Promise<void>;
+  deleteComment: (formData: FormData) => Promise<void>;
+  createDelegation: (formData: FormData) => Promise<void>;
+  revokeDelegation: (formData: FormData) => Promise<void>;
+  convertToTask: (formData: FormData) => Promise<void>;
+  updateTask: (formData: FormData) => Promise<void>;
+  deleteTask: (formData: FormData) => Promise<void>;
+  createSharedDraft: (formData: FormData) => Promise<void>;
+  updateSharedDraft: (formData: FormData) => Promise<void>;
+  deleteSharedDraft: (formData: FormData) => Promise<void>;
+  addDraftCollaborator: (formData: FormData) => Promise<void>;
+  // Domain & Privacy
+  registerDomain: (formData: FormData) => Promise<void>;
+  updateDomain: (formData: FormData) => Promise<void>;
+  deleteDomain: (formData: FormData) => Promise<void>;
+  verifyDomain: (formData: FormData) => Promise<{ id: string; verified: boolean; healthStatus: string }>;
+  addDnsRecord: (formData: FormData) => Promise<void>;
+  deleteDnsRecord: (formData: FormData) => Promise<void>;
+  createAlias: (formData: FormData) => Promise<void>;
+  toggleAlias: (formData: FormData) => Promise<void>;
+  deleteAlias: (formData: FormData) => Promise<void>;
+  createReverseAlias: (formData: FormData) => Promise<void>;
+  deleteReverseAlias: (formData: FormData) => Promise<void>;
+  reportBreach: (formData: FormData) => Promise<void>;
+  resolveBreach: (formData: FormData) => Promise<void>;
 }
 
 type MessageWithLabels = MailMessage & { labels: Array<MailLabelMap & { label: MailLabel }> };
@@ -93,6 +127,42 @@ interface FolderItem {
   childFolders?: FolderItem[];
 }
 
+interface DomainItem {
+  id: string;
+  domain: string;
+  verified: boolean;
+  healthStatus: string;
+  privacyEnabled: boolean;
+  catchAllEnabled: boolean;
+  dnsRecords: Array<{ id: string; type: string; name: string; value: string; isVerified: boolean }>;
+}
+
+interface AliasItem {
+  id: string;
+  localPart: string;
+  forwardTo: string;
+  isActive: boolean;
+  description: string;
+  domainId: string;
+}
+
+interface ReverseAliasItem {
+  id: string;
+  aliasId: string;
+  relayAddress: string;
+  targetEmail: string;
+  isActive: boolean;
+}
+
+interface BreachItem {
+  id: string;
+  aliasEmail: string;
+  source: string;
+  severity: string;
+  detectedAt: Date;
+  isResolved: boolean;
+}
+
 export function MailApp({
   folder,
   threads,
@@ -103,6 +173,10 @@ export function MailApp({
   signatures: initialSignatures,
   folders: initialFolders,
   autoResponder,
+  domains,
+  aliases,
+  reverseAliases,
+  breaches,
 }: {
   folder: string;
   threads: MailThread[];
@@ -113,6 +187,10 @@ export function MailApp({
   signatures?: SignatureItem[];
   folders?: FolderItem[];
   autoResponder?: { enabled: boolean; subject: string; body: string } | null;
+  domains?: DomainItem[];
+  aliases?: AliasItem[];
+  reverseAliases?: ReverseAliasItem[];
+  breaches?: BreachItem[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -153,6 +231,32 @@ export function MailApp({
   const [aiReply, setAiReply] = useState<string | null>(null);
   const [aiActionItems, setAiActionItems] = useState<string[]>([]);
   const [aiLoading, setAiLoading] = useState<string | null>(null);
+  // Enhanced AI state
+  const [oneClickReplies, setOneClickReplies] = useState<Array<{ id: string; label: string; text: string }>>([]);
+  const [rewritePanelOpen, setRewritePanelOpen] = useState(false);
+  const [rewriteContent, setRewriteContent] = useState("");
+  const [rewriteResult, setRewriteResult] = useState<{ original: string; rewritten: string; changes: string[] } | null>(null);
+  const [rewriteTone, setRewriteTone] = useState<string>("formal");
+  const [smartInboxView, setSmartInboxView] = useState(false);
+  const [smartInboxData, setSmartInboxData] = useState<{ urgent: MailThread[]; important: MailThread[]; newsletters: MailThread[]; notifications: MailThread[]; other: MailThread[] } | null>(null);
+  const [detailedSummary, setDetailedSummary] = useState<{ summary: string; decisions: string[]; actionItems: string[]; participants: string[]; sentiment: string } | null>(null);
+  // Team collaboration state
+  const [teamPanel, setTeamPanel] = useState<"none" | "comments" | "delegation" | "tasks" | "drafts" | "mailboxes">("none");
+  const [comments, setComments] = useState<Array<{ id: string; body: string; authorName: string | null; createdAt: Date; isResolve: boolean }>>([]);
+  const [newComment, setNewComment] = useState("");
+  const [taskPanelOpen, setTaskPanelOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskPriority, setTaskPriority] = useState("MEDIUM");
+  const [kanbanView, setKanbanView] = useState(false);
+  const [sharedDraftOpen, setSharedDraftOpen] = useState(false);
+  const [draftSubject, setDraftSubject] = useState("");
+  const [draftBody, setDraftBody] = useState("");
+  // Domain & Privacy state
+  const [domainPanel, setDomainPanel] = useState<"none" | "domains" | "aliases" | "breaches">("none");
+  const [showRegisterDomain, setShowRegisterDomain] = useState(false);
+  const [newDomain, setNewDomain] = useState("");
 
   const activeThread = threads.find((t) => t.threadId === activeThreadId) ?? null;
 
@@ -227,6 +331,97 @@ export function MailApp({
     [activeThreadId, aiReply, actions],
   );
 
+  // ── Enhanced AI Handlers ──
+
+  const handleOneClickReplies = useCallback(async () => {
+    if (!activeThreadId) return;
+    setAiLoading("replies");
+    try {
+      const fd = new FormData();
+      fd.set("threadId", activeThreadId);
+      const result = await actions.oneClickReplies(fd);
+      setOneClickReplies(result);
+    } catch (err) {
+      console.error("One-click replies failed:", err);
+    } finally {
+      setAiLoading(null);
+    }
+  }, [activeThreadId, actions]);
+
+  const handleRewrite = useCallback(async () => {
+    if (!rewriteContent.trim()) return;
+    setAiLoading("rewrite");
+    try {
+      const fd = new FormData();
+      fd.set("content", rewriteContent);
+      fd.set("tone", rewriteTone);
+      fd.set("fixGrammar", "true");
+      const result = await actions.rewriteDraft(fd);
+      setRewriteResult(result);
+    } catch (err) {
+      console.error("Rewrite failed:", err);
+    } finally {
+      setAiLoading(null);
+    }
+  }, [rewriteContent, rewriteTone, actions]);
+
+  const handleSmartInbox = useCallback(async () => {
+    setAiLoading("smartInbox");
+    try {
+      // This would call the server to get smart inbox data
+      // For now, we'll use a placeholder that the page action provides
+      setSmartInboxView(!smartInboxView);
+    } catch (err) {
+      console.error("Smart inbox failed:", err);
+    } finally {
+      setAiLoading(null);
+    }
+  }, [smartInboxView]);
+
+  const handleDetailedSummary = useCallback(async () => {
+    if (!activeThreadId) return;
+    setAiLoading("detailedSummary");
+    try {
+      const fd = new FormData();
+      fd.set("threadId", activeThreadId);
+      const result = await actions.summarizeThreadDetailed(fd);
+      setDetailedSummary(result);
+    } catch (err) {
+      console.error("Detailed summary failed:", err);
+    } finally {
+      setAiLoading(null);
+    }
+  }, [activeThreadId, actions]);
+
+  const handleUseQuickReply = useCallback(async (text: string) => {
+    if (!activeThreadId) return;
+    setAiLoading("send");
+    try {
+      const fd = new FormData();
+      fd.set("threadId", activeThreadId);
+      fd.set("body", text);
+      await actions.reply(fd);
+      setOneClickReplies([]);
+      router.refresh();
+    } catch (err) {
+      console.error("Quick reply failed:", err);
+    } finally {
+      setAiLoading(null);
+    }
+  }, [activeThreadId, actions]);
+
+  const handleClassifyInbox = useCallback(async () => {
+    setAiLoading("classify");
+    try {
+      await actions.classifyInbox();
+      router.refresh();
+    } catch (err) {
+      console.error("Classify inbox failed:", err);
+    } finally {
+      setAiLoading(null);
+    }
+  }, [actions, router]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const params = new URLSearchParams(searchParams.toString());
@@ -259,6 +454,8 @@ export function MailApp({
       {/* Rail */}
       <div style={{ width: 220, flexShrink: 0, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-lg)", padding: "var(--nv-space-3)", display: "flex", flexDirection: "column", gap: 2, overflowY: "auto" }}>
         <Button size="md" style={{ marginBottom: 10 }} onClick={() => setComposeOpen(true)}>+ Compose</Button>
+        <Button variant={smartInboxView ? "secondary" : "ghost"} size="sm" onClick={() => setSmartInboxView(!smartInboxView)} style={{ marginBottom: 4 }}>🧠 Smart Inbox</Button>
+        <Button variant="ghost" size="sm" onClick={handleClassifyInbox} disabled={aiLoading === "classify"} style={{ marginBottom: 4 }}>{aiLoading === "classify" ? "…" : "✨ Classify"}</Button>
         <Button variant="ghost" size="sm" onClick={() => setSearchOpen(o => !o)} style={{ marginBottom: 4 }}>{searchOpen ? "✕ Close" : "🔍 Search"}</Button>
         {searchOpen && (
           <form onSubmit={handleSearch} style={{ display: "flex", gap: 4, marginBottom: 6 }}>
@@ -288,26 +485,44 @@ export function MailApp({
         <Button variant="ghost" size="sm" onClick={() => setAutoResponderOpen(true)} style={{ alignSelf: "flex-start" }}>🔄 Auto-Reply</Button>
         <Button variant="ghost" size="sm" onClick={() => setRulesOpen(true)} style={{ alignSelf: "flex-start" }}>⚙ Rules ({initialRules?.length ?? 0})</Button>
         <Button variant="ghost" size="sm" onClick={() => setFoldersOpen(true)} style={{ alignSelf: "flex-start" }}>📁 Folders</Button>
+        <div style={{ marginTop: 14, fontWeight: 700, fontSize: 12, color: "var(--nv-color-text-faint)", padding: "0 10px 6px" }}>TEAM</div>
+        <Button variant="ghost" size="sm" onClick={() => setTeamPanel(teamPanel === "mailboxes" ? "none" : "mailboxes")} style={{ alignSelf: "flex-start" }}>📨 Shared Inboxes</Button>
+        <Button variant="ghost" size="sm" onClick={() => setTeamPanel(teamPanel === "delegation" ? "none" : "delegation")} style={{ alignSelf: "flex_start" }}>👤 Delegation</Button>
+        <Button variant="ghost" size="sm" onClick={() => setTeamPanel(teamPanel === "tasks" ? "none" : "tasks")} style={{ alignSelf: "flex-start" }}>📋 Tasks</Button>
+        <Button variant="ghost" size="sm" onClick={() => setTeamPanel(teamPanel === "drafts" ? "none" : "drafts")} style={{ alignSelf: "flex-start" }}>📝 Shared Drafts</Button>
+        <div style={{ marginTop: 14, fontWeight: 700, fontSize: 12, color: "var(--nv-color-text-faint)", padding: "0 10px 6px" }}>DOMAIN & PRIVACY</div>
+        <Button variant="ghost" size="sm" onClick={() => setDomainPanel(domainPanel === "domains" ? "none" : "domains")} style={{ alignSelf: "flex-start" }}>🌐 Domains</Button>
+        <Button variant="ghost" size="sm" onClick={() => setDomainPanel(domainPanel === "aliases" ? "none" : "aliases")} style={{ alignSelf: "flex-start" }}>📧 Aliases</Button>
+        <Button variant="ghost" size="sm" onClick={() => setDomainPanel(domainPanel === "breaches" ? "none" : "breaches")} style={{ alignSelf: "flex-start" }}>🛡 Breaches</Button>
       </div>
 
       {/* Thread list */}
       <div style={{ width: 340, flexShrink: 0, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-lg)", display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        {smartInboxView && (
+          <div style={{ padding: "var(--nv-space-2)", background: "var(--nv-color-primary-alpha)", borderBottom: "1px solid var(--nv-color-border)", fontSize: 12, fontWeight: 600 }}>
+            🧠 Smart Inbox — AI Prioritized
+          </div>
+        )}
         {threads.length === 0 && <div className="nv-empty">Nothing here</div>}
         {threads.map((t) => {
           const latest = t.messages[t.messages.length - 1]!;
+          const priorityColor = latest.aiPriority === "HIGH" ? "var(--nv-color-danger)" : latest.aiPriority === "MEDIUM" ? "var(--nv-color-warning)" : "var(--nv-color-text-faint)";
+          const categoryIcon = latest.aiCategory === "NEWSLETTER" ? "📰" : latest.aiCategory === "NOTIFICATION" ? "🔔" : latest.aiCategory === "PROMOTIONAL" ? "🏷" : latest.aiCategory === "SPAM" ? "🚫" : "";
           return (
-            <a key={t.threadId} href={`/m/mail?folder=${folder}&t=${t.threadId}`} style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", textDecoration: "none", color: "var(--nv-color-text)", background: activeThreadId === t.threadId ? "var(--nv-color-primary-alpha)" : "transparent", display: "block" }}>
+            <a key={t.threadId} href={`/m/mail?folder=${folder}&t=${t.threadId}`} style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", textDecoration: "none", color: "var(--nv-color-text)", background: activeThreadId === t.threadId ? "var(--nv-color-primary-alpha)" : "transparent", display: "block", borderLeft: latest.aiPriority === "HIGH" ? `3px solid ${priorityColor}` : undefined }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ fontSize: 14 }}>{t.starred ? "★" : "☆"}</span>
+                {categoryIcon && <span style={{ fontSize: 12 }}>{categoryIcon}</span>}
                 <span style={{ fontWeight: t.unread > 0 ? 700 : 500, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{latest.subject || "(no subject)"}</span>
+                <span style={{ fontSize: 11, color: priorityColor, fontWeight: 600 }}>{latest.aiPriority === "HIGH" ? "!" : ""}</span>
                 <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{t.latestSentAt.toLocaleDateString()}</span>
               </div>
-              <div style={{ fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
+              <div style={{ fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2, marginLeft: categoryIcon ? 38 : 20 }}>
                 {latest.fromName ? `${latest.fromName} — ` : ""}{latest.body.slice(0, 90)}
               </div>
-              {t.snoozeUntil && <div style={{ fontSize: 11, color: "var(--nv-color-accent)", marginTop: 4 }}>⏰ Snoozed until {new Date(t.snoozeUntil).toLocaleString()}</div>}
+              {t.snoozeUntil && <div style={{ fontSize: 11, color: "var(--nv-color-accent)", marginTop: 4, marginLeft: 38 }}>⏰ Snoozed until {new Date(t.snoozeUntil).toLocaleString()}</div>}
               {t.messages[0]!.labels.length > 0 && (
-                <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                <div style={{ display: "flex", gap: 4, marginTop: 6, marginLeft: 38 }}>
                   {t.messages[0]!.labels.map((lm) => (
                     <button key={lm.labelId} type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleLabel(t.messages[0]!.id, lm.labelId, true); }} style={{ fontSize: 11, padding: "1px 8px", borderRadius: 999, color: lm.label.color, background: "transparent", border: `1px solid ${lm.label.color}`, cursor: "pointer", fontFamily: "inherit" }}>{lm.label.name}</button>
                   ))}
@@ -348,16 +563,45 @@ export function MailApp({
               <Button variant="ghost" size="sm" onClick={() => setSnoozeOpen(true)}>⏰ Snooze</Button>
               <span style={{ width: 1, background: "var(--nv-color-border)", margin: "4px 4px" }} />
               <Button variant="ghost" size="sm" disabled={aiLoading === "summarize"} onClick={() => runAi("summarize")}>{aiLoading === "summarize" ? "…" : "📋 Summarize"}</Button>
-              <Button variant="ghost" size="sm" disabled={aiLoading === "reply"} onClick={() => runAi("reply")}>{aiLoading === "reply" ? "…" : "💡 Smart Reply"}</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setRewritePanelOpen(true); setRewriteContent(activeThread?.messages[activeThread.messages.length - 1]?.body || ""); }}>✏ Rewrite</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setTaskPanelOpen(true); setTaskTitle(activeThread?.messages[activeThread.messages.length - 1]?.subject || ""); }}>📋 To Task</Button>
+              <Button variant="ghost" size="sm" onClick={() => setTeamPanel(teamPanel === "comments" ? "none" : "comments")}>💬 Comments</Button>
+              <Button variant="ghost" size="sm" disabled={aiLoading === "detailedSummary"} onClick={() => handleDetailedSummary()}>{aiLoading === "detailedSummary" ? "…" : "🔍 Details"}</Button>
+              <Button variant="ghost" size="sm" disabled={aiLoading === "replies"} onClick={() => handleOneClickReplies()}>{aiLoading === "replies" ? "…" : "⚡ Quick Reply"}</Button>
               <Button variant="ghost" size="sm" disabled={aiLoading === "actions"} onClick={() => runAi("actions")}>{aiLoading === "actions" ? "…" : "✅ Actions"}</Button>
               {aiReply && <Button variant="ghost" size="sm" onClick={() => { setReplyOpen(true); setAiReply(null); }}>↪ Use</Button>}
             </div>
 
             <div style={{ flex: 1, overflowY: "auto", padding: "var(--nv-space-4)", display: "flex", flexDirection: "column", gap: "var(--nv-space-4)" }}>
-              {aiSummary && (
+              {/* One-Click Replies */}
+              {oneClickReplies.length > 0 && (
+                <div className="nv-card" style={{ padding: "var(--nv-space-4)", borderLeft: "3px solid var(--nv-color-accent)" }}>
+                  <div style={{ fontWeight: 700, fontSize: "var(--nv-font-sm)", color: "var(--nv-color-accent)", marginBottom: 8 }}>⚡ Quick Replies</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {oneClickReplies.map((r) => (
+                      <button key={r.id} type="button" onClick={() => handleUseQuickReply(r.text)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "var(--nv-space-3)", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", background: "var(--nv-color-surface)", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                        <span style={{ fontWeight: 700, fontSize: "var(--nv-font-sm)", color: "var(--nv-color-primary)", flexShrink: 0 }}>{r.label}</span>
+                        <span style={{ fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.text}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Detailed Summary */}
+              {detailedSummary && (
                 <div className="nv-card" style={{ padding: "var(--nv-space-4)", borderLeft: "3px solid var(--nv-color-primary)" }}>
-                  <div style={{ fontWeight: 700, fontSize: "var(--nv-font-sm)", color: "var(--nv-color-primary)", marginBottom: 6 }}>📋 Thread Summary</div>
-                  <div style={{ fontSize: "var(--nv-font-md)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{aiSummary}</div>
+                  <div style={{ fontWeight: 700, fontSize: "var(--nv-font-sm)", color: "var(--nv-color-primary)", marginBottom: 6 }}>🔍 Detailed Summary</div>
+                  <div style={{ fontSize: "var(--nv-font-md)", whiteSpace: "pre-wrap", lineHeight: 1.6, marginBottom: 8 }}>{detailedSummary.summary}</div>
+                  {detailedSummary.decisions.length > 0 && (
+                    <div style={{ marginBottom: 6 }}>
+                      <div style={{ fontWeight: 600, fontSize: "var(--nv-font-sm)", marginBottom: 4 }}>Decisions:</div>
+                      <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--nv-font-sm)", lineHeight: 1.6 }}>{detailedSummary.decisions.map((d, i) => <li key={i}>{d}</li>)}</ul>
+                    </div>
+                  )}
+                  {detailedSummary.participants.length > 0 && (
+                    <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Participants: {detailedSummary.participants.join(", ")} · Sentiment: {detailedSummary.sentiment}</div>
+                  )}
                 </div>
               )}
               {aiActionItems.length > 0 && (
@@ -627,6 +871,181 @@ export function MailApp({
           <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Actions (JSON array):</div>
           <textarea className="nv-input" name="actions" placeholder='[{"type":"moveToFolder","folder":"ARCHIVE"},{"type":"markRead"}]' rows={3} style={{ resize: "vertical", fontFamily: "monospace", fontSize: 12 }} />
         </form>
+      </Dialog>
+
+      {/* Rewrite Draft Dialog */}
+      <Dialog open={rewritePanelOpen} onClose={() => setRewritePanelOpen(false)} title="✨ Rewrite & Optimize" actions={<>
+        <Button variant="secondary" onClick={() => setRewritePanelOpen(false)}>Close</Button>
+        <Button onClick={() => void handleRewrite()}>Rewrite</Button>
+      </>}>
+        <form id="rewrite-form" onSubmit={(e) => { e.preventDefault(); void handleRewrite(); }} style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 480 }}>
+          <textarea className="nv-input" name="content" placeholder="Paste or write your draft here…" rows={6} value={rewriteContent} onChange={(e) => setRewriteContent(e.target.value)} style={{ resize: "vertical" }} />
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Tone:</span>
+            {(["formal", "friendly", "assertive", "concise", "empathetic"] as const).map((t) => (
+              <Button key={t} type="button" size="sm" variant={rewriteTone === t ? "secondary" : "ghost"} onClick={() => setRewriteTone(t)}>{t}</Button>
+            ))}
+          </div>
+          {rewriteResult && (
+            <div style={{ padding: "var(--nv-space-3)", background: "var(--nv-color-surface-alt)", borderRadius: "var(--nv-radius-md)", border: "1px solid var(--nv-color-border)" }}>
+              <div style={{ fontSize: "var(--nv-font-sm)", fontWeight: 600, marginBottom: 4 }}>Rewritten:</div>
+              <div style={{ fontSize: "var(--nv-font-md)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{rewriteResult.rewritten}</div>
+              {rewriteResult.changes.length > 0 && (
+                <div style={{ marginTop: 6, fontSize: 12, color: "var(--nv-color-text-faint)" }}>Changes: {rewriteResult.changes.join(", ")}</div>
+              )}
+              <Button size="sm" variant="secondary" style={{ marginTop: 8 }} onClick={() => { navigator.clipboard.writeText(rewriteResult.rewritten); }}>Copy Result</Button>
+            </div>
+          )}
+        </form>
+      </Dialog>
+
+      {/* Internal Comments Panel */}
+      <Dialog open={teamPanel === "comments"} onClose={() => setTeamPanel("none")} title="💬 Internal Comments" actions={<>
+        <Button variant="secondary" onClick={() => setTeamPanel("none")}>Close</Button>
+      </>}>
+        <div style={{ minWidth: 480, maxHeight: 400, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+          {comments.length === 0 && <div style={{ textAlign: "center", color: "var(--nv-color-text-faint)", fontSize: "var(--nv-font-sm)", padding: "var(--nv-space-4)" }}>No comments yet. Add internal notes for your team.</div>}
+          {comments.map((c) => (
+            <div key={c.id} style={{ padding: "var(--nv-space-3)", background: c.isResolve ? "var(--nv-color-success-alpha)" : "var(--nv-color-surface-alt)", borderRadius: "var(--nv-radius-md)", borderLeft: c.isResolve ? "3px solid var(--nv-color-success)" : "3px solid var(--nv-color-primary)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, fontSize: "var(--nv-font-sm)" }}>{c.authorName || "You"}</span>
+                <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{new Date(c.createdAt).toLocaleString()}</span>
+              </div>
+              <div style={{ fontSize: "var(--nv-font-sm)", whiteSpace: "pre-wrap" }}>{c.body}</div>
+              {c.isResolve && <div style={{ fontSize: 11, color: "var(--nv-color-success)", marginTop: 4, fontWeight: 600 }}>✓ Thread Resolved</div>}
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+            <textarea className="nv-input" placeholder="Add internal comment…" rows={2} value={newComment} onChange={(e) => setNewComment(e.target.value)} style={{ flex: 1, resize: "vertical" }} />
+            <Button variant="secondary" onClick={() => {
+              if (!newComment.trim() || !activeThread) return;
+              const fd = new FormData();
+              fd.set("messageId", activeThread.messages[activeThread.messages.length - 1]!.id);
+              fd.set("body", newComment);
+              void actions.addComment(fd).then(() => { setNewComment(""); });
+            }}>Post</Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Task Conversion Dialog */}
+      <Dialog open={taskPanelOpen} onClose={() => setTaskPanelOpen(false)} title="📋 Convert to Task" actions={<>
+        <Button variant="secondary" onClick={() => setTaskPanelOpen(false)}>Cancel</Button>
+        <Button onClick={() => {
+          if (!activeThread || !taskTitle.trim()) return;
+          const fd = new FormData();
+          fd.set("messageId", activeThread.messages[activeThread.messages.length - 1]!.id);
+          fd.set("title", taskTitle);
+          fd.set("priority", taskPriority);
+          if (taskAssignee) fd.set("assigneeId", taskAssignee);
+          if (taskDueDate) fd.set("dueDate", taskDueDate);
+          void actions.convertToTask(fd).then(() => { setTaskPanelOpen(false); });
+        }}>Create Task</Button>
+      </>}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 420 }}>
+          <input className="nv-input" placeholder="Task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
+          <input className="nv-input" placeholder="Assignee ID (optional)" value={taskAssignee} onChange={(e) => setTaskAssignee(e.target.value)} />
+          <input className="nv-input" type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} />
+          <select className="nv-input" value={taskPriority} onChange={(e) => setTaskPriority(e.target.value)}>
+            <option value="HIGH">High Priority</option>
+            <option value="MEDIUM">Medium Priority</option>
+            <option value="LOW">Low Priority</option>
+          </select>
+        </div>
+      </Dialog>
+
+      {/* Domains & DNS Dialog */}
+      <Dialog open={domainPanel === "domains"} onClose={() => setDomainPanel("none")} title="🌐 Domain Management" actions={<>
+        <Button variant="ghost" onClick={() => { setShowRegisterDomain(true); }}>+ Register Domain</Button>
+        <Button variant="secondary" onClick={() => setDomainPanel("none")}>Close</Button>
+      </>}>
+        <div style={{ minWidth: 520, maxHeight: 400, overflowY: "auto" }}>
+          {(domains || []).length === 0 && <div style={{ textAlign: "center", color: "var(--nv-color-text-faint)", fontSize: "var(--nv-font-sm)", padding: "var(--nv-space-4)" }}>No domains registered. Register a domain to get started.</div>}
+          {(domains || []).map((d) => (
+            <div key={d.id} style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, fontSize: "var(--nv-font-md)" }}>{d.domain}</span>
+                <span className={d.verified ? "nv-badge nv-badge-success" : "nv-badge"}>{d.verified ? "✓ Verified" : "Pending"}</span>
+                <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{d.healthStatus}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", marginBottom: 6 }}>
+                Privacy: {d.privacyEnabled ? "✓ Enabled" : "✕ Disabled"} · Catch-all: {d.catchAllEnabled ? "✓ Enabled" : "✕ Disabled"}
+              </div>
+              {d.dnsRecords.length > 0 && (
+                <div style={{ fontSize: 12, background: "var(--nv-color-surface-alt)", padding: 6, borderRadius: "var(--nv-radius-sm)", marginBottom: 4 }}>
+                  <strong>DNS Records:</strong>
+                  {d.dnsRecords.map((r) => (
+                    <div key={r.id}>{r.type} {r.name} → {r.value} {r.isVerified ? "✓" : ""}</div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 4 }}>
+                <Button size="sm" variant="secondary" onClick={() => { const fd = new FormData(); fd.set("domainId", d.id); void actions.verifyDomain(fd).then(() => router.refresh()); }}>Verify</Button>
+                <Button size="sm" variant="danger" onClick={() => { const fd = new FormData(); fd.set("domainId", d.id); void actions.deleteDomain(fd).then(() => router.refresh()); }}>Delete</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Dialog>
+
+      {/* Aliases Dialog */}
+      <Dialog open={domainPanel === "aliases"} onClose={() => setDomainPanel("none")} title="📧 Email Aliases" actions={<>
+        <Button variant="secondary" onClick={() => setDomainPanel("none")}>Close</Button>
+      </>}>
+        <div style={{ minWidth: 480, maxHeight: 400, overflowY: "auto" }}>
+          {(aliases || []).length === 0 && <div style={{ textAlign: "center", color: "var(--nv-color-text-faint)", fontSize: "var(--nv-font-sm)", padding: "var(--nv-space-4)" }}>No aliases created.</div>}
+          {(aliases || []).map((a) => (
+            <div key={a.id} style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: "var(--nv-font-sm)" }}>{a.localPart}@domain → {a.forwardTo}</div>
+                <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{a.description || "No description"}</div>
+              </div>
+              <span className={a.isActive ? "nv-badge nv-badge-success" : "nv-badge"}>{a.isActive ? "Active" : "Off"}</span>
+              <Button size="sm" variant="ghost" onClick={() => { const fd = new FormData(); fd.set("aliasId", a.id); void actions.toggleAlias(fd).then(() => router.refresh()); }}>Toggle</Button>
+              <Button size="sm" variant="danger" onClick={() => { const fd = new FormData(); fd.set("aliasId", a.id); void actions.deleteAlias(fd).then(() => router.refresh()); }}>✕</Button>
+            </div>
+          ))}
+        </div>
+      </Dialog>
+
+      {/* Breach Monitor Dialog */}
+      <Dialog open={domainPanel === "breaches"} onClose={() => setDomainPanel("none")} title="🛡 Breach Monitor" actions={<>
+        <Button variant="secondary" onClick={() => setDomainPanel("none")}>Close</Button>
+      </>}>
+        <div style={{ minWidth: 480, maxHeight: 400, overflowY: "auto" }}>
+          {(breaches || []).length === 0 && <div style={{ textAlign: "center", color: "var(--nv-color-text-faint)", fontSize: "var(--nv-font-sm)", padding: "var(--nv-space-4)" }}>No breach events detected. Your aliases are secure.</div>}
+          {(breaches || []).map((b) => (
+            <div key={b.id} style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", borderLeft: b.severity === "high" ? "3px solid var(--nv-color-danger)" : b.severity === "medium" ? "3px solid var(--nv-color-warning)" : "3px solid var(--nv-color-text-faint)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontWeight: 600, fontSize: "var(--nv-font-sm)" }}>{b.source}</span>
+                <span className={b.severity === "high" ? "nv-badge nv-badge-danger" : "nv-badge"}>{b.severity}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Alias: {b.aliasEmail} · {new Date(b.detectedAt).toLocaleString()}</div>
+              {!b.isResolved && (
+                <Button size="sm" variant="secondary" style={{ marginTop: 4 }} onClick={() => { const fd = new FormData(); fd.set("breachId", b.id); void actions.resolveBreach(fd).then(() => router.refresh()); }}>Mark Resolved</Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </Dialog>
+      {/* Register Domain Dialog */}
+      <Dialog open={showRegisterDomain} onClose={() => setShowRegisterDomain(false)} title="Register Domain" actions={<>
+        <Button variant="secondary" onClick={() => setShowRegisterDomain(false)}>Cancel</Button>
+        <Button onClick={() => {
+          if (!newDomain.trim()) return;
+          const fd = new FormData();
+          fd.set("domain", newDomain);
+          fd.set("privacyEnabled", "true");
+          fd.set("catchAllEnabled", "true");
+          void actions.registerDomain(fd).then(() => { setShowRegisterDomain(false); setNewDomain(""); router.refresh(); });
+        }}>Register</Button>
+      </>}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 420 }}>
+          <input className="nv-input" placeholder="yourdomain.com" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} />
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--nv-font-sm)" }}><input type="checkbox" defaultChecked /> Enable WHOIS privacy protection</label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--nv-font-sm)" }}><input type="checkbox" defaultChecked /> Enable catch-all routing</label>
+          <p style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>After registration, you'll need to configure DNS records to verify domain ownership and enable email routing.</p>
+        </div>
       </Dialog>
     </div>
   );

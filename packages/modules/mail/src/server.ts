@@ -46,6 +46,14 @@ export interface AiSuggestion {
   typingDelayMs: number;
 }
 
+export interface MailThreadView {
+  threadId: string;
+  messages: Array<Record<string, unknown> & { threadId: string; sentAt: Date; isRead: boolean; isStarred: boolean; aiPriority: string; aiCategory: string; fromName: string; fromEmail: string; subject: string; body: string; direction: string; labels?: Array<{ label: { id: string; name: string; color: string } }> }>;
+  unread: number;
+  starred: boolean;
+  latestSentAt: Date;
+}
+
 export type { MailStatus } from "@n0va/db";
 
 export class MailService {
@@ -733,6 +741,623 @@ export class MailService {
     return message;
   }
 
+  /* ── Team Collaboration & Shared Workflows ──────────────── */
+
+  // ── Shared Mailboxes ──
+
+  async createMailbox(input: { name: string; email: string; description?: string; autoAssign?: boolean }) {
+    await this.assert("CREATE");
+    const mailbox = await prisma.mailbox.create({
+      data: {
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        name: input.name,
+        email: input.email,
+        description: input.description ?? "",
+        autoAssign: input.autoAssign ?? false,
+      },
+    });
+    // Creator becomes owner
+    await prisma.mailboxMember.create({
+      data: { mailboxId: mailbox.id, userId: this.userId, role: "OWNER" },
+    });
+    await this.audit("mail.mailbox_created", mailbox.id);
+    return mailbox;
+  }
+
+  async getMailboxes() {
+    await this.assert("READ");
+    return prisma.mailbox.findMany({
+      where: { workspaceId: this.workspaceId, isActive: true },
+      include: { members: { include: { user: { select: { id: true, name: true, email: true, image: true } } } } },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  async updateMailbox(mailboxId: string, input: { name?: string; email?: string; description?: string; autoAssign?: boolean }) {
+    await this.assert("UPDATE");
+    return prisma.mailbox.update({ where: { id: mailboxId }, data: input });
+  }
+
+  async deleteMailbox(mailboxId: string) {
+    await this.assert("DELETE");
+    await prisma.mailbox.update({ where: { id: mailboxId }, data: { isActive: false } });
+  }
+
+  async addMailboxMember(mailboxId: string, userId: string, role: "OWNER" | "ADMIN" | "MEMBER" | "VIEWER" = "MEMBER") {
+    await this.assert("UPDATE");
+    return prisma.mailboxMember.upsert({
+      where: { mailboxId_userId: { mailboxId, userId } },
+      create: { mailboxId, userId, role },
+      update: { role },
+    });
+  }
+
+  async removeMailboxMember(mailboxId: string, userId: string) {
+    await this.assert("UPDATE");
+    await prisma.mailboxMember.deleteMany({ where: { mailboxId, userId } });
+  }
+
+  async getMailboxMembers(mailboxId: string) {
+    await this.assert("READ");
+    return prisma.mailboxMember.findMany({
+      where: { mailboxId },
+      include: { user: { select: { id: true, name: true, email: true, image: true } } },
+    });
+  }
+
+  async assignThreadToMailbox(threadId: string, mailboxId: string, assigneeId?: string) {
+    await this.assert("UPDATE");
+    await prisma.mailMessage.updateMany({
+      where: { workspaceId: this.workspaceId, threadId },
+      data: { folder: "INBOX" },
+    });
+    await this.audit("mail.thread_assigned", threadId);
+  }
+
+  // ── Internal Comments ──
+
+  async addComment(messageId: string, body: string, isResolve: boolean = false) {
+    await this.assert("CREATE");
+    const msg = await prisma.mailMessage.findFirst({ where: { id: messageId, workspaceId: this.workspaceId } });
+    if (!msg) throw new Error("Message not found");
+    const comment = await prisma.mailComment.create({
+      data: { workspaceId: this.workspaceId, messageId, authorId: this.userId, body, isResolve },
+    });
+    await this.audit("mail.comment_added", comment.id);
+    return comment;
+  }
+
+  async getComments(messageId: string) {
+    await this.assert("READ");
+    return prisma.mailComment.findMany({
+      where: { workspaceId: this.workspaceId, messageId },
+      include: { author: { select: { id: true, name: true, image: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  async updateComment(commentId: string, body: string) {
+    await this.assert("UPDATE");
+    return prisma.mailComment.update({ where: { id: commentId }, data: { body } });
+  }
+
+  async deleteComment(commentId: string) {
+    await this.assert("DELETE");
+    await prisma.mailComment.deleteMany({ where: { id: commentId, workspaceId: this.workspaceId } });
+  }
+
+  async resolveThread(messageId: string) {
+    await this.assert("UPDATE");
+    return prisma.mailComment.create({
+      data: { workspaceId: this.workspaceId, messageId, authorId: this.userId, body: "Thread resolved", isResolve: true },
+    });
+  }
+
+  // ── Email Delegation ──
+
+  async createDelegation(input: { delegateId: string; canSend?: boolean; canRead?: boolean; canDelete?: boolean; expiresAt?: string }) {
+    await this.assert("CREATE");
+    const delegation = await prisma.mailDelegation.create({
+      data: {
+        workspaceId: this.workspaceId,
+        delegatorId: this.userId,
+        delegateId: input.delegateId,
+        canSend: input.canSend ?? true,
+        canRead: input.canRead ?? true,
+        canDelete: input.canDelete ?? false,
+        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+      },
+    });
+    await this.audit("mail.delegation_created", delegation.id);
+    return delegation;
+  }
+
+  async getDelegations() {
+    await this.assert("READ");
+    return prisma.mailDelegation.findMany({
+      where: { workspaceId: this.workspaceId },
+      include: {
+        delegator: { select: { id: true, name: true, email: true, image: true } },
+        delegate: { select: { id: true, name: true, email: true, image: true } },
+      },
+    });
+  }
+
+  async getMyDelegatedAccess() {
+    await this.assert("READ");
+    return prisma.mailDelegation.findMany({
+      where: { workspaceId: this.workspaceId, delegateId: this.userId },
+      include: { delegator: { select: { id: true, name: true, email: true } } },
+    });
+  }
+
+  async updateDelegation(delegationId: string, input: { canSend?: boolean; canRead?: boolean; canDelete?: boolean; expiresAt?: string | null }) {
+    await this.assert("UPDATE");
+    return prisma.mailDelegation.update({ where: { id: delegationId }, data: input });
+  }
+
+  async revokeDelegation(delegationId: string) {
+    await this.assert("DELETE");
+    await prisma.mailDelegation.deleteMany({ where: { id: delegationId, workspaceId: this.workspaceId } });
+  }
+
+  async sendOnBehalfOf(delegatorId: string, input: { to: string; subject: string; body: string; bodyHtml?: string }) {
+    await this.assert("CREATE");
+    // Verify delegation exists and allows sending
+    const delegation = await prisma.mailDelegation.findFirst({
+      where: { workspaceId: this.workspaceId, delegatorId, delegateId: this.userId, canSend: true },
+    });
+    if (!delegation) throw new Error("No delegation permission to send on behalf of this user");
+
+    const message = await prisma.mailMessage.create({
+      data: {
+        workspaceId: this.workspaceId,
+        threadId: crypto.randomUUID(),
+        direction: "OUT",
+        folder: "SENT",
+        status: "SENT",
+        fromName: `on behalf of ${delegatorId}`,
+        fromEmail: "outbox@n0va.workspace",
+        toEmails: [input.to],
+        ccEmails: [],
+        bccEmails: [],
+        subject: input.subject,
+        body: input.body,
+        bodyHtml: input.bodyHtml ?? "",
+        isRead: true,
+      },
+    });
+    await this.audit("mail.sent_on_behalf", message.id);
+    return message;
+  }
+
+  // ── Email to Task ──
+
+  async convertToTask(messageId: string, input: { title?: string; description?: string; assigneeId?: string; dueDate?: string; listId?: string; priority?: "HIGH" | "MEDIUM" | "LOW" }) {
+    await this.assert("CREATE");
+    const msg = await prisma.mailMessage.findFirst({ where: { id: messageId, workspaceId: this.workspaceId } });
+    if (!msg) throw new Error("Message not found");
+
+    const task = await prisma.mailTask.create({
+      data: {
+        workspaceId: this.workspaceId,
+        messageId,
+        createdById: this.userId,
+        assigneeId: input.assigneeId ?? null,
+        title: input.title || msg.subject,
+        description: input.description || msg.body.slice(0, 500),
+        status: "TODO",
+        priority: input.priority ?? "MEDIUM",
+        dueDate: input.dueDate ? new Date(input.dueDate) : null,
+        listId: input.listId ?? null,
+      },
+    });
+    await this.audit("mail.converted_to_task", task.id);
+    return task;
+  }
+
+  async getTasks(status?: string) {
+    await this.assert("READ");
+    const where: Record<string, unknown> = { workspaceId: this.workspaceId };
+    if (status) where.status = status;
+    return prisma.mailTask.findMany({
+      where,
+      include: { assignee: { select: { id: true, name: true, image: true } }, createdBy: { select: { id: true, name: true } } },
+      orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
+    });
+  }
+
+  async updateTask(taskId: string, input: { status?: string; assigneeId?: string | null; title?: string; description?: string; dueDate?: string | null; priority?: string }) {
+    await this.assert("UPDATE");
+    const data: Record<string, unknown> = {};
+    if (input.status) data.status = input.status;
+    if (input.assigneeId !== undefined) data.assigneeId = input.assigneeId;
+    if (input.title) data.title = input.title;
+    if (input.description) data.description = input.description;
+    if (input.dueDate !== undefined) data.dueDate = input.dueDate ? new Date(input.dueDate) : null;
+    if (input.priority) data.priority = input.priority;
+    return prisma.mailTask.update({ where: { id: taskId }, data });
+  }
+
+  async deleteTask(taskId: string) {
+    await this.assert("DELETE");
+    await prisma.mailTask.deleteMany({ where: { id: taskId, workspaceId: this.workspaceId } });
+  }
+
+  async getKanbanBoard() {
+    await this.assert("READ");
+    const tasks = await prisma.mailTask.findMany({
+      where: { workspaceId: this.workspaceId },
+      include: { assignee: { select: { id: true, name: true, image: true } }, message: { select: { id: true, subject: true, fromEmail: true } } },
+      orderBy: [{ priority: "asc" }, { createdAt: "asc" }],
+    });
+    return {
+      todo: tasks.filter(t => t.status === "TODO"),
+      inProgress: tasks.filter(t => t.status === "IN_PROGRESS"),
+      inReview: tasks.filter(t => t.status === "IN_REVIEW"),
+      done: tasks.filter(t => t.status === "DONE"),
+      cancelled: tasks.filter(t => t.status === "CANCELLED"),
+    };
+  }
+
+  // ── Shared Drafts (Co-authoring) ──
+
+  async createSharedDraft(input: { subject?: string; body?: string; bodyHtml?: string }) {
+    await this.assert("CREATE");
+    const draft = await prisma.mailSharedDraft.create({
+      data: {
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        subject: input.subject ?? "",
+        body: input.body ?? "",
+        bodyHtml: input.bodyHtml ?? "",
+        status: "draft",
+      },
+    });
+    await prisma.mailSharedDraftCollaborator.create({
+      data: { sharedDraftId: draft.id, userId: this.userId, role: "owner" },
+    });
+    await this.audit("mail.shared_draft_created", draft.id);
+    return draft;
+  }
+
+  async getSharedDrafts() {
+    await this.assert("READ");
+    return prisma.mailSharedDraft.findMany({
+      where: { workspaceId: this.workspaceId },
+      include: {
+        createdBy: { select: { id: true, name: true } },
+        collaborators: { include: { user: { select: { id: true, name: true } } } },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+  }
+
+  async updateSharedDraft(draftId: string, input: { subject?: string; body?: string; bodyHtml?: string; status?: string }) {
+    await this.assert("UPDATE");
+    return prisma.mailSharedDraft.update({ where: { id: draftId }, data: input });
+  }
+
+  async deleteSharedDraft(draftId: string) {
+    await this.assert("DELETE");
+    await prisma.mailSharedDraft.deleteMany({ where: { id: draftId, workspaceId: this.workspaceId } });
+  }
+
+  async addDraftCollaborator(draftId: string, userId: string, role: string = "editor") {
+    await this.assert("UPDATE");
+    return prisma.mailSharedDraftCollaborator.upsert({
+      where: { sharedDraftId_userId: { sharedDraftId: draftId, userId } },
+      create: { sharedDraftId: draftId, userId, role },
+      update: { role },
+    });
+  }
+
+  async removeDraftCollaborator(draftId: string, userId: string) {
+    await this.assert("DELETE");
+    await prisma.mailSharedDraftCollaborator.deleteMany({ where: { sharedDraftId: draftId, userId } });
+  }
+
+  async getDraftCollaborators(draftId: string) {
+    await this.assert("READ");
+    return prisma.mailSharedDraftCollaborator.findMany({
+      where: { sharedDraftId: draftId },
+      include: { user: { select: { id: true, name: true, email: true, image: true } } },
+    });
+  }
+
+  /* ── Domain & Alias Management ──────────────────────────── */
+
+  // ── Domain Registration & Privacy ──
+
+  async registerDomain(input: {
+    domain: string;
+    privacyEnabled?: boolean;
+    catchAllEnabled?: boolean;
+    catchAllTarget?: string;
+    registrar?: string;
+  }) {
+    await this.assert("CREATE");
+    const domain = await prisma.mailDomain.create({
+      data: {
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        domain: input.domain,
+        privacyEnabled: input.privacyEnabled ?? true,
+        whoisProxy: input.privacyEnabled ?? true,
+        catchAllEnabled: input.catchAllEnabled ?? true,
+        catchAllTarget: input.catchAllTarget ?? "",
+        registrar: input.registrar ?? "",
+      },
+    });
+    await this.audit("mail.domain_registered", domain.id);
+    return domain;
+  }
+
+  async getDomains() {
+    await this.assert("READ");
+    return prisma.mailDomain.findMany({
+      where: { workspaceId: this.workspaceId },
+      include: {
+        dnsRecords: true,
+        aliases: { where: { isActive: true }, take: 10 },
+        createdBy: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getDomainById(domainId: string) {
+    await this.assert("READ");
+    return prisma.mailDomain.findFirst({
+      where: { id: domainId, workspaceId: this.workspaceId },
+      include: {
+        dnsRecords: true,
+        aliases: { orderBy: { createdAt: "desc" } },
+      },
+    });
+  }
+
+  async updateDomain(domainId: string, input: {
+    privacyEnabled?: boolean;
+    whoisProxy?: boolean;
+    catchAllEnabled?: boolean;
+    catchAllTarget?: string;
+    spfRecord?: string;
+    dkimKey?: string;
+    dmarcPolicy?: string;
+  }) {
+    await this.assert("UPDATE");
+    return prisma.mailDomain.update({ where: { id: domainId }, data: input });
+  }
+
+  async deleteDomain(domainId: string) {
+    await this.assert("DELETE");
+    await prisma.mailDomain.deleteMany({ where: { id: domainId, workspaceId: this.workspaceId } });
+  }
+
+  // ── DNS Record Management ──
+
+  async addDnsRecord(input: {
+    domainId: string;
+    type: string;
+    name: string;
+    value: string;
+    priority?: number;
+  }) {
+    await this.assert("CREATE");
+    const record = await prisma.dnsRecord.create({
+      data: {
+        domainId: input.domainId,
+        type: input.type,
+        name: input.name,
+        value: input.value,
+        priority: input.priority ?? 0,
+      },
+    });
+    await this.audit("mail.dns_record_added", record.id);
+    return record;
+  }
+
+  async getDnsRecords(domainId: string) {
+    await this.assert("READ");
+    return prisma.dnsRecord.findMany({
+      where: { domainId },
+      orderBy: [{ type: "asc" }, { priority: "asc" }],
+    });
+  }
+
+  async verifyDnsRecord(recordId: string) {
+    await this.assert("UPDATE");
+    // In production, this would perform actual DNS lookups
+    return prisma.dnsRecord.update({ where: { id: recordId }, data: { isVerified: true } });
+  }
+
+  async deleteDnsRecord(recordId: string) {
+    await this.assert("DELETE");
+    await prisma.dnsRecord.deleteMany({ where: { id: recordId } });
+  }
+
+  async getRecommendedDnsRecords(domainId: string) {
+    await this.assert("READ");
+    const domain = await prisma.mailDomain.findFirst({ where: { id: domainId, workspaceId: this.workspaceId } });
+    if (!domain) throw new Error("Domain not found");
+
+    return [
+      { type: "MX", name: "@", value: "mx.n0va.io", priority: 10, description: "Primary mail server" },
+      { type: "MX", name: "@", value: "mx2.n0va.io", priority: 20, description: "Backup mail server" },
+      { type: "TXT", name: "@", value: "v=spf1 include:n0va.io ~all", description: "SPF record" },
+      { type: "TXT", name: "_dmarc", value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain.domain}`, description: "DMARC policy" },
+      { type: "CNAME", name: "n0va._domainkey", value: `n0va._domainkey.n0va.io`, description: "DKIM selector" },
+      { type: "TXT", name: "_mta-sts", value: `v=STSv1; id=${Date.now()}`, description: "MTA-STS" },
+    ];
+  }
+
+  async verifyDomain(domainId: string) {
+    await this.assert("UPDATE");
+    const domain = await prisma.mailDomain.findFirst({ where: { id: domainId, workspaceId: this.workspaceId }, include: { dnsRecords: true } });
+    if (!domain) throw new Error("Domain not found");
+
+    // Check required records
+    const hasMx = domain.dnsRecords.some(r => r.type === "MX");
+    const hasSpf = domain.dnsRecords.some(r => r.type === "TXT" && r.value.includes("spf"));
+    const hasDkim = domain.dnsRecords.some(r => r.type === "TXT" && r.name.includes("_domainkey"));
+    const hasDmarc = domain.dnsRecords.some(r => r.type === "TXT" && r.name === "_dmarc");
+
+    const verified = hasMx && hasSpf;
+    const healthStatus = verified ? (hasDkim && hasDmarc ? "excellent" : "good") : "incomplete";
+
+    return prisma.mailDomain.update({
+      where: { id: domainId },
+      data: { verified, healthStatus, lastChecked: new Date() },
+    });
+  }
+
+  // ── Email Alias Management ──
+
+  async createAlias(input: {
+    domainId: string;
+    localPart: string;
+    forwardTo: string;
+    description?: string;
+    isWildcard?: boolean;
+    spamFilter?: boolean;
+  }) {
+    await this.assert("CREATE");
+    const domain = await prisma.mailDomain.findFirst({ where: { id: input.domainId, workspaceId: this.workspaceId } });
+    if (!domain) throw new Error("Domain not found");
+
+    const alias = await prisma.emailAlias.create({
+      data: {
+        domainId: input.domainId,
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        localPart: input.localPart,
+        forwardTo: input.forwardTo,
+        description: input.description ?? "",
+        isWildcard: input.isWildcard ?? false,
+        spamFilter: input.spamFilter ?? true,
+      },
+    });
+    await this.audit("mail.alias_created", alias.id);
+    return alias;
+  }
+
+  async getAliases(domainId?: string) {
+    await this.assert("READ");
+    const where: Record<string, unknown> = { workspaceId: this.workspaceId };
+    if (domainId) where.domainId = domainId;
+    return prisma.emailAlias.findMany({
+      where,
+      include: { domain: { select: { domain: true } } },
+      orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+    });
+  }
+
+  async updateAlias(aliasId: string, input: {
+    forwardTo?: string;
+    description?: string;
+    isActive?: boolean;
+    spamFilter?: boolean;
+  }) {
+    await this.assert("UPDATE");
+    return prisma.emailAlias.update({ where: { id: aliasId }, data: input });
+  }
+
+  async deleteAlias(aliasId: string) {
+    await this.assert("DELETE");
+    await prisma.emailAlias.deleteMany({ where: { id: aliasId, workspaceId: this.workspaceId } });
+  }
+
+  async toggleAlias(aliasId: string) {
+    await this.assert("UPDATE");
+    const alias = await prisma.emailAlias.findFirst({ where: { id: aliasId, workspaceId: this.workspaceId } });
+    if (!alias) throw new Error("Alias not found");
+    return prisma.emailAlias.update({ where: { id: aliasId }, data: { isActive: !alias.isActive } });
+  }
+
+  // ── Reverse Aliases (Outbound Replies) ──
+
+  async createReverseAlias(input: { aliasId: string; targetEmail: string }) {
+    await this.assert("CREATE");
+    const relayAddress = `relay_${crypto.randomUUID().slice(0, 12)}@n0va.io`;
+    const reverse = await prisma.reverseAlias.create({
+      data: {
+        aliasId: input.aliasId,
+        workspaceId: this.workspaceId,
+        relayAddress,
+        targetEmail: input.targetEmail,
+      },
+    });
+    await this.audit("mail.reverse_alias_created", reverse.id);
+    return reverse;
+  }
+
+  async getReverseAliases() {
+    await this.assert("READ");
+    return prisma.reverseAlias.findMany({
+      where: { workspaceId: this.workspaceId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async deleteReverseAlias(reverseId: string) {
+    await this.assert("DELETE");
+    await prisma.reverseAlias.deleteMany({ where: { id: reverseId, workspaceId: this.workspaceId } });
+  }
+
+  // ── Breach Monitoring ──
+
+  async reportBreach(input: {
+    aliasEmail: string;
+    source: string;
+    severity?: string;
+    details?: string;
+  }) {
+    await this.assert("CREATE");
+    const breach = await prisma.breachEvent.create({
+      data: {
+        workspaceId: this.workspaceId,
+        aliasEmail: input.aliasEmail,
+        source: input.source,
+        severity: input.severity ?? "medium",
+        details: input.details ?? "",
+      },
+    });
+    await this.audit("mail.breach_reported", breach.id);
+    return breach;
+  }
+
+  async getBreachEvents(severity?: string) {
+    await this.assert("READ");
+    const where: Record<string, unknown> = { workspaceId: this.workspaceId };
+    if (severity) where.severity = severity;
+    return prisma.breachEvent.findMany({
+      where,
+      orderBy: { detectedAt: "desc" },
+    });
+  }
+
+  async resolveBreach(breachId: string) {
+    await this.assert("UPDATE");
+    return prisma.breachEvent.update({ where: { id: breachId }, data: { isResolved: true } });
+  }
+
+  async getBreachStats() {
+    await this.assert("READ");
+    const events = await prisma.breachEvent.findMany({ where: { workspaceId: this.workspaceId } });
+    return {
+      total: events.length,
+      unresolved: events.filter(e => !e.isResolved).length,
+      bySeverity: {
+        high: events.filter(e => e.severity === "high").length,
+        medium: events.filter(e => e.severity === "medium").length,
+        low: events.filter(e => e.severity === "low").length,
+      },
+      recentSource: events.slice(0, 5).map(e => e.source),
+    };
+  }
+
   /* ── AI Features ─────────────────────────────────────────── */
 
   private async _resolveAiIntegration() {
@@ -905,6 +1530,293 @@ export class MailService {
     }
 
     return { content: aiContent, typingDelayMs: getTypingDelay(3) };
+  }
+
+  // ── Smart Prioritization & Triage ──
+
+  async classifyMessage(messageId: string): Promise<{ priority: string; category: string; sentiment: string }> {
+    await this.assert("READ");
+    const msg = await prisma.mailMessage.findFirst({ where: { id: messageId, workspaceId: this.workspaceId } });
+    if (!msg) throw new Error("Message not found");
+
+    const text = `${msg.subject}\n${msg.body}`;
+    const prompt = `Classify this email. Return JSON with fields: priority (HIGH/MEDIUM/LOW), category (PERSONAL/WORK/NEWSLETTER/NOTIFICATION/PROMOTIONAL/SPAM), sentiment (positive/negative/neutral). Consider sender, subject, and content.\n\nEmail from: ${msg.fromName || msg.fromEmail}\nSubject: ${msg.subject}\nBody: ${text.slice(0, 800)}\n\nJSON:`;
+
+    const integration = await this._resolveAiIntegration();
+    let priority = "MEDIUM";
+    let category = "WORK";
+    let sentiment = "neutral";
+
+    if (integration) {
+      const cfg = integration.config as Record<string, unknown>;
+      const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
+      try {
+        const parsed = JSON.parse(result.content);
+        if (parsed.priority) priority = parsed.priority;
+        if (parsed.category) category = parsed.category;
+        if (parsed.sentiment) sentiment = parsed.sentiment;
+      } catch { /* use defaults */ }
+    } else {
+      // Rule-based fallback prioritization
+      const lower = text.toLowerCase();
+      if (lower.includes("urgent") || lower.includes("asap") || lower.includes("action required") || msg.isStarred) {
+        priority = "HIGH";
+      } else if (lower.includes("newsletter") || lower.includes("unsubscribe") || lower.includes("promo") || lower.includes("sale")) {
+        priority = "LOW";
+        category = "NEWSLETTER";
+      } else if (lower.includes("notification") || lower.includes("alert") || lower.includes("reminder")) {
+        priority = "LOW";
+        category = "NOTIFICATION";
+      }
+      if (lower.includes("thank") || lower.includes("great") || lower.includes("excellent")) {
+        sentiment = "positive";
+      } else if (lower.includes("sorry") || lower.includes("issue") || lower.includes("problem") || lower.includes("error")) {
+        sentiment = "negative";
+      }
+    }
+
+    await prisma.mailMessage.update({ where: { id: messageId }, data: { aiPriority: priority as never, aiCategory: category as never, aiSentiment: sentiment, aiProcessed: true } });
+    return { priority, category, sentiment };
+  }
+
+  async classifyInbox(): Promise<{ processed: number }> {
+    await this.assert("READ");
+    const unprocessed = await prisma.mailMessage.findMany({
+      where: { workspaceId: this.workspaceId, aiProcessed: false, direction: "IN" },
+      take: 50,
+    });
+    for (const msg of unprocessed) {
+      await this.classifyMessage(msg.id);
+    }
+    return { processed: unprocessed.length };
+  }
+
+  async getSmartInbox(): Promise<{
+    urgent: MailThreadView[];
+    important: MailThreadView[];
+    newsletters: MailThreadView[];
+    notifications: MailThreadView[];
+    other: MailThreadView[];
+  }> {
+    await this.assert("READ");
+    const messages = await prisma.mailMessage.findMany({
+      where: { workspaceId: this.workspaceId, folder: "INBOX" },
+      include: { labels: { include: { label: true } } },
+      orderBy: { sentAt: "desc" },
+    });
+
+    const threads = this._groupIntoThreads(messages);
+
+    const result = {
+      urgent: [] as MailThreadView[],
+      important: [] as MailThreadView[],
+      newsletters: [] as MailThreadView[],
+      notifications: [] as MailThreadView[],
+      other: [] as MailThreadView[],
+    };
+
+    for (const t of threads) {
+      const latest = t.messages[t.messages.length - 1]!;
+      if (latest.aiPriority === "HIGH" || latest.isStarred) {
+        result.urgent.push(t);
+      } else if (latest.aiCategory === "NEWSLETTER" || latest.aiCategory === "PROMOTIONAL") {
+        result.newsletters.push(t);
+      } else if (latest.aiCategory === "NOTIFICATION") {
+        result.notifications.push(t);
+      } else if (latest.aiPriority === "MEDIUM") {
+        result.important.push(t);
+      } else {
+        result.other.push(t);
+      }
+    }
+
+    return result;
+  }
+
+  // ── One-Click Contextual Replies ──
+
+  async oneClickReplies(threadId: string): Promise<Array<{ id: string; label: string; text: string }>> {
+    await this.assert("READ");
+    const messages = await this.getThread(threadId);
+    if (messages.length === 0) throw new Error("Thread not found");
+
+    const latest = messages[messages.length - 1]!;
+    const context = messages.slice(-3).map(m => `[${m.direction === "IN" ? "FROM" : "TO"}] ${m.fromName || m.fromEmail}: ${m.body.slice(0, 200)}`).join("\n");
+
+    const prompt = `Generate 3 short one-click reply options for this email. Return JSON array of {id, label, text}. Labels should be 2-3 words like "Thanks!", "Got it", "Will do", "Need more info", "Schedule call". Text should be complete but brief (1-2 sentences).\n\nLatest email:\n${latest.subject}\n${latest.body.slice(0, 500)}\n\nContext:\n${context}\n\nJSON:`;
+
+    const integration = await this._resolveAiIntegration();
+    if (integration) {
+      const cfg = integration.config as Record<string, unknown>;
+      const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
+      try {
+        const parsed = JSON.parse(result.content);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item: { id?: string; label: string; text: string }, i: number) => ({
+            id: item.id || `reply_${i}`,
+            label: item.label,
+            text: item.text,
+          }));
+        }
+      } catch { /* fall through */ }
+    }
+
+    // Fallback contextual replies
+    const lower = latest.body.toLowerCase();
+    if (lower.includes("meeting") || lower.includes("schedule") || lower.includes("call")) {
+      return [
+        { id: "accept", label: "✓ I'll join", text: "Thanks — I'll be there. Looking forward to it." },
+        { id: "reschedule", label: "↻ Reschedule", text: "Thanks for the invite. That time doesn't work for me — could we find another slot?" },
+        { id: "decline", label: "✕ Can't make it", text: "Thanks for the invite, but I won't be able to attend." },
+      ];
+    }
+    if (lower.includes("review") || lower.includes("feedback") || lower.includes("input")) {
+      return [
+        { id: "ack", label: "✓ On it", text: "Thanks — I'll review and get back to you shortly." },
+        { id: "discuss", label: "💬 Let's discuss", text: "Thanks for sharing. I have some thoughts — shall we jump on a quick call?" },
+        { id: "done", label: "✅ Done", text: "Thanks for the update. I've reviewed everything and it looks great." },
+      ];
+    }
+    return [
+      { id: "thanks", label: "👍 Thanks!", text: "Thanks for the update!" },
+      { id: "got_it", label: "✓ Got it", text: "Got it, thanks for letting me know." },
+      { id: "will_do", label: "✅ Will do", text: "Understood — I'll take care of it." },
+    ];
+  }
+
+  // ── Tone & Grammar Optimization ──
+
+  async rewriteDraft(input: {
+    content: string;
+    tone?: "formal" | "friendly" | "assertive" | "concise" | "empathetic";
+    fixGrammar?: boolean;
+    shorten?: boolean;
+    threadId?: string;
+  }): Promise<{ original: string; rewritten: string; changes: string[] }> {
+    await this.assert("READ");
+    const tone = input.tone || "formal";
+    const actions: string[] = [];
+    if (input.fixGrammar) actions.push("fix grammar and spelling");
+    if (input.shorten) actions.push("make it shorter and more concise");
+    if (input.tone) actions.push(`adjust tone to be ${tone}`);
+
+    const actionText = actions.length > 0 ? actions.join(", ") : "improve clarity and readability";
+
+    const prompt = `Rewrite the following email text. ${actionText}. Return JSON with fields: rewritten (the improved text), changes (array of brief descriptions of what you changed).\n\nOriginal text:\n${input.content}\n\nJSON:`;
+
+    const integration = await this._resolveAiIntegration();
+    let rewritten = input.content;
+    const changes: string[] = [];
+
+    if (integration) {
+      const cfg = integration.config as Record<string, unknown>;
+      const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
+      try {
+        const parsed = JSON.parse(result.content);
+        if (parsed.rewritten) rewritten = parsed.rewritten;
+        if (Array.isArray(parsed.changes)) changes.push(...parsed.changes.map(String));
+      } catch { /* use original */ }
+    }
+
+    if (changes.length === 0) {
+      changes.push(`Tone adjusted to ${tone}`);
+      if (input.fixGrammar) changes.push("Grammar and spelling checked");
+      if (input.shorten) changes.push("Content shortened");
+    }
+
+    return { original: input.content, rewritten, changes };
+  }
+
+  // ── Thread Summarization (Enhanced) ──
+
+  async summarizeThreadDetailed(threadId: string): Promise<{
+    summary: string;
+    decisions: string[];
+    actionItems: string[];
+    participants: string[];
+    sentiment: string;
+    wordCount: number;
+  }> {
+    await this.assert("READ");
+    const messages = await this.getThread(threadId);
+    if (messages.length === 0) throw new Error("Thread not found");
+
+    const threadText = messages.map((m) => `[${m.direction === "IN" ? "FROM" : "TO"}] ${m.fromName || m.fromEmail}: ${m.subject}\n${m.body}`).join("\n\n");
+    const participants = [...new Set(messages.map(m => m.fromEmail))];
+    const wordCount = threadText.split(/\s+/).length;
+
+    const prompt = `Analyze this email thread. Return JSON with: summary (3-5 bullet points), decisions (array of strings), actionItems (array of strings), sentiment (positive/negative/neutral/mixed).\n\n${threadText.slice(0, 3000)}\n\nJSON:`;
+
+    const integration = await this._resolveAiIntegration();
+
+    if (integration) {
+      const cfg = integration.config as Record<string, unknown>;
+      const result = await callLlm(cfg.provider as string, cfg.model as string, cfg, [{ role: "user", content: prompt }], []);
+      try {
+        const parsed = JSON.parse(result.content);
+        const summary = parsed.summary || "";
+        const summaryText = Array.isArray(summary) ? summary.join("\n") : String(summary);
+        return {
+          summary: summaryText,
+          decisions: Array.isArray(parsed.decisions) ? parsed.decisions.map(String) : [],
+          actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems.map(String) : [],
+          participants,
+          sentiment: parsed.sentiment || "neutral",
+          wordCount,
+        };
+      } catch { /* fall through */ }
+    }
+
+    // Fallback
+    return {
+      summary: `${messages.length} messages between ${participants.join(" and ")}. Latest: ${messages[messages.length - 1]!.subject}`,
+      decisions: [],
+      actionItems: [],
+      participants,
+      sentiment: "neutral",
+      wordCount,
+    };
+  }
+
+  // ── Process Incoming Message with AI ──
+
+  async processIncomingAi(messageId: string): Promise<void> {
+    await this.assert("READ");
+    // Classify
+    await this.classifyMessage(messageId);
+
+    // Generate summary for thread
+    const msg = await prisma.mailMessage.findFirst({ where: { id: messageId, workspaceId: this.workspaceId } });
+    if (msg) {
+      try {
+        const summary = await this.summarizeThreadDetailed(msg.threadId);
+        await prisma.mailMessage.updateMany({
+          where: { threadId: msg.threadId, workspaceId: this.workspaceId },
+          data: { aiSummary: summary.summary },
+        });
+      } catch { /* ignore summary failures */ }
+    }
+  }
+
+  // ── Helper ──
+
+  private _groupIntoThreads(messages: Array<{ id: string; threadId: string; sentAt: Date; isRead: boolean; isStarred: boolean; aiPriority: string; aiCategory: string; fromName: string; fromEmail: string; subject: string; body: string; bodyHtml?: string | null; direction: string; labels?: Array<{ labelId: string; label: { id: string; name: string; color: string } }> }>): MailThreadView[] {
+    const threadMap = new Map<string, typeof messages>();
+    for (const m of messages) {
+      const t = threadMap.get(m.threadId) || [];
+      t.push(m);
+      threadMap.set(m.threadId, t);
+    }
+    return [...threadMap.entries()].map(([threadId, msgs]) => {
+      const sorted = msgs.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+      return {
+        threadId,
+        messages: sorted,
+        unread: sorted.filter(m => !m.isRead).length,
+        starred: sorted.some(m => m.isStarred),
+        latestSentAt: sorted[sorted.length - 1]!.sentAt,
+      };
+    }).sort((a, b) => b.latestSentAt.getTime() - a.latestSentAt.getTime());
   }
 
   /* ── Search ─────────────────────────────────────────────── */

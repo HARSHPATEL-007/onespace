@@ -211,3 +211,181 @@ export async function searchContactsAction(formData: FormData) {
   const contacts = await (await svc()).getContacts(query || undefined);
   return contacts.map((c) => ({ id: c.id, email: c.email, firstName: c.firstName, lastName: c.lastName }));
 }
+
+// ── AI & Intelligent Automation ──
+
+export async function oneClickRepliesAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  return (await svc()).oneClickReplies(threadId);
+}
+
+export async function rewriteDraftAction(formData: FormData) {
+  const content = String(formData.get("content") ?? "");
+  const tone = String(formData.get("tone") ?? "formal") as "formal" | "friendly" | "assertive" | "concise" | "empathetic";
+  const fixGrammar = formData.get("fixGrammar") === "true";
+  const shorten = formData.get("shorten") === "true";
+  return (await svc()).rewriteDraft({ content, tone, fixGrammar, shorten });
+}
+
+export async function classifyInboxAction() {
+  return (await svc()).classifyInbox();
+}
+
+export async function summarizeThreadDetailedAction(formData: FormData) {
+  const threadId = String(formData.get("threadId") ?? "");
+  return (await svc()).summarizeThreadDetailed(threadId);
+}
+
+// ── Team Collaboration ──
+
+export async function createMailboxAction(formData: FormData) {
+  const name = String(formData.get("name") ?? "");
+  const email = String(formData.get("email") ?? "");
+  const description = String(formData.get("description") ?? "");
+  await (await svc()).createMailbox({ name, email, description });
+}
+
+export async function deleteMailboxAction(formData: FormData) {
+  await (await svc()).deleteMailbox(String(formData.get("mailboxId") ?? ""));
+}
+
+export async function addCommentAction(formData: FormData) {
+  const messageId = String(formData.get("messageId") ?? "");
+  const body = String(formData.get("body") ?? "");
+  const isResolve = formData.get("isResolve") === "true";
+  await (await svc()).addComment(messageId, body, isResolve);
+}
+
+export async function deleteCommentAction(formData: FormData) {
+  await (await svc()).deleteComment(String(formData.get("commentId") ?? ""));
+}
+
+export async function createDelegationAction(formData: FormData) {
+  const delegateId = String(formData.get("delegateId") ?? "");
+  const canSend = formData.get("canSend") === "true";
+  const canRead = formData.get("canRead") === "true";
+  const canDelete = formData.get("canDelete") === "true";
+  await (await svc()).createDelegation({ delegateId, canSend, canRead, canDelete });
+}
+
+export async function revokeDelegationAction(formData: FormData) {
+  await (await svc()).revokeDelegation(String(formData.get("delegationId") ?? ""));
+}
+
+export async function convertToTaskAction(formData: FormData) {
+  const messageId = String(formData.get("messageId") ?? "");
+  const title = String(formData.get("title") ?? "");
+  const assigneeId = String(formData.get("assigneeId") ?? "");
+  const dueDate = String(formData.get("dueDate") ?? "");
+  const priority = String(formData.get("priority") ?? "MEDIUM") as "HIGH" | "MEDIUM" | "LOW";
+  await (await svc()).convertToTask(messageId, { title: title || undefined, assigneeId: assigneeId || undefined, dueDate: dueDate || undefined, priority });
+}
+
+export async function updateTaskAction(formData: FormData) {
+  const taskId = String(formData.get("taskId") ?? "");
+  const status = String(formData.get("status") ?? "");
+  await (await svc()).updateTask(taskId, { status });
+}
+
+export async function deleteTaskAction(formData: FormData) {
+  await (await svc()).deleteTask(String(formData.get("taskId") ?? ""));
+}
+
+export async function createSharedDraftAction(formData: FormData) {
+  const subject = String(formData.get("subject") ?? "");
+  const body = String(formData.get("body") ?? "");
+  await (await svc()).createSharedDraft({ subject, body });
+}
+
+export async function updateSharedDraftAction(formData: FormData) {
+  const draftId = String(formData.get("draftId") ?? "");
+  const subject = String(formData.get("subject") ?? "");
+  const body = String(formData.get("body") ?? "");
+  await (await svc()).updateSharedDraft(draftId, { subject, body });
+}
+
+export async function deleteSharedDraftAction(formData: FormData) {
+  await (await svc()).deleteSharedDraft(String(formData.get("draftId") ?? ""));
+}
+
+export async function addDraftCollaboratorAction(formData: FormData) {
+  const draftId = String(formData.get("draftId") ?? "");
+  const userId = String(formData.get("userId") ?? "");
+  await (await svc()).addDraftCollaborator(draftId, userId);
+}
+
+// ── Domain & Alias Management ──
+
+export async function registerDomainAction(formData: FormData) {
+  const domain = String(formData.get("domain") ?? "");
+  const privacyEnabled = formData.get("privacyEnabled") === "true";
+  const catchAllEnabled = formData.get("catchAllEnabled") === "true";
+  const catchAllTarget = String(formData.get("catchAllTarget") ?? "");
+  await (await svc()).registerDomain({ domain, privacyEnabled, catchAllEnabled, catchAllTarget });
+}
+
+export async function updateDomainAction(formData: FormData) {
+  const domainId = String(formData.get("domainId") ?? "");
+  const privacyEnabled = formData.get("privacyEnabled") === "true" ? true : formData.get("privacyEnabled") === "false" ? false : undefined;
+  const catchAllEnabled = formData.get("catchAllEnabled") === "true" ? true : formData.get("catchAllEnabled") === "false" ? false : undefined;
+  const spfRecord = String(formData.get("spfRecord") || "");
+  await (await svc()).updateDomain(domainId, { privacyEnabled, catchAllEnabled, spfRecord: spfRecord || undefined });
+}
+
+export async function deleteDomainAction(formData: FormData) {
+  await (await svc()).deleteDomain(String(formData.get("domainId") ?? ""));
+}
+
+export async function verifyDomainAction(formData: FormData) {
+  return await (await svc()).verifyDomain(String(formData.get("domainId") ?? ""));
+}
+
+export async function addDnsRecordAction(formData: FormData) {
+  const domainId = String(formData.get("domainId") ?? "");
+  const type = String(formData.get("type") ?? "");
+  const name = String(formData.get("name") ?? "");
+  const value = String(formData.get("value") ?? "");
+  const priority = Number(formData.get("priority") || 0);
+  await (await svc()).addDnsRecord({ domainId, type, name, value, priority });
+}
+
+export async function deleteDnsRecordAction(formData: FormData) {
+  await (await svc()).deleteDnsRecord(String(formData.get("recordId") ?? ""));
+}
+
+export async function createAliasAction(formData: FormData) {
+  const domainId = String(formData.get("domainId") ?? "");
+  const localPart = String(formData.get("localPart") ?? "");
+  const forwardTo = String(formData.get("forwardTo") ?? "");
+  const description = String(formData.get("description") ?? "");
+  await (await svc()).createAlias({ domainId, localPart, forwardTo, description });
+}
+
+export async function toggleAliasAction(formData: FormData) {
+  await (await svc()).toggleAlias(String(formData.get("aliasId") ?? ""));
+}
+
+export async function deleteAliasAction(formData: FormData) {
+  await (await svc()).deleteAlias(String(formData.get("aliasId") ?? ""));
+}
+
+export async function createReverseAliasAction(formData: FormData) {
+  const aliasId = String(formData.get("aliasId") ?? "");
+  const targetEmail = String(formData.get("targetEmail") ?? "");
+  await (await svc()).createReverseAlias({ aliasId, targetEmail });
+}
+
+export async function deleteReverseAliasAction(formData: FormData) {
+  await (await svc()).deleteReverseAlias(String(formData.get("reverseId") ?? ""));
+}
+
+export async function reportBreachAction(formData: FormData) {
+  const aliasEmail = String(formData.get("aliasEmail") ?? "");
+  const source = String(formData.get("source") ?? "");
+  const severity = String(formData.get("severity") ?? "medium");
+  await (await svc()).reportBreach({ aliasEmail, source, severity });
+}
+
+export async function resolveBreachAction(formData: FormData) {
+  await (await svc()).resolveBreach(String(formData.get("breachId") ?? ""));
+}

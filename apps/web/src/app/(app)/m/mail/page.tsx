@@ -30,6 +30,38 @@ import {
   createContactAction,
   deleteContactAction,
   searchContactsAction,
+  oneClickRepliesAction,
+  rewriteDraftAction,
+  classifyInboxAction,
+  summarizeThreadDetailedAction,
+  // Team
+  createMailboxAction,
+  deleteMailboxAction,
+  addCommentAction,
+  deleteCommentAction,
+  createDelegationAction,
+  revokeDelegationAction,
+  convertToTaskAction,
+  updateTaskAction,
+  deleteTaskAction,
+  createSharedDraftAction,
+  updateSharedDraftAction,
+  deleteSharedDraftAction,
+  addDraftCollaboratorAction,
+  // Domain & Privacy
+  registerDomainAction,
+  updateDomainAction,
+  deleteDomainAction,
+  verifyDomainAction,
+  addDnsRecordAction,
+  deleteDnsRecordAction,
+  createAliasAction,
+  toggleAliasAction,
+  deleteAliasAction,
+  createReverseAliasAction,
+  deleteReverseAliasAction,
+  reportBreachAction,
+  resolveBreachAction,
 } from "./actions";
 
 const VALID_FOLDERS = ["INBOX", "SENT", "ARCHIVE", "TRASH"] as const;
@@ -56,13 +88,17 @@ export default async function MailPage({
     threads = threads.filter((t) => threadIds.includes(t.threadId));
   }
 
-  const [labels, unreadCounts, rules, signatures, folders, autoResponder] = await Promise.all([
+  const [labels, unreadCounts, rules, signatures, folders, autoResponder, domains, aliases, reverseAliases, breaches] = await Promise.all([
     svc.labels(),
     svc.unreadCounts(),
     svc.getRules(),
     svc.getSignatures(),
     svc.getFolders(),
     svc.getAutoResponder(),
+    svc.getDomains(),
+    svc.getAliases(),
+    svc.getReverseAliases(),
+    svc.getBreachEvents(),
   ]);
 
   return (
@@ -97,6 +133,25 @@ export default async function MailPage({
         subject: autoResponder.subject,
         body: autoResponder.body,
       } : null}
+      domains={domains.map((d) => ({
+        id: d.id,
+        domain: d.domain,
+        verified: d.verified,
+        healthStatus: d.healthStatus,
+        privacyEnabled: d.privacyEnabled,
+        catchAllEnabled: d.catchAllEnabled,
+        dnsRecords: d.dnsRecords || [],
+      }))}
+      aliases={aliases.map((a) => ({
+        id: a.id,
+        localPart: a.localPart,
+        forwardTo: a.forwardTo,
+        isActive: a.isActive,
+        description: a.description,
+        domainId: a.domainId,
+      }))}
+      reverseAliases={reverseAliases}
+      breaches={breaches}
       actions={{
         send: sendMailAction,
         reply: replyMailAction,
@@ -126,6 +181,39 @@ export default async function MailPage({
         createContact: createContactAction,
         deleteContact: deleteContactAction,
         searchContacts: searchContactsAction,
+        oneClickReplies: oneClickRepliesAction,
+        rewriteDraft: rewriteDraftAction,
+        classifyInbox: classifyInboxAction,
+        summarizeThreadDetailed: summarizeThreadDetailedAction,
+        useQuickReply: replyMailAction,
+        // Team
+        createMailbox: createMailboxAction,
+        deleteMailbox: deleteMailboxAction,
+        addComment: addCommentAction,
+        deleteComment: deleteCommentAction,
+        createDelegation: createDelegationAction,
+        revokeDelegation: revokeDelegationAction,
+        convertToTask: convertToTaskAction,
+        updateTask: updateTaskAction,
+        deleteTask: deleteTaskAction,
+        createSharedDraft: createSharedDraftAction,
+        updateSharedDraft: updateSharedDraftAction,
+        deleteSharedDraft: deleteSharedDraftAction,
+        addDraftCollaborator: addDraftCollaboratorAction,
+        // Domain & Privacy
+        registerDomain: registerDomainAction,
+        updateDomain: updateDomainAction,
+        deleteDomain: deleteDomainAction,
+        verifyDomain: verifyDomainAction,
+        addDnsRecord: addDnsRecordAction,
+        deleteDnsRecord: deleteDnsRecordAction,
+        createAlias: createAliasAction,
+        toggleAlias: toggleAliasAction,
+        deleteAlias: deleteAliasAction,
+        createReverseAlias: createReverseAliasAction,
+        deleteReverseAlias: deleteReverseAliasAction,
+        reportBreach: reportBreachAction,
+        resolveBreach: resolveBreachAction,
       }}
     />
   );
