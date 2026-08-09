@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
+import LauncherPage from "./(app)/launcher/page";
 
-export default function HomePage() {
-  redirect("/launcher");
-}
+export default LauncherPage;
