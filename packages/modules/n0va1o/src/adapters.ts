@@ -12,6 +12,7 @@
  * parameters from `input` and the integration `config`.
  */
 import type { Integration } from "@n0va/db";
+import { EXTRA_ADAPTERS } from "./adapters-extra";
 
 export interface AdapterContext {
   integration: Integration;
@@ -23,10 +24,10 @@ export interface AdapterResult {
   message: string;
 }
 
-const cfgOf = (i: Integration): Record<string, unknown> =>
+export const cfgOf = (i: Integration): Record<string, unknown> =>
   (i.config as Record<string, unknown> | null) ?? {};
 
-const tokenOf = (i: Integration): string => {
+export const tokenOf = (i: Integration): string => {
   const c = cfgOf(i);
   return typeof c.token === "string" ? c.token : "";
 };
@@ -34,6 +35,7 @@ const tokenOf = (i: Integration): string => {
 /** Provider-specific default headers. Each provider API needs its own Accept
  * header and auth scheme; we centralize that here so adapters stay readable. */
 export function providerHeaders(integration: Integration, provider: string, extra: Record<string, string> = {}): Record<string, string> {
+  const _integration = integration; // keep for interface compat
   const token = tokenOf(integration);
   const h: Record<string, string> = { "User-Agent": "N0VA1O-Gateway", ...extra };
   switch (provider) {
@@ -90,7 +92,7 @@ interface FetchResult {
   err: string | null;
 }
 
-async function fetchJson(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<FetchResult> {
+export async function fetchJson(url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<FetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -110,7 +112,7 @@ async function fetchJson(url: string, options: RequestInit = {}, timeoutMs = 150
   }
 }
 
-async function fetchPostJson(url: string, integration: Integration, provider: string, body: unknown): Promise<FetchResult> {
+export async function fetchPostJson(url: string, integration: Integration, provider: string, body: unknown): Promise<FetchResult> {
   return fetchJson(url, {
     method: "POST",
     headers: { ...providerHeaders(integration, provider), "content-type": "application/json" },
@@ -123,6 +125,7 @@ async function fetchPostJson(url: string, integration: Integration, provider: st
 /* ------------------------------------------------------------------ */
 
 export const ADAPTERS: Record<string, (ctx: AdapterContext) => Promise<AdapterResult>> = {
+  ...EXTRA_ADAPTERS,
   "github:list_repos": async ({ integration, input }) => {
     const c = cfgOf(integration);
     const owner =

@@ -42,12 +42,17 @@ export function decryptToken(envelope: string, workspaceId: string): string {
   const ivHex = parts[0]!;
   const tagHex = parts[1]!;
   const cipherHex = parts[2]!;
-  const iv = Buffer.from(ivHex, "hex");
-  const tag = Buffer.from(tagHex, "hex");
-  const ciphertext = Buffer.from(cipherHex, "hex");
-  const decipher = createDecipheriv(ALGO, key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+  try {
+    const iv = Buffer.from(ivHex, "hex");
+    const tag = Buffer.from(tagHex, "hex");
+    const ciphertext = Buffer.from(cipherHex, "hex");
+    const decipher = createDecipheriv(ALGO, key, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+  } catch {
+    // Wrong key or tampered data
+    throw new Error("Token decryption failed — wrong workspace key or corrupted envelope");
+  }
 }
 
 /** Generate a PKCE code verifier + challenge pair for OAuth flows. */

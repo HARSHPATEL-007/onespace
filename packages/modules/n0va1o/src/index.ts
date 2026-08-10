@@ -1,3 +1,10 @@
 export { N0va1oService } from "./server";
 export { Integrations } from "./components";
-export { generateConnectLink, exchangeCodeForToken, OAUTH_PROVIDERS, type OAuthProviderConfig, type ConnectLinkResult, type TokenResponse } from "./gateway";
+export { generateConnectLink, exchangeCodeForToken, verifyOAuthState, OAUTH_PROVIDERS, type OAuthProviderConfig, type ConnectLinkResult, type TokenResponse } from "./gateway";
+export { N0va1oGateway, GatewayError, type GatewayCallInput, type GatewayCallResult } from "./gateway";
+export { ADAPTERS, cfgOf, tokenOf, providerHeaders, fetchJson, fetchPostJson } from "./adapters";
+export { EXTRA_ADAPTERS } from "./adapters-extra";
+export { encryptToken, decryptToken, generatePKCE, signState, verifyState } from "./crypto";
+export { compileRecipe, executeRecipe, validateRecipe, recipeIdFor, type RecipeDefinition, type RecipeStep, type RecipeExecutionResult, type CapturedCall } from "./recipe-compiler";
+export { evaluatePolicy, type PolicyDecision, type PolicyContext } from "./policy";
+export { discoverTools, findProvider, getToolDefinition, isDestructiveTool } from "./catalog";
