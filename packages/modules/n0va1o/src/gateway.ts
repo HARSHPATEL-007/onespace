@@ -12,6 +12,7 @@ import { ADAPTERS } from "./adapters";
 import { evaluatePolicy, type PolicyContext, type PolicyDecision } from "./policy";
 import { isDestructiveTool } from "./catalog";
 import { logAudit } from "@n0va/db";
+import { encryptToken, decryptToken, generatePKCE, signState, verifyState } from "./crypto";
 
 export class GatewayError extends Error {
   constructor(
@@ -142,19 +143,17 @@ async function realTransport(
   }
 }
 
-/** Deterministic simulated results for catalog providers without real creds. */
-function simulatedResult(integration: Integration, tool: string): { message: string; ok: boolean } {
+/**
+ * Return a NOT_IMPLEMENTED result for catalog providers without real adapters.
+ * Never fabricates success — agents must know when an action didn't execute.
+ */
+function notImplementedResult(integration: Integration, tool: string): { message: string; ok: boolean; statusCode: number } {
   const provider = findProvider(integration.provider);
   const label = provider?.name ?? integration.provider;
-  const noun = (tool ?? "ping").replace(/_/g, " ");
-  const ok = !/delete|remove|cancel|trash|kick|refund|merge|resolve|close/.test(tool) || Math.random() > 0.25;
-  if (!ok) {
-    return { ok: false, message: `${label}: ${noun} failed — provider returned 403 (scope or token)`.slice(0, 200) };
-  }
-  const count = 1 + Math.floor(Math.random() * 23);
   return {
-    ok: true,
-    message: `${label}: ${noun} completed — ${count} item${count === 1 ? "" : "s"} processed via gateway`.slice(0, 200),
+    ok: false,
+    statusCode: 501,
+    message: `${label}: ${tool} is cataloged but has no live adapter. Connect an account or implement the adapter to enable this action.`,
   };
 }
 
@@ -275,9 +274,8 @@ export class N0va1oGateway {
         } else if (isReal) {
           result = await realTransport(resolvedIntegration, path, method, payload.body ?? payload, integration.timeoutMs);
         } else {
-          await sleep(Math.min(300, attempt * 120));
-          const sim = simulatedResult(integration, tool);
-          result = { statusCode: sim.ok ? 200 : 403, ok: sim.ok, message: sim.message, durationMs: 0, retries: attempt };
+          const sim = notImplementedResult(integration, tool);
+          result = { statusCode: sim.statusCode, ok: sim.ok, message: sim.message, durationMs: 0, retries: attempt };
         }
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
@@ -488,21 +486,22 @@ export class N0va1oGateway {
           tokenState: "ACTIVE",
         },
       });
-      return {
-        token: refreshedToken ?? conn.encryptedToken,
-        scopes: arrayFromJson(updated.allowedScopes),
-        allowedActions: arrayFromJson(updated.allowedActions),
-        blockedActions: arrayFromJson(updated.blockedActions),
-        refreshed: true,
-        tokenState: updated.tokenState,
-        connectionId: conn.id,
-        healthScore: updated.healthScore ?? 1,
-        authType: conn.authType,
-      };
-    }
+    return {
+      token: refreshedToken ?? decryptToken(conn.encryptedToken, workspaceId),
+      scopes: arrayFromJson(updated.allowedScopes),
+      allowedActions: arrayFromJson(updated.allowedActions),
+      blockedActions: arrayFromJson(updated.blockedActions),
+      refreshed: true,
+      tokenState: updated.tokenState,
+      connectionId: conn.id,
+      healthScore: updated.healthScore ?? 1,
+      authType: conn.authType,
+    };
+  }
+
 
     return {
-      token: conn.encryptedToken,
+      token: decryptToken(conn.encryptedToken, workspaceId),
       scopes: arrayFromJson(conn.allowedScopes),
       allowedActions: arrayFromJson(conn.allowedActions),
       blockedActions: arrayFromJson(conn.blockedActions),
@@ -606,9 +605,8 @@ export class N0va1oGateway {
 
   /**
    * Provision or update a credential envelope for an integration (JIT connect).
-   * In production the `encryptedToken` would be AES-256-GCM encrypted with a
-   * tenant-isolated KMS key. For the gateway layer we store the opaque
-   * envelope reference and never expose plaintext to the LLM context.
+   * Tokens are AES-256-GCM encrypted with a per-tenant derived key before storage.
+   * The plaintext token is never persisted — only the encrypted envelope.
    */
    async upsertConnection(input: {
     integrationId: string;
@@ -626,12 +624,15 @@ export class N0va1oGateway {
       where: { integrationId: input.integrationId, workspaceId: input.workspaceId },
       orderBy: { updatedAt: "desc" },
     });
+    // Encrypt tokens at rest with per-tenant key
+    const encryptedToken = encryptToken(input.encryptedToken, input.workspaceId);
+    const encryptedRefresh = input.refreshToken ? encryptToken(input.refreshToken, input.workspaceId) : null;
     const data = {
       workspaceId: input.workspaceId,
       integrationId: input.integrationId,
       authType: input.authType,
-      encryptedToken: input.encryptedToken,
-      refreshToken: input.refreshToken ?? null,
+      encryptedToken,
+      refreshToken: encryptedRefresh,
       allowedScopes: input.allowedScopes ?? [],
       allowedActions: input.allowedActions ?? [],
       blockedActions: input.blockedActions ?? [],
@@ -819,21 +820,32 @@ export async function exchangeCodeForToken(provider: string, code: string, redir
 
 /**
  * Generate a real OAuth authorization URL so a user can connect their account.
- * Pure function — returns the URL and state; the caller persists state.
+ * Uses signed state (HMAC-SHA256) for CSRF protection and PKCE for code-interception defense.
+ * State format: `workspaceId|provider|nonce|signature`
  */
 export function generateConnectLink(provider: string, redirectUri: string, workspaceId: string): ConnectLinkResult {
   const cfg = OAUTH_PROVIDERS[provider];
   if (!cfg) throw new Error(`No OAuth config for provider: ${provider}`);
   const oauth = cfg(redirectUri);
-  const state = createHash("sha256").update(`${workspaceId}|${provider}|${Date.now()}`).digest("hex").slice(0, 24);
+  const nonce = randomBytes(16).toString("hex");
+  const state = signState(workspaceId, provider, nonce);
+  const pkce = generatePKCE();
   const params = new URLSearchParams({
     client_id: oauth.clientId,
     redirect_uri: oauth.redirectUri,
     scope: oauth.scopes.join(" "),
     state,
     response_type: "code",
+    code_challenge: pkce.challenge,
+    code_challenge_method: "S256",
   });
   return { authUrl: `${oauth.authorizeUrl}?${params.toString()}`, state, provider, expiresIn: 600 };
+}
+
+/** Verify an OAuth state parameter is authentic and untampered. */
+export function verifyOAuthState(state: string): { valid: boolean; workspaceId: string; provider: string } {
+  const result = verifyState(state);
+  return { valid: result.valid, workspaceId: result.workspaceId, provider: result.provider };
 }
 
 /** Normalize a Json field that may be an array or a JSON string. */
