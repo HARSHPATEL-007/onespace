@@ -1,6 +1,8 @@
 import { ChatService, REACTION_EMOJIS } from "@n0va/modules-chat/server";
-import { ChatPanel } from "@n0va/modules-chat/components";
+import { ChatPanel } from "@/components/chat/ChatPanel";
 import { requireWorkspace } from "@/lib/context";
+import { auth } from "@n0va/auth";
+import { SignJWT } from "jose";
 import {
   createChannelAction,
   createDmAction,
@@ -19,6 +21,19 @@ export default async function ChatPage({
   const { c } = await searchParams;
   const { workspaceId, userId, role } = await requireWorkspace();
   const svc = new ChatService(workspaceId, userId, role);
+
+  // Generate WebSocket token for the Rust gateway
+  const session = await auth();
+  const secret = process.env.NEXTAUTH_SECRET || "change-me-in-production";
+  const key = new TextEncoder().encode(secret);
+  const token = await new SignJWT({
+    sub: session?.user?.id || "",
+    workspace_id: workspaceId,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(key);
 
   const [channels, members, unread] = await Promise.all([
     svc.listChannels(),
@@ -56,6 +71,7 @@ export default async function ChatPage({
         react: reactAction,
         markRead: markReadAction,
       }}
+      token={token}
     />
   );
 }

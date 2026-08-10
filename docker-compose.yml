@@ -38,6 +38,38 @@ services:
         condition: service_healthy
     command: sh -c "cd /app/packages/db && npx prisma db push --skip-generate && cd /app && pnpm dev"
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  gateway:
+    build:
+      context: ./services/chat-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      GATEWAY_HOST: 0.0.0.0
+      GATEWAY_PORT: 8080
+      DATABASE_URL: postgresql://n0va:n0va_secret@postgres:5432/n0va
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+      NEXTJS_API_URL: http://web:3000
+      RUST_LOG: info,chat_gateway=debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   smtp:
     image: mailhog/mailhog:latest
     ports:
@@ -46,3 +78,4 @@ services:
 
 volumes:
   pgdata:
+  redisdata:
