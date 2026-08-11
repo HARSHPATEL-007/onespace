@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { Button, Dialog, Dropdown, MenuItem, cn } from "@n0va/ui";
 import type { ChatChannel, ChatMessage, WorkspaceMember } from "@n0va/db";
 import { useChatSocket } from "@/hooks/useChatSocket";
+import { ThreadPanel } from "./ThreadPanel";
+import { NotificationPanel } from "./NotificationPanel";
+import { AISlashCommandMenu } from "./AISlashCommandMenu";
 
 export interface ChatActions {
   createChannel: (formData: FormData) => Promise<void>;
@@ -102,6 +105,20 @@ function renderBody(m: ChatMessage) {
   return <div className="nv-message-body">{m.body}</div>;
 }
 
+function renderAttachments(m: ChatMessage) {
+  const attachments = (m as any).attachments as Array<{ id: string; filename: string; mimeType: string; url?: string }> | undefined;
+  if (!attachments || attachments.length === 0) return null;
+  return (
+    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+      {attachments.map((a) => (
+        <a key={a.id} href={a.url ?? `/api/chat/attachments/${a.id}/download`} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: "var(--nv-radius-md)", fontSize: 11, background: "var(--nv-color-surface-2)", border: "1px solid var(--nv-color-border)", textDecoration: "none", color: "var(--nv-color-text)" }}>
+          {a.mimeType?.startsWith("image/") ? "🖼️" : "📎"} {a.filename}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export function ChatPanel({
   workspaceId,
   userId,
@@ -145,6 +162,11 @@ export function ChatPanel({
   const [searchResults, setSearchResults] = useState<ChatMessage[]>([]);
   const [showPinned, setShowPinned] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [activeThread, setActiveThread] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showAICommand, setShowAICommand] = useState(false);
+  const [notifUnread, setNotifUnread] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -268,6 +290,44 @@ export function ChatPanel({
     fd.set("messageId", messageId);
     void actions.unpin(fd).then(() => router.refresh());
   };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !active) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/chat/attachments", { method: "POST", body: fd });
+        if (res.ok) {
+          const attachment = await res.json();
+          const msg = `[📎 ${attachment.filename}](${attachment.url})`;
+          const sendFd = new FormData();
+          sendFd.set("channelId", active.id);
+          sendFd.set("body", msg);
+          await actions.send(sendFd);
+        }
+      }
+      router.refresh();
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const fetchNotifCount = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications?unread=true");
+      if (res.ok) { const d = await res.json(); setNotifUnread(d.unreadCount ?? 0); }
+    } catch { }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifCount();
+    const interval = setInterval(fetchNotifCount, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifCount]);
 
   const handleSend = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -445,6 +505,9 @@ export function ChatPanel({
           {active?.topic && <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>| {active.topic}</span>}
           <span style={{ fontSize: 12, color: status.color }}>{status.text}</span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+            <button onClick={() => setShowNotifications(!showNotifications)} style={{ position: "relative", border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>
+              🔔 {notifUnread > 0 && <span style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "var(--nv-color-danger)", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>{notifUnread}</span>}
+            </button>
             <button onClick={() => setShowPinned(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>📌 Pins</button>
             <button onClick={() => setShowMembers(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>👥 {active?.members.length ?? 0}</button>
           </div>
@@ -494,6 +557,7 @@ export function ChatPanel({
                         ) : (
                           <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m)}</div>
                         )}
+                        {renderAttachments(m)}
                       </div>
                       {renderReactions(m)}
                     </div>
@@ -516,6 +580,7 @@ export function ChatPanel({
                       ) : (
                         <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m)}</div>
                       )}
+                      {renderAttachments(m)}
                       {renderReactions(m)}
                     </div>
                     <MessageMenu m={m} />
@@ -543,24 +608,54 @@ export function ChatPanel({
         {/* Message input */}
         <form onSubmit={handleSend} style={{ padding: "var(--nv-space-3)", borderTop: "1px solid var(--nv-color-border)", display: "flex", gap: 8, alignItems: "flex-end" }}>
           <input type="hidden" name="channelId" value={activeChannelId ?? ""} />
-          <input
-            ref={inputRef}
-            className="nv-input"
-            name="body"
-            placeholder={active ? `Message ${channelLabel(active)}` : "Select a channel first"}
-            disabled={!active}
-            required
-            autoComplete="off"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleTyping}
-            style={{ flex: 1 }}
-          />
-          <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} />
-          <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={!active} title="Attach file">📎</Button>
+          <div style={{ position: "relative", flex: 1 }}>
+            <input
+              ref={inputRef}
+              className="nv-input"
+              name="body"
+              placeholder={active ? `Message ${channelLabel(active)}` : "Select a channel first"}
+              disabled={!active}
+              required
+              autoComplete="off"
+              value={inputValue}
+              onChange={(e) => { setInputValue(e.target.value); setShowAICommand(e.target.value.startsWith("/")); }}
+              onKeyDown={handleTyping}
+              style={{ width: "100%" }}
+            />
+            {showAICommand && activeChannelId && (
+              <AISlashCommandMenu channelId={activeChannelId} onResult={(text) => { setInputValue(text); }} onClose={() => setShowAICommand(false)} />
+            )}
+          </div>
+          <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileUpload} />
+          <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={!active || uploading} title={uploading ? "Uploading..." : "Attach file"}>{uploading ? "⏳" : "📎"}</Button>
+          <Button type="button" variant="secondary" onClick={() => setShowAICommand(!showAICommand)} disabled={!active} title="AI commands">✨</Button>
           <Button type="submit" disabled={!active || !inputValue.trim()}>Send</Button>
         </form>
       </div>
+
+      {/* Thread panel */}
+      {activeThread && activeChannelId && (
+        <ThreadPanel
+          parentId={activeThread}
+          workspaceId={workspaceId}
+          onClose={() => setActiveThread(null)}
+          onSendReply={async (parentId, body) => {
+            const fd = new FormData();
+            fd.set("channelId", activeChannelId);
+            fd.set("body", body);
+            fd.set("parentId", parentId);
+            await actions.send(fd);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {/* Notification panel */}
+      {showNotifications && (
+        <div style={{ position: "absolute", top: 40, right: 16, zIndex: 50 }}>
+          <NotificationPanel onClose={() => setShowNotifications(false)} />
+        </div>
+      )}
 
       {/* ── Dialogs ── */}
 
@@ -733,9 +828,11 @@ export function ChatPanel({
   function MessageMenu({ m }: { m: ChatMessage }) {
     if (m.deletedAt) return null;
     const isAuthor = m.createdById === userId;
+    const replyCount = (m as any)._count?.replies ?? 0;
     return (
       <Dropdown trigger={<Button variant="ghost" size="sm" style={{ minWidth: 0, padding: "2px 6px", opacity: 0.4 }}>⋯</Button>}>
         <MenuItem onSelect={() => { setReplyingTo(m); inputRef.current?.focus(); }}>Reply in thread</MenuItem>
+        {replyCount > 0 && <MenuItem onSelect={() => setActiveThread(m.id)}>View thread ({replyCount})</MenuItem>}
         {isAuthor && <MenuItem onSelect={() => startEdit(m)}>Edit</MenuItem>}
         {isAuthor && <MenuItem danger onSelect={() => { const fd = new FormData(); fd.set("messageId", m.id); void actions.delete(fd).then(() => router.refresh()); }}>Delete</MenuItem>}
         {m.pinnedAt ? (
