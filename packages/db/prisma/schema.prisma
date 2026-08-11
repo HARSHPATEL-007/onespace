@@ -108,6 +108,12 @@ integrations    Integration[]
       chatAttachments ChatAttachment[]
       chatSearchIndexes ChatSearchIndex[]
       contactChatLinks ContactChatLink[]
+      neuralConsentScopes NeuralConsentScope[]
+      neuralStateRecords NeuralStateRecord[]
+      neuralHuddleSessions NeuralHuddleSession[]
+      attentionMaps AttentionMap[]
+      flowStateEvents FlowStateEvent[]
+      subVocalCommands SubVocalCommand[]
    }
 
   /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -185,8 +191,13 @@ createdCalendarEvents CalendarEvent[]
   createdEmailAliases     EmailAlias[] @relation("createdEmailAliases")
      createdRoutingRules     MailRoutingRule[] @relation("createdRoutingRules")
      createdDiscoverySearches MailDiscoverySearch[] @relation("createdDiscoverySearches")
-     chatPins ChatPin[]
-     contactChatLinks ContactChatLink[]
+      chatPins ChatPin[]
+      contactChatLinks ContactChatLink[]
+      neuralConsentScopes NeuralConsentScope[]
+      neuralStateRecords NeuralStateRecord[]
+      attentionMaps AttentionMap[]
+      flowStateEvents FlowStateEvent[]
+      subVocalCommands SubVocalCommand[]
    }
 
   /// Seat within a workspace + assigned role.
@@ -2656,4 +2667,263 @@ model Invite {
 
   @@unique([workspaceId, email])
   @@index([token])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA NEURAL BCI — Brain-Computer Interface integration for Huddles & Flow
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Granular consent scopes for neural data sharing per user.
+model NeuralConsentScope {
+  id              String   @id @default(uuid())
+  userId          String
+  workspaceId     String
+  feature         NeuralFeature
+  recipient       NeuralRecipient
+  duration        ConsentDuration
+  privacyMode     PrivacyMode @default(LOCAL_ONLY)
+  retentionDays   Int      @default(30)
+  epsilon         Float    @default(1.0)
+  enabled         Boolean  @default(true)
+  revokedAt       DateTime?
+  lastConfirmedAt DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId, feature, recipient])
+  @@index([userId, workspaceId])
+  @@index([userId, feature])
+}
+
+/// Ingested neural state records (differentially-private embeddings only).
+model NeuralStateRecord {
+  id              String   @id @default(uuid())
+  userId          String
+  workspaceId     String
+  source          NeuralSource
+  modality        NeuralModality
+  samplingRate    Int      @default(250)
+  attention       Float    @default(0)
+  stress          Float    @default(0)
+  cognitiveLoad   Float    @default(0)
+  flowProb        Float    @default(0)
+  blinkRate       Int      @default(0)
+  heartRate       Int?
+  embedding       Json
+  provenanceHash  String
+  consentScopeId  String?
+  localOnly       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  consentScope NeuralConsentScope? @relation(fields: [consentScopeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([userId, flowProb(sort: Desc)])
+}
+
+/// Neural-augmented huddle sessions.
+model NeuralHuddleSession {
+  id                    String   @id @default(uuid())
+  workspaceId           String
+  roomId                String?
+  createdById           String
+  title                 String
+  subvocalEnabled       Boolean  @default(false)
+  neuralStreamEnabled   Boolean  @default(false)
+  latencyTargetMs       Int      @default(25)
+  codecProfile          String   @default("opus_48k_stereo")
+  privacyPolicyId       String   @default("neural_v1")
+  status                HuddleStatus @default(SCHEDULED)
+  startedAt             DateTime?
+  endedAt               DateTime?
+  eventStreamTopic      String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy  User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  room       MeetRoom?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  participants NeuralHuddleParticipant[]
+  streams    NeuralStreamEndpoint[]
+
+  @@index([workspaceId, status])
+  @@index([createdById])
+}
+
+model NeuralHuddleParticipant {
+  id              String   @id @default(uuid())
+  sessionId       String
+  userId          String
+  role            String   @default("participant")
+  joinedAt        DateTime @default(now())
+  leftAt          DateTime?
+  neuralStreamOk  Boolean  @default(false)
+  subvocalOk      Boolean  @default(false)
+
+  session NeuralHuddleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+}
+
+model NeuralStreamEndpoint {
+  id           String   @id @default(uuid())
+  sessionId    String
+  userId       String
+  endpointType StreamEndpointType
+  endpointUrl  String
+  ephemeralKey String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  session NeuralHuddleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([userId])
+}
+
+/// Attention maps fusing model attention with neural correlation.
+model AttentionMap {
+  id                     String   @id @default(uuid())
+  contextId              String
+  contextType            ContextType
+  workspaceId            String
+  userId                 String?
+  tokenPositions         Json     @default("[]")
+  modelAttentionWeights  Json     @default("[]")
+  neuralAttentionCorr    Json     @default("[]")
+  relevanceScore         Float    @default(0)
+  createdAt              DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([contextId])
+  @@index([workspaceId, contextType])
+  @@index([userId, relevanceScore(sort: Desc)])
+}
+
+/// Flow-state change events for UI adaptation and analytics.
+model FlowStateEvent {
+  id          String   @id @default(uuid())
+  userId      String
+  workspaceId String
+  fromState   FlowState
+  toState     FlowState
+  flowProb    Float
+  trigger     FlowTrigger
+  actionTaken String?
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([workspaceId, toState])
+}
+
+/// Sub-vocal command decoding results.
+model SubVocalCommand {
+  id           String   @id @default(uuid())
+  userId       String
+  workspaceId  String
+  sessionId    String?
+  rawText      String
+  command      String?
+  confidence   Float
+  latencyMs    Int
+  executed     Boolean  @default(false)
+  fallbackUsed Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([sessionId])
+}
+
+// ── Neural BCI Enums ──────────────────────────────────────────────────────────
+
+enum NeuralFeature {
+  FLOW_DETECTION
+  SUBVOCAL_DECODING
+  SHARED_ATTENTION
+  NEURAL_STATE_SHARING
+  TEAM_DASHBOARD
+}
+
+enum NeuralRecipient {
+  SELF_ONLY
+  TEAM
+  ROLE_BASED
+  WORKSPACE
+}
+
+enum ConsentDuration {
+  ONE_OFF
+  SESSION
+  PERSISTENT
+}
+
+enum PrivacyMode {
+  LOCAL_ONLY
+  AGGREGATE_ONLY
+  FULL
+}
+
+enum NeuralSource {
+  WEARABLE
+  IMPLANTED
+  PERIPHERAL
+}
+
+enum NeuralModality {
+  EEG
+  EMG
+  INTRACORTICAL
+}
+
+enum HuddleStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+}
+
+enum StreamEndpointType {
+  NEURAL_STATE
+  SUBVOCAL
+  AUDIO
+  VIDEO
+}
+
+enum ContextType {
+  MESSAGE
+  THREAD
+  DOC
+  NOTIFICATION
+  TASK
+}
+
+enum FlowState {
+  IDLE
+  FOCUS
+  FLOW
+  CRISIS
+  DISTRACTED
+}
+
+enum FlowTrigger {
+  NEURAL_SIGNAL
+  USER_ACTION
+  CALENDAR
+  SYSTEM
+  TIMEOUT
 }
