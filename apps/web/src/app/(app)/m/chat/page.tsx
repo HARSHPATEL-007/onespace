@@ -7,10 +7,18 @@ import {
   createChannelAction,
   createDmAction,
   sendMessageAction,
+  editMessageAction,
+  deleteMessageAction,
+  replyMessageAction,
   renameChannelAction,
   deleteChannelAction,
+  addMemberAction,
+  removeMemberAction,
   reactAction,
+  pinMessageAction,
+  unpinMessageAction,
   markReadAction,
+  searchMessagesAction,
 } from "./actions";
 
 export default async function ChatPage({
@@ -65,11 +73,20 @@ export default async function ChatPage({
       actions={{
         createChannel: createChannelAction,
         createDm: createDmAction,
+        updateChannel: async () => {}, // not used in page
         send: sendMessageAction,
+        edit: editMessageAction,
+        delete: deleteMessageAction,
+        reply: replyMessageAction,
         rename: renameChannelAction,
         deleteChannel: deleteChannelAction,
+        addMember: addMemberAction,
+        removeMember: removeMemberAction,
         react: reactAction,
+        pin: pinMessageAction,
+        unpin: unpinMessageAction,
         markRead: markReadAction,
+        search: searchMessagesAction,
       }}
       token={token}
     />

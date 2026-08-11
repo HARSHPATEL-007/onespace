@@ -104,7 +104,9 @@ integrations    Integration[]
     emailAccounts    EmailAccount[]
     legalHolds       MailLegalHold[]
     retentionPolicies MailRetentionPolicy[]
-    discoverySearches MailDiscoverySearch[]
+     discoverySearches MailDiscoverySearch[]
+     chatAttachments ChatAttachment[]
+     chatSearchIndexes ChatSearchIndex[]
   }
 
   /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -180,9 +182,10 @@ createdCalendarEvents CalendarEvent[]
   draftCollaborations    MailSharedDraftCollaborator[]
   createdMailDomains      MailDomain[] @relation("createdMailDomains")
   createdEmailAliases     EmailAlias[] @relation("createdEmailAliases")
-    createdRoutingRules     MailRoutingRule[] @relation("createdRoutingRules")
-    createdDiscoverySearches MailDiscoverySearch[] @relation("createdDiscoverySearches")
-  }
+     createdRoutingRules     MailRoutingRule[] @relation("createdRoutingRules")
+     createdDiscoverySearches MailDiscoverySearch[] @relation("createdDiscoverySearches")
+     chatPins ChatPin[]
+   }
 
   /// Seat within a workspace + assigned role.
 model WorkspaceMember {
@@ -545,15 +548,22 @@ model ChatChannel {
   workspaceId String
   createdById String?
   name        String
+  topic       String   @default("")
+  description String   @default("")
   kind        ChatChannelKind @default(CHANNEL)
+  isPrivate   Boolean  @default(false)
+  pinnedAt    DateTime?
+  archivedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   messages  ChatMessage[]
   members   ChatMember[]
+  pins      ChatPin[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
+  @@index([workspaceId, kind])
 }
 
 model ChatMessage {
@@ -562,14 +572,28 @@ model ChatMessage {
   workspaceId String
   createdById String
   authorName  String
+  authorAvatar String?
   body        String
+  bodyHtml    String?
   reactions   Json     @default("[]")
+  parentId    String?
+  editedAt    DateTime?
+  pinnedAt    DateTime?
+  deletedAt   DateTime?
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-channel ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel      ChatChannel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent       ChatMessage?  @relation("ThreadReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      ChatMessage[] @relation("ThreadReplies")
+  edits        ChatMessageEdit[]
+  attachments  ChatAttachment[]
+  pins         ChatPin[]
 
   @@index([channelId, createdAt(sort: Desc)])
+  @@index([parentId])
+  @@index([channelId, pinnedAt])
 }
 
 model ChatMember {
@@ -577,6 +601,8 @@ model ChatMember {
   channelId  String
   userId     String
   lastReadAt DateTime?
+  role       ChatMemberRole @default(MEMBER)
+  mutedUntil DateTime?
   createdAt  DateTime  @default(now())
 
   channel ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
@@ -585,9 +611,75 @@ model ChatMember {
   @@unique([channelId, userId])
 }
 
+model ChatMessageEdit {
+  id        String   @id @default(uuid())
+  messageId String
+  oldBody   String
+  newBody   String
+  editedAt  DateTime @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, editedAt(sort: Desc)])
+}
+
+model ChatAttachment {
+  id          String   @id @default(uuid())
+  messageId   String
+  workspaceId String
+  filename    String
+  mimeType    String
+  sizeBytes   Int      @default(0)
+  storageKey  String
+  thumbnailKey String?
+  checksum    String?
+  createdAt   DateTime @default(now())
+
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model ChatPin {
+  id        String   @id @default(uuid())
+  messageId String
+  channelId String
+  pinnedById String
+  createdAt DateTime @default(now())
+
+  message  ChatMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  channel  ChatChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  pinnedBy User         @relation(fields: [pinnedById], references: [id], onDelete: Cascade)
+
+  @@unique([messageId])
+  @@index([channelId])
+}
+
+model ChatSearchIndex {
+  id          String   @id @default(uuid())
+  messageId   String   @unique
+  channelId   String
+  workspaceId String
+  authorName  String
+  body        String
+  searchVector String
+  createdAt   DateTime @default(now())
+
+  @@index([channelId])
+  @@index([workspaceId])
+}
+
 enum ChatChannelKind {
   CHANNEL
   DM
+}
+
+enum ChatMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
 }
 
 /// N0VA MAIL - messages, threads and labels.

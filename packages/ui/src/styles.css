@@ -549,6 +549,58 @@
   text-decoration: underline;
 }
 
+/* ---- CHAT ---- */
+.nv-message-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.nv-message-body a {
+  color: var(--nv-color-primary);
+  text-decoration: underline;
+}
+.nv-message-body a:hover {
+  text-decoration: none;
+}
+.nv-code-block {
+  background: var(--nv-color-bg);
+  border: 1px solid var(--nv-color-border);
+  border-radius: var(--nv-radius-md);
+  padding: 10px 14px;
+  margin: 6px 0;
+  overflow-x: auto;
+  font-family: var(--nv-font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  position: relative;
+}
+.nv-code-block .nv-code-lang {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--nv-color-text-faint);
+  background: var(--nv-color-surface-2);
+  padding: 2px 8px;
+  border-bottom-left-radius: var(--nv-radius-sm);
+}
+.nv-code-inline {
+  background: var(--nv-color-surface-2);
+  border: 1px solid var(--nv-color-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: var(--nv-font-mono);
+  font-size: 0.88em;
+}
+.nv-message-body strong {
+  font-weight: 700;
+}
+.nv-message-body em {
+  font-style: italic;
+}
+
 /* ---- DOCS (tiptap) ---- */
 .nv-doc-editor {
   outline: none;

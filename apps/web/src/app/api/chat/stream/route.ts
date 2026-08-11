@@ -39,7 +39,8 @@ export async function GET(req: Request) {
   }
 
   const initial = await prisma.chatMessage.findMany({
-    where: { channelId },
+    where: { channelId, parentId: null, deletedAt: null },
+    include: { attachments: true },
     orderBy: { createdAt: "desc" },
     take: 50,
   });

@@ -6,12 +6,22 @@ export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "fa
 
 interface ChatMessage {
   id: string;
-  channel_id: string;
-  workspace_id: string;
-  created_by_id: string;
-  author_name: string;
+  channelId: string;
+  workspaceId: string;
+  createdById: string;
+  authorName: string;
   body: string;
-  created_at: string;
+  bodyHtml?: string | null;
+  parentId?: string | null;
+  createdAt: string;
+  attachments?: Array<{
+    id: string;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    storageKey: string;
+    thumbnailKey?: string | null;
+  }>;
 }
 
 interface PresenceEvent {
