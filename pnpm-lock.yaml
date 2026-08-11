@@ -119,6 +119,9 @@ importers:
       '@n0va/modules-n0va1o':
         specifier: workspace:*
         version: link:../../packages/modules/n0va1o
+      '@n0va/modules-neural-chat':
+        specifier: workspace:*
+        version: link:../../packages/modules/neural-chat
       '@n0va/modules-operations-teams':
         specifier: workspace:*
         version: link:../../packages/modules/operations-teams
@@ -1174,6 +1177,19 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/neural-chat:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
       typescript:
         specifier: ^5.8.0
         version: 5.9.3

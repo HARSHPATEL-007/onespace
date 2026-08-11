@@ -25,6 +25,7 @@
     "@n0va/modules-keep": "workspace:*",
     "@n0va/modules-mail": "workspace:*",
     "@n0va/modules-meet": "workspace:*",
+    "@n0va/modules-neural-chat": "workspace:*",
     "@n0va/modules-pics": "workspace:*",
     "@n0va/modules-sites": "workspace:*",
     "@n0va/modules-slides": "workspace:*",

@@ -198,6 +198,8 @@ createdCalendarEvents CalendarEvent[]
       attentionMaps AttentionMap[]
       flowStateEvents FlowStateEvent[]
       subVocalCommands SubVocalCommand[]
+      neuralHuddleSessions NeuralHuddleSession[]
+      neuralHuddleParticipations NeuralHuddleParticipant[]
    }
 
   /// Seat within a workspace + assigned role.
@@ -1654,6 +1656,7 @@ model MeetRoom {
   createdBy    User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
   participants MeetParticipant[]
   messages     MeetMessage[]
+  neuralHuddles NeuralHuddleSession[]
 }
 
 model MeetParticipant {
@@ -2692,6 +2695,7 @@ model NeuralConsentScope {
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  stateRecords NeuralStateRecord[]
 
   @@unique([userId, workspaceId, feature, recipient])
   @@index([userId, workspaceId])
