@@ -30,6 +30,7 @@
     "@n0va/modules-sites": "workspace:*",
     "@n0va/modules-slides": "workspace:*",
     "@n0va/modules-storage": "workspace:*",
+    "@n0va/modules-rich-content": "workspace:*",
     "@n0va/modules-sheets": "workspace:*",
     "@n0va/modules-tasks": "workspace:*",
     "@n0va/modules-videos": "workspace:*",

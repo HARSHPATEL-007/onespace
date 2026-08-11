@@ -131,6 +131,9 @@ importers:
       '@n0va/modules-revenue':
         specifier: workspace:*
         version: link:../../packages/modules/revenue
+      '@n0va/modules-rich-content':
+        specifier: workspace:*
+        version: link:../../packages/modules/rich-content
       '@n0va/modules-sales':
         specifier: workspace:*
         version: link:../../packages/modules/sales
@@ -1286,6 +1289,16 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/rich-content:
+    dependencies:
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
