@@ -1,1 +1,19 @@
 $ tsc --noEmit
+src/e2e-verify.ts(78,10): error TS2532: Object is possibly 'undefined'.
+src/index.ts(10,39): error TS2305: Module '"./catalog"' has no exported member 'getToolDefinition'.
+src/recipe-compiler.ts(101,33): error TS18048: 'step' is possibly 'undefined'.
+src/recipe-compiler.ts(101,50): error TS18048: 'step' is possibly 'undefined'.
+src/recipe-compiler.ts(104,73): error TS18048: 'step' is possibly 'undefined'.
+src/recipe-compiler.ts(104,90): error TS18048: 'step' is possibly 'undefined'.
+src/recipe-compiler.ts(110,24): error TS18048: 'step' is possibly 'undefined'.
+src/recipe-compiler.ts(113,24): error TS18048: 'step' is possibly 'undefined'.
+src/recipe-compiler.ts(120,30): error TS18048: 'step' is possibly 'undefined'.
+src/recipe-compiler.ts(124,54): error TS18048: 'step' is possibly 'undefined'.
+src/sdk.ts(85,19): error TS2339: Property 'isError' does not exist on type 'CallResult & { content?: { text: string; }[] | undefined; }'.
+src/sdk.ts(86,26): error TS2339: Property 'meta' does not exist on type 'CallResult & { content?: { text: string; }[] | undefined; }'.
+src/sdk.ts(86,54): error TS2339: Property 'isError' does not exist on type 'CallResult & { content?: { text: string; }[] | undefined; }'.
+src/sdk.ts(88,26): error TS2339: Property 'meta' does not exist on type 'CallResult & { content?: { text: string; }[] | undefined; }'.
+src/sdk.ts(90,24): error TS2339: Property 'meta' does not exist on type 'CallResult & { content?: { text: string; }[] | undefined; }'.
+src/test-enhancements.ts(11,30): error TS18046: 'result.inputSchema.properties' is of type 'unknown'.
+src/test-enhancements.ts(13,9): error TS18046: 'result.inputSchema.properties' is of type 'unknown'.
+[ELIFECYCLE] Command failed with exit code 2.

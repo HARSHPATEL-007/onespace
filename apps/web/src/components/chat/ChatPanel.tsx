@@ -126,7 +126,8 @@ export function ChatPanel({
   token: string;
 }) {
   const router = useRouter();
-  const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
+  type LiveMsg = ChatMessage & { attachments?: Array<{ id: string; filename: string; mimeType: string; sizeBytes: number; storageKey: string; thumbnailKey?: string | null; }> };
+  const [liveMessages, setLiveMessages] = useState<LiveMsg[]>([]);
   const [presence, setPresence] = useState<Record<string, string>>({});
   const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
   const [connStatus, setConnStatus] = useState<string>("connecting");
@@ -149,7 +150,7 @@ export function ChatPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { status: wsStatus, sendMessage, sendTyping } = useChatSocket({
+  const { status: wsStatus, sendMessage, sendTyping } = useChatSocket<LiveMsg>({
     token,
     workspaceId,
     channelId: activeChannelId || "",
@@ -377,6 +378,25 @@ export function ChatPanel({
             <Button size="sm" onClick={() => setShowNew(true)}>+ Channel</Button>
             <Button size="sm" variant="secondary" onClick={() => setShowDm(true)}>DM</Button>
           </div>
+          <a
+            href="/m/chat/start"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              marginTop: 6,
+              padding: "6px 10px",
+              borderRadius: "var(--nv-radius-md)",
+              background: "var(--nv-color-primary-alpha)",
+              color: "var(--nv-color-primary)",
+              fontSize: "var(--nv-font-sm)",
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            💬 Start Chat
+          </a>
         </div>
         <div style={{ overflowY: "auto", padding: "var(--nv-space-2)", display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
           {channels.length === 0 && <div className="nv-empty">No channels yet</div>}
@@ -392,7 +412,7 @@ export function ChatPanel({
                   style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, minWidth: 0, padding: "4px 4px", textDecoration: "none", color: "var(--nv-color-text)", fontSize: "var(--nv-font-sm)", fontWeight: activeChannelId === c.id ? 700 : 500 }}
                 >
                   <span style={{ flexShrink: 0 }}>
-                    {presence[c.createdById] === "online" && c.kind === "DM" ? (
+                    {c.createdById && presence[c.createdById] === "online" && c.kind === "DM" ? (
                       <span style={{ color: "var(--nv-color-success)", fontSize: 10 }}>●</span>
                     ) : (
                       <span style={{ color: "var(--nv-color-text-faint)", fontSize: 10 }}>#</span>

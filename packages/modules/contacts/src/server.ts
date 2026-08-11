@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma, logAudit } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
+export { ContactChatService, type ContactPlatform, type ChatLinkStatus, type ContactIdentifier, type ContactChatResult } from "./contact-chat";
 
 const CONTACT_MODULE = "contacts";
 

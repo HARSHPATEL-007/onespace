@@ -103,11 +103,12 @@ integrations    Integration[]
     securityEvents  MailSecurityEvent[]
     emailAccounts    EmailAccount[]
     legalHolds       MailLegalHold[]
-    retentionPolicies MailRetentionPolicy[]
-     discoverySearches MailDiscoverySearch[]
-     chatAttachments ChatAttachment[]
-     chatSearchIndexes ChatSearchIndex[]
-  }
+     retentionPolicies MailRetentionPolicy[]
+      discoverySearches MailDiscoverySearch[]
+      chatAttachments ChatAttachment[]
+      chatSearchIndexes ChatSearchIndex[]
+      contactChatLinks ContactChatLink[]
+   }
 
   /// A user is global; they belong to workspaces via WorkspaceMember.
 model User {
@@ -185,6 +186,7 @@ createdCalendarEvents CalendarEvent[]
      createdRoutingRules     MailRoutingRule[] @relation("createdRoutingRules")
      createdDiscoverySearches MailDiscoverySearch[] @relation("createdDiscoverySearches")
      chatPins ChatPin[]
+     contactChatLinks ContactChatLink[]
    }
 
   /// Seat within a workspace + assigned role.
@@ -340,21 +342,68 @@ model Contact {
   lastName    String?
   email       String?
   phone       String?
+  phoneE164   String?
   company     String?
   title       String?
   avatarUrl   String?
   notes       String?
   labels      String[]  @default([])
   isFavorite  Boolean   @default(false)
+  n0vachatId  String?
+  username    String?
+  address     String?
+  website     String?
+  platform    ContactPlatform @default(N0VA)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  chatLinks ContactChatLink[]
 
   @@index([workspaceId, email])
   @@index([workspaceId, isFavorite])
   @@index([workspaceId, firstName])
+  @@index([workspaceId, phone])
+  @@index([workspaceId, n0vachatId])
+  @@unique([workspaceId, n0vachatId])
+}
+
+model ContactChatLink {
+  id          String   @id @default(uuid())
+  contactId   String
+  workspaceId String
+  channelId   String?
+  userId      String?
+  platform    ContactPlatform @default(N0VA)
+  status      ChatLinkStatus  @default(ACTIVE)
+  lastUsedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel   ChatChannel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([workspaceId, userId])
+  @@index([channelId])
+}
+
+enum ContactPlatform {
+  N0VA
+  WHATSAPP
+  TELEGRAM
+  SIGNAL
+  IMESSAGE
+  SMS
+}
+
+enum ChatLinkStatus {
+  ACTIVE
+  PENDING_INVITE
+  BLOCKED
+  ARCHIVED
 }
 
 
@@ -561,6 +610,7 @@ model ChatChannel {
   messages  ChatMessage[]
   members   ChatMember[]
   pins      ChatPin[]
+  chatLinks ContactChatLink[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
   @@index([workspaceId, kind])
@@ -657,14 +707,16 @@ model ChatPin {
 }
 
 model ChatSearchIndex {
-  id          String   @id @default(uuid())
-  messageId   String   @unique
-  channelId   String
-  workspaceId String
-  authorName  String
-  body        String
-  searchVector String
-  createdAt   DateTime @default(now())
+  id           String     @id @default(uuid())
+  messageId    String     @unique
+  channelId    String
+  workspaceId  String
+  authorName   String
+  body         String
+  searchVector String     @default("")
+  createdAt    DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([channelId])
   @@index([workspaceId])

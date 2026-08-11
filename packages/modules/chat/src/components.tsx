@@ -1,4 +1,2 @@
-"use client";
-
-export { ChatPanel } from "../../apps/web/src/components/chat/ChatPanel";
-export type { ChatActions } from "../../apps/web/src/components/chat/ChatPanel";
+// ChatPanel is exported directly from the web app at @/components/chat/ChatPanel
+// This file is kept for backward compatibility - import from the web app instead

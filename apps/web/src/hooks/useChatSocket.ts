@@ -38,11 +38,11 @@ interface TypingEvent {
 
 type ChatEvent = ChatMessage | PresenceEvent | TypingEvent;
 
-interface UseChatSocketOptions {
+interface UseChatSocketOptions<T = ChatMessage> {
   token: string;
   workspaceId: string;
   channelId: string;
-  onMessage: (msg: ChatMessage) => void;
+  onMessage: (msg: T) => void;
   onPresence: (userId: string, status: string) => void;
   onTyping: (channelId: string, userId: string) => void;
   onStatusChange: (status: ConnectionStatus) => void;
@@ -53,7 +53,7 @@ const SSE_URL = "/api/chat/stream";
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY = 2000;
 
-export function useChatSocket({
+export function useChatSocket<T = ChatMessage>({
   token,
   workspaceId,
   channelId,
@@ -61,7 +61,7 @@ export function useChatSocket({
   onPresence,
   onTyping,
   onStatusChange,
-}: UseChatSocketOptions) {
+}: UseChatSocketOptions<T>) {
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const wsRef = useRef<WebSocket | null>(null);
   const esRef = useRef<EventSource | null>(null);
@@ -94,10 +94,10 @@ export function useChatSocket({
         const payload = JSON.parse(e.data);
         if (payload.type === "initial" && payload.messages) {
           for (const msg of payload.messages) {
-            onMessage(msg as ChatMessage);
+            onMessage(msg as T);
           }
         } else if (payload.type === "message" && payload.message) {
-          onMessage(payload.message as ChatMessage);
+          onMessage(payload.message as T);
         }
       } catch {
         // ignore parse errors
@@ -144,7 +144,7 @@ export function useChatSocket({
             break;
           case "message":
             if (msg.message) {
-              onMessage(msg.message as ChatMessage);
+              onMessage(msg.message as T);
             }
             break;
           case "presence":

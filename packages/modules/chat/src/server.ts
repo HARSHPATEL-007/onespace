@@ -404,7 +404,7 @@ export class ChatService {
     return {
       replyCount: replies.length,
       participantCount: participants.length,
-      lastReplyAt: replies.length > 0 ? replies[replies.length - 1].createdAt.toISOString() : null,
+      lastReplyAt: replies.length > 0 ? replies[replies.length - 1]!.createdAt.toISOString() : null,
       participants,
     };
   }
