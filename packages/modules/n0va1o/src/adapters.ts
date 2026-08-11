@@ -67,6 +67,51 @@ export function providerHeaders(integration: Integration, provider: string, extr
       h.Accept = "application/json";
       if (token) h.Authorization = `Bearer ${token}`;
       break;
+    case "gdrive":
+    case "gcal":
+    case "gsheets":
+    case "gforms":
+    case "gtasks":
+      h.Accept = "application/json";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
+    case "onedrive":
+    case "teams":
+      h.Accept = "application/json";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
+    case "dropbox":
+      h.Accept = "application/json";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
+    case "box":
+      h.Accept = "application/json";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
+    case "salesforce":
+      h.Accept = "application/json";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
+    case "pipedrive":
+      h.Accept = "application/json";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
+    case "trello":
+      h.Accept = "application/json";
+      break;
+    case "monday":
+      h.Accept = "application/json";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
+    case "xero":
+      h.Accept = "application/json";
+      h["Xero-Tenant-Id"] = "";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
+    case "quickbooks":
+      h.Accept = "application/json";
+      if (token) h.Authorization = `Bearer ${token}`;
+      break;
     case "anthropic":
     case "gemini":
     case "mistral":

@@ -5,6 +5,7 @@
 import type { Integration } from "@n0va/db";
 import type { AdapterContext, AdapterResult } from "./adapters";
 import { cfgOf, tokenOf, providerHeaders, fetchJson, fetchPostJson } from "./adapters";
+import { CLOUD_ADAPTERS } from "./adapters-cloud";
 
 /* ---------- Stripe ---------- */
 
@@ -355,4 +356,5 @@ export const EXTRA_ADAPTERS: Record<string, (ctx: AdapterContext) => Promise<Ada
   ...stripe, ...gitlab, ...linear, ...clickup, ...jira, ...discord, ...telegram,
   ...hubspot, ...shopify, ...zendesk, ...twilio, ...sendgrid, ...calendly, ...cal,
   ...resend, ...anthropicExtra, ...openaiExtra, ...aiExtra,
+  ...CLOUD_ADAPTERS,
 };

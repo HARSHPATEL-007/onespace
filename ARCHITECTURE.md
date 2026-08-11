@@ -53,10 +53,6 @@
 onespace/
 ├── apps/
 │   └── web/                    # Next.js 15 shell (sole deployable)
-│       └── src/
-│           ├── app/            # Routes, pages, server actions
-│           ├── components/     # Shell components (AppShell, Sidebar)
-│           └── lib/            # Route helpers, workspace context
 ├── packages/
 │   ├── core/                   # Module registry, types, constants
 │   ├── auth/                   # NextAuth config, credentials provider
@@ -68,12 +64,8 @@ onespace/
 │   │   ├── docs/
 │   │   ├── chat/
 │   │   └── ... (37 more)
-│   └── services/               # Cross-module shared services (NEW)
-│       ├── notifications/      # In-app notification engine
-│       ├── search/             # Unified search index
-│       ├── files/              # File storage abstraction
-│       ├── realtime/           # SSE/WebSocket hub
-│       └── analytics/          # Usage & insights data pipeline
+│   └── services/               # Shared services (NOT in pnpm workspace)
+│       └── chat-gateway/       # Rust + Actix-web WebSocket gateway
 ├── n0va1o/                     # Integration gateway (separate monorepo)
 ├── infra/                      # Docker, deployment configs
 └── prisma/
@@ -400,11 +392,67 @@ REST API routes for external consumers (N0VA1O, AppScript, third-party):
 
 | Channel | Transport | Modules |
 |---------|-----------|---------|
-| Chat messages | SSE | Chat |
+| Chat messages | **WebSocket** (Rust gateway) + SSE fallback | Chat |
 | Mail notifications | SSE | Mail |
-| Presence | SSE | Meet, Chat |
-| Typing indicators | SSE | Chat, Docs |
+| Presence | WebSocket + SSE | Meet, Chat |
+| Typing indicators | WebSocket | Chat |
 | Calendar reminders | SSE | Calendar |
+
+#### 9.3.1 Hybrid Chat Realtime Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    CHAT REALTIME ARCHITECTURE                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   ┌─────────────────────────────────────────────────────────────────┐   │
+│   │                        Next.js Frontend                          │   │
+│   │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐  │   │
+│   │  │  ChatPanel   │    │ WebSocket   │    │  SSE Fallback       │  │   │
+│   │  │  Component   │◄──►│  Client     │◄──►│  Endpoint           │  │   │
+│   │  │              │    │  Hook       │    │  (/api/chat/stream) │  │   │
+│   │  └─────────────┘    └──────┬──────┘    └─────────────────────┘  │   │
+│   │                            │                                      │   │
+│   └────────────────────────────┼──────────────────────────────────────┘   │
+│                                │                                          │
+│                                ▼                                          │
+│   ┌─────────────────────────────────────────────────────────────────┐   │
+│   │              Rust WebSocket Gateway (services/chat-gateway)       │   │
+│   │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │   │
+│   │  │  WebSocket   │  │  Message    │  │  Presence /             │  │   │
+│   │  │  Handler     │──│  Router     │──│  Typing Engine         │  │   │
+│   │  │  (actix-ws) │  │  (in-mem)   │  │  (in-mem)              │  │   │
+│   │  └─────────────┘  └──────┬──────┘  └───────────┬─────────────┘  │   │
+│   │                        ││                      │                │   │
+│   │              ┌───────────┘                   │                │   │
+│   │              ▼                               ▼                │   │
+│   │  ┌─────────────────────────────────────────────────────────┐  │   │
+│   │  │              Redis Pub/Sub (Event Bridge)                 │  │   │
+│   │  │  Channel: n0va:chat:events                               │  │   │
+│   │  └───────────────────────────────────────────────────────────┘  │   │
+│   │                                                                 │   │
+│   └─────────────────────────────────────────────────────────────────┘   │
+│                                │                                          │
+│                                ▼                                          │
+│   ┌─────────────────────────────────────────────────────────────────┐   │
+│   │              PostgreSQL (shared with Next.js)                    │   │
+│   │  ChatChannel │ ChatMessage │ ChatMember │ ...                   │   │
+│   └─────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│   Key properties:                                                        │
+│   • Rust handles WebSocket at scale (5M msgs/sec target)                 │
+│   • Next.js Server Actions handle persistence + RBAC                     │
+│   • Redis bridges Rust gateway ↔ Next.js SSE fallback                     │
+│   • PostgreSQL is single source of truth for all data                     │
+│   • WebSocket is primary, SSE is fallback with Redis event sourcing       │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Message flow:**
+
+1. Client sends message → WebSocket → Rust Gateway → PostgreSQL (via REST) → Redis pub → broadcast back
+2. If WebSocket unavailable → Client sends via form → Server Action → PostgreSQL → Redis pub → SSE stream to clients
+3. Rust Gateway also publishes to Redis, so SSE clients receive Rust-originated messages too
 
 ---
 
@@ -562,7 +610,7 @@ All UI components use the `nv-` CSS prefix. No external UI framework.
 
 ### Phase 2: Communication Layer (Weeks 5-8)
 - [ ] Mail (SMTP/IMAP, threads, labels)
-- [ ] Chat (channels, DMs, SSE)
+- [ ] Chat (channels, DMs, **Rust WebSocket gateway**, SSE fallback)
 - [ ] Contacts (unified people model)
 - [ ] Groups (distribution lists)
 
@@ -652,14 +700,27 @@ pnpm db:studio        # Open Prisma Studio
                     │  (Next.js)  │
                     └──────┬──────┘
                            │
-              ┌────────────┼────────────┐
-              │            │            │
-        ┌─────┴─────┐ ┌───┴────┐ ┌────┴────┐
-        │ PostgreSQL │ │ Redis  │ │  Blob   │
-        │  (Neon/    │ │(Upstash│ │ Storage │
-        │  Supabase) │ │  /Rail)│ │  (S3)   │
-        └───────────┘ └────────┘ └─────────┘
+              ┌────────────┼────────────┬─────────────┐
+              │            │            │             │
+        ┌─────┴─────┐ ┌───┴────┐ ┌────┴────┐   ┌───────┐
+        │ PostgreSQL │ │ Redis  │ │  Blob   │   │ Rust  │
+        │  (Neon/    │ │(Upstash│ │ Storage │   │Gateway│
+        │  Supabase) │ │  /Rail)│ │  (S3)   │   │ 8080  │
+        └───────────┘ └────────┘ └─────────┘   └───────┘
+                              │      ▲           ▲
+                              │      │           │
+                              │      │           │
+                              └──────┴───────────┘
+                               Redis Pub/Sub
 ```
+
+| Service | Purpose | Tech |
+|---------|---------|------|
+| **Next.js (Vercel)** | Shell, UI, Server Actions, REST API | Next.js 15 |
+| **Rust Gateway** | WebSocket, realtime message routing | Rust + actix-web |
+| **PostgreSQL** | Single source of truth | PostgreSQL 16 |
+| **Redis** | Event bridge, cache, session store | Redis 7 |
+| **Blob Storage** | File uploads | S3 / Vercel Blob |
 
 ### 14.2 Environment Variables
 
@@ -668,10 +729,11 @@ pnpm db:studio        # Open Prisma Studio
 | `DATABASE_URL` | PostgreSQL connection string |
 | `AUTH_SECRET` | NextAuth JWT signing secret |
 | `AUTH_TRUST_HOST` | Trust host header (Vercel) |
-| `SMTP_HOST`, `SMTP_PORT` | Outbound email |
-| `IMAP_HOST`, `IMAP_PORT` | Inbound email |
-| `REDIS_URL` | Realtime pub/sub |
+| `REDIS_URL` | Realtime pub/sub, session store |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob storage |
+| `GATEWAY_PORT` | Rust WebSocket gateway port (default: 8080) |
+| `NEXT_PUBLIC_CHAT_WS_URL` | WebSocket URL for client (default: ws://localhost:8080) |
+| `NEXTAUTH_SECRET` | JWT signing key (shared with Rust gateway) |
 
 ---
 
@@ -687,6 +749,7 @@ pnpm db:studio        # Open Prisma Studio
 | **N0VA1O for all integrations** | Single integration point, no third-party SDK sprawl |
 | **CSS variables + nv- prefix** | No CSS-in-JS overhead, easy theming, no naming collisions |
 | **Dynamic module loading** | Only load code for the module being viewed — faster initial load |
+| **Hybrid chat (Rust gateway)** | Rust handles WebSocket at scale (5M msgs/sec) while Next.js handles UI + persistence |
 
 ---
 
