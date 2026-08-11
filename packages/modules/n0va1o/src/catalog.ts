@@ -2,7 +2,12 @@
  * N0VA1O provider catalog — the unified integration registry.
  * Connectors are grouped by category and expose typed tools that the MCP
  * gateway scopes per team (allowlist / blocklist / destructive-by-default).
+ *
+ * Total: 1,000+ providers across 13 categories.
  */
+
+import { EXTENDED_PROVIDERS } from "./catalog-extended";
+import { MASS_PROVIDERS } from "./catalog-mass";
 
 export type AuthType = "api-key" | "oauth2" | "basic" | "webhook" | "rest";
 
@@ -36,6 +41,9 @@ export const CATEGORIES: Category[] = [
   { key: "communication", label: "Communication" },
   { key: "documents", label: "Documents & Storage" },
   { key: "finance", label: "Finance & Legal" },
+  { key: "marketing", label: "Marketing & Advertising" },
+  { key: "analytics", label: "Analytics & BI" },
+  { key: "business", label: "Business Operations" },
   { key: "other", label: "Other" },
 ];
 
@@ -195,6 +203,8 @@ export const PROVIDERS: CatalogProvider[] = [
   { key: "mailchimp", name: "Mailchimp", category: "other", auth: "oauth2", description: "Email marketing.", tools: [t("list_campaigns", "List campaigns."), t("send_campaign", "Send a campaign.", true), t("list_audiences", "List audiences.")] },
   { key: "brevo", name: "Brevo", category: "other", auth: "api-key", description: "Email and SMS marketing.", tools: [t("send_email", "Send an email.", true), t("list_campaigns", "List campaigns.")] },
   { key: "typeform", name: "Typeform", category: "other", auth: "oauth2", description: "Forms and surveys.", tools: [t("list_forms", "List forms."), t("list_responses", "List responses.")] },
+  ...EXTENDED_PROVIDERS,
+  ...MASS_PROVIDERS,
 ];
 
 const PROVIDER_INDEX = new Map(PROVIDERS.map((p) => [p.key, p]));
