@@ -288,6 +288,23 @@ export class ChatService {
       },
     };
     publish(this.workspaceId, payload);
+
+    // Populate search index
+    try {
+      await prisma.chatSearchIndex.create({
+        data: {
+          messageId: message.id,
+          channelId,
+          workspaceId: this.workspaceId,
+          authorName,
+          body,
+          searchVector: body.toLowerCase(),
+        },
+      });
+    } catch {
+      // Search index is best-effort
+    }
+
     return message;
   }
 
@@ -446,6 +463,29 @@ export class ChatService {
       create: { channelId, userId: this.userId, lastReadAt: new Date() },
       update: { lastReadAt: new Date() },
     });
+  }
+
+  async getReadReceipts(messageId: string): Promise<Array<{ userId: string; name: string; readAt: string }>> {
+    await this.assert("READ");
+    const message = await prisma.chatMessage.findFirst({
+      where: { id: messageId, workspaceId: this.workspaceId },
+    });
+    if (!message) return [];
+
+    const members = await prisma.chatMember.findMany({
+      where: {
+        channelId: message.channelId,
+        userId: { not: message.createdById },
+        lastReadAt: { gte: message.createdAt },
+      },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    return members.map(m => ({
+      userId: m.userId,
+      name: m.user.name ?? m.user.email,
+      readAt: m.lastReadAt?.toISOString() ?? "",
+    }));
   }
 
   // ── Search ─────────────────────────────────────────────────────────
