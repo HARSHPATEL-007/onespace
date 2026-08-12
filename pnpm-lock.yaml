@@ -394,6 +394,19 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/ai-monitoring:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/ani:
     dependencies:
       '@n0va/authz':

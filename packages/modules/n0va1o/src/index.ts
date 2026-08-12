@@ -13,3 +13,8 @@ export { applySchemaModifiers, maskPiiInResponse, contentHash, type SchemaModifi
 export { N0va1oClient, N0va1oError, type N0va1oClientOptions, type CallResult, type DiscoverResult } from "./sdk";
 export { createInterrogationRoom, getInterrogationRoom, listPendingRooms, decideInterrogationRoom, signDecision, requiresHitlReview, type InterrogationRoom } from "./hitl";
 export { PLUGIN_SLOTS, runAuthOptimizer, runRateLimitPredictor, runErrorClassifier, runPayloadCompressor, logPluginEvent, getPluginStatus } from "./plugins";
+export { runRotationScan, resolveOrRefresh, revokeConnection, reauthUrlFor, lockCount, type RefreshOutcome } from "./rotation";
+export { recordSuccess, recordFailure, isCircuitOpen, circuitSnapshot, resetCircuit, writeEventLog, failEvent, retryDlqEvent, connectorHealth, type EventLogEntry } from "./reliability";
+export { syncRecords, applyInboundRecords, getCheckpoint, setCheckpoint, listCheckpoints, recordOrigin, type ConflictPolicy, type SyncDirection, type SyncResult, type ConflictRecord } from "./sync";
+export { ingestEvent, listRecentEvents, type IngestEventInput, type IngestEventResult } from "./events";
+export { runCommand, gatewayHelp, listRecentCommands, logCommand, type GatewayCommand, type CommandContext, type CommandResult } from "./commands";

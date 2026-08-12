@@ -19,6 +19,12 @@ import {
   unpinMessageAction,
   markReadAction,
   searchMessagesAction,
+  toggleBookmarkAction,
+  saveSearchAction,
+  deleteSavedSearchAction,
+  setPresenceAction,
+  governanceAction,
+  hyperAction,
 } from "./actions";
 
 export default async function ChatPage({
@@ -43,11 +49,16 @@ export default async function ChatPage({
     .setExpirationTime("5m")
     .sign(key);
 
-  const [channels, members, unread] = await Promise.all([
+  const [channels, members, unread, presenceSessions] = await Promise.all([
     svc.listChannels(),
     svc.listMembers(),
     svc.unread(),
+    svc.listPresence(),
   ]);
+
+  const initialPresence = Object.fromEntries(
+    presenceSessions.map((p) => [p.userId, p.status.toLowerCase()]),
+  );
 
   let activeChannelId: string | null = c ?? channels[0]?.id ?? null;
   let initialMessages: Awaited<ReturnType<ChatService["listMessages"]>>["messages"] = [];
@@ -70,6 +81,7 @@ export default async function ChatPage({
       initialMessages={initialMessages}
       unread={unread}
       reactionEmojis={[...REACTION_EMOJIS]}
+      initialPresence={initialPresence}
       actions={{
         createChannel: createChannelAction,
         createDm: createDmAction,
@@ -87,6 +99,12 @@ export default async function ChatPage({
         unpin: unpinMessageAction,
         markRead: markReadAction,
         search: searchMessagesAction,
+        toggleBookmark: toggleBookmarkAction,
+        saveSearch: saveSearchAction,
+        deleteSavedSearch: deleteSavedSearchAction,
+        setPresence: setPresenceAction,
+        governance: governanceAction,
+        hyper: hyperAction,
       }}
       token={token}
     />

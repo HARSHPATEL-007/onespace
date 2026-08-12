@@ -11,16 +11,15 @@ export async function GET(req: Request) {
   if (!ctx) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
   const url = new URL(req.url);
-  const q = url.searchParams.get("q") ?? "";
-  const channelId = url.searchParams.get("channelId") ?? undefined;
-  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 100);
-
-  if (!q.trim() && !channelId) {
-    return NextResponse.json({ error: "At least one search parameter required" }, { status: 400 });
-  }
+  const verify = url.searchParams.get("verify") === "true";
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50", 10), 200);
+  const cursor = url.searchParams.get("cursor") ?? undefined;
+  const action = url.searchParams.get("action") ?? undefined;
 
   const svc = new ChatService(ctx.workspaceId, ctx.userId, ctx.memberRole);
-  const result = await svc.searchMessages(q, channelId, limit);
-
-  return NextResponse.json({ messages: result.messages, parsed: result.parsed, count: result.messages.length });
+  const [entries, chain] = await Promise.all([
+    svc.listAudit({ limit, cursor, action }),
+    verify ? svc.verifyAuditChain() : null,
+  ]);
+  return NextResponse.json({ entries, chain });
 }

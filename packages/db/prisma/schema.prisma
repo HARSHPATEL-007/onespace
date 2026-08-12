@@ -57,6 +57,9 @@ integrations    Integration[]
   integrationLogs IntegrationLog[]
    integrationAccessRequests IntegrationAccessRequest[]
    integrationConnections   IntegrationConnection[]
+   connectorCircuits         ConnectorCircuit[]
+   connectorEventLogs        ConnectorEventLog[]
+   connectorSyncCheckpoints  ConnectorSyncCheckpoint[]
   aniConversations AniConversation[]
   aniMessages     AniMessage[]
   scripts         Script[]
@@ -143,6 +146,35 @@ integrations    Integration[]
       federationPolicies FederationPolicy[]
       federationAuditLogs FederationAuditLog[]
       guestAccesses GuestAccess[]
+      conversationMonitors ConversationMonitor[]
+      sentimentRecords SentimentRecord[]
+      toxicityFlags ToxicityFlag[]
+      conflictAlerts ConflictAlert[]
+      engagementSnapshots EngagementSnapshot[]
+      conversationInsights ConversationInsight[]
+      faqEntries FaqEntry[]
+      expertProfiles ExpertProfile[]
+      smartReplySuggestions SmartReplySuggestion[]
+      aiTierConfigs AiTierConfig[]
+      moderationAuditLogs ModerationAuditLog[]
+      chatSavedSearches ChatSavedSearch[]
+      chatBookmarks ChatBookmark[]
+      chatComplianceRecords ChatComplianceRecord[]
+      chatRetentionPolicies ChatRetentionPolicy[]
+      chatAuditLogs ChatAuditLog[]
+      chatLegalHolds ChatLegalHold[]
+      chatApprovals ChatApproval[]
+      chatGovernanceAssignments ChatGovernanceAssignment[]
+      chatComplianceConfig ChatComplianceConfig?
+      chatKeyRecords ChatKeyRecord[]
+      chatHyperContexts ChatHyperContext[]
+      chatLinkSuggestions ChatLinkSuggestion[]
+      chatTaskProposals ChatTaskProposal[]
+      chatEventProposals ChatEventProposal[]
+      chatApprovalRequests ChatApprovalRequest[]
+      chatOutboxEvents ChatOutboxEvent[]
+      chatCompensationLogs ChatCompensationLog[]
+      chatHyperConfig ChatHyperConfig?
    }
 
    /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -220,7 +252,12 @@ createdCalendarEvents CalendarEvent[]
   createdEmailAliases     EmailAlias[] @relation("createdEmailAliases")
       createdRoutingRules     MailRoutingRule[] @relation("createdRoutingRules")
      createdDiscoverySearches MailDiscoverySearch[] @relation("createdDiscoverySearches")
-       chatPins ChatPin[]
+        chatPins ChatPin[]
+      chatBookmarks ChatBookmark[]
+      chatSavedSearches ChatSavedSearch[]
+      chatGovernanceAssignments ChatGovernanceAssignment[]
+      approvalRequests ChatApproval[] @relation("ApprovalRequestedBy")
+      approvalReviews ChatApproval[] @relation("ApprovalReviewedBy")
       contactChatLinks ContactChatLink[]
       neuralConsentScopes NeuralConsentScope[]
       neuralStateRecords NeuralStateRecord[]
@@ -248,6 +285,8 @@ createdCalendarEvents CalendarEvent[]
       breakoutRooms BreakoutRoom[]
       bots Bot[]
       guestAccesses GuestAccess[]
+      faqReviews FaqEntry[] @relation("FaqReviewer")
+      expertProfiles ExpertProfile[]
    }
 
    /// Seat within a workspace + assigned role.
@@ -662,19 +701,29 @@ model ChatChannel {
   description String   @default("")
   kind        ChatChannelKind @default(CHANNEL)
   isPrivate   Boolean  @default(false)
+  classification String?
+  retentionTier String?
   pinnedAt    DateTime?
   archivedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  messages  ChatMessage[]
-  members   ChatMember[]
-   pins      ChatPin[]
+   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+   messages  ChatMessage[]
+   members   ChatMember[]
+    pins      ChatPin[]
+   bookmarks  ChatBookmark[]
    chatLinks ContactChatLink[]
    liveEmbeds LiveEmbed[]
    presentationSessions PresentationSession[]
    threadMetadata ThreadMetadata[]
+   conversationMonitors ConversationMonitor[]
+   sentimentRecords SentimentRecord[]
+   toxicityFlags ToxicityFlag[]
+   conflictAlerts ConflictAlert[]
+   engagementSnapshots EngagementSnapshot[]
+   smartReplySuggestions SmartReplySuggestion[]
+   conversationInsights ConversationInsight[]
 
    @@index([workspaceId, updatedAt(sort: Desc)])
    @@index([workspaceId, kind])
@@ -694,6 +743,9 @@ model ChatMessage {
   editedAt    DateTime?
   pinnedAt    DateTime?
   deletedAt   DateTime?
+  ttlSeconds  Int?
+  expiresAt   DateTime?
+  viewedBy    Json     @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -704,6 +756,11 @@ model ChatMessage {
   edits        ChatMessageEdit[]
   attachments  ChatAttachment[]
   pins         ChatPin[]
+  bookmarks    ChatBookmark[]
+  conversationMonitors ConversationMonitor[]
+  sentimentRecords SentimentRecord[]
+  toxicityFlags ToxicityFlag[]
+  smartReplySuggestions SmartReplySuggestion[]
 
   @@index([channelId, createdAt(sort: Desc)])
   @@index([parentId])
@@ -786,9 +843,420 @@ model ChatSearchIndex {
   @@index([workspaceId])
 }
 
+/// Saved search queries per user per workspace.
+model ChatSavedSearch {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  name        String
+  query       String
+  filters     Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId])
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+/// Personal bookmarks on chat messages.
+model ChatBookmark {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  messageId   String
+  channelId   String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  channel   ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, messageId])
+  @@index([workspaceId, userId])
+  @@index([channelId])
+}
+
 enum ChatChannelKind {
   CHANNEL
   DM
+  ANNOUNCEMENT
+}
+
+enum ChatArtifactType {
+  MESSAGE
+  FILE
+  EXPORT
+  AI_ARTIFACT
+}
+
+enum ChatRetentionTier {
+  STANDARD
+  EXTENDED
+  COMPLIANCE
+  GOVERNANCE
+  BLOCKCHAIN
+  LEGAL_HOLD
+}
+
+enum ChatGovernanceRole {
+  COMPLIANCE_OFFICER
+  SECURITY_ADMIN
+  LEGAL_ADMIN
+  AUDITOR
+  GUEST
+}
+
+enum ChatApprovalAction {
+  LOWER_RETENTION
+  REMOVE_LEGAL_HOLD
+  EXPORT_CONFIDENTIAL
+  DISABLE_WATERMARK
+  GRANT_TENANT_ACCESS
+}
+
+enum ChatApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ChatKeyPurpose {
+  PRODUCTION
+  BACKUP
+  LEGAL_HOLD_VAULT
+}
+
+/// Policy + enforcement state for a governed chat object (message, file, export, AI artifact).
+model ChatComplianceRecord {
+  id          String           @id @default(uuid())
+  workspaceId String
+  objectType  ChatArtifactType
+  objectId    String
+  classification String          @default("")
+  classificationSource String    @default("AUTO")
+  retentionMode ChatRetentionTier @default(STANDARD)
+  retainUntil DateTime?
+  legalHold   Boolean          @default(false)
+  legalHoldReason String?
+  watermarkEnabled Boolean     @default(true)
+  watermarkStyle String        @default("DYNAMIC")
+  watermarkViewerScope String  @default("USER_TIMESTAMP_VERSION")
+  encAlgorithm String          @default("AES-256-GCM")
+  keySource   String           @default("HSM")
+  keyVersion  String?
+  algTag      String?
+  pqReady     Boolean          @default(false)
+  pqRequired  Boolean          @default(false)
+  contentHash String?
+  chainPrev   String?
+  chainIndex  Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([objectType, objectId])
+  @@index([workspaceId, retentionMode])
+  @@index([workspaceId, legalHold])
+}
+
+/// Configurable retention policy per artifact scope, anchored to creation or closure.
+model ChatRetentionPolicy {
+  id          String           @id @default(uuid())
+  workspaceId String
+  name        String
+  tier        ChatRetentionTier
+  scope       ChatArtifactType
+  durationDays Int?
+  anchor      String           @default("CREATION")
+  active      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, tier, scope])
+}
+
+/// Tamper-evident audit trail with hash chain, stored separately from messages.
+model ChatAuditLog {
+  id          String   @id @default(uuid())
+  workspaceId String
+  actorId     String
+  actorName   String?
+  action      String
+  objectType  String?
+  objectId    String?
+  channelId   String?
+  outcome     String   @default("SUCCESS")
+  policyApplied String?
+  ip          String?
+  userAgent   String?
+  details     Json     @default("{}")
+  hash        String
+  chainPrev   String?
+  chainIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([objectId])
+}
+
+/// Indefinite protection until explicitly released.
+model ChatLegalHold {
+  id          String   @id @default(uuid())
+  workspaceId String
+  scope       String
+  objectType  ChatArtifactType?
+  objectId    String?
+  reason      String
+  placedBy    String
+  placedById  String
+  placedAt    DateTime @default(now())
+  releasedBy  String?
+  releasedById String?
+  releasedAt  DateTime?
+  active      Boolean  @default(true)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, active])
+}
+
+/// Approval workflow for sensitive governance actions.
+model ChatApproval {
+  id            String             @id @default(uuid())
+  workspaceId   String
+  action        ChatApprovalAction
+  objectId      String?
+  objectType    ChatArtifactType?
+  rationale     String
+  requestedById String
+  status        ChatApprovalStatus @default(PENDING)
+  reviewedById  String?
+  reviewedAt    DateTime?
+  reviewNote    String?
+  createdAt     DateTime           @default(now())
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requestedBy  User      @relation("ApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedBy   User?     @relation("ApprovalReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+/// Governance role assignments beyond the built-in room roles.
+model ChatGovernanceAssignment {
+  id          String              @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        ChatGovernanceRole
+  createdById String
+  createdAt   DateTime            @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+/// Per-workspace compliance settings.
+model ChatComplianceConfig {
+  workspaceId       String  @id
+  watermarkEnabled  Boolean @default(true)
+  watermarkStyle    String  @default("DYNAMIC")
+  watermarkViewerScope String @default("USER_TIMESTAMP_VERSION")
+  externalStronger  Boolean @default(true)
+  pqRequired        Boolean @default(false)
+  exportRedaction   Boolean @default(true)
+  derivedPropagation Boolean @default(true)
+  keyRotationDays   Int     @default(180)
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+/// Crypto-agile key envelope: data keys wrapped by a master key, never raw in app code.
+model ChatKeyRecord {
+  id          String        @id @default(uuid())
+  workspaceId String
+  purpose     ChatKeyPurpose
+  algorithm   String        @default("AES-256-GCM")
+  keyVersion  Int           @default(1)
+  wrappedKey  String
+  iv          String
+  tag         String
+  masterKeyVersion Int      @default(1)
+  pqReady     Boolean       @default(false)
+  pqRequired  Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  rotatedAt   DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, purpose])
+}
+
+/// Hyper-context envelope: links, actions, and causal chain for a chat message.
+model ChatHyperContext {
+  messageId   String   @id
+  workspaceId String
+  threadId    String?
+  causalChain Json     @default("[]")
+  links       Json     @default("[]")
+  actions     Json     @default("[]")
+  extractedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([threadId])
+}
+
+/// User-confirmable link suggestions with provenance and confidence.
+model ChatLinkSuggestion {
+  id          String   @id @default(uuid())
+  workspaceId String
+  messageId   String
+  module      String
+  objectId    String
+  relation    String
+  score       Float
+  source      String   @default("AUTO")
+  confidence  Float
+  status      String   @default("SUGGESTED")
+  reweight    Float?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, messageId])
+}
+
+/// Auto-created task drafts derived from commitment intents.
+model ChatTaskProposal {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  messageId     String
+  title         String
+  ownerUserId   String?
+  dueDate       DateTime?
+  priority      String   @default("MEDIUM")
+  sourceQuote   String
+  linkedEntities Json   @default("[]")
+  status        String   @default("DRAFT")
+  confidence    Float
+  externalTaskId String?
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}
+
+/// Tentative events / scheduling suggestions from scheduling intent.
+model ChatEventProposal {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  messageId      String
+  title          String
+  startsAt       DateTime?
+  endsAt         DateTime?
+  attendeeUserIds Json    @default("[]")
+  agendaDraft    String   @default("")
+  suggestedRoom  String?
+  status         String   @default("SUGGESTED")
+  linkedMeetingId String?
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}
+
+/// Approval-worthy items surfaced from chat (budget, purchase, release, legal, access).
+model ChatApprovalRequest {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  messageId          String
+  requestType        String
+  approverUserId     String?
+  requiredEvidence   Json     @default("[]")
+  linkedObjectIds    Json     @default("[]")
+  rationale          String
+  amount             Float?
+  status             String   @default("DRAFT")
+  deadline           DateTime?
+  governanceApprovalId String?
+  createdById        String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}
+
+/// Transactional outbox: message+event writes commit atomically with enqueued domain events.
+model ChatOutboxEvent {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  messageId      String?
+  actionType     String
+  module         String
+  payload        Json     @default("{}")
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  idempotencyKey String   @unique
+  causeEventId   String?
+  error          String?
+  causalOrder    Int      @default(0)
+  createdAt      DateTime @default(now())
+  processedAt    DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}
+
+/// Compensation log for failed saga steps.
+model ChatCompensationLog {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  outboxEventId  String?
+  step           String
+  reason         String
+  compensatedAt  DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+/// Hyper-context automation policy.
+model ChatHyperConfig {
+  workspaceId       String  @id
+  autoCreateTasks   Boolean @default(true)
+  taskConfidence    Float   @default(0.85)
+  autoCreateEvents  Boolean @default(true)
+  eventConfidence   Float   @default(0.85)
+  autoRaiseApprovals Boolean @default(false)
+  approvalConfidence Float  @default(0.9)
+  maxLinks          Int     @default(12)
+  notifyOnAutoCreate Boolean @default(true)
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 enum ChatMemberRole {
@@ -1940,6 +2408,9 @@ model Integration {
    accessRequests IntegrationAccessRequest[]
    connections  IntegrationConnection[]
    activeConnection IntegrationConnection? @relation("ActiveConnection", fields: [activeConnectionId], references: [id], onDelete: SetNull)
+   connectorCircuits  ConnectorCircuit[]
+   connectorEventLogs ConnectorEventLog[]
+   connectorSyncCheckpoints ConnectorSyncCheckpoint[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
 }
@@ -2028,6 +2499,8 @@ model IntegrationConnection {
   blockedActions Json?    @default("[]")
   /// Token lifecycle state machine state.
   tokenState     TokenState @default(ACTIVE)
+  /// Monotonic token version — bumped on every refresh/rotation (spec §token rotation).
+  tokenVersion   Int       @default(1)
   /// When the access token expires (for proactive refresh).
   expiresAt       DateTime?
   /// When the credential was last refreshed / verified.
@@ -2062,6 +2535,68 @@ enum ConnectionStatus {
   EXPIRED
   REVOKED
 }
+
+/// Per-connector circuit breaker state (spec §reliability).
+model ConnectorCircuit {
+  id            String   @id @default(uuid())
+  integrationId String   @unique
+  workspaceId   String
+  state         String   @default("CLOSED") // CLOSED | OPEN | HALF_OPEN
+  failureCount  Int      @default(0)
+  openedAt      DateTime?
+  cooldownUntil DateTime?
+  lastError     String?
+  updatedAt     DateTime @updatedAt
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+/// Replayable gateway event log + dead-letter queue (status FAILED).
+model ConnectorEventLog {
+  id             String   @id @default(uuid())
+  integrationId  String?
+  workspaceId    String
+  direction      String   @default("OUTBOUND") // INBOUND | OUTBOUND | RELAY
+  canonicalObject String?
+  actionType     String
+  payload        Json     @default("{}")
+  provenance     Json?    // { origin, sourceMessageId, sourceId, trust }
+  status         String   @default("SUCCESS") // PENDING | SUCCESS | FAILED | RETRYING
+  retryCount     Int      @default(0)
+  error          String?
+  idempotencyKey String?
+  createdAt      DateTime @default(now())
+  processedAt    DateTime?
+
+  integration Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, direction, status])
+  @@index([integrationId, createdAt(sort: Desc)])
+  @@unique([idempotencyKey])
+}
+
+/// Bidirectional sync checkpoint + conflict policy (spec §bidirectional sync).
+model ConnectorSyncCheckpoint {
+  id             String   @id @default(uuid())
+  integrationId  String
+  workspaceId    String
+  objectType     String
+  cursor         Json     @default("{}")
+  conflictPolicy String   @default("LWW") // LWW | REMOTE_WINS | LOCAL_WINS | NONE
+  lastSyncedAt   DateTime @default(now())
+  lastError      String?
+
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, objectType])
+  @@index([workspaceId])
+}
+
 
 /// N0VA ANI - assistant conversations.
 model AniConversation {
@@ -3010,6 +3545,7 @@ model PresenceSession {
   lastHeartbeat   DateTime @default(now())
   joinedAt        DateTime @default(now())
   color           String   @default("#7c5cfc")
+  customStatus    String?  @default("")
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -3104,6 +3640,7 @@ enum PresenceStatus {
   IDLE
   AWAY
   BUSY
+  DND
   READ_ONLY
   OFFLINE
 }
@@ -3162,6 +3699,7 @@ model ThreadMetadata {
   labels          String[] @default([])
   visibility      ThreadVisibility @default(ROOM)
   status          ThreadStatus @default(ACTIVE)
+  frozenUntil     DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -3305,6 +3843,7 @@ enum ThreadStatus {
   RESOLVED
   ARCHIVED
   MERGED
+  LOCKED
 }
 
 enum DecisionStatus {
@@ -4151,4 +4690,377 @@ enum GuestStatus {
   ACTIVE
   EXPIRED
   REVOKED
+}
+
+/// Unified monitoring object: aggregates all signals for a scope (message, thread, room, topic).
+model ConversationMonitor {
+  id          String        @id @default(uuid())
+  monitorId   String        @unique
+  scope       String
+  workspaceId String
+  channelId   String?
+  threadId    String?
+  messageId   String?
+  signals     Json          @default("{}") // { sentiment, toxicity, conflict_risk, engagement_health }
+  insights    Json          @default("{}") // { topic, suggested_expert, faq_candidate }
+  actions     String[]      @default([])
+  status      MonitorStatus @default(OBSERVED)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel   ChatChannel?  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message   ChatMessage?  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([scope, createdAt(sort: Desc)])
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([threadId, createdAt(sort: Desc)])
+}
+
+/// Per-message sentiment scores + topic/sender/room aggregation source rows.
+model SentimentRecord {
+  id          String     @id @default(uuid())
+  workspaceId String
+  channelId   String?
+  threadId    String?
+  messageId   String?
+  senderId    String?
+  topic       String?
+  score       Float      @default(0) // -1..1
+  confidence  Float      @default(0)
+  createdAt   DateTime   @default(now())
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel   ChatChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message   ChatMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([threadId, createdAt(sort: Desc)])
+  @@index([senderId, createdAt(sort: Desc)])
+  @@index([topic, createdAt(sort: Desc)])
+}
+
+/// Toxicity flag with a detected moderation action + review status.
+model ToxicityFlag {
+  id          String            @id @default(uuid())
+  workspaceId String
+  channelId   String?
+  threadId    String?
+  messageId   String?
+  senderId    String?
+  score       Float             @default(0)
+  categories  String[]          @default([]) // HATE, HARASSMENT, PROFANITY, ABUSE, SPAM, OTHER
+  action      ModerationAction  @default(ALLOW)
+  policy      ModerationPolicy  @default(HUMAN_REVIEW)
+  status      ModerationStatus  @default(PENDING)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel   ChatChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message   ChatMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([messageId])
+}
+
+/// Conflict escalation alert with signals + recommended response.
+model ConflictAlert {
+  id           String           @id @default(uuid())
+  workspaceId  String
+  channelId    String?
+  threadId     String?
+  severity     ConflictSeverity @default(LOW)
+  riskScore    Float            @default(0)
+  signals      Json             @default("{}") // rising_sentiment, reply_burst, disagreement, mentions, sarcasm, latency
+  response     ConflictResponse @default(BANNER)
+  status       AlertStatus      @default(OPEN)
+  frozenUntil  DateTime?
+  resolvedBy   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel   ChatChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([channelId, createdAt(sort: Desc)])
+  @@index([threadId, createdAt(sort: Desc)])
+}
+
+/// Engagement health snapshot for a room or thread over a window.
+model EngagementSnapshot {
+  id                       String          @id @default(uuid())
+  workspaceId              String
+  channelId                String?
+  threadId                 String?
+  scope                    String
+  messageVelocity          Float           @default(0)
+  participationDiversity   Float           @default(0)
+  replyLatencySec          Float           @default(0)
+  unansweredQuestions      Int             @default(0)
+  threadResolutionRate     Float           @default(0)
+  activeContributorRatio   Float           @default(0)
+  conflictToResolutionRatio Float          @default(0)
+  sentimentTrend           Float           @default(0)
+  focusScore               Float           @default(0)
+  burnoutRisk              Float           @default(0)
+  healthScore              Float           @default(0)
+  status                   HealthStatus    @default(HEALTHY)
+  windowStart              DateTime
+  windowEnd                DateTime
+  createdAt                DateTime        @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel   ChatChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, scope, createdAt(sort: Desc)])
+  @@index([channelId, createdAt(sort: Desc)])
+}
+
+/// Generated conversation insight for drill-down dashboards.
+model ConversationInsight {
+  id               String       @id @default(uuid())
+  workspaceId      String
+  channelId        String?
+  kind             InsightKind
+  title            String
+  summary          String
+  explanation      String?      // "why is this trending?"
+  confidence       Float        @default(0)
+  supportingThreads String[]    @default([])
+  topic            String?
+  createdAt        DateTime     @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel   ChatChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, kind, createdAt(sort: Desc)])
+  @@index([channelId, createdAt(sort: Desc)])
+}
+
+/// Auto-FAQ entry with source provenance + review workflow.
+model FaqEntry {
+  id            String    @id @default(uuid())
+  workspaceId   String
+  question      String
+  shortAnswer   String
+  sourceThreads String[]  @default([])
+  sourceMessages String[] @default([])
+  frequency     Int       @default(1)
+  confidence    Float     @default(0)
+  status        FaqStatus @default(CANDIDATE)
+  ownerId       String?
+  lastUpdated   DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  owner     User?     @relation("FaqReviewer", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, frequency(sort: Desc)])
+}
+
+/// Expert profile for topic routing.
+model ExpertProfile {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  userId         String
+  topic          String
+  messageCount   Int       @default(0)
+  resolutionRate Float     @default(0)
+  firstResponseSec Float   @default(0)
+  endorsements   Int       @default(0)
+  domainVocabScore Float   @default(0)
+  taskOwnership  Int       @default(0)
+  confidence     Float     @default(0)
+  availability   String?   // ONLINE, BUSY, OFFLINE
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId, topic])
+  @@index([workspaceId, topic])
+}
+
+/// Smart reply suggestion for a message.
+model SmartReplySuggestion {
+  id             String            @id @default(uuid())
+  workspaceId    String
+  messageId      String
+  channelId      String?
+  threadId       String?
+  intent         ReplyIntent
+  tone           ReplyTone
+  body           String
+  rank           Int
+  styleMatch     Float             @default(0)
+  knowledgeBased Boolean           @default(false)
+  approvalRequired Boolean          @default(false)
+  status         SuggestionStatus  @default(PENDING)
+  acceptedAt     DateTime?
+  createdAt      DateTime          @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  message   ChatMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  channel   ChatChannel? @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, messageId])
+  @@index([workspaceId, status])
+}
+
+/// Per-scope AI tier + monitoring policy config.
+model AiTierConfig {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  scope          String    // "room:<id>" | "thread:<id>" | "workspace"
+  tier           AiTier
+  monitoringEnabled Boolean @default(false)
+  retentionDays  Int       @default(90)
+  roleAwareSeverity Boolean @default(false)
+  multilingual   Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, scope])
+  @@index([workspaceId])
+}
+
+/// Audit log for moderation actions.
+model ModerationAuditLog {
+  id          String            @id @default(uuid())
+  workspaceId String
+  flagId      String?
+  action      ModerationAction
+  actorId     String?
+  reason      String?
+  createdAt   DateTime          @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+enum MonitorStatus {
+  OBSERVED
+  ALERTED
+  ENFORCED
+  RESOLVED
+}
+
+enum ModerationAction {
+  ALLOW
+  FLAG
+  QUARANTINE
+  MASK
+  HIDE
+  SOFT_WARN
+  ESCALATE
+  LOCK_THREAD
+}
+
+enum ModerationPolicy {
+  AUTO_ENFORCE
+  HUMAN_REVIEW
+  TEAM_THRESHOLD
+  MULTILINGUAL
+  ROLE_AWARE
+}
+
+enum ModerationStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ConflictSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ConflictResponse {
+  BANNER
+  PRIVATE_NUDGE
+  SUGGEST_HUDDLE
+  MODERATOR_INTERVENTION
+  FREEZE_THREAD
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  FROZEN
+}
+
+enum HealthStatus {
+  HEALTHY
+  OVERLOADED
+  STALE
+  CONFLICT_RISK
+  BURNOUT
+  BLOCKED
+}
+
+enum InsightKind {
+  TOP_TOPIC
+  RECURRING_QUESTION
+  FREQUENT_BLOCKER
+  DECISION_CLUSTER
+  COMMON_OBJECTION
+  UNRESOLVED_ISSUE
+  RESPONSIVENESS_PATTERN
+  SENTIMENT_BY_TOPIC
+}
+
+enum FaqStatus {
+  CANDIDATE
+  DRAFT
+  PUBLISHED
+  REJECTED
+}
+
+enum ReplyIntent {
+  ACKNOWLEDGEMENT
+  SCHEDULING
+  STATUS_UPDATE
+  DECISION_CONFIRMATION
+  ACTION_TAKEN
+  QUESTION
+  CLARIFICATION
+}
+
+enum ReplyTone {
+  CONCISE
+  FRIENDLY
+  FORMAL
+  FIRM
+}
+
+enum SuggestionStatus {
+  PENDING
+  ACCEPTED
+  DISMISSED
+  REJECTED
+}
+
+enum AiTier {
+  TIER_0
+  TIER_1
+  TIER_2
+  TIER_3
+  TIER_4
 }

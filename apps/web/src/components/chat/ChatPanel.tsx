@@ -8,6 +8,9 @@ import { useChatSocket } from "@/hooks/useChatSocket";
 import { ThreadPanel } from "./ThreadPanel";
 import { NotificationPanel } from "./NotificationPanel";
 import { AISlashCommandMenu } from "./AISlashCommandMenu";
+import { GovernancePanel } from "./GovernancePanel";
+import { HypercontextPanel } from "./HypercontextPanel";
+import type { GovernanceInput, HyperInput } from "@/app/(app)/m/chat/actions";
 
 export interface ChatActions {
   createChannel: (formData: FormData) => Promise<void>;
@@ -26,7 +29,20 @@ export interface ChatActions {
   unpin: (formData: FormData) => Promise<void>;
   markRead: (formData: FormData) => Promise<void>;
   search: (formData: FormData) => Promise<{ messages: ChatMessage[] }>;
+  toggleBookmark: (formData: FormData) => Promise<{ bookmarked: boolean }>;
+  saveSearch: (formData: FormData) => Promise<unknown>;
+  deleteSavedSearch: (formData: FormData) => Promise<void>;
+  setPresence: (formData: FormData) => Promise<void>;
+  governance: (input: GovernanceInput) => Promise<unknown>;
+  hyper: (input: HyperInput) => Promise<unknown>;
 }
+
+const TTL_OPTIONS = [
+  { label: "Off", seconds: 0 },
+  { label: "5m", seconds: 300 },
+  { label: "1h", seconds: 3600 },
+  { label: "24h", seconds: 86400 },
+] as const;
 
 interface MessageReaction {
   emoji: string;
@@ -130,6 +146,7 @@ export function ChatPanel({
   reactionEmojis,
   actions,
   token,
+  initialPresence = {},
 }: {
   workspaceId: string;
   userId: string;
@@ -141,11 +158,12 @@ export function ChatPanel({
   reactionEmojis: string[];
   actions: ChatActions;
   token: string;
+  initialPresence?: Record<string, string>;
 }) {
   const router = useRouter();
   type LiveMsg = ChatMessage & { attachments?: Array<{ id: string; filename: string; mimeType: string; sizeBytes: number; storageKey: string; thumbnailKey?: string | null; }> };
   const [liveMessages, setLiveMessages] = useState<LiveMsg[]>([]);
-  const [presence, setPresence] = useState<Record<string, string>>({});
+  const [presence, setPresence] = useState<Record<string, string>>(initialPresence);
   const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
   const [connStatus, setConnStatus] = useState<string>("connecting");
   const [showNew, setShowNew] = useState(false);
@@ -167,6 +185,15 @@ export function ChatPanel({
   const [showAICommand, setShowAICommand] = useState(false);
   const [notifUnread, setNotifUnread] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [ttlIndex, setTtlIndex] = useState(0);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [bookmarks, setBookmarks] = useState<Array<{ id: string; message: ChatMessage & { channel?: { name: string; kind: string } } }>>([]);
+  const [savedSearches, setSavedSearches] = useState<Array<{ id: string; name: string; query: string }>>([]);
+  const [saveSearchName, setSaveSearchName] = useState("");
+  const [presenceMenu, setPresenceMenu] = useState(false);
+  const [showGovernance, setShowGovernance] = useState(false);
+  const [hyperFor, setHyperFor] = useState<string | null>(null);
+  const [complianceError, setComplianceError] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -329,9 +356,60 @@ export function ChatPanel({
     return () => clearInterval(interval);
   }, [fetchNotifCount]);
 
+  const fetchBookmarks = useCallback(async () => {
+    try {
+      const res = await fetch("/api/chat/bookmarks");
+      if (res.ok) setBookmarks((await res.json()).bookmarks ?? []);
+    } catch { }
+  }, []);
+
+  const fetchSavedSearches = useCallback(async () => {
+    try {
+      const res = await fetch("/api/chat/search/saved");
+      if (res.ok) setSavedSearches((await res.json()).searches ?? []);
+    } catch { }
+  }, []);
+
+  const toggleBookmark = (messageId: string) => {
+    const fd = new FormData();
+    fd.set("messageId", messageId);
+    void actions.toggleBookmark(fd).then(() => fetchBookmarks());
+  };
+
+  const setMyPresence = (status: string) => {
+    const fd = new FormData();
+    fd.set("status", status);
+    void actions.setPresence(fd).then(() => {
+      setPresence((prev) => ({ ...prev, [userId]: status.toLowerCase() }));
+      setPresenceMenu(false);
+    });
+  };
+
   const handleSend = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!inputValue.trim() || !active) return;
+
+    const ttlSeconds = TTL_OPTIONS[ttlIndex]?.seconds ?? 0;
+
+    const sendViaAction = () => {
+      const fd = new FormData();
+      fd.set("channelId", active.id);
+      fd.set("body", inputValue.trim());
+      if (replyingTo) fd.set("parentId", replyingTo.id);
+      if (ttlSeconds > 0) fd.set("ttlSeconds", String(ttlSeconds));
+      void actions.send(fd).then(() => {
+        setInputValue("");
+        setReplyingTo(null);
+        setTtlIndex(0);
+        router.refresh();
+      });
+    };
+
+    // Ephemeral messages go through the server action (TTL is not wired to the WS gateway)
+    if (ttlSeconds > 0) {
+      sendViaAction();
+      return;
+    }
 
     if (wsStatus === "connected") {
       sendMessage(inputValue.trim());
@@ -342,24 +420,18 @@ export function ChatPanel({
       if (replyingTo) fd.set("parentId", replyingTo.id);
       void actions.send(fd);
       setReplyingTo(null);
-    } else {
+    } else if (replyingTo) {
       const fd = new FormData();
       fd.set("channelId", active.id);
       fd.set("body", inputValue.trim());
-      if (replyingTo) {
-        fd.set("parentId", replyingTo.id);
-        void actions.reply(fd).then(() => {
-          setInputValue("");
-          setReplyingTo(null);
-          router.refresh();
-        });
-      } else {
-        void actions.send(fd).then(() => {
-          setInputValue("");
-          setReplyingTo(null);
-          router.refresh();
-        });
-      }
+      fd.set("parentId", replyingTo.id);
+      void actions.reply(fd).then(() => {
+        setInputValue("");
+        setReplyingTo(null);
+        router.refresh();
+      });
+    } else {
+      sendViaAction();
     }
   };
 
@@ -372,8 +444,12 @@ export function ChatPanel({
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
+    runSearch(searchQuery);
+  };
+
+  const runSearch = (query: string) => {
     const fd = new FormData();
-    fd.set("query", searchQuery);
+    fd.set("query", query);
     if (activeChannelId) fd.set("channelId", activeChannelId);
     void actions.search(fd).then((result) => {
       if (result) setSearchResults(result.messages);
@@ -472,8 +548,10 @@ export function ChatPanel({
                   style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, minWidth: 0, padding: "4px 4px", textDecoration: "none", color: "var(--nv-color-text)", fontSize: "var(--nv-font-sm)", fontWeight: activeChannelId === c.id ? 700 : 500 }}
                 >
                   <span style={{ flexShrink: 0 }}>
-                    {c.createdById && presence[c.createdById] === "online" && c.kind === "DM" ? (
-                      <span style={{ color: "var(--nv-color-success)", fontSize: 10 }}>●</span>
+                    {c.kind === "ANNOUNCEMENT" ? (
+                      <span style={{ color: "var(--nv-color-warning)", fontSize: 10 }}>📢</span>
+                    ) : c.createdById && presence[c.createdById] && c.kind === "DM" ? (
+                      <span style={{ color: presenceColor(presence[c.createdById]), fontSize: 10 }}>●</span>
                     ) : (
                       <span style={{ color: "var(--nv-color-text-faint)", fontSize: 10 }}>#</span>
                     )}
@@ -505,6 +583,22 @@ export function ChatPanel({
           {active?.topic && <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>| {active.topic}</span>}
           <span style={{ fontSize: 12, color: status.color }}>{status.text}</span>
           <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setPresenceMenu(!presenceMenu)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Set presence">
+                {presence[userId] === "online" ? "🟢" : presence[userId] === "busy" ? "🔴" : presence[userId] === "dnd" ? "⛔" : presence[userId] === "away" ? "🌙" : "🟡"} {presence[userId] ?? "online"}
+              </button>
+              {presenceMenu && (
+                <div style={{ position: "absolute", top: 28, right: 0, zIndex: 60, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", padding: 4, minWidth: 120, boxShadow: "0 8px 24px rgba(0,0,0,0.25)" }}>
+                  {([["ONLINE", "🟢 Online"], ["AWAY", "🌙 Away"], ["BUSY", "🔴 Busy"], ["DND", "⛔ Do not disturb"]] as [string, string][]).map(([value, label]) => (
+                    <button key={value} onClick={() => setMyPresence(value)} style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", padding: "6px 8px", borderRadius: "var(--nv-radius-sm)", cursor: "pointer", fontSize: 12, color: "var(--nv-color-text)" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={() => { setShowBookmarks(true); fetchBookmarks(); }} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Bookmarks">🔖</button>
+            <button onClick={() => setShowGovernance(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Compliance & governance">🛡️</button>
             <button onClick={() => setShowNotifications(!showNotifications)} style={{ position: "relative", border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>
               🔔 {notifUnread > 0 && <span style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "var(--nv-color-danger)", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>{notifUnread}</span>}
             </button>
@@ -544,6 +638,15 @@ export function ChatPanel({
                         <span style={{ color: "var(--nv-color-text-faint)", fontSize: 11 }}>{formatTime(m.createdAt)}</span>
                         {m.editedAt && <span style={{ color: "var(--nv-color-text-faint)", fontSize: 10 }}>(edited)</span>}
                         {m.pinnedAt && <span style={{ color: "var(--nv-color-warning)", fontSize: 10 }}>📌</span>}
+                        {(m as any).expiresAt && <span style={{ color: "var(--nv-color-warning)", fontSize: 10 }}>⏳</span>}
+                        {((m as any).compliance?.[0]?.classification || (m as any).compliance?.[0]?.legalHold && <span style={{ color: "var(--nv-color-danger)", fontSize: 10 }}>⛔</span>)}
+                        {(m as any).compliance?.[0]?.classification && <span style={{ color: "var(--nv-color-warning)", fontSize: 10, fontWeight: 700 }}>{(m as any).compliance[0].classification}</span>}
+                        {((m as any).compliance?.[0]?.retentionMode === "COMPLIANCE" || (m as any).compliance?.[0]?.retentionMode === "BLOCKCHAIN") && <span style={{ color: "var(--nv-color-warning)", fontSize: 10 }}>{(m as any).compliance[0].retentionMode.toLowerCase()} lock</span>}
+                        {(m as any).hyperContext?.linkCount > 0 && (
+                          <button onClick={() => setHyperFor(m.id)} title="Hyper-context: linked objects & suggested actions" style={{ border: "1px solid var(--nv-color-primary-alpha)", background: "var(--nv-color-primary-alpha)", borderRadius: 999, padding: "1px 7px", fontSize: 10, color: "var(--nv-color-primary)", cursor: "pointer", fontWeight: 700 }}>
+                            🔗 {(m as any).hyperContext.linkCount}
+                          </button>
+                        )}
                       </div>
                       <div style={{ marginTop: 2 }}>
                         {isEditing ? (
@@ -629,6 +732,7 @@ export function ChatPanel({
           <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileUpload} />
           <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={!active || uploading} title={uploading ? "Uploading..." : "Attach file"}>{uploading ? "⏳" : "📎"}</Button>
           <Button type="button" variant="secondary" onClick={() => setShowAICommand(!showAICommand)} disabled={!active} title="AI commands">✨</Button>
+          <Button type="button" variant={ttlIndex > 0 ? "primary" : "secondary"} onClick={() => setTtlIndex((ttlIndex + 1) % TTL_OPTIONS.length)} disabled={!active} title="Ephemeral message (self-destructs after TTL)" style={{ fontSize: 11 }}>⏳{TTL_OPTIONS[ttlIndex]?.label}</Button>
           <Button type="submit" disabled={!active || !inputValue.trim()}>Send</Button>
         </form>
       </div>
@@ -657,6 +761,17 @@ export function ChatPanel({
         </div>
       )}
 
+      {/* Compliance error / explanation banner */}
+      {complianceError && (
+        <div style={{ position: "absolute", top: 44, left: "50%", transform: "translateX(-50%)", zIndex: 70, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-warning)", borderRadius: "var(--nv-radius-md)", padding: "8px 12px", fontSize: 12, maxWidth: 480, boxShadow: "var(--nv-shadow-md)" }}>
+          {complianceError}
+          <button onClick={() => setComplianceError("")} style={{ marginLeft: 8, border: "none", background: "none", cursor: "pointer", color: "var(--nv-color-text-faint)" }}>✕</button>
+        </div>
+      )}
+
+      {showGovernance && <GovernancePanel onClose={() => setShowGovernance(false)} governance={(input) => actions.governance(input)} />}
+      {hyperFor && <HypercontextPanel messageId={hyperFor} hyper={(input) => actions.hyper(input)} onClose={() => setHyperFor(null)} />}
+
       {/* ── Dialogs ── */}
 
       <Dialog
@@ -675,6 +790,9 @@ export function ChatPanel({
             <textarea className="nv-input" name="description" placeholder="Description (optional)" rows={2} />
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--nv-font-sm)" }}>
               <input type="checkbox" name="isPrivate" value="true" /> Private channel
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--nv-font-sm)" }}>
+              <input type="checkbox" name="kind" value="ANNOUNCEMENT" /> Announcement (admins-only posting)
             </label>
           </div>
         </form>
@@ -740,16 +858,56 @@ export function ChatPanel({
         title="Search messages"
         actions={<Button variant="secondary" onClick={() => { setShowSearch(false); setSearchResults([]); }}>Close</Button>}
       >
-        <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <input className="nv-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search messages..." autoFocus style={{ flex: 1 }} />
+        <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <input className="nv-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search: from:@alex has:file is:thread before:2026-01-01" autoFocus style={{ flex: 1 }} />
           <Button type="submit">Search</Button>
         </form>
+        <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", marginBottom: 8, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <span>from:user</span><span>in:#channel</span><span>has:file|image|video|link</span><span>is:thread</span><span>before:/after:date</span><span>type:code</span>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <input className="nv-input" value={saveSearchName} onChange={(e) => setSaveSearchName(e.target.value)} placeholder="Name this search to save" style={{ flex: 1 }} />
+          <Button variant="secondary" size="sm" disabled={!searchQuery.trim() || !saveSearchName.trim()} onClick={() => {
+            const fd = new FormData();
+            fd.set("name", saveSearchName);
+            fd.set("query", searchQuery);
+            void actions.saveSearch(fd).then(() => { setSaveSearchName(""); fetchSavedSearches(); });
+          }}>Save</Button>
+        </div>
+        {savedSearches.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            {savedSearches.map((s) => (
+              <span key={s.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, border: "1px solid var(--nv-color-border)", fontSize: 11 }}>
+                🔍 {s.name}
+                <button onClick={() => runSearch(s.query)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 12, padding: 0, color: "var(--nv-color-primary)" }} title="Run">▶</button>
+                <button onClick={() => { const fd = new FormData(); fd.set("searchId", s.id); void actions.deleteSavedSearch(fd).then(() => fetchSavedSearches()); }} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 12, padding: 0, color: "var(--nv-color-text-faint)" }} title="Delete">✕</button>
+              </span>
+            ))}
+          </div>
+        )}
         <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
           {searchResults.length === 0 && searchQuery && <div className="nv-empty">No results found</div>}
           {searchResults.map((m) => (
             <a key={m.id} href={`/m/chat?c=${m.channelId}`} style={{ padding: "6px 8px", borderRadius: "var(--nv-radius-md)", background: "var(--nv-color-bg)", textDecoration: "none", color: "var(--nv-color-text)", display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{m.authorName} <span style={{ color: "var(--nv-color-text-faint)", fontWeight: 400 }}>in {(m as any).channel?.name ?? "channel"}</span></span>
               <span style={{ fontSize: "var(--nv-font-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.body}</span>
+            </a>
+          ))}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={showBookmarks}
+        onClose={() => setShowBookmarks(false)}
+        title="Bookmarks"
+        actions={<Button variant="secondary" onClick={() => setShowBookmarks(false)}>Close</Button>}
+      >
+        <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+          {bookmarks.length === 0 && <div className="nv-empty">No bookmarks yet — use the 🔖 on any message</div>}
+          {bookmarks.map((b) => (
+            <a key={b.id} href={`/m/chat?c=${b.message.channelId}`} style={{ padding: "6px 8px", borderRadius: "var(--nv-radius-md)", background: "var(--nv-color-bg)", textDecoration: "none", color: "var(--nv-color-text)", display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>{b.message.authorName} <span style={{ color: "var(--nv-color-text-faint)", fontWeight: 400 }}>in {(b.message as any).channel?.name ?? "channel"}</span></span>
+              <span style={{ fontSize: "var(--nv-font-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.message.body}</span>
             </a>
           ))}
         </div>
@@ -783,7 +941,7 @@ export function ChatPanel({
             const member = members.find(m => m.user.id === mem.userId);
             return (
               <div key={mem.userId} style={{ padding: "6px 8px", borderRadius: "var(--nv-radius-md)", background: "var(--nv-color-bg)", display: "flex", alignItems: "center", gap: 8, fontSize: "var(--nv-font-sm)" }}>
-                <span>{presence[mem.userId] === "online" ? "🟢" : "⚪"}</span>
+                <span>{presenceEmoji(presence[mem.userId])}</span>
                 <span style={{ fontWeight: 600 }}>{member?.user.name ?? member?.user.email ?? "Unknown"}</span>
                 <span style={{ color: "var(--nv-color-text-faint)", fontSize: 11, textTransform: "capitalize" }}>{mem.role.toLowerCase()}</span>
               </div>
@@ -795,6 +953,28 @@ export function ChatPanel({
   );
 
   // ── Nested helpers ─────────────────────────────────────────────────
+
+  function presenceEmoji(status?: string) {
+    switch (status) {
+      case "online": return "🟢";
+      case "busy": return "🔴";
+      case "dnd": return "⛔";
+      case "away": return "🌙";
+      case "offline": return "⚪";
+      default: return "🟡";
+    }
+  }
+
+  function presenceColor(status?: string) {
+    switch (status) {
+      case "online": return "var(--nv-color-success)";
+      case "busy": return "var(--nv-color-danger)";
+      case "dnd": return "var(--nv-color-warning)";
+      case "away": return "#b7a24d";
+      case "offline": return "var(--nv-color-text-faint)";
+      default: return "var(--nv-color-warning)";
+    }
+  }
 
   function renderReactions(m: ChatMessage) {
     const groups = reactionGroups(m, userId);
@@ -829,17 +1009,39 @@ export function ChatPanel({
     if (m.deletedAt) return null;
     const isAuthor = m.createdById === userId;
     const replyCount = (m as any)._count?.replies ?? 0;
+    const rec = (m as any).compliance?.[0];
     return (
       <Dropdown trigger={<Button variant="ghost" size="sm" style={{ minWidth: 0, padding: "2px 6px", opacity: 0.4 }}>⋯</Button>}>
         <MenuItem onSelect={() => { setReplyingTo(m); inputRef.current?.focus(); }}>Reply in thread</MenuItem>
         {replyCount > 0 && <MenuItem onSelect={() => setActiveThread(m.id)}>View thread ({replyCount})</MenuItem>}
         {isAuthor && <MenuItem onSelect={() => startEdit(m)}>Edit</MenuItem>}
-        {isAuthor && <MenuItem danger onSelect={() => { const fd = new FormData(); fd.set("messageId", m.id); void actions.delete(fd).then(() => router.refresh()); }}>Delete</MenuItem>}
+        {isAuthor && <MenuItem danger onSelect={() => {
+          const fd = new FormData();
+          fd.set("messageId", m.id);
+          void actions.delete(fd).then(() => router.refresh()).catch((e) => setComplianceError((e as Error).message));
+        }}>Delete</MenuItem>}
+        {rec && (
+          <MenuItem onSelect={() => {
+            setComplianceError(rec.legalHold
+              ? `Under legal hold: ${rec.legalHoldReason ?? "held until explicitly released"} — deletion is blocked until the hold is released.`
+              : rec.retainUntil
+                ? `Retention lock (${rec.retentionMode.toLowerCase()} mode) until ${new Date(rec.retainUntil).toLocaleDateString()} — deletion will be blocked until then.`
+                : `Governed as ${rec.retentionMode.toLowerCase()} — deletion may be blocked by retention policy.`);
+          }}>🔒 Why can't I delete this?</MenuItem>
+        )}
         {m.pinnedAt ? (
           <MenuItem onSelect={() => submitUnpin(m.id)}>Unpin</MenuItem>
         ) : (
           <MenuItem onSelect={() => submitPin(m.id)}>Pin</MenuItem>
         )}
+        <MenuItem onSelect={() => { setHyperFor(m.id); }}>🔗 Hyper-context</MenuItem>
+        <MenuItem onSelect={() => toggleBookmark(m.id)}>🔖 Bookmark</MenuItem>
+        <MenuItem onSelect={() => {
+          const fd = new FormData();
+          fd.set("messageId", m.id);
+          fd.set("classification", "CONFIDENTIAL");
+          void actions.governance({ op: "classify", messageId: m.id, classification: "CONFIDENTIAL" }).then(() => router.refresh()).catch((e) => setComplianceError((e as Error).message));
+        }}>🔒 Mark confidential</MenuItem>
       </Dropdown>
     );
   }
