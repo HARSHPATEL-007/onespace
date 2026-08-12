@@ -119,9 +119,33 @@ integrations    Integration[]
       presentationSessions PresentationSession[]
       subVocalConfigs SubVocalConfig[]
       liveEmbeds LiveEmbed[]
+      threadMetadata ThreadMetadata[]
+      threadDecisions ThreadDecision[]
+      threadActionItems ThreadActionItem[]
+      threadPins ThreadPin[]
+      threadBookmarks ThreadBookmark[]
+      threadExports ThreadExport[]
+      notificationEvents NotificationEvent[]
+      notificationRules NotificationRule[]
+      userNotificationPrefs UserNotificationPrefs[]
+      notificationDigests NotificationDigest[]
+      escalationRecords EscalationRecord[]
+      searchIndex SearchIndex[]
+      searchQueryLogs SearchQueryLog[]
+      searchSuggestions SearchSuggestion[]
+      huddleSessions HuddleSession[]
+      huddleRecordings HuddleRecording[]
+      breakoutRooms BreakoutRoom[]
+      bots Bot[]
+      huddleArtifacts HuddleArtifact[]
+      federationConnections FederationConnection[]
+      federatedIdentities FederatedIdentity[]
+      federationPolicies FederationPolicy[]
+      federationAuditLogs FederationAuditLog[]
+      guestAccesses GuestAccess[]
    }
 
-  /// A user is global; they belong to workspaces via WorkspaceMember.
+   /// A user is global; they belong to workspaces via WorkspaceMember.
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -209,6 +233,21 @@ createdCalendarEvents CalendarEvent[]
       adaptivePaneStates AdaptivePaneState[]
       presentationSessions PresentationSession[]
       subVocalConfigs SubVocalConfig[]
+      threadPins ThreadPin[]
+      threadBookmarks ThreadBookmark[]
+      threadExports ThreadExport[]
+      notificationEvents NotificationEvent[]
+      notificationRules NotificationRule[]
+      userNotificationPrefs UserNotificationPrefs[]
+      notificationDigests NotificationDigest[]
+      escalationRecords EscalationRecord[]
+      searchQueryLogs SearchQueryLog[]
+      huddleSessions HuddleSession[]
+      huddleParticipants HuddleParticipant[]
+      huddleRecordings HuddleRecording[]
+      breakoutRooms BreakoutRoom[]
+      bots Bot[]
+      guestAccesses GuestAccess[]
    }
 
    /// Seat within a workspace + assigned role.
@@ -631,13 +670,14 @@ model ChatChannel {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   messages  ChatMessage[]
   members   ChatMember[]
-  pins      ChatPin[]
-  chatLinks ContactChatLink[]
-  liveEmbeds LiveEmbed[]
-  presentationSessions PresentationSession[]
+   pins      ChatPin[]
+   chatLinks ContactChatLink[]
+   liveEmbeds LiveEmbed[]
+   presentationSessions PresentationSession[]
+   threadMetadata ThreadMetadata[]
 
-  @@index([workspaceId, updatedAt(sort: Desc)])
-  @@index([workspaceId, kind])
+   @@index([workspaceId, updatedAt(sort: Desc)])
+   @@index([workspaceId, kind])
 }
 
 model ChatMessage {
@@ -3097,4 +3137,1018 @@ enum PaneType {
   CRM
   THREAD
   EMBED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA THREADS — Conversation Memory & Decision System
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Rich metadata for threaded conversations.
+model ThreadMetadata {
+  id              String   @id @default(uuid())
+  threadId        String   @unique
+  rootMessageId   String
+  channelId       String
+  workspaceId     String
+  title           String   @default("Thread")
+  parentThreadId  String?
+  depth           Int      @default(0)
+  branchPath      Json     @default("[]")
+  summaryShort    String?  @default("")
+  summaryBullets  Json     @default("[]")
+  lastActivityAt  DateTime @default(now())
+  replyCount      Int      @default(0)
+  participantCount Int     @default(0)
+  labels          String[] @default([])
+  visibility      ThreadVisibility @default(ROOM)
+  status          ThreadStatus @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  channel          ChatChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  workspace        Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parentThread     ThreadMetadata? @relation("ThreadNesting", fields: [parentThreadId], references: [id], onDelete: Cascade)
+  childThreads     ThreadMetadata[] @relation("ThreadNesting")
+  decisions        ThreadDecision[]
+  actionItems      ThreadActionItem[]
+  bookmarks        ThreadBookmark[]
+  exports          ThreadExport[]
+  pins             ThreadPin[]
+
+  @@index([channelId])
+  @@index([workspaceId, status])
+  @@index([rootMessageId])
+  @@index([parentThreadId])
+}
+
+/// Extracted decisions from thread conversations.
+model ThreadDecision {
+  id            String   @id @default(uuid())
+  threadId      String
+  workspaceId   String
+  sourceMessageId String?
+  sourceQuote   String?
+  decisionText  String
+  authorName    String?
+  status        DecisionStatus @default(PROPOSED)
+  approvedBy    String?
+  approvedAt    DateTime?
+  linkedTaskId  String?
+  linkedDocId   String?
+  confidence    Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([workspaceId, status])
+}
+
+/// Extracted action items from thread conversations.
+model ThreadActionItem {
+  id            String   @id @default(uuid())
+  threadId      String
+  workspaceId   String
+  sourceMessageId String?
+  sourceQuote   String?
+  title         String
+  ownerName     String?
+  ownerUserId   String?
+  dueDate       DateTime?
+  priority      ActionPriority @default(MEDIUM)
+  status        ActionStatus @default(OPEN)
+  confidence    Float    @default(0)
+  extractedBy   ExtractionMethod @default(AI_AUTO)
+  confirmedBy   String?
+  confirmedAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([workspaceId, status])
+  @@index([ownerUserId])
+  @@index([dueDate])
+}
+
+/// Pinning and bookmarks for threads.
+model ThreadPin {
+  id          String   @id @default(uuid())
+  threadId    String
+  workspaceId String
+  userId      String
+  pinType     PinType  @default(ROOM)
+  priority    PinPriority @default(NORMAL)
+  reason      String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, pinType])
+  @@index([userId])
+}
+
+/// Personal bookmarks within threads.
+model ThreadBookmark {
+  id          String   @id @default(uuid())
+  threadId    String
+  workspaceId String
+  userId      String
+  messageId   String?
+  note        String?
+  createdAt   DateTime @default(now())
+
+  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Thread export records.
+model ThreadExport {
+  id          String   @id @default(uuid())
+  threadId    String
+  workspaceId String
+  createdById String
+  format      ExportFormat
+  exportMode  ExportMode
+  content     String
+  fileSize    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User           @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([workspaceId])
+}
+
+// ── Thread Enums ──────────────────────────────────────────────────────────────
+
+enum ThreadVisibility {
+  ROOM
+  WORKSPACE
+  PRIVATE
+}
+
+enum ThreadStatus {
+  ACTIVE
+  RESOLVED
+  ARCHIVED
+  MERGED
+}
+
+enum DecisionStatus {
+  PROPOSED
+  CONFIRMED
+  SUPERSEDED
+  REVOKED
+}
+
+enum ActionPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ActionStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum ExtractionMethod {
+  AI_AUTO
+  MANUAL
+  BULK
+}
+
+enum PinType {
+  ROOM
+  PERSONAL
+  PRIORITY
+}
+
+enum PinPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum ExportFormat {
+  MARKDOWN
+  PDF
+  DOCX
+  JSON
+}
+
+enum ExportMode {
+  FULL
+  BRANCH
+  RANGE
+  SUMMARY_ONLY
+  SUMMARY_TRANSCRIPT
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA NOTIFICATION ENGINE — Policy-Driven Attention System
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Canonical notification event with scoring metadata.
+model NotificationEvent {
+  id              String   @id @default(uuid())
+  recipientId     String
+  workspaceId     String
+  sourceType      String
+  sourceId        String?
+  roomId          String?
+  threadId        String?
+  title           String
+  body            String?
+  link            String?
+  signals         Json     @default("{}")
+  priorityScore   Int      @default(0)
+  channelPlan     String[] @default([])
+  ruleHits        String[] @default([])
+  status          NotificationStatus @default(QUEUED)
+  digestId        String?
+  escalationLevel Int      @default(0)
+  acknowledgedAt  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+   recipient       User    @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+   workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+   deliveries      DeliveryRecord[]
+   digest          NotificationDigest? @relation(fields: [digestId], references: [id], onDelete: SetNull)
+   escalationRecords EscalationRecord[]
+
+  @@index([recipientId, status])
+  @@index([recipientId, priorityScore(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([digestId])
+}
+
+/// Delivery records per channel for reliability tracking.
+model DeliveryRecord {
+  id              String   @id @default(uuid())
+  notificationId  String
+  channel         DeliveryChannel
+  status          DeliveryStatus @default(PENDING)
+  attemptCount    Int      @default(0)
+  lastAttemptAt   DateTime?
+  deliveredAt     DateTime?
+  failedAt        DateTime?
+  failureReason   String?
+  idempotencyKey  String   @unique
+  createdAt       DateTime @default(now())
+
+  notification    NotificationEvent @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@index([notificationId, channel])
+  @@index([status, createdAt])
+}
+
+/// User-defined notification rules with operator-based filters.
+model NotificationRule {
+  id              String   @id @default(uuid())
+  userId          String
+  workspaceId     String
+  name            String
+  enabled         Boolean  @default(true)
+  priority        RulePriority @default(NORMAL)
+  conditions      Json     @default("[]")
+  actions         Json     @default("[]")
+  stopProcessing  Boolean  @default(false)
+  order           Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, workspaceId, order])
+}
+
+/// User notification preferences per channel and category.
+model UserNotificationPrefs {
+  id                String   @id @default(uuid())
+  userId            String
+  workspaceId       String
+  channelPrefs      Json     @default("{}")
+  quietHoursStart   String?
+  quietHoursEnd     String?
+  focusModeEnabled  Boolean  @default(false)
+  digestFrequency   DigestFrequency @default(HOURLY)
+  escalationLevel   Int      @default(2)
+  perRoomOverrides  Json     @default("{}")
+  perSenderOverrides Json    @default("{}")
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+/// AI-generated digests for burst compression.
+model NotificationDigest {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  userId          String
+  roomId          String?
+  title           String
+  summary         String
+  highlights      Json     @default("[]")
+  decisionChanges Json     @default("[]")
+  actionItems     Json     @default("[]")
+  mentions        Json     @default("[]")
+  messageCount    Int      @default(0)
+  status          DigestStatus @default(PENDING)
+  createdAt       DateTime @default(now())
+  deliveredAt     DateTime?
+
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events          NotificationEvent[]
+
+  @@index([userId, status])
+}
+
+/// Escalation tracking for unacknowledged critical alerts.
+model EscalationRecord {
+  id              String   @id @default(uuid())
+  notificationId  String
+  userId          String
+  workspaceId   String
+  currentLevel    Int      @default(0)
+  maxLevel        Int      @default(3)
+  nextEscalationAt DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  notification    NotificationEvent @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, currentLevel])
+}
+
+// ── Notification Enums ────────────────────────────────────────────────────────
+
+enum NotificationStatus {
+  QUEUED
+  SCORING
+  FILTERED
+  SUPPRESSED
+  DELIVERING
+  DELIVERED
+  ACKNOWLEDGED
+  FAILED
+  DIGESTED
+}
+
+enum DeliveryChannel {
+  WEBSOCKET
+  FCM
+  APNS
+  SMS
+  EMAIL
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+}
+
+enum RulePriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum DigestFrequency {
+  REALTIME
+  HOURLY
+  DAILY
+  WEEKLY
+}
+
+enum DigestStatus {
+  PENDING
+  GENERATING
+  READY
+  DELIVERED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA BOTS — Automation & Orchestration Platform
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Bot {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  createdById     String
+  name            String
+  avatarUrl       String?
+  description     String   @default("")
+  persona         Json     @default("{}")
+  knowledgeScopes String[] @default([])
+  permissions     Json     @default("{}")
+  status          BotStatus @default(ACTIVE)
+  rateLimitPerMin Int      @default(60)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy       User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  triggers        BotTrigger[]
+  executions      BotExecution[]
+  webhooks        BotWebhook[]
+  auditLogs       BotAuditLog[]
+
+  @@index([workspaceId, status])
+}
+
+model BotTrigger {
+  id              String   @id @default(uuid())
+  botId           String
+  type            BotTriggerType
+  config          Json     @default("{}")
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  bot             Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  executions      BotExecution[]
+
+  @@index([botId, type])
+}
+
+model BotExecution {
+  id              String   @id @default(uuid())
+  botId           String
+  triggerId       String?
+  triggerType     String
+  input           Json     @default("{}")
+  output          Json     @default("{}")
+  status          ExecutionStatus @default(PENDING)
+  durationMs      Int      @default(0)
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  bot             Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  trigger         BotTrigger? @relation(fields: [triggerId], references: [id], onDelete: SetNull)
+
+  @@index([botId, status])
+  @@index([createdAt(sort: Desc)])
+}
+
+model BotWebhook {
+  id              String   @id @default(uuid())
+  botId           String
+  direction       WebhookDirection
+  url             String
+  secret          String?
+  events          String[] @default([])
+  enabled         Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  bot             Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId, direction])
+}
+
+model BotAuditLog {
+  id              String   @id @default(uuid())
+  botId           String
+  action          String
+  actorId         String?
+  details         Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  bot             Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+
+  @@index([botId, createdAt(sort: Desc)])
+}
+
+enum BotStatus {
+  ACTIVE
+  PAUSED
+  DISABLED
+}
+
+enum BotTriggerType {
+  SLASH_COMMAND
+  MENTION
+  WEBHOOK
+  SCHEDULED
+  AI_TRIGGER
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum WebhookDirection {
+  INCOMING
+  OUTGOING
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA SEARCH — Hybrid Retrieval System (Lexical + Semantic + Neural)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Unified search index for all workspace content.
+model SearchIndex {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  contentType     SearchContentType
+  contentId       String
+  title           String
+  body            String
+  excerpt         String   @default("")
+  embedding       String   @default("")
+  embeddingModel  String   @default("n0va-embed-v3")
+  lexicalVector   String   @default("")
+  entities        Json     @default("[]")
+  metadata        Json     @default("{}")
+  permissions     Json     @default("{}")
+  indexedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, contentType, contentId])
+  @@index([workspaceId, contentType])
+  @@index([workspaceId, indexedAt(sort: Desc)])
+}
+
+/// Search query log for analytics and suggestions.
+model SearchQueryLog {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  userId          String
+  query           String
+  queryType       SearchQueryType @default(NATURAL)
+  filters         Json     @default("{}")
+  resultCount     Int      @default(0)
+  topScore        Float    @default(0)
+  latencyMs       Int      @default(0)
+  clickedResults  String[] @default([])
+  createdAt       DateTime @default(now())
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+/// Search suggestions based on query history and content.
+model SearchSuggestion {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  query           String
+  suggestion      String
+  score           Float    @default(0)
+  usageCount      Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, score(sort: Desc)])
+}
+
+// ── Search Enums ──────────────────────────────────────────────────────────────
+
+enum SearchContentType {
+  MESSAGE
+  THREAD
+  THREAD_SUMMARY
+  DECISION
+  ACTION_ITEM
+  PIN
+  BOOKMARK
+  ATTACHMENT
+  LIVE_EMBED
+  CONTACT
+  MEETING
+  NOTIFICATION
+}
+
+enum SearchQueryType {
+  NATURAL
+  KEYWORD
+  SEMANTIC
+  HYBRID
+  OPERATOR
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HUDDLES — Tiered Real-Time Media System
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Huddle sessions with modes, quality profiles, and governance.
+model HuddleSession {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  channelId         String?
+  createdById       String
+  title             String
+  mode              HuddleMode @default(INSTANT)
+  status            HuddleSessionStatus @default(SCHEDULED)
+  qualityProfile    QualityProfile @default(PREMIUM)
+  presenterVideo    String   @default("4k60")
+  participantVideo  String   @default("720p30")
+  audioCodec        String   @default("opus_48khz_stereo")
+  maxParticipants   Int      @default(100)
+  guestPolicy       Json     @default("{}")
+  recordingEnabled  Boolean  @default(false)
+  recordingType     RecordingType @default(COMPOSITE)
+  retentionDays     Int      @default(90)
+  consentRequired   Boolean  @default(true)
+  startedAt         DateTime?
+  endedAt           DateTime?
+  scheduledFor      DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace         Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy         User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  participants      HuddleParticipant[]
+  recordings        HuddleRecording[]
+  breakouts         BreakoutRoom[]
+  artifacts         HuddleArtifact[]
+
+  @@index([workspaceId, status])
+  @@index([createdById])
+}
+
+/// Participant state within a huddle.
+model HuddleParticipant {
+  id              String   @id @default(uuid())
+  huddleId        String
+  userId          String?
+  displayName     String
+  role            HuddleRole @default(ATTENDEE)
+  guestToken      String?  @unique
+  guestOrg        String?
+  audioEnabled    Boolean  @default(true)
+  videoEnabled    Boolean  @default(true)
+  isPresenter     Boolean  @default(false)
+  isSpeaking      Boolean  @default(false)
+  handRaised      Boolean  @default(false)
+  networkQuality  NetworkQuality @default(GOOD)
+  joinedAt        DateTime @default(now())
+  leftAt          DateTime?
+
+  huddle          HuddleSession @relation(fields: [huddleId], references: [id], onDelete: Cascade)
+  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([huddleId])
+  @@index([userId])
+}
+
+/// Server-side recording with composite and raw-track support.
+model HuddleRecording {
+  id              String   @id @default(uuid())
+  huddleId        String
+  workspaceId     String
+  startedById     String
+  recordingType   RecordingType @default(COMPOSITE)
+  status          RecordingStatus @default(RECORDING)
+  storageKey      String?
+  durationSec     Int      @default(0)
+  fileSizeBytes   Int      @default(0)
+  trackCount      Int      @default(0)
+  transcriptKey   String?
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdAt       DateTime @default(now())
+
+  huddle          HuddleSession  @relation(fields: [huddleId], references: [id], onDelete: Cascade)
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  startedBy       User           @relation(fields: [startedById], references: [id], onDelete: Cascade)
+  tracks          RecordingTrack[]
+
+  @@index([huddleId])
+}
+
+/// Individual participant recording tracks.
+model RecordingTrack {
+  id              String   @id @default(uuid())
+  recordingId     String
+  participantId   String?
+  participantName String?
+  trackType       TrackType
+  storageKey      String
+  durationSec     Int      @default(0)
+  fileSizeBytes   Int      @default(0)
+  isRedacted      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  recording       HuddleRecording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  @@index([recordingId])
+}
+
+/// Breakout rooms spawned from a parent huddle.
+model BreakoutRoom {
+  id              String   @id @default(uuid())
+  parentHuddleId  String
+  workspaceId     String
+  createdById     String
+  title           String
+  assignmentType  AssignmentType @default(MANUAL)
+  durationMin     Int?
+  status          BreakoutStatus @default(ACTIVE)
+  broadcastFromHost String?
+  createdAt       DateTime @default(now())
+  endedAt         DateTime?
+
+  parentHuddle    HuddleSession @relation(fields: [parentHuddleId], references: [id], onDelete: Cascade)
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy       User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  participants    BreakoutParticipant[]
+
+  @@index([parentHuddleId])
+}
+
+model BreakoutParticipant {
+  id              String   @id @default(uuid())
+  breakoutId      String
+  userId          String?
+  displayName     String
+  assignedAt      DateTime @default(now())
+
+  breakout        BreakoutRoom @relation(fields: [breakoutId], references: [id], onDelete: Cascade)
+
+  @@index([breakoutId])
+}
+
+/// Artifacts produced by huddles (transcripts, summaries, decisions, tasks).
+model HuddleArtifact {
+  id              String   @id @default(uuid())
+  huddleId        String
+  workspaceId     String
+  artifactType    HuddleArtifactType
+  title           String
+  content         String   @default("")
+  storageKey      String?
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  huddle          HuddleSession @relation(fields: [huddleId], references: [id], onDelete: Cascade)
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([huddleId])
+  @@index([workspaceId, artifactType])
+}
+
+// ── Huddle Enums ──────────────────────────────────────────────────────────────
+
+enum HuddleMode {
+  INSTANT
+  SCHEDULED
+  PERSISTENT
+  BREAKOUT
+}
+
+enum HuddleSessionStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+}
+
+enum QualityProfile {
+  STANDARD
+  PREMIUM
+  WEBINAR
+}
+
+enum RecordingType {
+  COMPOSITE
+  RAW_TRACKS
+  AUDIO_ONLY
+}
+
+enum RecordingStatus {
+  RECORDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum HuddleRole {
+  HOST
+  PRESENTER
+  SPEAKER
+  ATTENDEE
+  GUEST
+}
+
+enum NetworkQuality {
+  POOR
+  FAIR
+  GOOD
+  EXCELLENT
+}
+
+enum AssignmentType {
+  MANUAL
+  AUTO_ROLE
+  AUTO_TEAM
+}
+
+enum BreakoutStatus {
+  ACTIVE
+  ENDED
+}
+
+enum TrackType {
+  AUDIO
+  VIDEO
+  SCREEN_SHARE
+  COMPOSITE
+}
+
+enum HuddleArtifactType {
+  TRANSCRIPT
+  SUMMARY
+  DECISIONS
+  ACTION_ITEMS
+  CHAT_LOG
+  RECORDING
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA FEDERATION — Sovereign Interoperability Stack
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model FederationConnection {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  protocol        FederationProtocol
+  mode            FederationMode
+  remoteDomain    String
+  remoteRoomId    String?
+  localChannelId  String?
+  trustLevel      TrustLevel @default(PARTNER)
+  status          FederationStatus @default(PENDING)
+  capabilities    String[] @default([])
+  config          Json     @default("{}")
+  lastSyncAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  identities      FederatedIdentity[]
+  auditLogs       FederationAuditLog[]
+
+  @@index([workspaceId, protocol])
+  @@index([remoteDomain])
+}
+
+model FederatedIdentity {
+  id              String   @id @default(uuid())
+  connectionId    String
+  workspaceId     String
+  externalUserId  String
+  externalProtocol String
+  localAlias      String
+  displayName     String?
+  trustLevel      TrustLevel @default(PARTNER)
+  roleMapping     String   @default("guest")
+  avatarUrl       String?
+  revokedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  connection      FederationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, externalUserId])
+  @@index([workspaceId])
+}
+
+model FederationPolicy {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  policyType      FederationPolicyType @default(WHITELIST)
+  domainRules     Json     @default("[]")
+  contentRules    Json     @default("[]")
+  enabled         Boolean  @default(true)
+  breakGlass      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId])
+}
+
+model FederationAuditLog {
+  id              String   @id @default(uuid())
+  connectionId    String
+  workspaceId     String
+  action          String
+  actorId         String?
+  details         Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  connection      FederationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId, createdAt(sort: Desc)])
+}
+
+model GuestAccess {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  channelId       String?
+  guestEmail      String
+  guestName       String
+  accessTier      GuestTier @default(VIEWER)
+  invitedById     String
+  roomScope       String[] @default([])
+  expiresAt       DateTime?
+  lastAccessAt    DateTime?
+  status          GuestStatus @default(PENDING)
+  createdAt       DateTime @default(now())
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy       User     @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([guestEmail])
+}
+
+enum FederationProtocol {
+  N0VA_NATIVE
+  MATRIX
+  XMPP
+  SLACK_BRIDGE
+  DISCORD_BRIDGE
+}
+
+enum FederationMode {
+  PRODUCTION
+  BETA
+  PLANNED
+}
+
+enum TrustLevel {
+  VIEWER
+  CONTRIBUTOR
+  PARTNER
+  VENDOR
+  FULL
+}
+
+enum FederationStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  ERROR
+  REVOKED
+}
+
+enum FederationPolicyType {
+  OPEN
+  CLOSED
+  WHITELIST
+}
+
+enum GuestTier {
+  VIEWER
+  CONTRIBUTOR
+  PARTNER
+  VENDOR
+  TEMPORARY
+}
+
+enum GuestStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  REVOKED
 }

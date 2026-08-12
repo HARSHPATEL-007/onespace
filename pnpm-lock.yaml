@@ -56,6 +56,9 @@ importers:
       '@n0va/modules-booklm':
         specifier: workspace:*
         version: link:../../packages/modules/booklm
+      '@n0va/modules-bot-engine':
+        specifier: workspace:*
+        version: link:../../packages/modules/bot-engine
       '@n0va/modules-business-dashboard':
         specifier: workspace:*
         version: link:../../packages/modules/business-dashboard
@@ -83,6 +86,9 @@ importers:
       '@n0va/modules-endpoint-management':
         specifier: workspace:*
         version: link:../../packages/modules/endpoint-management
+      '@n0va/modules-federation':
+        specifier: workspace:*
+        version: link:../../packages/modules/federation
       '@n0va/modules-finance':
         specifier: workspace:*
         version: link:../../packages/modules/finance
@@ -101,6 +107,9 @@ importers:
       '@n0va/modules-hr':
         specifier: workspace:*
         version: link:../../packages/modules/hr
+      '@n0va/modules-huddle-media':
+        specifier: workspace:*
+        version: link:../../packages/modules/huddle-media
       '@n0va/modules-insights':
         specifier: workspace:*
         version: link:../../packages/modules/insights
@@ -122,6 +131,9 @@ importers:
       '@n0va/modules-neural-chat':
         specifier: workspace:*
         version: link:../../packages/modules/neural-chat
+      '@n0va/modules-notification-engine':
+        specifier: workspace:*
+        version: link:../../packages/modules/notification-engine
       '@n0va/modules-operations-teams':
         specifier: workspace:*
         version: link:../../packages/modules/operations-teams
@@ -137,6 +149,9 @@ importers:
       '@n0va/modules-sales':
         specifier: workspace:*
         version: link:../../packages/modules/sales
+      '@n0va/modules-search-engine':
+        specifier: workspace:*
+        version: link:../../packages/modules/search-engine
       '@n0va/modules-sheets':
         specifier: workspace:*
         version: link:../../packages/modules/sheets
@@ -152,6 +167,9 @@ importers:
       '@n0va/modules-tasks':
         specifier: workspace:*
         version: link:../../packages/modules/tasks
+      '@n0va/modules-thread-memory':
+        specifier: workspace:*
+        version: link:../../packages/modules/thread-memory
       '@n0va/modules-vault':
         specifier: workspace:*
         version: link:../../packages/modules/vault
@@ -503,6 +521,19 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/bot-engine:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/business-dashboard:
     dependencies:
       '@n0va/authz':
@@ -788,6 +819,19 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/federation:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/finance:
     dependencies:
       '@n0va/authz':
@@ -970,6 +1014,19 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/huddle-media:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1197,6 +1254,19 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/notification-engine:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/operations-teams:
     dependencies:
       '@n0va/authz':
@@ -1330,6 +1400,19 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/search-engine:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1488,6 +1571,19 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
+  packages/modules/thread-memory:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+    devDependencies:
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
