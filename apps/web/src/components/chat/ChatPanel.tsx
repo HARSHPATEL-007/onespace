@@ -4,10 +4,13 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Dropdown, MenuItem, cn } from "@n0va/ui";
 import type { ChatChannel, ChatMessage, WorkspaceMember } from "@n0va/db";
+import type { WorkspaceModeValue, ModeSource } from "@n0va/modules-chat";
 import { useChatSocket } from "@/hooks/useChatSocket";
 import { ThreadPanel } from "./ThreadPanel";
 import { NotificationPanel } from "./NotificationPanel";
+import { AdaptiveModeBar } from "./AdaptiveModeBar";
 import { AISlashCommandMenu } from "./AISlashCommandMenu";
+import "./chat-adaptive.css";
 import { GovernancePanel } from "./GovernancePanel";
 import { HypercontextPanel } from "./HypercontextPanel";
 import type { GovernanceInput, HyperInput } from "@/app/(app)/m/chat/actions";
@@ -15,7 +18,6 @@ import type { GovernanceInput, HyperInput } from "@/app/(app)/m/chat/actions";
 export interface ChatActions {
   createChannel: (formData: FormData) => Promise<void>;
   createDm: (formData: FormData) => Promise<void>;
-  updateChannel: (formData: FormData) => Promise<void>;
   send: (formData: FormData) => Promise<void>;
   edit: (formData: FormData) => Promise<void>;
   delete: (formData: FormData) => Promise<void>;
@@ -194,6 +196,12 @@ export function ChatPanel({
   const [showGovernance, setShowGovernance] = useState(false);
   const [hyperFor, setHyperFor] = useState<string | null>(null);
   const [complianceError, setComplianceError] = useState("");
+  const [mode, setMode] = useState<WorkspaceModeValue>("COLLABORATION");
+  const [modeSource, setModeSource] = useState<ModeSource>("default");
+  const [modeFade, setModeFade] = useState(1);
+  const [flowStart, setFlowStart] = useState<number | null>(null);
+  const [flowElapsed, setFlowElapsed] = useState(0);
+  const [highContrast, setHighContrast] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -243,6 +251,38 @@ export function ChatPanel({
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
   }, [messages.length, activeChannelId]);
+
+  // Workspace-adaptive state (spec: adaptive workspace modes).
+  const handleModeChange = useCallback((m: WorkspaceModeValue, src: ModeSource) => {
+    setMode(m);
+    setModeSource(src);
+    setModeFade(0);
+    requestAnimationFrame(() => setModeFade(1));
+    if (m === "FLOW") setFlowStart(Date.now());
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    void fetch("/api/chat/adaptive/state")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!mounted || !d?.effective) return;
+        setMode(d.effective.mode);
+        setModeSource(d.effective.source);
+        setModeFade(d.effective.fade ?? 1);
+        if (d.effective.mode === "FLOW") setFlowStart(Date.now());
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  // Deep-work timer for Flow mode (session-scoped, resets on re-entry).
+  useEffect(() => {
+    if (mode !== "FLOW" || !flowStart) return;
+    const t = setInterval(() => setFlowElapsed(Math.floor((Date.now() - flowStart) / 60000)), 1000 * 30);
+    setFlowElapsed(0);
+    return () => clearInterval(t);
+  }, [mode, flowStart]);
 
   useEffect(() => {
     if (!activeChannelId) return;
@@ -502,7 +542,13 @@ export function ChatPanel({
   const status = statusIndicator();
 
   return (
-    <div className="nv-chat-layout" style={{ display: "flex", gap: "var(--nv-space-4)", height: "calc(100dvh - 150px)", minHeight: 440 }}>
+    <div
+      className={cn("nv-chat-layout", "nv-chat-adaptive", highContrast && mode === "PRESENTATION" && "nv-adaptive-high-contrast", highContrast && mode === "REVIEW" && "nv-adaptive-high-contrast")}
+      data-workspace-mode={mode}
+      data-mode-source={modeSource}
+      data-adaptive-fade={modeFade < 1 ? "" : undefined}
+      style={{ display: "flex", gap: "var(--nv-space-4)", height: "calc(100dvh - 150px)", minHeight: 440 }}
+    >
       {/* Channels rail */}
       <div className="nv-chat-sidebar" style={{ width: 264, flexShrink: 0, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-lg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)" }}>
@@ -510,11 +556,12 @@ export function ChatPanel({
             <span>N0VA CHAT</span>
             <button onClick={() => setShowSearch(true)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--nv-color-text-faint)", fontSize: 16 }}>⌕</button>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div className="nv-chrome-optional" style={{ display: "flex", gap: 6 }}>
             <Button size="sm" onClick={() => setShowNew(true)}>+ Channel</Button>
             <Button size="sm" variant="secondary" onClick={() => setShowDm(true)}>DM</Button>
           </div>
           <a
+            className="nv-chrome-optional"
             href="/m/chat/start"
             style={{
               display: "flex",
@@ -562,7 +609,7 @@ export function ChatPanel({
                   {unreadCount > 0 && activeChannelId !== c.id ? (
                     <span className="nv-badge nv-badge-amber">{unreadCount}</span>
                   ) : null}
-                  <span style={{ color: "var(--nv-color-text-faint)", fontSize: 12 }}>{c._count.messages}</span>
+                  <span className="nv-channel-count" style={{ color: "var(--nv-color-text-faint)", fontSize: 12 }}>{c._count.messages}</span>
                 </a>
                 {c.kind === "CHANNEL" && (c.createdById === userId) ? (
                   <Dropdown trigger={<Button variant="ghost" size="sm" style={{ minWidth: 0, padding: "2px 6px" }}>⋯</Button>}>
@@ -582,7 +629,30 @@ export function ChatPanel({
           <span style={{ fontWeight: 800 }}>{active ? channelLabel(active) : "Select a channel"}</span>
           {active?.topic && <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>| {active.topic}</span>}
           <span style={{ fontSize: 12, color: status.color }}>{status.text}</span>
-          <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 4, alignItems: "center" }}>
+            <AdaptiveModeBar mode={mode} source={modeSource} onModeChange={handleModeChange} />
+            {(mode === "PRESENTATION" || mode === "REVIEW") && (
+              <button
+                onClick={() => setHighContrast((h) => !h)}
+                aria-pressed={highContrast}
+                title="High contrast"
+                style={{ border: highContrast ? "1px solid var(--nv-color-primary)" : "1px solid var(--nv-color-border)", background: highContrast ? "var(--nv-color-primary-alpha)" : "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}
+              >
+                {highContrast ? "◐" : "◑"}
+              </button>
+            )}
+            <span className="nv-flow-timer" title="Deep-work timer (session-scoped)" style={{ display: "none", alignItems: "center", gap: 4, border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, color: "var(--nv-color-text)" }}>🌊 {flowElapsed}m</span>
+            <span className="nv-mode-dnd-chip" title="Meditation mode: do-not-disturb" style={{ display: "none", alignItems: "center", gap: 4, border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, color: "var(--nv-color-text-muted)" }}>⛔ DND</span>
+            <span className="nv-mode-facepile" style={{ display: "none", alignItems: "center", gap: 2, marginRight: 2 }} title="Who's active">
+              {members
+                .filter((m) => m.user.id !== userId && presence[m.user.id] === "online")
+                .slice(0, 4)
+                .map((m) => (
+                  <span key={m.user.id} title={m.user.name ?? m.user.email} style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--nv-color-surface-2)", border: "1px solid var(--nv-color-success)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "var(--nv-color-text)" }}>
+                    {(m.user.name ?? m.user.email)[0]?.toUpperCase() ?? "?"}
+                  </span>
+                ))}
+            </span>
             <div style={{ position: "relative" }}>
               <button onClick={() => setPresenceMenu(!presenceMenu)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Set presence">
                 {presence[userId] === "online" ? "🟢" : presence[userId] === "busy" ? "🔴" : presence[userId] === "dnd" ? "⛔" : presence[userId] === "away" ? "🌙" : "🟡"} {presence[userId] ?? "online"}
@@ -597,14 +667,18 @@ export function ChatPanel({
                 </div>
               )}
             </div>
-            <button onClick={() => { setShowBookmarks(true); fetchBookmarks(); }} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Bookmarks">🔖</button>
-            <button onClick={() => setShowGovernance(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Compliance & governance">🛡️</button>
+            <button className="nv-chrome-optional" onClick={() => { setShowBookmarks(true); fetchBookmarks(); }} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Bookmarks">🔖</button>
+            <button className="nv-chrome-optional" onClick={() => setShowGovernance(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Compliance & governance">🛡️</button>
             <button onClick={() => setShowNotifications(!showNotifications)} style={{ position: "relative", border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>
               🔔 {notifUnread > 0 && <span style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "var(--nv-color-danger)", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>{notifUnread}</span>}
             </button>
-            <button onClick={() => setShowPinned(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>📌 Pins</button>
-            <button onClick={() => setShowMembers(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>👥 {active?.members.length ?? 0}</button>
+            <button className="nv-chrome-optional" onClick={() => setShowPinned(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>📌 Pins</button>
+            <button className="nv-chrome-optional" onClick={() => setShowMembers(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>👥 {active?.members.length ?? 0}</button>
           </div>
+        </div>
+
+        <div className="nv-crisis-banner" role="alert" style={{ display: "none", alignItems: "center", gap: 8, padding: "6px var(--nv-space-4)", background: "var(--nv-color-danger-alpha)", borderBottom: "1px solid var(--nv-color-danger)", color: "var(--nv-color-danger)", fontSize: 12, fontWeight: 700 }}>
+          <span>🚨 Crisis mode — incident response. Priority traffic only; escalation exceptions always break through.</span>
         </div>
 
         <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "var(--nv-space-4)", display: "flex", flexDirection: "column" }}>
@@ -757,7 +831,7 @@ export function ChatPanel({
       {/* Notification panel */}
       {showNotifications && (
         <div style={{ position: "absolute", top: 40, right: 16, zIndex: 50 }}>
-          <NotificationPanel onClose={() => setShowNotifications(false)} />
+          <NotificationPanel mode={mode} onClose={() => setShowNotifications(false)} />
         </div>
       )}
 

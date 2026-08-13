@@ -1,0 +1,23 @@
+{
+  "name": "@n0va/modules-events",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts"
+  },
+  "dependencies": {
+    "@n0va/db": "workspace:*",
+    "ioredis": "^6.0.0",
+    "kafkajs": "^2.2.4",
+    "nats": "^2.29.3",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

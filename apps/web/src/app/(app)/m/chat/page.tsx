@@ -85,7 +85,6 @@ export default async function ChatPage({
       actions={{
         createChannel: createChannelAction,
         createDm: createDmAction,
-        updateChannel: async () => {}, // not used in page
         send: sendMessageAction,
         edit: editMessageAction,
         delete: deleteMessageAction,

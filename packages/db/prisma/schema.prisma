@@ -3580,6 +3580,9 @@ model LiveEmbed {
 }
 
 /// Adaptive pane state per user per workspace.
+/// Per-user workspace-adaptive UI state (spec: adaptive workspace modes).
+/// currentMode is the effective mode; explicit selections always beat
+/// inferred ones, and inference only ever suggests (never switches).
 model AdaptivePaneState {
   id          String   @id @default(uuid())
   userId      String
@@ -3588,6 +3591,24 @@ model AdaptivePaneState {
   activePane  PaneType  @default(NONE)
   paneWidth   Int       @default(360)
   collapsed   Boolean   @default(false)
+
+  /// Where the effective mode came from: manual | locked | inferred.
+  stateSource     String  @default("manual")
+  stateConfidence Float   @default(1)
+  /// Optional lock window; after this the mode reverts to inferred.
+  expiresAt       DateTime?
+  /// Per-mode overrides: { notifications: "digest_only", modules: [...], ai_behavior: "quiet" }.
+  modeOverrides   Json    @default("{}")
+  /// Latest inference suggestion (never auto-applied).
+  suggestedMode     WorkspaceMode?
+  suggestedConfidence Float @default(0)
+  suggestedAt       DateTime?
+  suggestedReasons  Json    @default("[]")
+  /// Last inferred mode + when it was computed (for fade-in fallback).
+  inferredMode      WorkspaceMode?
+  inferredConfidence Float   @default(0)
+  inferredAt        DateTime?
+  lastSwitchAt      DateTime?
   updatedAt   DateTime  @updatedAt
   createdAt   DateTime  @default(now())
 
@@ -3664,6 +3685,8 @@ enum WorkspaceMode {
   COLLABORATION
   CRISIS
   PRESENTATION
+  FLOW
+  MEDITATION
 }
 
 enum PaneType {
@@ -5063,4 +5086,248 @@ enum AiTier {
   TIER_2
   TIER_3
   TIER_4
+}
+// ============================================================
+// Event Bus (Project Nexus) — canonical cross-module nervous system
+// ============================================================
+
+enum EventVisibility {
+  INTERNAL
+  EXTERNAL
+  CONFIDENTIAL
+}
+
+enum EventOutboxStatus {
+  PENDING
+  SENT
+  FAILED
+  DLQ
+}
+
+enum SagaStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  COMPENSATED
+}
+
+enum DLQStatus {
+  QUARANTINED
+  REQUEUED
+  DROPPED
+}
+
+model EventEnvelope {
+  id           String          @id @default(uuid())
+  eventId      String          @unique
+  eventType    String
+  version      String
+  schemaVersion Int            @default(1)
+  timestamp    DateTime        @default(now())
+  producer     String
+  tenantId     String?
+  aggregateId  String?
+  correlationId String?
+  causationId  String?
+  traceId      String?
+  idempotencyKey String?       @unique
+  partitionKey String?
+  visibility   EventVisibility @default(INTERNAL)
+  payload      Json            @default("{}")
+  retryCount   Int             @default(0)
+  published    Boolean         @default(false)
+  publishedAt  DateTime?
+  consumedHops Int             @default(0)
+  createdAt    DateTime        @default(now())
+
+  @@index([eventType, timestamp])
+  @@index([correlationId])
+  @@index([traceId])
+  @@index([aggregateId])
+  @@index([tenantId])
+}
+
+model EventOutbox {
+  id          String           @id @default(uuid())
+  eventId     String           @unique
+  envelopeId  String?
+  tenantId    String?
+  eventType   String
+  topic       String
+  broker      String           @default("memory")
+  envelope    Json             @default("{}")
+  status      EventOutboxStatus @default(PENDING)
+  attempts    Int              @default(0)
+  nextRetryAt DateTime?
+  error       String?
+  enqueuedAt  DateTime         @default(now())
+  publishedAt DateTime?
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, nextRetryAt])
+  @@index([tenantId, eventType])
+}
+
+model IdempotencyRecord {
+  id          String   @id @default(uuid())
+  handlerKey  String
+  eventId     String
+  effect      String?
+  status      String   @default("APPLIED")
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@unique([handlerKey, eventId])
+  @@index([expiresAt])
+}
+
+model EventTraceHop {
+  id            String   @id @default(uuid())
+  traceId       String
+  correlationId String?
+  eventId       String
+  producer      String?
+  consumer      String
+  broker        String?
+  hop           Int      @default(0)
+  status        String   @default("OK")
+  latencyMs     Int?
+  retryCount    Int      @default(0)
+  detail        String?
+  at            DateTime @default(now())
+
+  @@index([traceId])
+  @@index([correlationId])
+  @@index([eventId])
+}
+
+model EventDLQ {
+  id            String    @id @default(uuid())
+  eventId       String    @unique
+  eventType     String
+  topic         String
+  payload       Json      @default("{}")
+  reason        String?
+  attempts      Int       @default(0)
+  status        DLQStatus @default(QUARANTINED)
+  quarantinedAt DateTime  @default(now())
+  requeuedAt    DateTime?
+  resolvedAt    DateTime?
+  error         String?
+
+  @@index([status])
+  @@index([eventType])
+}
+
+model SagaInstance {
+  id              String     @id @default(uuid())
+  sagaType        String
+  tenantId        String?
+  correlationId   String
+  title           String?
+  status          SagaStatus @default(PENDING)
+  payload         Json       @default("{}")
+  currentStep     Int        @default(0)
+  steps           Json       @default("[]")
+  compensationStack Json     @default("[]")
+  history         Json       @default("[]")
+  error           String?
+  startedAt       DateTime   @default(now())
+  completedAt     DateTime?
+  updatedAt       DateTime   @updatedAt
+
+  @@index([sagaType, status])
+  @@index([correlationId])
+}
+
+model ProjectionCursor {
+  name        String   @id
+  lastEventId String?
+  lastEventAt DateTime?
+  version     Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
+model ThreadViewProjection {
+  id            String   @id @default(uuid())
+  threadId      String   @unique
+  tenantId      String?
+  channelId     String?
+  title         String   @default("")
+  summary       String   @default("")
+  participantIds String[] @default([])
+  messageCount  Int      @default(0)
+  decisionCount Int      @default(0)
+  openActionCount Int     @default(0)
+  lastSpeakerId String?
+  lastActivity  DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([lastActivity])
+}
+
+model TaskDashboardProjection {
+  id             String @id @default(uuid())
+  tenantId       String
+  assigneeId     String
+  total          Int    @default(0)
+  open           Int    @default(0)
+  inProgress     Int    @default(0)
+  done           Int    @default(0)
+  overdue        Int    @default(0)
+  highPriority   Int    @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, assigneeId])
+}
+
+model InboxProjectionItem {
+  id          String   @id @default(uuid())
+  tenantId    String?
+  userId      String
+  sourceEvent String
+  sourceId    String?
+  kind        String
+  title       String
+  body        String?
+  link        String?
+  urgent      Boolean  @default(false)
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, read])
+  @@index([tenantId])
+}
+
+model ComplianceProjection {
+  id         String   @id @default(uuid())
+  tenantId   String?
+  kind       String
+  objectId   String?
+  title      String
+  status     String   @default("WATCH")
+  severity   String   @default("INFO")
+  linkedEvents String[] @default([])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([kind])
+}
+
+model EventSubscription {
+  id            String   @id @default(uuid())
+  consumerKey   String
+  eventTypes    String[] @default([])
+  handlerVersion Int     @default(1)
+  filterJson    Json     @default("{}")
+  enabled       Boolean  @default(true)
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([consumerKey])
 }

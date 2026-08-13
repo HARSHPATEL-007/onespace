@@ -25,9 +25,7 @@ CREATE INDEX "ChatMessage_parentId_idx" ON "ChatMessage"("parentId");
 CREATE INDEX "ChatMessage_channelId_pinnedAt_idx" ON "ChatMessage"("channelId", "pinnedAt");
 
 -- AlterTable: ChatMember
-ALTER TYPE "ChatMemberRole" ADD VALUE IF NOT EXISTS 'OWNER';
-ALTER TYPE "ChatMemberRole" ADD VALUE IF NOT EXISTS 'ADMIN';
-ALTER TYPE "ChatMemberRole" ADD VALUE IF NOT EXISTS 'VIEWER';
+ALTER TABLE "ChatMember" ADD COLUMN "mutedUntil" TIMESTAMP(3);
 
 -- Create enum if not exists (Prisma workaround)
 DO $$ BEGIN
@@ -35,7 +33,10 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 ALTER TABLE "ChatMember" ADD COLUMN "role" "ChatMemberRole" NOT NULL DEFAULT 'MEMBER';
-ALTER TABLE "ChatMember" ADD COLUMN "mutedUntil" TIMESTAMP(3);
+
+ALTER TYPE "ChatMemberRole" ADD VALUE IF NOT EXISTS 'OWNER';
+ALTER TYPE "ChatMemberRole" ADD VALUE IF NOT EXISTS 'ADMIN';
+ALTER TYPE "ChatMemberRole" ADD VALUE IF NOT EXISTS 'VIEWER';
 
 -- CreateTable: ChatMessageEdit
 CREATE TABLE "ChatMessageEdit" (

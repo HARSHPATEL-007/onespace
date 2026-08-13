@@ -2,6 +2,7 @@ import { auth } from "@n0va/auth";
 import { prisma } from "@n0va/db";
 import { requireWorkspace } from "@/lib/context";
 import { NextResponse } from "next/server";
+import { getEffectiveState, effectiveAi } from "@n0va/modules-chat";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -17,6 +18,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "command and channelId required" }, { status: 400 });
   }
 
+  // Mode-aware AI behavior (spec: AI behavior by mode).
+  const effective = await getEffectiveState(ctx.user.id, ctx.workspace.id);
+  const ai = effectiveAi(effective.mode, effective.overrides);
+  const modeGuidance = `[Mode: ${effective.mode} (${effective.source})] ${ai.guidance} `;
+
   const messages = await prisma.chatMessage.findMany({
     where: { channelId, workspaceId: ctx.workspace.id, deletedAt: null },
     orderBy: { createdAt: "desc" },
@@ -28,16 +34,16 @@ export async function POST(req: Request) {
   switch (command) {
     case "/summarize": {
       const summary = await callAI(
-        `Summarize this chat conversation concisely (3-5 bullet points):\n\n${conversation}`,
+        modeGuidance + `Summarize this chat conversation concisely (3-5 bullet points):\n\n${conversation}`,
         ctx.workspace.id,
       );
-      return NextResponse.json({ result: summary, command });
+      return NextResponse.json({ result: summary, command, mode: effective.mode });
     }
     case "/smart-reply": {
       const lastMsg = messages[messages.length - 1];
       if (!lastMsg) return NextResponse.json({ result: "No messages to reply to.", command });
       const reply = await callAI(
-        `Suggest a brief, natural reply to this message: "${lastMsg.body}"`,
+        modeGuidance + `Suggest a brief, natural reply to this message: "${lastMsg.body}"`,
         ctx.workspace.id,
       );
       return NextResponse.json({ result: reply, command });
@@ -47,21 +53,21 @@ export async function POST(req: Request) {
       const lastMsg = messages[messages.length - 1];
       if (!lastMsg) return NextResponse.json({ result: "No messages to translate.", command });
       const translated = await callAI(
-        `Translate this message to ${targetLang}: "${lastMsg.body}"`,
+        modeGuidance + `Translate this message to ${targetLang}: "${lastMsg.body}"`,
         ctx.workspace.id,
       );
       return NextResponse.json({ result: translated, command });
     }
     case "/action-items": {
       const items = await callAI(
-        `Extract action items from this conversation as a numbered list:\n\n${conversation}`,
+        modeGuidance + `Extract action items from this conversation as a numbered list:\n\n${conversation}`,
         ctx.workspace.id,
       );
       return NextResponse.json({ result: items, command });
     }
     case "/sentiment": {
       const sentiment = await callAI(
-        `Analyze the overall sentiment of this conversation (positive/negative/neutral, 1-2 sentences):\n\n${conversation}`,
+        modeGuidance + `Analyze the overall sentiment of this conversation (positive/negative/neutral, 1-2 sentences):\n\n${conversation}`,
         ctx.workspace.id,
       );
       return NextResponse.json({ result: sentiment, command });

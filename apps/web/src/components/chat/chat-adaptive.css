@@ -1,0 +1,117 @@
+/* N0VA CHAT workspace-adaptive UI (spec: adaptive workspace modes)
+ * The core UI stays stable; only supportive regions adapt. All rules are
+ * driven by the `data-workspace-mode` attribute on the chat layout root.
+ */
+
+.nv-chat-adaptive {
+  --nv-adaptive-alpha: 1;
+  transition: filter 300ms ease, background 600ms ease;
+}
+
+/* Fade-in for inferred mode switches (anti-snap) */
+.nv-chat-adaptive[data-adaptive-fade] {
+  animation: nv-adaptive-fade-in 20s ease;
+}
+@keyframes nv-adaptive-fade-in {
+  0% { filter: saturate(0.6) brightness(0.98); }
+  100% { filter: saturate(1) brightness(1); }
+}
+
+/* ── Chrome density: hide nonessential supportive chrome ─────────────── */
+.nv-chat-adaptive[data-workspace-mode="FOCUS"] .nv-chrome-optional,
+.nv-chat-adaptive[data-workspace-mode="PRESENTATION"] .nv-chrome-optional,
+.nv-chat-adaptive[data-workspace-mode="FLOW"] .nv-chrome-optional,
+.nv-chat-adaptive[data-workspace-mode="MEDITATION"] .nv-chrome-optional {
+  display: none !important;
+}
+
+/* Focus: single primary pane, reduced room list density */
+.nv-chat-adaptive[data-workspace-mode="FOCUS"] .nv-chat-sidebar {
+  width: 216px !important;
+}
+.nv-chat-adaptive[data-workspace-mode="FOCUS"] .nv-chat-sidebar a {
+  padding: 2px 4px !important;
+}
+.nv-chat-adaptive[data-workspace-mode="FOCUS"] .nv-chat-sidebar .nv-channel-count {
+  display: none !important;
+}
+
+/* Collaboration: presence + shared context emphasized */
+.nv-chat-adaptive[data-workspace-mode="COLLABORATION"] .nv-mode-facepile {
+  display: inline-flex !important;
+}
+
+/* Presentation: large typography, high contrast, big controls */
+.nv-chat-adaptive[data-workspace-mode="PRESENTATION"] {
+  --nv-font-md: 19px;
+  --nv-font-sm: 16px;
+  --nv-font-xs: 14px;
+  color-scheme: light;
+}
+.nv-chat-adaptive[data-workspace-mode="PRESENTATION"] .nv-chat-main {
+  font-size: var(--nv-font-md);
+}
+.nv-chat-adaptive[data-workspace-mode="PRESENTATION"] .nv-chat-main button {
+  font-size: var(--nv-font-sm) !important;
+  padding: 8px 14px !important;
+}
+.nv-chat-adaptive[data-workspace-mode="PRESENTATION"] .nv-chat-main .nv-message-body {
+  font-size: var(--nv-font-md);
+  line-height: 1.6;
+}
+
+/* Crisis: war-room banner + urgency accents */
+.nv-chat-adaptive .nv-crisis-banner {
+  display: none;
+}
+.nv-chat-adaptive[data-workspace-mode="CRISIS"] .nv-crisis-banner {
+  display: flex !important;
+}
+.nv-chat-adaptive[data-workspace-mode="CRISIS"] .nv-chat-main {
+  border-color: var(--nv-color-danger) !important;
+}
+.nv-chat-adaptive[data-workspace-mode="CRISIS"] .nv-badge {
+  background: var(--nv-color-danger-alpha);
+  color: var(--nv-color-danger);
+}
+
+/* Flow: deep-work timer chip visible, soft feedback */
+.nv-chat-adaptive .nv-flow-timer {
+  display: none;
+}
+.nv-chat-adaptive[data-workspace-mode="FLOW"] .nv-flow-timer {
+  display: inline-flex !important;
+}
+
+/* Meditation: ambient background, everything recedes */
+.nv-chat-adaptive[data-workspace-mode="MEDITATION"] {
+  background: linear-gradient(160deg, var(--nv-color-surface) 0%, #e8eef4 60%, #dde7ee 100%);
+}
+.nv-chat-adaptive[data-workspace-mode="MEDITATION"] .nv-chat-sidebar,
+.nv-chat-adaptive[data-workspace-mode="MEDITATION"] .nv-chat-main {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(4px);
+}
+.nv-chat-adaptive[data-workspace-mode="MEDITATION"] .nv-mode-dnd-chip {
+  display: inline-flex !important;
+}
+
+/* Reduced motion: respect user preference */
+@media (prefers-reduced-motion: reduce) {
+  .nv-chat-adaptive[data-adaptive-fade] {
+    animation: none;
+  }
+  .nv-chat-adaptive {
+    transition: none;
+  }
+}
+
+/* High contrast variant for presentation/review readability */
+.nv-chat-adaptive[data-workspace-mode="PRESENTATION"].nv-adaptive-high-contrast,
+.nv-chat-adaptive[data-workspace-mode="REVIEW"].nv-adaptive-high-contrast {
+  --nv-color-text: #000000;
+  --nv-color-text-muted: #1f2937;
+  --nv-color-border: #111827;
+  --nv-color-surface: #ffffff;
+  --nv-color-surface-2: #f3f4f6;
+}
