@@ -37,6 +37,7 @@ const CORE_MODULE_IDS = new Set([
   "docs",
   "sheets",
   "forms",
+  "events",
   "cloud-storage",
   "ani",
 ]);

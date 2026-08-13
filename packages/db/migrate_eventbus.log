@@ -1,0 +1,6 @@
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "n0va", schema "public" at "localhost:5432"
+
+29 migrations found in prisma/migrations
+

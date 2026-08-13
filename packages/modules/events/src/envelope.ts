@@ -70,6 +70,7 @@ export const EVENT_TYPES = {
   SAGA_COMPENSATED: "saga.compensated",
   SAGA_COMPLETED: "saga.completed",
   SAGA_FAILED: "saga.failed",
+  COMMAND_FAILED: "command.failed",
   BUS_RELAYED: "bus.relayed",
   BUS_DLQ: "bus.dlq",
 } as const;
@@ -114,6 +115,7 @@ export const EVENT_SCHEMAS: Record<string, { currentVersion: string; required: s
   [EVENT_TYPES.SAGA_COMPENSATED]: { currentVersion: "1.0", required: ["workflowId"] },
   [EVENT_TYPES.SAGA_COMPLETED]: { currentVersion: "1.0", required: ["workflowId"] },
   [EVENT_TYPES.SAGA_FAILED]: { currentVersion: "1.0", required: ["workflowId"] },
+  [EVENT_TYPES.COMMAND_FAILED]: { currentVersion: "1.0", required: ["commandId", "commandType", "error"] },
   [EVENT_TYPES.BUS_RELAYED]: { currentVersion: "1.0", required: ["eventId"] },
   [EVENT_TYPES.BUS_DLQ]: { currentVersion: "1.0", required: ["eventId", "reason"] },
 };

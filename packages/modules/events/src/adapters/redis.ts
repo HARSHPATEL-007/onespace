@@ -50,16 +50,17 @@ export function createRedisBroker(opts: { url?: string; consumerGroup?: string; 
   }
 
   function dispatchLoop(handler: EventHandler, topics: string[], consumerKey: string): void {
+    const streamGroup = `${group}-${consumerKey}`;
+    const streams = ["n0va.events", ...topics].filter((t, i, a) => a.indexOf(t) === i);
     runner = (async () => {
       let c: Redis | undefined;
       for (let attempt = 0; attempt < MAX_RETRIES && !shuttingDown; attempt++) {
         try {
           c = await ensure();
-          await c.xgroup("CREATE", "n0va.events", group, "$", "MKSTREAM").catch(() => {});
-          await c.xgroup("CREATE", "n0va.events:dlq", group, "$", "MKSTREAM").catch(() => {});
-          for (const topic of topics) {
-            await c.xgroup("CREATE", topic, group, "$", "MKSTREAM").catch(() => {});
+          for (const topic of streams) {
+            await c.xgroup("CREATE", topic, streamGroup, "$", "MKSTREAM").catch(() => {});
           }
+          await c.xgroup("CREATE", "n0va.events:dlq", streamGroup, "$", "MKSTREAM").catch(() => {});
           break;
         } catch (e) {
           c?.disconnect();
@@ -70,22 +71,22 @@ export function createRedisBroker(opts: { url?: string; consumerGroup?: string; 
       if (!c) return;
       while (!shuttingDown) {
         try {
-          const streams = ["n0va.events", ...topics];
-          const reply = await c.xreadgroup("GROUP", group, consumerKey, "COUNT", "16", "BLOCK", "1000", "STREAMS", ...streams, ...streams.map(() => ">"));
+          const reply = await c.xreadgroup("GROUP", streamGroup, consumerKey, "COUNT", "16", "BLOCK", "1000", "STREAMS", ...streams, ...streams.map(() => ">"));
           if (!reply) continue;
-          for (const [topic, entries] of reply as [string, [string, [string, string][]][]][]) {
+          const parsed = reply as unknown as Array<[string, Array<[string, string[] | null]>]>;
+          for (const [topic, entries] of parsed) {
             for (const [id, fields] of entries) {
-              const raw = fields[1] ?? "{}";
+              const raw = fieldsToObject(fields ?? [])["event"] ?? "{}";
               let ev: CanonicalEvent;
               try {
                 ev = JSON.parse(raw) as CanonicalEvent;
               } catch {
-                await c.xack(topic, group, id);
+                await c.xack(topic, streamGroup, id);
                 continue;
               }
               try {
                 await handler({ consumerKey, event: ev, retryCount: ev.meta?.retryCount ?? 0 });
-                await c.xack(topic, group, id);
+                await c.xack(topic, streamGroup, id);
               } catch (e) {
                 const err = e instanceof Error ? e.message : String(e);
                 ev.meta = { ...(ev.meta ?? {}), retryCount: (ev.meta?.retryCount ?? 0) + 1 };
@@ -96,7 +97,7 @@ export function createRedisBroker(opts: { url?: string; consumerGroup?: string; 
                   await c.xadd(topic, "*", "event", encodeEvent(ev));
                   log(`[redis] ${ev.eventType} retry ${ev.meta.retryCount}: ${err}`);
                 }
-                await c.xack(topic, group, id);
+                await c.xack(topic, streamGroup, id);
               }
             }
           }
@@ -155,9 +156,18 @@ export function createRedisBroker(opts: { url?: string; consumerGroup?: string; 
   };
 }
 
+function fieldsToObject(fields: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const k = fields[i];
+    const v = fields[i + 1];
+    if (k !== undefined) out[k] = v ?? "";
+  }
+  return out;
+}
+
 function buildTopics(eventTypes: string[]): string[] {
-  if (eventTypes.length === 0 || eventTypes.includes("n0va.events")) return [];
-  return ["n0va.events:types"];
+  return ["n0va.events"];
 }
 
 function sleep(ms: number): Promise<void> {

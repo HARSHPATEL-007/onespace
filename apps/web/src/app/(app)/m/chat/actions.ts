@@ -1,6 +1,8 @@
 "use server";
 
 import { ChatService, channelSchema, channelMetaSchema, messageSchema, reactionSchema, channelIdSchema, savedSearchSchema } from "@n0va/modules-chat/server";
+import { messageCreated } from "@n0va/modules-events";
+import { getEventBus } from "@/lib/eventbus";
 import { actionContext, requireActionContext } from "@/lib/action-context";
 
 const svc = async () => {
@@ -70,10 +72,44 @@ export async function sendMessageAction(formData: FormData) {
   const { body: parsed } = messageSchema.parse({ body });
   const ctx = await requireActionContext();
   const name = ctx.user.name ?? ctx.user.email ?? "Member";
-  await (await svc()).sendMessage(channelId, parsed, name, {
+  const message = await (await svc()).sendMessage(channelId, parsed, name, {
     parentId,
     ttlSeconds: Number.isInteger(ttl) && ttl > 0 ? ttl : undefined,
   });
+  await emitMessageCreated({
+    workspaceId: ctx.workspaceId,
+    userId: ctx.user.id,
+    messageId: message.id,
+    channelId,
+    threadId: parentId,
+    body: parsed,
+  });
+}
+
+async function emitMessageCreated(opts: { workspaceId: string; userId: string; messageId: string; channelId: string; threadId?: string; body: string }) {
+  try {
+    const bus = getEventBus();
+    const event = messageCreated(
+      {
+        messageId: opts.messageId,
+        channelId: opts.channelId,
+        authorId: opts.userId,
+        body: opts.body,
+        ...(opts.threadId ? { threadId: opts.threadId } : {}),
+        workspaceId: opts.workspaceId,
+      },
+      {
+        producer: "chat-service",
+        tenantId: opts.workspaceId,
+        aggregateId: opts.channelId,
+        partitionKey: opts.threadId ?? opts.channelId,
+        correlationId: `msg_${opts.messageId}`,
+      },
+    );
+    await bus.emit(event);
+  } catch (e) {
+    console.error("[eventbus] failed to emit chat.message.created", e);
+  }
 }
 
 export async function editMessageAction(formData: FormData) {

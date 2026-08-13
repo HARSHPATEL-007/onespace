@@ -58,6 +58,7 @@ export const N0VA_MODULES: N0vaModule[] = [
   { id: "admin-console", name: "N0VA ADMIN CONSOLE", codename: "Project Overseer", layer: "L6 Platform / Admin", phase: 3, status: "live", description: "Users, roles, security and audit" },
   { id: "vault", name: "N0VA VAULT", codename: "Project Fortress", layer: "L3 Storage & Intelligence", phase: 3, status: "live", description: "Encrypted secrets and credentials" },
   { id: "health", name: "N0VA HEALTH", codename: "Project Vita", layer: "L4 Business Ops", phase: 4, status: "live", description: "Health and wellness" },
+  { id: "events", name: "N0VA EVENTS", codename: "Project Nervi", layer: "L6 Platform / Admin", phase: 3, status: "live", description: "Event bus: canonical events, outbox, sagas and projections" },
   { id: "legal", name: "N0VA LEGAL", codename: "Project Justice", layer: "L4 Business Ops", phase: 4, status: "live", description: "Contracts and e-sign" },
   { id: "finance", name: "N0VA FINANCE", codename: "Project Ledger", layer: "L4 Business Ops", phase: 4, status: "live", description: "Ledger and invoices" },
   { id: "forms", name: "N0VA FORMS", codename: "Project Surveyor", layer: "L2 Content & Creation", phase: 1, status: "live", description: "Forms and responses" },

@@ -86,6 +86,9 @@ importers:
       '@n0va/modules-endpoint-management':
         specifier: workspace:*
         version: link:../../packages/modules/endpoint-management
+      '@n0va/modules-events':
+        specifier: workspace:*
+        version: link:../../packages/modules/events
       '@n0va/modules-federation':
         specifier: workspace:*
         version: link:../../packages/modules/federation
@@ -850,6 +853,9 @@ importers:
         specifier: ^3.24.0
         version: 3.25.76
     devDependencies:
+      tsx:
+        specifier: ^4.23.7
+        version: 4.23.7
       typescript:
         specifier: ^5.8.0
         version: 5.9.3

@@ -1,7 +1,7 @@
 /**
  * NATS adapter (JetStream) — low-latency command and notification routing.
  */
-import { connect, StringCodec, type NatsConnection, type JetStreamClient, type Subscription } from "nats";
+import { connect, StringCodec, type NatsConnection, type JetStreamClient, type Subscription, DiscardPolicy, StorageType } from "nats";
 import type { BrokerPort, EventHandler, PublishResult } from "../port";
 import type { CanonicalEvent } from "../envelope";
 
@@ -21,11 +21,11 @@ export function createNatsBroker(opts: {
   async function ensure(): Promise<{ nc: NatsConnection; js: JetStreamClient }> {
     if (!nc) {
       nc = await connect({ servers });
-      js = nc.jetstream();
-      await js
-        .streams
-        .add({ name: stream, subjects: [`n0va.events.*`, "n0va.events"], storage: "file", discard_policy: "discard_new", max_msgs: 1_000_000 })
+      const jsm = await nc.jetstreamManager();
+      await jsm.streams
+        .add({ name: stream, subjects: ["n0va.events.*", "n0va.events"], storage: StorageType.File, discard: DiscardPolicy.New, max_msgs: 1_000_000 })
         .catch(() => {});
+      js = nc.jetstream();
     }
     return { nc, js: js! };
   }
@@ -45,8 +45,14 @@ export function createNatsBroker(opts: {
     },
     async subscribe(eventTypes, consumerKey, handler) {
       const { nc } = await ensure();
-      const subjects = eventTypes.length === 0 ? ["n0va.events", "n0va.events.*"] : eventTypes.map((t) => `n0va.events.${t}`);
-      const sub = nc.subscribe(subjects.length === 1 ? subjects[0] : subjects, { queue: consumerKey });
+      const subjects = ["n0va.events", "n0va.events.*"];
+      const sub =
+        subjects.length === 1
+          ? nc.subscribe(subjects[0]!, { queue: consumerKey })
+          : (() => {
+              const parent = nc.subscribe(subjects[0]!, { queue: consumerKey });
+              return parent;
+            })();
       (async () => {
         for await (const msg of sub) {
           try {
@@ -70,7 +76,7 @@ export function createNatsBroker(opts: {
       }
     },
     async disconnect() {
-      for (const s of subs) s.unsubscribe().catch(() => {});
+      for (const s of subs) s.drain().catch(() => {});
       if (nc) {
         await nc.drain().catch(() => {});
         nc.close();

@@ -27,8 +27,8 @@ export function createKafkaBroker(opts: {
     retry: { retries: 5, initialRetryTime: 300 },
   });
 
-  async function topicForEvent(ev: CanonicalEvent): Promise<string> {
-    return ev.tenantId ? `n0va.events.${ev.tenantId}` : "n0va.events";
+  async function topicForEvent(): Promise<string> {
+    return "n0va.events";
   }
 
   return {
@@ -39,7 +39,7 @@ export function createKafkaBroker(opts: {
         await producer.connect();
         const batches = new Map<string, { topic: string; messages: import("kafkajs").ProducerRecord["messages"] }[]>();
         for (const ev of events) {
-          const topic = await topicForEvent(ev);
+          const topic = await topicForEvent();
           const key = partitionKeyFor(ev);
           const message = { key, value: JSON.stringify(ev) };
           const list = batches.get(topic) ?? [];
@@ -57,8 +57,7 @@ export function createKafkaBroker(opts: {
     async subscribe(eventTypes, consumerKey, handler) {
       if (!consumer) consumer = kafka.consumer({ groupId, sessionTimeout: 12000 });
       await consumer.connect().catch(() => {});
-      const topics = eventTypes.length === 0 ? ["n0va.events"] : eventTypes;
-      await consumer.subscribe({ topics, fromBeginning: false }).catch((e) => log(`[kafka] subscribe error: ${e.message}`));
+      await consumer.subscribe({ topics: ["n0va.events"], fromBeginning: false }).catch((e) => log(`[kafka] subscribe error: ${e.message}`));
       await consumer
         .run({
           eachMessage: async ({ message }) => {

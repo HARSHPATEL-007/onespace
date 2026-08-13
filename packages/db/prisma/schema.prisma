@@ -5088,7 +5088,7 @@ enum AiTier {
   TIER_4
 }
 // ============================================================
-// Event Bus (Project Nexus) — canonical cross-module nervous system
+// Event Bus (Project Nexus) - canonical cross-module nervous system
 // ============================================================
 
 enum EventVisibility {
@@ -5131,7 +5131,7 @@ model EventEnvelope {
   correlationId String?
   causationId  String?
   traceId      String?
-  idempotencyKey String?       @unique
+  idempotencyKey String?
   partitionKey String?
   visibility   EventVisibility @default(INTERNAL)
   payload      Json            @default("{}")

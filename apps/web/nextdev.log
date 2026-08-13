@@ -1,0 +1,35 @@
+$ next dev "-p" "3001"
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\hvipa\package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * C:\Users\hvipa\Downloads\New NOVA\onespace\pnpm-lock.yaml
+
+   ▲ Next.js 15.5.22
+   - Local:        http://localhost:3001
+   - Network:      http://192.168.137.1:3001
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 19s
+ ○ Compiling /signin ...
+ ✓ Compiled /signin in 8.3s (772 modules)
+ GET /signin 200 in 8739ms
+ ○ Compiling /middleware ...
+ ✓ Compiled /middleware in 771ms (115 modules)
+ ○ Compiling /launcher ...
+ ✓ Compiled /launcher in 5.4s (1003 modules)
+ GET /launcher 200 in 5720ms
+ POST /signin 303 in 7019ms
+ ○ Compiling /api/events/command ...
+ ✓ Compiled /api/events/command in 805ms (1547 modules)
+[eventbus] broker=redis health=ok
+[eventbus] default subscriptions wired (projections + sagas)
+ POST /api/events/command 200 in 12703ms
+ ○ Compiling /api/events/lineage ...
+ ✓ Compiled /api/events/lineage in 2.3s (1549 modules)
+ GET /api/events/lineage?eventId=cmd_msr12ff2_b3ab4ea66ba348c58d46023216d88cdc_vgpa6m 200 in 3460ms
+ ○ Compiling /m/events ...
+ ✓ Compiled /m/events in 2s (1556 modules)
+ GET /m/events 200 in 3906ms

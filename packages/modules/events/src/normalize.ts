@@ -3,7 +3,7 @@
  * cross-platform language used across chat, tasks, calendar, CRM, finance,
  * and compliance.
  */
-import type { CanonicalEvent, EventInput, EventVisibility } from "./envelope";
+import type { CanonicalEvent, EventVisibility } from "./envelope";
 import { EVENT_TYPES } from "./envelope";
 
 export interface NormalizeOptions {
@@ -13,6 +13,8 @@ export interface NormalizeOptions {
   causationId?: string;
   traceId?: string;
   visibility?: EventVisibility;
+  aggregateId?: string;
+  partitionKey?: string;
 }
 
 let seq = 0;
@@ -28,48 +30,50 @@ function build(type: string, version: string, payload: Record<string, unknown>, 
     timestamp: now,
     producer: opts.producer,
     tenantId: opts.tenantId,
+    aggregateId: opts.aggregateId,
     correlationId: opts.correlationId,
     causationId: opts.causationId,
     traceId: opts.traceId,
+    partitionKey: opts.partitionKey,
     payload,
     visibility: opts.visibility ?? "INTERNAL",
     meta: { retryCount: 0, dedupKey: `${type}:${(payload as Record<string, unknown>).id ?? now}` },
   };
 }
 
-export function messageCreated(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function messageCreated(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.CHAT_MESSAGE_CREATED, "1.0", payload, opts);
 }
 
-export function threadDecisionConfirmed(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function threadDecisionConfirmed(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.CHAT_THREAD_DECISION, "1.0", payload, opts);
 }
 
-export function taskCreated(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function taskCreated(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.TASK_CREATED, "2.0", payload, opts);
 }
 
-export function taskCompleted(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function taskCompleted(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.TASK_COMPLETED, "1.0", payload, opts);
 }
 
-export function calendarEventScheduled(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function calendarEventScheduled(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.CALENDAR_EVENT_SCHEDULED, "1.0", payload, opts);
 }
 
-export function approvalRequested(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function approvalRequested(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.APPROVAL_REQUESTED, "1.0", payload, opts);
 }
 
-export function invoiceFlagged(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function invoiceFlagged(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.INVOICE_FLAGGED, "1.0", payload, opts);
 }
 
-export function connectorSyncFailed(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function connectorSyncFailed(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.CONNECTOR_SYNC_FAILED, "1.0", payload, opts);
 }
 
-export function crmLeadUpdated(payload: EventInput["payload"], opts: NormalizeOptions): CanonicalEvent {
+export function crmLeadUpdated(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.CRM_LEAD_UPDATED, "1.0", payload, opts);
 }
 
