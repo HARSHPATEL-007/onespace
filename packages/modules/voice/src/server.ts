@@ -99,3 +99,6 @@ export class VoiceService {
     });
   }
 }
+
+export { VoiceNotesService } from "./voiceNotes";
+export type { IngestInput, CorrectInput, SearchFilters, VoiceSourceName, VoiceConsentName } from "./voiceNotes";

@@ -9,7 +9,7 @@ export * from "./normalize";
 export * from "./port";
 
 import { EVENT_TYPES, EVENT_SCHEMAS, validateEvent, topicFor, partitionKeyFor, dedupKeyFor } from "./envelope";
-import { messageCreated, threadDecisionConfirmed, taskCreated, taskCompleted, calendarEventScheduled, approvalRequested, invoiceFlagged, connectorSyncFailed, crmLeadUpdated, sagaEvent } from "./normalize";
+import { messageCreated, threadDecisionConfirmed, taskCreated, taskCompleted, calendarEventScheduled, approvalRequested, invoiceFlagged, connectorSyncFailed, crmLeadUpdated, sagaEvent, voiceRecordingUploaded, voiceTranscriptReady, voiceActionExtracted, voiceActionConfirmed, voiceSummaryReady, voiceTranscriptCorrected } from "./normalize";
 
 export const eventBusCore = {
   EVENT_TYPES,
@@ -29,5 +29,11 @@ export const eventBusCore = {
     connectorSyncFailed,
     crmLeadUpdated,
     sagaEvent,
+    voiceRecordingUploaded,
+    voiceTranscriptReady,
+    voiceActionExtracted,
+    voiceActionConfirmed,
+    voiceSummaryReady,
+    voiceTranscriptCorrected,
   },
 };

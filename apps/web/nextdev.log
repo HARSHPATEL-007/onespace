@@ -33,3 +33,9 @@ $ next dev "-p" "3001"
  ○ Compiling /m/events ...
  ✓ Compiled /m/events in 2s (1556 modules)
  GET /m/events 200 in 3906ms
+ ✓ Compiled in 6.4s (1545 modules)
+ GET /m/events 200 in 834ms
+ ✓ Compiled in 1854ms (1545 modules)
+ GET /m/events 200 in 650ms
+ ✓ Compiled in 1049ms (1545 modules)
+ ✓ Compiled in 1178ms (1545 modules)

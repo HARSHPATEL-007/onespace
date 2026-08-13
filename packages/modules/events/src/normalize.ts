@@ -80,3 +80,27 @@ export function crmLeadUpdated(payload: Record<string, unknown>, opts: Normalize
 export function sagaEvent(type: string, workflowId: string, payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(type, "1.0", { workflowId, ...payload }, opts);
 }
+
+export function voiceRecordingUploaded(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.VOICE_RECORDING_UPLOADED, "1.0", payload, opts);
+}
+
+export function voiceTranscriptReady(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.VOICE_TRANSCRIPT_READY, "1.0", payload, opts);
+}
+
+export function voiceActionExtracted(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.VOICE_ACTION_EXTRACTED, "1.0", payload, opts);
+}
+
+export function voiceActionConfirmed(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.VOICE_ACTION_CONFIRMED, "1.0", payload, opts);
+}
+
+export function voiceSummaryReady(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.VOICE_SUMMARY_READY, "1.0", payload, opts);
+}
+
+export function voiceTranscriptCorrected(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.VOICE_TRANSCRIPT_CORRECTED, "1.0", payload, opts);
+}

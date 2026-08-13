@@ -28,6 +28,7 @@ async function main() {
   await seedPhase6Demo(workspace.id, owner.id);
   await seedConnectionDemo(workspace.id, owner.id, admin.id);
   await seedAniDemo(workspace.id, owner.id);
+  await seedVoiceDemo(workspace.id, owner.id);
 
   const coreModules = [
     "mail",
@@ -716,6 +717,65 @@ async function seedAniDemo(workspaceId: string, ownerId: string) {
       ],
     });
   }
+}
+
+async function seedVoiceDemo(workspaceId: string, ownerId: string) {
+  const count = await prisma.voiceRecording.count({ where: { workspaceId } });
+  if (count > 0) return;
+
+  const voiceId = "voice_huddle_alpha";
+  const recording = await prisma.voiceRecording.create({
+    data: {
+      voiceId,
+      workspaceId,
+      createdById: ownerId,
+      source: "HUDDLE",
+      status: "PENDING",
+      title: "Huddle: Beta readiness",
+      audioDurationMs: 92_000,
+      mimeType: "audio/opus",
+      language: "en",
+      consent: "INFORMED",
+      retentionDays: 90,
+      roomRef: "huddle/beta-readiness",
+      meta: { speakerMap: { SPEAKER_00: "N0VA Founder", SPEAKER_01: "Sarah" } },
+    },
+  });
+
+  const transcript = [
+    "Okay let's talk about beta readiness",
+    "we agreed to ship the beta by the 20th no matter what",
+    "Sarah can you send the vendor approval to Stellar Inc by end of week",
+    "I will schedule a call with Stellar Inc next Tuesday at 2 pm for the contract review",
+    "remind me to update the docs tomorrow morning",
+    "also someone should research the migration options for the monolith",
+    "risk: the new payment provider depends on the invoice pipeline and it is at risk of slipping",
+    "should we freeze the roadmap after the beta ships",
+    "I think the strategy is solid and the roadmap is clear",
+  ];
+  const sentences = transcript;
+  const totalChars = transcript.join(" ").length;
+  const durationMs = 92_000;
+  let cursor = 0;
+  const segments = sentences.map((text, i) => {
+    const fraction = totalChars === 0 ? 1 : text.length / totalChars;
+    const startMs = Math.round(cursor);
+    const endMs = Math.round(cursor + fraction * durationMs);
+    cursor = endMs;
+    const speaker = i % 3 === 0 ? "SPEAKER_00" : "SPEAKER_01";
+    return {
+      id: `seg_${recording.id.slice(0, 8)}_${i}`,
+      recordingId: recording.id,
+      order: i,
+      startMs,
+      endMs,
+      speaker,
+      text,
+      confidence: Number((0.8 + ((i * 7) % 5) * 0.03).toFixed(2)),
+    };
+  });
+  await prisma.voiceTranscriptSegment.createMany({ data: segments });
+  console.log("✓ Voice huddle demo seeded (run Transcribe in /m/voice to extract commitments)");
 }
 
 main()

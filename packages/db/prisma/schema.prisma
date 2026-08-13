@@ -5329,5 +5329,142 @@ model EventSubscription {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([consumerKey])
+@@unique([consumerKey])
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// N0VA VOICE (Project Echo) — transcribed, searchable, executable audio.
+// Every voice message becomes a structured input stream: transcript +
+// extracted tasks/events/follow-ups with timestamps, speakers, and links.
+// ═══════════════════════════════════════════════════════════════════════
+
+enum VoiceSource {
+  NOTE
+  MEMO
+  HUDDLE
+  UPLOAD
+  LIVE
+}
+
+enum VoiceStatus {
+  RECORDING
+  PENDING
+  TRANSCRIBING
+  EXTRACTED
+  DONE
+  FAILED
+}
+
+enum VoiceConsent {
+  NONE
+  INFORMED
+  GUEST_DISCLOSED
+  ON_DEVICE
+}
+
+enum VoiceExtractionKind {
+  TASK
+  FOLLOW_UP
+  REMINDER
+  DECISION
+  APPROVAL
+  DELEGATE
+  RESEARCH
+  EVENT
+}
+
+enum VoiceExtractionState {
+  DRAFT
+  CONFIRMED
+  REJECTED
+  AUTO_CREATED
+}
+
+/// N0VA VOICE (Project Echo) — a transcribed recording (note/memo/huddle/upload/live).
+model VoiceRecording {
+  id           String   @id @default(uuid())
+  voiceId      String   @unique
+  workspaceId  String
+  createdById  String
+  source       VoiceSource   @default(NOTE)
+  status       VoiceStatus   @default(PENDING)
+  title        String   @default("")
+  audioKey     String   @default("")
+  audioSizeBytes Int    @default(0)
+  audioDurationMs Int   @default(0)
+  mimeType     String   @default("audio/webm")
+  language     String   @default("en")
+  consent      VoiceConsent  @default(INFORMED)
+  retentionDays Int     @default(90)
+  roomRef      String?
+  threadRef    String?
+  transcriptText String @default("")
+  correctedTranscript String?
+  transcriptVersion Int @default(1)
+  confidenceAvg Float?
+  qualityStats Json?
+  summary     Json?
+  meta        Json?
+  transcribedAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  segments   VoiceTranscriptSegment[]
+  extractions VoiceExtraction[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([source])
+  @@index([roomRef])
+}
+
+/// Timestamped, speaker-labeled transcript segment (original + corrected versions).
+model VoiceTranscriptSegment {
+  id            String   @id @default(uuid())
+  recordingId   String
+  order         Int
+  startMs       Int
+  endMs         Int
+  speaker       String   @default("SPEAKER_00")
+  text          String
+  correctedText String?
+  confidence    Float    @default(0)
+
+  recording VoiceRecording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  @@index([recordingId, order])
+}
+
+/// Extracted action items / calendar intents / decisions from a transcript.
+model VoiceExtraction {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  recordingId   String
+  kind          VoiceExtractionKind
+  category      String
+  title         String
+  ownerId       String?
+  assigneeName  String?
+  dueAt         DateTime?
+  startAt       DateTime?
+  endAt         DateTime?
+  durationMin   Int?
+  confidence    Float
+  sourceStartMs Int
+  sourceEndMs   Int
+  sourceText    String
+  state         VoiceExtractionState @default(DRAFT)
+  targetType    String?
+  targetId      String?
+  meta          Json?
+  createdAt     DateTime @default(now())
+  confirmedAt   DateTime?
+
+  recording VoiceRecording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  @@index([recordingId])
+  @@index([state])
+  @@index([workspaceId])
 }

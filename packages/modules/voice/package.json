@@ -9,8 +9,9 @@
     "./components": "./src/components.tsx"
   },
   "dependencies": {
-    "@n0va/db": "workspace:*",
     "@n0va/authz": "workspace:*",
+    "@n0va/db": "workspace:*",
+    "@n0va/modules-events": "workspace:*",
     "@n0va/ui": "workspace:*",
     "next": "^15.3.0",
     "zod": "^3.24.0"

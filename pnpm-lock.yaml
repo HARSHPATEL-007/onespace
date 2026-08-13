@@ -1699,6 +1699,9 @@ importers:
       '@n0va/db':
         specifier: workspace:*
         version: link:../../db
+      '@n0va/modules-events':
+        specifier: workspace:*
+        version: link:../events
       '@n0va/ui':
         specifier: workspace:*
         version: link:../../ui
