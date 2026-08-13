@@ -18,7 +18,7 @@ import {
   voiceSummaryReady,
   voiceTranscriptCorrected,
 } from "@n0va/modules-events/server";
-import { extractFromTranscript, buildSummary, redactTranscript, type ExtractedItem, type TranscribedSegment } from "./parser";
+import { extractFromTranscript, buildSummary, extractTopics, redactTranscript, type ExtractedItem, type TranscribedSegment } from "./parser";
 import { transcriberFromEnv, type TranscriberPort } from "./transcribe";
 
 const MODULE = "voice";
@@ -38,6 +38,8 @@ export interface IngestInput {
   retentionDays?: number;
   roomRef?: string;
   threadRef?: string;
+  /** IANA zone or ISO offset ("+05:30") for wall-clock date resolution. */
+  timezone?: string;
   /** Dev/demo path: transcript text transcribed instantly. */
   textHint?: string;
   segments?: TranscribedSegment[];
@@ -51,6 +53,7 @@ export interface CorrectInput {
   transcriptText?: string;
   segments?: Array<{ id: string; correctedText: string }>;
   sensitiveTerms?: string[];
+  consent?: VoiceConsentName;
 }
 
 export interface SearchFilters {
@@ -61,9 +64,32 @@ export interface SearchFilters {
   from?: string;
   to?: string;
   minConfidence?: number;
+  topic?: string;
+  entity?: string;
+  priority?: "LOW" | "MEDIUM" | "HIGH";
 }
 
 const voiceId = () => `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+export function tzOffsetMin(timezone?: string | null): number {
+  if (!timezone) return 0;
+  const m = timezone.match(/^([+-])(\d{2}):?(\d{2})$/);
+  if (m) {
+    const sign = m[1] === "-" ? -1 : 1;
+    return sign * (parseInt(m[2] ?? "0", 10) * 60 + parseInt(m[3] ?? "0", 10));
+  }
+  const n = Number(timezone);
+  if (Number.isFinite(n)) return Math.round(n);
+  try {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).formatToParts(now);
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+    const asUTC = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+    return Math.round((asUTC - now.getTime()) / 60_000);
+  } catch {
+    return 0;
+  }
+}
 
 export class VoiceNotesService {
   private readonly transcriber: TranscriberPort;
@@ -124,6 +150,7 @@ export class VoiceNotesService {
         retentionDays: input.retentionDays ?? 90,
         roomRef: input.roomRef ?? null,
         threadRef: input.threadRef ?? null,
+        timezone: input.timezone ?? null,
         meta: (input.meta ?? {}) as Prisma.InputJsonValue,
       },
     });
@@ -194,6 +221,7 @@ export class VoiceNotesService {
           language: result.language,
           audioDurationMs: result.durationMs || recording.audioDurationMs,
           transcribedAt: new Date(),
+          meta: { ...((recording.meta as Record<string, unknown>) ?? {}), topics: extractTopics(segments.map((s) => ({ startMs: s.startMs, endMs: s.endMs, speaker: s.speaker, text: s.text, confidence: s.confidence }))) } as unknown as Prisma.InputJsonValue,
         },
       });
     });
@@ -225,7 +253,7 @@ export class VoiceNotesService {
     }));
     const speakerMap = (recording.meta as Record<string, unknown> | null)?.speakerMap as Record<string, string> | undefined;
 
-    const items: ExtractedItem[] = extractFromTranscript(segments, { now: recording.createdAt, speakerMap });
+    const items: ExtractedItem[] = extractFromTranscript(segments, { now: recording.createdAt, speakerMap, tzOffsetMin: tzOffsetMin(recording.timezone) });
     let created = 0;
     for (const item of items) {
       const existing = await prisma.voiceExtraction.findFirst({
@@ -245,10 +273,13 @@ export class VoiceNotesService {
           startAt: item.startAt,
           endAt: item.endAt,
           durationMin: item.durationMin,
+          priority: item.priority ?? "MEDIUM",
+          attendees: item.attendees?.length ? (item.attendees as Prisma.InputJsonValue) : undefined,
           confidence: item.confidence,
           sourceStartMs: item.sourceStartMs,
           sourceEndMs: item.sourceEndMs,
           sourceText: item.sourceText,
+          meta: item.dependency ? ({ dependency: item.dependency } as Prisma.InputJsonValue) : undefined,
           state: item.confidence >= 0.92 ? "AUTO_CREATED" : "DRAFT",
         },
       });
@@ -296,7 +327,17 @@ export class VoiceNotesService {
       }
     }
     const rows = await prisma.voiceTranscriptSegment.findMany({ where: { recordingId }, orderBy: { order: "asc" } });
+    const oldText = recording.correctedTranscript ?? recording.transcriptText;
     const correctedTranscript = rows.map((r) => r.correctedText ?? r.text).join(" ");
+    const oldWords = oldText.trim().split(/\s+/).filter(Boolean);
+    const newWords = correctedTranscript.trim().split(/\s+/).filter(Boolean);
+    const minLen = Math.min(oldWords.length, newWords.length);
+    const diffWords = oldWords.reduce((acc, w, i) => acc + (i >= minLen || w !== newWords[i] ? 1 : 0), 0) + Math.abs(oldWords.length - newWords.length);
+    const qualityStats = {
+      corrections: input.segments?.length ?? 0,
+      werEstimate: oldWords.length ? Number((diffWords / oldWords.length).toFixed(3)) : 0,
+      updatedAt: new Date().toISOString(),
+    };
     await prisma.voiceRecording.update({
       where: { id: recordingId },
       data: {
@@ -304,6 +345,8 @@ export class VoiceNotesService {
         correctedTranscript,
         transcriptVersion: version,
         status: "EXTRACTED",
+        ...(input.consent ? { consent: input.consent } : {}),
+        qualityStats: qualityStats as Prisma.InputJsonValue,
       },
     });
     await this.emit("voice.transcript.corrected", { voiceId: recording.voiceId, version }, recording.voiceId);
@@ -335,28 +378,56 @@ export class VoiceNotesService {
     return { state };
   }
 
+  async attachAudio(recordingId: string, info: { ext: string; sizeBytes: number; mimeType: string }) {
+    await this.assert("UPDATE");
+    await this.owned(recordingId);
+    const audioKey = `voice://${recordingId}${info.ext}`;
+    await prisma.voiceRecording.update({
+      where: { id: recordingId },
+      data: { audioKey, audioSizeBytes: info.sizeBytes, mimeType: info.mimeType },
+    });
+    return { ok: true, audioKey, audioSizeBytes: info.sizeBytes, mimeType: info.mimeType };
+  }
+
   // ── Search ───────────────────────────────────────────────────────────────
 
   async search(filters: SearchFilters, limit = 25) {
     await this.assert("READ");
+    const qOr: Prisma.VoiceRecordingWhereInput["OR"] = filters.q
+      ? [
+          { title: { contains: filters.q, mode: "insensitive" } },
+          { transcriptText: { contains: filters.q, mode: "insensitive" } },
+          { correctedTranscript: { contains: filters.q, mode: "insensitive" } },
+          { summary: { path: ["oneLine"], string_contains: filters.q } },
+        ]
+      : undefined;
     const where: Prisma.VoiceRecordingWhereInput = {
       workspaceId: this.workspaceId,
       deletedAt: null,
-      ...(filters.q ? { OR: [{ title: { contains: filters.q, mode: "insensitive" } }, { transcriptText: { contains: filters.q, mode: "insensitive" } }, { correctedTranscript: { contains: filters.q, mode: "insensitive" } }] } : {}),
+      ...(qOr ? { OR: qOr } : {}),
       ...(filters.roomRef ? { roomRef: filters.roomRef } : {}),
       ...(filters.source ? { source: filters.source } : {}),
       ...(filters.from ? { createdAt: { gte: new Date(filters.from) } } : {}),
       ...(filters.to ? { createdAt: { lte: new Date(filters.to) } } : {}),
       ...(filters.minConfidence !== undefined ? { confidenceAvg: { gte: filters.minConfidence } } : {}),
     };
-    const recordings = await prisma.voiceRecording.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
+    let recordings = await prisma.voiceRecording.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
+    if (filters.topic || filters.entity) {
+      recordings = recordings.filter((r) => {
+        const metaText = JSON.stringify(r.meta ?? {}).toLowerCase();
+        return (!filters.topic || metaText.includes(filters.topic.toLowerCase())) && (!filters.entity || metaText.includes(filters.entity.toLowerCase()));
+      });
+    }
     const ids = recordings.map((r) => r.id);
 
     const [segments, extractions] = await Promise.all([
       filters.speaker
         ? prisma.voiceTranscriptSegment.findMany({ where: { recordingId: { in: ids }, speaker: filters.speaker } })
         : Promise.resolve([] as Array<{ recordingId: string; speaker: string; text: string; startMs: number; confidence: number }>),
-      prisma.voiceExtraction.findMany({ where: { recordingId: { in: ids }, state: { in: ["DRAFT", "CONFIRMED", "AUTO_CREATED"] } }, orderBy: { createdAt: "desc" } }),
+      prisma.voiceExtraction.findMany({
+        where: { recordingId: { in: ids }, state: { in: ["DRAFT", "CONFIRMED", "AUTO_CREATED"] }, ...(filters.priority ? { priority: filters.priority } : {}) },
+        orderBy: { createdAt: "desc" },
+      }),
     ]);
     const segByRecording = new Map<string, typeof segments>();
     for (const s of segments) {
@@ -405,15 +476,28 @@ export class VoiceNotesService {
   }
 
   async stats() {
-    const [total, bySource, byStatus, extractions, draftCount, avgConf] = await Promise.all([
+    const [total, bySource, byStatus, extractions, draftCount, confirmedCount, rejectedCount, avgConf] = await Promise.all([
       prisma.voiceRecording.count({ where: { workspaceId: this.workspaceId, deletedAt: null } }),
       prisma.voiceRecording.groupBy({ by: ["source"], where: { workspaceId: this.workspaceId, deletedAt: null }, _count: true }),
       prisma.voiceRecording.groupBy({ by: ["status"], where: { workspaceId: this.workspaceId, deletedAt: null }, _count: true }),
       prisma.voiceExtraction.count({ where: { workspaceId: this.workspaceId } }),
       prisma.voiceExtraction.count({ where: { workspaceId: this.workspaceId, state: "DRAFT" } }),
+      prisma.voiceExtraction.count({ where: { workspaceId: this.workspaceId, state: "CONFIRMED" } }),
+      prisma.voiceExtraction.count({ where: { workspaceId: this.workspaceId, state: "REJECTED" } }),
       prisma.voiceRecording.aggregate({ where: { workspaceId: this.workspaceId, deletedAt: null, confidenceAvg: { not: null } }, _avg: { confidenceAvg: true } }),
     ]);
-    return { total, bySource, byStatus, extractions, draftCount, avgConfidence: avgConf._avg.confidenceAvg };
+    const decided = confirmedCount + rejectedCount;
+    return {
+      total,
+      bySource,
+      byStatus,
+      extractions,
+      draftCount,
+      confirmedCount,
+      rejectedCount,
+      confirmationRate: decided ? Number((confirmedCount / decided).toFixed(2)) : null,
+      avgConfidence: avgConf._avg.confidenceAvg,
+    };
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────

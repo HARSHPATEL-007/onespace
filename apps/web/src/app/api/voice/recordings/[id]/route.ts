@@ -30,10 +30,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const body = (await req.json().catch(() => ({}))) as {
     title?: string;
     segments?: Array<{ id: string; correctedText: string }>;
+    consent?: "NONE" | "INFORMED" | "GUEST_DISCLOSED" | "ON_DEVICE";
   };
   const svc = new VoiceNotesService(ctx.workspace.id, ctx.user.id, ctx.memberRole);
   try {
-    const result = await svc.correct(id, { title: body.title, segments: body.segments });
+    const result = await svc.correct(id, { title: body.title, segments: body.segments, consent: body.consent });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "failed" }, { status: 400 });

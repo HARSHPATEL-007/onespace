@@ -12,21 +12,25 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const limit = Math.min(50, Math.max(1, Number(searchParams.get("limit") ?? 25)));
   const speaker = searchParams.get("speaker") ?? undefined;
+  const priority = (searchParams.get("priority") as "LOW" | "MEDIUM" | "HIGH") ?? undefined;
   const svc = new VoiceNotesService(ctx.workspace.id, ctx.user.id, ctx.memberRole);
   try {
     const results = await svc.search(
       {
         q: searchParams.get("q") ?? undefined,
+        topic: searchParams.get("topic") ?? undefined,
+        entity: searchParams.get("entity") ?? undefined,
         roomRef: searchParams.get("room") ?? undefined,
         source: (searchParams.get("source") as "NOTE" | "MEMO" | "HUDDLE" | "UPLOAD" | "LIVE") ?? undefined,
         from: searchParams.get("from") ?? undefined,
         to: searchParams.get("to") ?? undefined,
         minConfidence: searchParams.get("minConfidence") ? Number(searchParams.get("minConfidence")) : undefined,
         speaker,
+        priority,
       },
       limit,
     );
-    return NextResponse.json({ ok: true, results });
+    return NextResponse.json({ ok: true, results: results.map((r) => ({ ...r, audioUrl: r.audioKey ? `/api/voice/recordings/${r.id}/audio` : null })) });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "failed" }, { status: 400 });
   }

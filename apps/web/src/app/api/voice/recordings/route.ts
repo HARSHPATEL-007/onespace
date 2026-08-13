@@ -21,6 +21,9 @@ export async function POST(req: Request) {
       mimeType: typeof body.mimeType === "string" ? body.mimeType : undefined,
       language: typeof body.language === "string" ? body.language : undefined,
       roomRef: typeof body.roomRef === "string" ? body.roomRef : undefined,
+      threadRef: typeof body.threadRef === "string" ? body.threadRef : undefined,
+      timezone: typeof body.timezone === "string" ? body.timezone : undefined,
+      consent: (body.consent as "NONE" | "INFORMED" | "GUEST_DISCLOSED" | "ON_DEVICE") ?? undefined,
       sensitiveTerms: Array.isArray(body.sensitiveTerms) ? (body.sensitiveTerms as string[]) : undefined,
       meta: typeof body.meta === "object" && body.meta !== null ? (body.meta as Record<string, unknown>) : undefined,
     });
@@ -42,7 +45,10 @@ export async function GET(req: Request) {
   const svc = new VoiceNotesService(ctx.workspace.id, ctx.user.id, ctx.memberRole);
   try {
     const recordings = await svc.list(limit, status);
-    return NextResponse.json({ ok: true, recordings });
+    return NextResponse.json({
+      ok: true,
+      recordings: recordings.map((r) => ({ ...r, audioUrl: r.audioKey ? `/api/voice/recordings/${r.id}/audio` : null })),
+    });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "failed" }, { status: 400 });
   }

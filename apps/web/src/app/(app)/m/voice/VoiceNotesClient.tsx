@@ -14,6 +14,8 @@ const s = {
   label: { fontSize: 12, color: "var(--nv-muted, #9a97a8)" },
   chip: { display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 600 },
   sub: { fontSize: 12, color: "var(--nv-muted, #9a97a8)", padding: "2px 0" },
+  overlay: { position: "fixed" as const, inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 },
+  dialog: { background: "var(--nv-surface, #16151d)", border: "1px solid var(--nv-border, #2a2936)", borderRadius: 12, padding: 18, maxWidth: 520, width: "90%" },
 };
 
 interface Segment {
@@ -33,6 +35,7 @@ interface Extraction {
   title: string;
   confidence: number;
   state: string;
+  priority?: string | null;
   dueAt?: string | null;
   startAt?: string | null;
   endAt?: string | null;
@@ -41,16 +44,21 @@ interface Extraction {
   targetId?: string | null;
   assigneeName?: string | null;
 }
+interface TopicInfo { label: string; count: number }
+interface EntityInfo { name: string; kind: string }
 interface Recording {
   id: string;
   voiceId: string;
   title: string;
   source: string;
   status: string;
+  consent?: string | null;
   language?: string | null;
   audioDurationMs?: number | null;
   confidenceAvg?: number | null;
   transcriptVersion: number;
+  audioUrl?: string | null;
+  meta?: { topics?: { topics?: TopicInfo[]; entities?: EntityInfo[] }; dependency?: string } | null;
   summary?: { oneLine?: string; bullets?: string[]; decisions?: string[]; actionItems?: string[]; openQuestions?: string[]; risks?: string[] } | null;
   createdAt: string;
   segments?: Segment[];
@@ -65,6 +73,10 @@ const KIND_COLORS: Record<string, string> = {
 const STATUS_COLORS: Record<string, string> = {
   PENDING: "#64748b", TRANSCRIBING: "#3b82f6", EXTRACTED: "#22c55e", DONE: "#10b981", FAILED: "#ef4444", RECORDING: "#f59e0b",
 };
+const PRIORITY_COLORS: Record<string, string> = { LOW: "#64748b", MEDIUM: "#3b82f6", HIGH: "#ef4444" };
+const CONSENT_LABELS: Record<string, string> = {
+  NONE: "None", INFORMED: "Informed", GUEST_DISCLOSED: "Guests disclosed", ON_DEVICE: "On-device",
+};
 const fmt = (ms?: number | null) => (ms == null ? "–" : `${Math.max(1, Math.round(ms / 1000))}s`);
 const dt = (iso?: string | null) => (iso ? new Date(iso).toLocaleString() : "");
 const stateLabel = (st: string) => (st === "CONFIRMED" ? "Created ✓" : st === "REJECTED" ? "Rejected ✕" : st === "AUTO_CREATED" ? "Auto-created" : "Draft");
@@ -74,17 +86,24 @@ export function VoiceNotesClient({ initial }: { initial: Recording[] }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [source, setSource] = useState("NOTE");
+  const [consent, setConsent] = useState("INFORMED");
+  const [threadRef, setThreadRef] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
   const [speaker, setSpeaker] = useState("");
+  const [priority, setPriority] = useState("");
   const [room, setRoom] = useState("");
   const [speakers, setSpeakers] = useState<string[]>([]);
   const [recording, setRecording] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [recMs, setRecMs] = useState(0);
+  const [conflict, setConflict] = useState<{ ext: Extraction; conflicts: Array<{ id: string; title: string; startAt: string; endAt: string }> } | null>(null);
+  const [stats, setStats] = useState<{ total: number; draftCount: number; confirmationRate: number | null } | null>(null);
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const reload = useCallback(async () => {
     const res = await fetch("/api/voice/recordings");
@@ -96,12 +115,18 @@ export function VoiceNotesClient({ initial }: { initial: Recording[] }) {
   }, []);
 
   useEffect(() => {
+    fetch("/api/voice/stats")
+      .then((r) => r.json())
+      .then((j) => setStats(j.stats ?? null))
+      .catch(() => {});
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
     };
   }, []);
 
-  async function ingest() {
+  const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  async function ingest(opts?: { audioBlob?: Blob; audioFile?: File; audioDurationMs?: number; source?: string }) {
     setBusy(true);
     setStatus("ingesting…");
     const res = await fetch("/api/voice/recordings", {
@@ -109,32 +134,64 @@ export function VoiceNotesClient({ initial }: { initial: Recording[] }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         title: title || "Voice note",
-        source,
+        source: opts?.source ?? source,
         textHint: text.trim() || undefined,
-        audioDurationMs: recMs || undefined,
-        mimeType: recording ? "audio/webm" : undefined,
+        audioDurationMs: (opts?.audioDurationMs ?? recMs) || undefined,
+        mimeType: opts?.audioBlob?.type || opts?.audioFile?.type || (recording ? "audio/webm" : undefined),
+        consent,
+        threadRef: threadRef.trim() || undefined,
+        timezone: tz(),
       }),
     });
-    const json = (await res.json()) as { ok?: boolean; status?: string; error?: string };
-    setStatus(res.ok ? `ingested (${json.status ?? ""})` : `error: ${json.error ?? res.status}`);
+    const json = (await res.json()) as { ok?: boolean; id?: string; status?: string; error?: string };
+    if (!res.ok) {
+      setStatus(`error: ${json.error ?? res.status}`);
+      setBusy(false);
+      return;
+    }
+    let id = json.id;
+    const blob = opts?.audioBlob ?? opts?.audioFile;
+    if (id && blob) {
+      const form = new FormData();
+      form.append("file", blob, opts?.audioFile?.name ?? "capture.webm");
+      const up = await fetch(`/api/voice/recordings/${id}/audio`, { method: "POST", body: form });
+      if (up.ok && !opts?.audioFile) {
+        const tr = await fetch(`/api/voice/recordings/${id}/transcribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+        if (tr.ok) setStatus(`uploaded + re-transcribed (${json.status ?? ""})`);
+      } else {
+        setStatus(`captured ${blob.size > 0 ? "audio" : ""} — transcribe via text hint or send audio file`);
+      }
+    } else {
+      setStatus(`ingested (${json.status ?? ""})`);
+    }
     setBusy(false);
     setText("");
     setTitle("");
+    setThreadRef("");
     setRecMs(0);
     if (res.ok) reload();
   }
 
   async function toggleRecord() {
     if (recording) {
+      if (paused) mediaRef.current?.resume();
       mediaRef.current?.stop();
       if (tickRef.current) clearInterval(tickRef.current);
       setRecording(false);
+      setPaused(false);
       if (chunksRef.current.length && recMs >= 1000) {
-        setStatus(`captured ${Math.round(recMs / 1000)}s audio — transcribe via text hint or send audio file`);
-      } else {
-        setStatus("recording too short");
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        chunksRef.current = [];
+        setStatus(`captured ${Math.round(recMs / 1000)}s — uploading…`);
+        await ingest({
+          audioBlob: blob,
+          audioDurationMs: recMs,
+          source: "LIVE",
+        });
+        return;
       }
       chunksRef.current = [];
+      setStatus("recording too short");
       return;
     }
     try {
@@ -148,17 +205,76 @@ export function VoiceNotesClient({ initial }: { initial: Recording[] }) {
       const started = Date.now();
       tickRef.current = setInterval(() => setRecMs(Date.now() - started), 500);
       setRecording(true);
+      setPaused(false);
       setStatus("recording… say commitments out loud");
     } catch {
-      setStatus("microphone unavailable — paste text instead");
+      setStatus("microphone unavailable — paste text or upload a file instead");
     }
   }
 
-  async function search() {
+  async function togglePause() {
+    const rec = mediaRef.current;
+    if (!rec || !recording) return;
+    if (rec.state === "recording") {
+      rec.pause();
+      setPaused(true);
+      setStatus("paused — tap resume to continue");
+    } else if (rec.state === "paused") {
+      rec.resume();
+      setPaused(false);
+      setStatus("recording…");
+    }
+  }
+
+  async function uploadFile(file: File) {
+    if (!file.type.startsWith("audio/")) {
+      setStatus(`skip: ${file.name} is not audio`);
+      return;
+    }
+    setBusy(true);
+    setStatus(`uploading ${file.name}…`);
+    const res = await fetch("/api/voice/recordings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: file.name.replace(/\.[^.]+$/, "") || "Voice note",
+        source: "UPLOAD",
+        mimeType: file.type,
+        consent,
+        threadRef: threadRef.trim() || undefined,
+        timezone: tz(),
+      }),
+    });
+    const json = (await res.json()) as { ok?: boolean; id?: string; error?: string };
+    if (!res.ok || !json.id) {
+      setStatus(`error: ${json.error ?? res.status}`);
+      setBusy(false);
+      return;
+    }
+    const form = new FormData();
+    form.append("file", file, file.name);
+    const up = await fetch(`/api/voice/recordings/${json.id}/audio`, { method: "POST", body: form });
+    if (!up.ok) {
+      setStatus(`audio save failed (${up.status})`);
+      setBusy(false);
+      reload();
+      return;
+    }
+    setStatus("uploaded — transcribing…");
+    const tr = await fetch(`/api/voice/recordings/${json.id}/transcribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    setStatus(tr.ok ? `ingested + transcribed ${file.name}` : `transcribe step: ${tr.status}`);
+    setBusy(false);
+    reload();
+  }
+
+  async function search(extra?: Partial<{ q: string; topic: string; entity: string }>) {
     const p = new URLSearchParams();
-    if (q) p.set("q", q);
+    if (q || extra?.q) p.set("q", extra?.q ?? q);
     if (speaker) p.set("speaker", speaker);
     if (room) p.set("room", room);
+    if (priority) p.set("priority", priority);
+    if (extra?.topic) p.set("topic", extra.topic);
+    if (extra?.entity) p.set("entity", extra.entity);
     const res = await fetch(`/api/voice/search?${p.toString()}`);
     const json = (await res.json()) as { results?: Recording[] };
     setRecords(json.results ?? []);
@@ -174,7 +290,16 @@ export function VoiceNotesClient({ initial }: { initial: Recording[] }) {
     return res.ok;
   }
 
-  async function decide(ext: Extraction, action: "confirm" | "reject") {
+  async function setConsentFor(id: string, value: string) {
+    const res = await fetch(`/api/voice/recordings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ consent: value }),
+    });
+    if (res.ok) reload();
+  }
+
+  async function decide(ext: Extraction, action: "confirm" | "reject", force = false) {
     const res = await fetch(`/api/voice/extractions/${ext.id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -186,8 +311,15 @@ export function VoiceNotesClient({ initial }: { initial: Recording[] }) {
         endAt: ext.endAt,
         title: ext.title,
         sourceText: ext.sourceText,
+        priority: ext.priority,
+        force,
       }),
     });
+    if (res.status === 409) {
+      const j = (await res.json()) as { conflicts?: Array<{ id: string; title: string; startAt: string; endAt: string }> };
+      setConflict({ ext, conflicts: j.conflicts ?? [] });
+      return;
+    }
     if (res.ok) reload();
   }
 
@@ -196,23 +328,65 @@ export function VoiceNotesClient({ initial }: { initial: Recording[] }) {
     reload();
   }
 
+  async function reextract(id: string) {
+    await fetch(`/api/voice/recordings/${id}/transcribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+    reload();
+  }
+
   return (
     <div>
+      {conflict && (
+        <div style={s.overlay} onClick={() => setConflict(null)}>
+          <div style={s.dialog} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Time conflict — event overlaps existing calendar items</div>
+            {conflict.conflicts.map((c) => (
+              <div key={c.id} style={s.sub}>
+                · {c.title} ({new Date(c.startAt).toLocaleString()} – {new Date(c.endAt).toLocaleTimeString()})
+              </div>
+            ))}
+            <div style={{ ...s.row, marginTop: 12 }}>
+              <button style={{ ...s.button, background: "#065f46" }} onClick={async () => { const c = conflict; setConflict(null); await decide(c.ext, "confirm", true); }}>Create anyway</button>
+              <button style={s.smallButton} onClick={() => setConflict(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={s.card}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10 }}>Voice Notes <span style={s.label}>(Echo)</span></div>
+        <div style={s.row}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Voice Notes <span style={s.label}>(Echo)</span></div>
+          {stats && (
+            <span style={s.label}>
+              {stats.total} recordings · {stats.draftCount} drafts · confirmation rate {stats.confirmationRate == null ? "–" : `${Math.round(stats.confirmationRate * 100)}%`}
+            </span>
+          )}
+        </div>
+        {consent === "NONE" && (
+          <div style={{ ...s.card, padding: 10, marginBottom: 8, borderColor: "#f59e0b", background: "rgba(245,158,11,.08)", color: "#fbbf24", fontSize: 12 }}>
+            Consent is set to None — this recording&apos;s transcript is not used for commitment extraction or summaries. Choose &quot;Informed&quot; (or with guests disclosed) to enable capture.
+          </div>
+        )}
         <div style={{ ...s.col, gap: 8 }}>
           <div style={s.row}>
             <input style={{ ...s.input, flex: 1 }} placeholder="Title (optional)" value={title} onChange={(e) => setTitle(e.target.value)} />
             <select style={s.select} value={source} onChange={(e) => setSource(e.target.value)}>
               {["NOTE", "MEMO", "HUDDLE", "UPLOAD", "LIVE"].map((v) => <option key={v}>{v}</option>)}
             </select>
+            <select style={s.select} value={consent} onChange={(e) => setConsent(e.target.value)} title="Capture consent">
+              {Object.entries(CONSENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <input style={{ ...s.input, width: 130 }} placeholder="Thread ref" value={threadRef} onChange={(e) => setThreadRef(e.target.value)} />
             <button style={recording ? { ...s.button, background: "#ef4444" } : s.smallButton} onClick={toggleRecord}>
-              {recording ? `● ${Math.round(recMs / 1000)}s stop` : "Rec"}
+              {recording ? (paused ? `⏸ ${Math.round(recMs / 1000)}s resume` : `● ${Math.round(recMs / 1000)}s stop`) : "Rec"}
             </button>
+            {recording && !paused && <button style={s.smallButton} onClick={togglePause}>Pause</button>}
+            {recording && paused && <button style={s.smallButton} onClick={togglePause}>Resume</button>}
+            <input ref={fileRef} type="file" accept="audio/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = ""; }} />
+            <button style={s.smallButton} onClick={() => fileRef.current?.click()}>Upload audio…</button>
           </div>
           <textarea style={s.textarea} placeholder="Paste or speak a transcript — e.g. &quot;Let&apos;s meet Friday at 3, Sarah should send the vendor approval by end of week, remind me to update the docs tomorrow&quot;" value={text} onChange={(e) => setText(e.target.value)} />
           <div style={s.row}>
-            <button style={s.button} disabled={busy} onClick={ingest}>Transcribe & Extract</button>
+            <button style={s.button} disabled={busy} onClick={() => ingest()}>Transcribe & Extract</button>
             {status && <span style={s.label}>{status}</span>}
           </div>
         </div>
@@ -220,31 +394,57 @@ export function VoiceNotesClient({ initial }: { initial: Recording[] }) {
 
       <div style={s.card}>
         <div style={{ ...s.row, marginBottom: 8 }}>
-          <input style={{ ...s.input, flex: 1 }} placeholder="Search transcripts…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input style={{ ...s.input, flex: 1 }} placeholder="Search transcripts, summaries…" value={q} onChange={(e) => setQ(e.target.value)} />
           <input style={{ ...s.input, width: 110 }} placeholder="Room" value={room} onChange={(e) => setRoom(e.target.value)} />
           <select style={s.select} value={speaker} onChange={(e) => setSpeaker(e.target.value)}>
             <option value="">All speakers</option>
             {speakers.map((sp) => <option key={sp}>{sp}</option>)}
           </select>
-          <button style={s.smallButton} onClick={search}>Search</button>
+          <select style={s.select} value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <option value="">Any priority</option>
+            {["HIGH", "MEDIUM", "LOW"].map((p) => <option key={p}>{p}</option>)}
+          </select>
+          <button style={s.smallButton} onClick={() => search()}>Search</button>
           <button style={s.smallButton} onClick={reload}>Reset</button>
         </div>
         {records.length === 0 && <div style={s.sub}>No voice notes yet.</div>}
         {records.map((r) => (
-          <VoiceNoteCard key={r.id} r={r} onCorrect={correct} onDecide={decide} onDelete={remove} onReextract={async (id) => { const res = await fetch(`/api/voice/recordings/${id}/transcribe`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }); if (res.ok) reload(); }} />
+          <VoiceNoteCard
+            key={r.id}
+            r={r}
+            onCorrect={correct}
+            onDecide={decide}
+            onDelete={remove}
+            onReextract={reextract}
+            onTopic={(label) => { setQ(label); search({ q: label }); }}
+            onEntity={(name) => { setQ(name); search({ entity: name }); }}
+            onConsent={setConsentFor}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function VoiceNoteCard({ r, onCorrect, onDecide, onDelete, onReextract }: { r: Recording; onCorrect: (id: string, c: Record<string, string>) => Promise<boolean>; onDecide: (e: Extraction, a: "confirm" | "reject") => void; onDelete: (id: string) => void; onReextract: (id: string) => Promise<void> }) {
+function VoiceNoteCard({ r, onCorrect, onDecide, onDelete, onReextract, onTopic, onEntity, onConsent }: {
+  r: Recording;
+  onCorrect: (id: string, c: Record<string, string>) => Promise<boolean>;
+  onDecide: (e: Extraction, a: "confirm" | "reject", force?: boolean) => void;
+  onDelete: (id: string) => void;
+  onReextract: (id: string) => Promise<void>;
+  onTopic: (label: string) => void;
+  onEntity: (name: string) => void;
+  onConsent: (id: string, value: string) => Promise<void>;
+}) {
   const [open, setOpen] = useState(false);
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const summary = r.summary;
   const pending = Object.keys(edits).length > 0;
+  const topics = r.meta?.topics?.topics ?? [];
+  const entities = r.meta?.topics?.entities ?? [];
 
   async function saveCorrections() {
     setSaving(true);
@@ -253,12 +453,20 @@ function VoiceNoteCard({ r, onCorrect, onDecide, onDelete, onReextract }: { r: R
     setSaving(false);
   }
 
+  function playAt(ms: number) {
+    const el = audioRef.current;
+    if (!el) return;
+    el.currentTime = ms / 1000;
+    void el.play();
+  }
+
   return (
     <div style={{ ...s.card, marginBottom: 8, padding: 12 }}>
       <div style={s.row}>
         <span style={{ fontWeight: 600, fontSize: 13, cursor: "pointer" }} onClick={() => setOpen(!open)}>{r.title}</span>
         <span style={{ ...s.chip, background: STATUS_COLORS[r.status] ?? "#64748b" }}>{r.status}</span>
         <span style={s.chip}>{r.source}</span>
+        {r.consent && <span style={{ ...s.chip, background: r.consent === "NONE" ? "#7f1d1d" : "#334155" }}>{CONSENT_LABELS[r.consent] ?? r.consent}</span>}
         {r.confidenceAvg != null && <span style={s.chip}>{Math.round(r.confidenceAvg * 100)}%</span>}
         <span style={s.label}>{dt(r.createdAt)} · {fmt(r.audioDurationMs)} · v{r.transcriptVersion}</span>
         <span style={{ flex: 1 }} />
@@ -267,6 +475,21 @@ function VoiceNoteCard({ r, onCorrect, onDecide, onDelete, onReextract }: { r: R
       </div>
       {open && (
         <div style={{ ...s.col, gap: 10, marginTop: 10 }}>
+          {r.audioUrl && (
+            <audio ref={audioRef} controls preload="metadata" src={r.audioUrl} style={{ width: "100%", height: 36 }} />
+          )}
+          <div style={s.row}>
+            <span style={s.label}>Consent:</span>
+            <select style={{ ...s.select, padding: "3px 8px", fontSize: 12 }} value={r.consent ?? "INFORMED"} onChange={(e) => onConsent(r.id, e.target.value)}>
+              {Object.entries(CONSENT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            {(topics.length > 0 || entities.length > 0) && (
+              <span style={s.row}>
+                {topics.map((t) => <span key={t.label} title={`in ${t.count} segment(s)`} onClick={() => onTopic(t.label)} style={{ ...s.chip, background: "#312e81", cursor: "pointer" }}>#{t.label}</span>)}
+                {entities.map((en) => <span key={en.name} title={en.kind} onClick={() => onEntity(en.name)} style={{ ...s.chip, background: "#374151", cursor: "pointer" }}>@{en.name}</span>)}
+              </span>
+            )}
+          </div>
           {summary && (
             <div style={{ ...s.card, padding: 10, marginBottom: 0, background: "var(--nv-surface2, #1e1d27)" }}>
               <div style={s.label}>Summary</div>
@@ -278,11 +501,11 @@ function VoiceNoteCard({ r, onCorrect, onDecide, onDelete, onReextract }: { r: R
               {summary.risks?.length ? <div style={{ ...s.sub, color: "#fca5a5" }}>Risks: {summary.risks.join(" ... ")}</div> : null}
             </div>
           )}
-          <div style={s.label}>Transcript (edit to correct — re-extracts & re-summarizes)</div>
+          <div style={s.label}>Transcript (click time to play — edit to correct, re-extracts & re-summarizes)</div>
           {(r.segments ?? []).map((seg) => (
             <div key={seg.id} style={s.row}>
               <span style={{ ...s.chip, background: "#334155" }}>{seg.speaker}</span>
-              <span style={{ ...s.label, width: 44 }}>{fmt(seg.startMs)}</span>
+              <button style={{ ...s.label, width: 44, cursor: r.audioUrl ? "pointer" : "default", color: r.audioUrl ? "#93c5fd" : undefined }} title="Play from here" onClick={() => playAt(seg.startMs)}>{fmt(seg.startMs)}</button>
               <input
                 style={{ ...s.input, flex: 1, minWidth: 200 }}
                 defaultValue={edits[seg.id] ?? seg.correctedText ?? seg.text}
@@ -301,6 +524,7 @@ function VoiceNoteCard({ r, onCorrect, onDecide, onDelete, onReextract }: { r: R
           {(r.extractions ?? []).map((ext) => (
             <div key={ext.id} style={s.row}>
               <span style={{ ...s.chip, background: KIND_COLORS[ext.kind] ?? "#64748b" }}>{ext.kind.toLowerCase()}</span>
+              {ext.priority && <span style={{ ...s.chip, background: PRIORITY_COLORS[ext.priority] ?? "#64748b", color: "#fff" }}>{ext.priority}</span>}
               <span style={{ fontSize: 13, flex: 1 }}>{ext.title}</span>
               {ext.assigneeName && <span style={s.sub}>→ {ext.assigneeName}</span>}
               {ext.dueAt && <span style={s.sub}>due {new Date(ext.dueAt).toLocaleString()}</span>}

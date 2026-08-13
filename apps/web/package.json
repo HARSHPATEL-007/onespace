@@ -41,6 +41,7 @@
     "@n0va/modules-bot-engine": "workspace:*",
 "@n0va/modules-federation": "workspace:*",
     "@n0va/modules-voice": "workspace:*",
+    "@n0va/modules-wellbeing": "workspace:*",
     "@n0va/modules-admin": "workspace:*",
     "@n0va/modules-admin-console": "workspace:*",
     "@n0va/modules-ads-marketing": "workspace:*",

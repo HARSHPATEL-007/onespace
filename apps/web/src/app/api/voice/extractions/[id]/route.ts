@@ -13,7 +13,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ctx = await requireWorkspace().catch(() => null);
   if (!ctx) return NextResponse.json({ error: "No workspace" }, { status: 400 });
 
-  const body = (await req.json().catch(() => ({}))) as { action?: "confirm" | "reject"; kind?: string; dueAt?: string | null; startAt?: string | null; endAt?: string | null; ownerId?: string | null; title?: string; sourceText?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: "confirm" | "reject"; kind?: string; dueAt?: string | null; startAt?: string | null; endAt?: string | null; ownerId?: string | null; title?: string; sourceText?: string; priority?: string; force?: boolean };
   const svc = new VoiceNotesService(ctx.workspace.id, ctx.user.id, ctx.memberRole);
   try {
     let target: { type: "task" | "calendar_event"; id: string } | undefined;
@@ -22,6 +22,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         const cal = new CalendarService(ctx.workspace.id, ctx.user.id, ctx.memberRole);
         const startAt = body.startAt ?? new Date().toISOString();
         const endAt = body.endAt ?? new Date(new Date(startAt).getTime() + 60 * 60_000).toISOString();
+        if (!body.force) {
+          const conflicts = await cal.listInRange(new Date(startAt), new Date(endAt));
+          if (conflicts.length > 0) {
+            return NextResponse.json(
+              { ok: false, conflicts: conflicts.map((c) => ({ id: c.id, title: c.title, startAt: c.startAt, endAt: c.endAt })) },
+              { status: 409 },
+            );
+          }
+        }
         const event = await cal.create({
           title: body.title ?? "Voice note event",
           description: body.sourceText ?? null,
@@ -41,7 +50,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           title: body.title ?? "Voice item",
           notes: body.sourceText ?? null,
           dueDate: body.dueAt ?? null,
-          priority: "MEDIUM",
+          priority: body.priority === "HIGH" ? "HIGH" : body.priority === "LOW" ? "LOW" : "MEDIUM",
           assigneeId: body.ownerId ?? null,
         });
         target = { type: "task", id: task.id };

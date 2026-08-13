@@ -1,11 +1,11 @@
-/**
- * N0VA VOICE (Project Echo) — transcript intelligence, pure layer.
+﻿/**
+ * N0VA VOICE (Project Echo) â€” transcript intelligence, pure layer.
  *
  * Turns raw transcript text into structured, time-linked extractions:
  * tasks, follow-ups, reminders, decisions, approvals, delegates, research
  * items, and calendar intents. Relative dates resolve against the recording
  * time; summaries are layered (1-line, bullets, decisions, questions, risks);
- * sensitive terms can be redacted. No I/O — fully deterministic and testable.
+ * sensitive terms can be redacted. No I/O â€” fully deterministic and testable.
  */
 
 export type ExtractionKind = "TASK" | "FOLLOW_UP" | "REMINDER" | "DECISION" | "APPROVAL" | "DELEGATE" | "RESEARCH" | "EVENT";
@@ -27,10 +27,43 @@ export interface ExtractedItem {
   startAt?: Date;
   endAt?: Date;
   durationMin?: number;
+  priority?: "LOW" | "MEDIUM" | "HIGH";
+  attendees?: string[];
+  dependency?: string;
   confidence: number;
   sourceStartMs: number;
   sourceEndMs: number;
   sourceText: string;
+}
+
+export interface TopicInfo {
+  label: string;
+  count: number;
+}
+
+export interface EntityInfo {
+  name: string;
+  kind: "person" | "project" | "place" | "org";
+  count: number;
+}
+
+export const URGENCY_RE = /\b(asap|urgent(ly)?|critical|immediately|right away|priority|top ?priority|today|now)\b/i;
+export const DEPENDENCY_RE = /\b(depends? on|blocked by|blocking|after we (get|finish|ship|close)|once (we|the|it)|as soon as we)\b/i;
+
+const STOPWORDS = new Set([
+  "about", "after", "again", "also", "and", "are", "back", "beta", "can", "call", "check", "could", "day", "days",
+  "decided", "don't", "end", "for", "from", "get", "going", "good", "have", "into", "just", "like", "make", "me",
+  "meet", "meeting", "more", "much", "need", "new", "next", "no", "not", "okay", "one", "our", "out", "over",
+  "please", "really", "right", "roadmap", "see", "should", "so", "sure", "take", "talk", "that", "the", "them",
+  "then", "there", "these", "this", "through", "time", "today", "tomorrow", "update", "us", "very", "was", "we",
+  "week", "what", "when", "will", "with", "you", "your",
+]);
+
+const DAY_STOPWORDS = new Set(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]);
+
+export interface TopicStats {
+  topics: TopicInfo[];
+  entities: EntityInfo[];
 }
 
 export interface Summary {
@@ -45,6 +78,8 @@ export interface Summary {
 export interface ParserOptions {
   /** Recording time used to resolve relative dates ("tomorrow", "friday at 3"). */
   now?: Date;
+  /** Minutes east of UTC for wall-clock date resolution (from recording timezone). */
+  tzOffsetMin?: number;
   /** Speaker label → user id map (known-user matching where allowed). */
   speakerMap?: Record<string, string>;
   /** Terms to redact from transcript surfaces (privacy). */
@@ -107,7 +142,8 @@ export function segmentForOffset(segments: TranscribedSegment[], text: string, o
 }
 
 /** Resolve a relative/absolute date-time expression against `now` (UTC-safe). Returns null when no date/time is mentioned. */
-export function resolveDateTime(text: string, now: Date): Date | null {
+export function resolveDateTime(text: string, now: Date, tzOffsetMin = 0): Date | null {
+  const base = new Date(now.getTime() + tzOffsetMin * 60_000);
   const lower = text.toLowerCase();
 
   const rel = lower.match(/tomorrow|tonight|this (morning|afternoon|evening|week|weekend)|next (week|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|end of (the )?(week|day|month)/);
@@ -115,22 +151,22 @@ export function resolveDateTime(text: string, now: Date): Date | null {
   let dayMatched = Boolean(rel);
   if (rel) {
     const expr = rel[0] ?? "";
-    if (expr === "tomorrow") day = addDays(startOfDay(now), 1);
-    else if (expr === "tonight") day = startOfDay(now);
-    else if (expr.startsWith("this morning") || expr.startsWith("this afternoon") || expr.startsWith("this evening")) day = startOfDay(now);
-    else if (expr.startsWith("this week")) day = startOfWeek(now);
-    else if (expr.startsWith("this weekend")) day = addDays(startOfDay(now), 6 - now.getDay());
-    else if (expr.startsWith("next week")) day = addDays(startOfWeek(now), 7);
+    if (expr === "tomorrow") day = addDays(startOfDay(base), 1);
+    else if (expr === "tonight") day = startOfDay(base);
+    else if (expr.startsWith("this morning") || expr.startsWith("this afternoon") || expr.startsWith("this evening")) day = startOfDay(base);
+    else if (expr.startsWith("this week")) day = startOfWeek(base);
+    else if (expr.startsWith("this weekend")) day = addDays(startOfDay(base), 6 - base.getDay());
+    else if (expr.startsWith("next week")) day = addDays(startOfWeek(base), 7);
     else if (expr.startsWith("end of")) {
-      if (expr.endsWith("day")) day = startOfDay(now);
-      else if (expr.endsWith("week")) day = addDays(startOfDay(now), 6 - now.getDay());
-      else if (expr.endsWith("month")) day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+      if (expr.endsWith("day")) day = startOfDay(base);
+      else if (expr.endsWith("week")) day = addDays(startOfDay(base), 6 - base.getDay());
+      else if (expr.endsWith("month")) day = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 1));
     } else {
       const wd = WEEKDAYS.findIndex((w) => expr.includes(w));
       if (wd >= 0 && WEEKDAYS[wd]) {
-        let daysAhead = (wd - now.getDay() + 7) % 7;
+        let daysAhead = (wd - base.getDay() + 7) % 7;
         if (daysAhead === 0) daysAhead = 7;
-        day = addDays(startOfDay(now), daysAhead);
+        day = addDays(startOfDay(base), daysAhead);
       }
     }
   }
@@ -139,9 +175,9 @@ export function resolveDateTime(text: string, now: Date): Date | null {
     const wdIdx = WEEKDAYS.findIndex((w) => new RegExp(`\\b${w}\\b`).test(lower));
     if (wdIdx >= 0) {
       dayMatched = true;
-      let daysAhead = (wdIdx - now.getDay() + 7) % 7;
+      let daysAhead = (wdIdx - base.getDay() + 7) % 7;
       if (daysAhead === 0) daysAhead = 7;
-      day = addDays(startOfDay(now), daysAhead);
+      day = addDays(startOfDay(base), daysAhead);
     }
   }
 
@@ -150,28 +186,28 @@ export function resolveDateTime(text: string, now: Date): Date | null {
     dayMatched = true;
     const n = inDays[1] ?? "";
     const k = n === "a few" ? 3 : n === "a couple of" ? 2 : parseInt(n, 10);
-    day = addDays(startOfDay(now), k || 1);
+    day = addDays(startOfDay(base), k || 1);
   }
 
   const ordinal = lower.match(/\bthe? (\d{1,2})(st|nd|rd|th)\b/);
   if (!day && ordinal) {
     dayMatched = true;
     const d = parseInt(ordinal[1] ?? "1", 10);
-    const thisMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), d));
-    day = d > now.getUTCDate() ? thisMonth : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, d));
+    const thisMonth = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), d));
+    day = d > base.getUTCDate() ? thisMonth : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, d));
   }
 
   const time = text.match(/(\d{1,2}):(\d{2})\s*(am|pm|a\.m\.|p\.m\.)?|(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.)|(?:^|\s)at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i);
   const wordTime = text.match(/\b(noon|midnight|morning|afternoon|evening)\b/i);
   if (!dayMatched && !time && !wordTime) return null;
 
-  if (!day) day = startOfDay(now);
+  if (!day) day = startOfDay(base);
   let hour = 9;
   let minute = 0;
   if (time && !wordTime) {
-    let h = parseInt(time[1] ?? time[3] ?? "9", 10);
-    const mm = time[2] ? parseInt(time[2], 10) : 0;
-    const period = ((time[2] ? time[3] : (time[4] ?? time[8])) ?? "").toLowerCase().replace(/\./g, "");
+    let h = parseInt(time[1] ?? time[4] ?? time[6] ?? "9", 10);
+    const mm = time[2] ? parseInt(time[2], 10) : time[7] ? parseInt(time[7], 10) : 0;
+    const period = (time[3] ?? time[5] ?? time[8] ?? "").toLowerCase().replace(/\./g, "");
     if (period === "pm" && h < 12) h += 12;
     if (period === "am" && h === 12) h = 0;
     hour = h;
@@ -187,7 +223,7 @@ export function resolveDateTime(text: string, now: Date): Date | null {
 
   const result = new Date(day);
   result.setUTCHours(hour, minute, 0, 0);
-  return result;
+  return new Date(result.getTime() - tzOffsetMin * 60_000);
 }
 
 export function resolveDurationMin(text: string): number | null {
@@ -238,7 +274,7 @@ export function extractFromTranscript(segments: TranscribedSegment[], opts: Pars
       for (const { kind, category, re, base } of KIND_PATTERNS) {
         if (!re.test(sentence.text)) continue;
 
-        const due = resolveDateTime(sentence.text, now);
+        const due = resolveDateTime(sentence.text, now, opts.tzOffsetMin ?? 0);
         const durationMin = resolveDurationMin(sentence.text);
 
         // owner inference: "assigned to X" / "send to X" / "for X" mentions
@@ -259,6 +295,21 @@ export function extractFromTranscript(segments: TranscribedSegment[], opts: Pars
         const startAt = kind === "EVENT" && due ? due : undefined;
         const endAt = startAt && durationMin ? new Date(startAt.getTime() + durationMin * 60_000) : undefined;
 
+        // urgency → priority (HIGH for asap/urgent/critical/today, otherwise MEDIUM)
+        let priority: "LOW" | "MEDIUM" | "HIGH" = "MEDIUM";
+        if (URGENCY_RE.test(sentence.text)) priority = "HIGH";
+
+        // dependency / sequencing hints
+        const depMatch = sentence.text.match(DEPENDENCY_RE);
+        const dependency = depMatch ? depMatch[0].trim() : undefined;
+
+        // attendees for events: capitalized names in the sentence other than the owner/speaker
+        let attendees: string[] | undefined;
+        if (kind === "EVENT") {
+          const names = sentence.text.match(/\b([A-Z][a-zA-Z]{2,})\b/g) ?? [];
+          attendees = [...new Set(names.filter((n) => n !== ownerName && !(opts.speakerMap && Object.values(opts.speakerMap).includes(n))))].slice(0, 6);
+        }
+
         items.push({
           kind,
           category,
@@ -268,6 +319,9 @@ export function extractFromTranscript(segments: TranscribedSegment[], opts: Pars
           startAt,
           endAt,
           durationMin: durationMin ?? undefined,
+          priority,
+          attendees,
+          dependency,
           confidence,
           sourceStartMs: local.startMs,
           sourceEndMs: local.endMs,
@@ -278,6 +332,49 @@ export function extractFromTranscript(segments: TranscribedSegment[], opts: Pars
     }
   }
   return items;
+}
+
+/**
+ * Topic + entity mining for searchable indexing and clustering.
+ * Topics = frequent non-stopword nouns; entities = capitalized names with
+ * kind guessing (person / org / project / place) plus mention counts.
+ */
+export function extractTopics(segments: TranscribedSegment[]): TopicStats {
+  const full = segments.map((s) => s.text).join(" ");
+  const words = full.toLowerCase().match(/[a-z][a-z0-9-]{2,}/g) ?? [];
+  const freq = new Map<string, number>();
+  for (const w of words) {
+    if (STOPWORDS.has(w) || DAY_STOPWORDS.has(w)) continue;
+    freq.set(w, (freq.get(w) ?? 0) + 1);
+  }
+  const topics: TopicInfo[] = [...freq.entries()]
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([label, count]) => ({ label, count }));
+
+  const entityFreq = new Map<string, number>();
+  const kinds = new Map<string, EntityInfo["kind"]>();
+  for (const m of full.matchAll(/\b([A-Z][a-z]+(?: [A-Z][a-z]+)?)\b/g)) {
+    const name = m[0];
+    if (STOPWORDS.has(name.toLowerCase())) continue;
+    entityFreq.set(name, (entityFreq.get(name) ?? 0) + 1);
+    kinds.set(name, guessEntityKind(name));
+  }
+  const entities: EntityInfo[] = [...entityFreq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name, count]) => ({ name, kind: kinds.get(name) ?? "person", count }));
+
+  return { topics, entities };
+}
+
+function guessEntityKind(name: string): EntityInfo["kind"] {
+  const lower = name.toLowerCase();
+  if (/(inc|llc|ltd|corp|gmbh|company|group)$/.test(lower) || /stellar|acme|nova/.test(lower)) return "org";
+  if (/(room|office|sf|nyc|bengaluru|london|berlin|office)/.test(lower)) return "place";
+  if (/(project|initiative|program|sprint|migration|launch|beta|roadmap|pipeline|platform|infra|system)/.test(lower)) return "project";
+  return "person";
 }
 
 /** Build the layered summary: 1-line, bullets, decisions, actions, questions, risks. */
