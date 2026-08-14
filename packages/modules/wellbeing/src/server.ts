@@ -314,9 +314,9 @@ export class WellbeingService {
     const sentimentConfidence = confWeight > 0 ? Math.min(0.95, 0.2 + confSum / confWeight) : 0.1;
 
     const sorted = [...msgs].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-    const splitAt = Math.floor(sorted.length * 0.75);
-    const recent = sorted.slice(splitAt);
-    const older = sorted.slice(0, splitAt);
+    const recentCut = windowEnd.getTime() - 6 * 3_600_000;
+    const recent = sorted.filter((m) => m.createdAt.getTime() >= recentCut);
+    const older = sorted.filter((m) => m.createdAt.getTime() < recentCut);
     const meanScore = (list: typeof sorted) => {
       let s = 0;
       let c = 0;
@@ -329,7 +329,7 @@ export class WellbeingService {
       }
       return c > 0 ? s / c : 0;
     };
-    const sentimentTrend = clamp((meanScore(recent) - meanScore(older)) * 2.2, -1, 1);
+    const sentimentTrend = recent.length < 3 || older.length < 3 ? 0 : clamp((meanScore(recent) - meanScore(older)) * 2.2, -1, 1);
 
     const flagged = flags.length;
     const toxicityScore = n > 0 ? clamp((flagged / n) * 12, 0, 1) : 0;
@@ -354,7 +354,7 @@ export class WellbeingService {
     const engagementScore = n > 0 ? 0.3 * activeRatio + 0.2 * (1 - latencyNorm) + 0.2 * threadCompletion + 0.15 * (1 - unansweredNorm) + 0.15 * balance : 0;
 
     const velocity = n / hours;
-    const workload = clamp(velocity / 1.5, 0, 1);
+    const workload = clamp(velocity / 20, 0, 1);
     const temporal = clamp(afterHoursRatio * 1.4, 0, 1);
     const social = 1 - balance;
     const sentimentBurn = clamp((1 - sentimentScore) / 2, 0, 1);
@@ -375,7 +375,7 @@ export class WellbeingService {
     const d2 = clamp(toxicityScore, 0, 0.4);
     const d3 = clamp(burnout, 0, 0.4);
     const d4 = clamp((1 - engagementScore) * 0.6, 0, 0.3);
-    const roomHealthScore = clamp(1 - (d1 + d2 + d3 + d4), 0, 1);
+    const roomHealthScore = clamp(1 - Math.min(d1 + d2 + d3 + d4, 0.85), 0, 1);
     const riskLevel: Risk = roomHealthScore >= 0.75 ? "LOW" : roomHealthScore >= 0.55 ? "MODERATE" : roomHealthScore >= 0.35 ? "HIGH" : "CRITICAL";
     const contributingFactors = [
       { signal: "sentiment", value: sentimentScore, impact: d1 },
@@ -449,6 +449,9 @@ export class WellbeingService {
       windowHours,
       windowStart: metrics.windowStart,
       windowEnd: metrics.windowEnd,
+      messages: metrics.messages,
+      senders: metrics.senders,
+      members: metrics.members,
       sentimentScore: metrics.sentiment.score,
       sentimentTrend: metrics.sentiment.trend,
       sentimentConfidence: metrics.sentiment.confidence,
@@ -485,6 +488,9 @@ export class WellbeingService {
     scopeLabel: string | null;
     windowStart: Date;
     windowEnd: Date;
+    messages: number;
+    senders: number;
+    members: number;
     sentimentScore: number;
     sentimentTrend: number;
     sentimentConfidence: number;
@@ -515,9 +521,9 @@ export class WellbeingService {
       scopeLabel: row.scopeLabel,
       windowStart: row.windowStart,
       windowEnd: row.windowEnd,
-      messages: row.sentimentSampleSize,
-      senders: 0,
-      members: 0,
+      messages: row.messages,
+      senders: row.senders,
+      members: row.members,
       sentiment: {
         score: row.sentimentScore,
         trend: row.sentimentTrend,
@@ -533,13 +539,13 @@ export class WellbeingService {
       },
       engagement: {
         score: row.engagementScore,
-        activeRatio: 0,
+        activeRatio: (engagement.activeRatio as number) ?? 0,
         replyLatencySec: (engagement.replyLatencySec as number) ?? 0,
-        unanswered: 0,
-        threadCompletion: 0,
-        afterHoursRatio: 0,
-        balance: 0,
-        focusScore: 0,
+        unanswered: (engagement.unanswered as number) ?? 0,
+        threadCompletion: (engagement.threadCompletion as number) ?? 0,
+        afterHoursRatio: (engagement.afterHoursRatio as number) ?? 0,
+        balance: (engagement.balance as number) ?? 0,
+        focusScore: (engagement.focusScore as number) ?? 0,
       },
       burnout: { risk: row.burnoutRisk, components: burnoutComponents },
       culture: { alignment: row.cultureAlignment, components: cultureComponents },
@@ -743,19 +749,22 @@ export class WellbeingService {
 
   async evaluateInterventions(channelId?: string): Promise<{ created: number }> {
     await this.assert("CREATE");
-    const scope: Scope = channelId ? ROOM : WORKSPACE;
-    const scopeId = channelId ?? this.workspaceId;
-    let metrics: RoomMetrics;
+    const targets: { scope: Scope; scopeId: string }[] = [];
     if (channelId) {
-      metrics = (await this.getLatest(ROOM, channelId, 24)) ?? (await this.snapshotRoom(channelId, 24));
+      targets.push({ scope: ROOM, scopeId: channelId });
     } else {
-      metrics = (await this.getLatest(WORKSPACE, this.workspaceId, 24)) ?? (await this.snapshotWorkspace(24));
+      const rooms = await prisma.chatChannel.findMany({ where: { workspaceId: this.workspaceId, archivedAt: null } });
+      targets.push({ scope: WORKSPACE, scopeId: this.workspaceId });
+      for (const room of rooms) targets.push({ scope: ROOM, scopeId: room.id });
     }
-
-    const existing = await prisma.wellnessIntervention.findMany({
-      where: { workspaceId: this.workspaceId, scope, scopeId, status: { in: ["SUGGESTED", "ACKNOWLEDGED", "SNOOZED"] } },
-    });
-    const activeKinds = new Set<string>(existing.filter((i) => !i.snoozedUntil || i.snoozedUntil > new Date()).map((i) => i.kind));
+    let created = 0;
+    for (const target of targets) {
+      const metrics =
+        (await this.getLatest(target.scope, target.scopeId, 24)) ?? (await (target.scope === ROOM ? this.snapshotRoom(target.scopeId, 24) : this.snapshotWorkspace(24)));
+      const existing = await prisma.wellnessIntervention.findMany({
+        where: { workspaceId: this.workspaceId, scope: target.scope, scopeId: target.scopeId, status: { in: ["SUGGESTED", "ACKNOWLEDGED", "SNOOZED"] } },
+      });
+      const activeKinds = new Set<string>(existing.filter((i) => !i.snoozedUntil || i.snoozedUntil > new Date()).map((i) => i.kind));
 
     type Rule = { kind: string; severity: Risk; title: string; message: string; actions?: string[]; fires: boolean };
     const rules: Rule[] = [
@@ -823,9 +832,10 @@ export class WellbeingService {
       await prisma.wellnessIntervention.create({
         data: {
           workspaceId: this.workspaceId,
-          scope,
-          scopeId,
-          kind: rule.kind as Prisma.WellnessInterventionCreateInput["kind"],          severity: rule.severity,
+          scope: target.scope,
+          scopeId: target.scopeId,
+          kind: rule.kind as Prisma.WellnessInterventionCreateInput["kind"],
+          severity: rule.severity,
           title: rule.title,
           message: rule.message,
           actions: (rule.actions ?? []) as Prisma.InputJsonValue,
@@ -834,7 +844,8 @@ export class WellbeingService {
       });
       created++;
     }
-    if (created > 0) await this.audit("CREATE", "WellnessIntervention", scopeId);
+    }
+    if (created > 0) await this.audit("CREATE", "WellnessIntervention", this.workspaceId);
     return { created };
   }
 

@@ -21,7 +21,7 @@ function Bar({ label, value, color = "var(--nv-color-primary)", invert }: { labe
     <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 90 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, opacity: 0.75 }}>
         <span>{label}</span>
-        <span style={{ fontWeight: 700 }}>{pct(invert ? fill : value)}</span>
+        <span style={{ fontWeight: 700 }}>{pct(value)}</span>
       </div>
       <div style={{ height: 7, borderRadius: 4, background: "var(--nv-color-surface)", overflow: "hidden" }}>
         <div
@@ -211,10 +211,10 @@ export function WellbeingClient({ initial }: { initial: OverviewResponse }) {
           </div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <Bar label="Room health" value={ws.fusion.roomHealthScore} color="#22c55e" />
-            <Bar label="Sentiment" value={ws.sentiment.score} color="#3b82f6" invert />
-            <Bar label="Toxicity" value={ws.toxicity.score} color="#ef4444" invert />
+            <Bar label="Sentiment" value={(ws.sentiment.score + 1) / 2} color="#3b82f6" />
+            <Bar label="Toxicity" value={ws.toxicity.score} color="#ef4444" />
             <Bar label="Engagement" value={ws.engagement.score} color="#8b5cf6" />
-            <Bar label="Burnout" value={ws.burnout.risk} color="#f97316" invert />
+            <Bar label="Burnout" value={ws.burnout.risk} color="#f97316" />
             <Bar label="Culture alignment" value={ws.culture.alignment} color="#eab308" />
           </div>
           {ws.fusion.teamStressScore != null && (
@@ -261,9 +261,9 @@ export function WellbeingClient({ initial }: { initial: OverviewResponse }) {
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.6, minHeight: 14 }}>{room.topic}</div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <Bar label="Sentiment" value={room.sentimentScore} color="#3b82f6" invert />
+                  <Bar label="Sentiment" value={(room.sentimentScore + 1) / 2} color="#3b82f6" />
                   <Bar label="Engagement" value={room.engagementScore} color="#8b5cf6" />
-                  <Bar label="Burnout" value={room.burnoutRisk} color="#f97316" invert />
+                  <Bar label="Burnout" value={room.burnoutRisk} color="#f97316" />
                 </div>
                 <div style={{ display: "flex", gap: 16, fontSize: 11, opacity: 0.8 }}>
                   <span>sent <Delta v={room.trend?.sentiment} /></span>

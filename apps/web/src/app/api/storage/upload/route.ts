@@ -51,6 +51,7 @@ export async function POST(request: NextRequest) {
         sizeBytes: buffer.length,
         storageKey: key,
         checksum: checksumOf(buffer),
+        changeSummary: String(formData.get("changeSummary") ?? "") || null,
       })
     : await svc.recordUpload({
         name: file.name,
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
         storageKey: key,
         checksum: checksumOf(buffer),
         parentId,
+        changeSummary: String(formData.get("changeSummary") ?? "") || null,
       });
 
   return NextResponse.json({ id: item.id, name: item.name });

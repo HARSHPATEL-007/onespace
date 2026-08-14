@@ -28,6 +28,79 @@ export interface StorageActions {
   restore: (formData: FormData) => Promise<void>;
   purge: (formData: FormData) => Promise<void>;
   versions: (formData: FormData) => Promise<StorageFileVersion[]>;
+  restoreVersion: (formData: FormData) => Promise<unknown>;
+  approve: (formData: FormData) => Promise<unknown>;
+  placeHold: (formData: FormData) => Promise<unknown>;
+  releaseHold: (formData: FormData) => Promise<unknown>;
+  listHolds: () => Promise<Array<{ id: string; scope: string; objectId: string | null; matterName: string | null; reason: string; placedAt: Date; active: boolean }>>;
+  evidencePack: (formData: FormData) => Promise<unknown>;
+  checkOut: (formData: FormData) => Promise<unknown>;
+  checkIn: (formData: FormData) => Promise<unknown>;
+  setRestrictedDownload: (formData: FormData) => Promise<unknown>;
+  issueHoldNotice: (formData: FormData) => Promise<unknown>;
+  acknowledgeHold: (formData: FormData) => Promise<unknown>;
+  exportLogs: (formData: FormData) => Promise<string>;
+  metrics: () => Promise<unknown>;
+}
+
+export interface StorageMetrics {
+  items: number;
+  folders: number;
+  indexed: number;
+  indexCoverage: number;
+  versions: number;
+  restores: number;
+  accessLogs: number;
+  deniedAttempts: number;
+  activeHolds: number;
+  heldItems: number;
+  holdCoverage: number;
+  complianceLocked: number;
+  immutable: number;
+  approvedVersions: number;
+  trashed: number;
+  restrictedDownloads: number;
+  checkedOut: number;
+  retentionBreakdown: Record<string, number>;
+  chainValid: boolean;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  CURRENT: "#22c55e",
+  SUPERSEDED: "#94a3b8",
+  RECALLED: "#ef4444",
+  APPROVED: "#22c55e",
+  PENDING: "#eab308",
+  DRAFT: "#94a3b8",
+  REJECTED: "#ef4444",
+};
+
+function Chip({ label, color }: { label: string; color?: string }) {
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 800,
+        padding: "2px 8px",
+        borderRadius: 20,
+        border: `1px solid ${color ?? "var(--nv-color-border)"}`,
+        color: color ?? "inherit",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function downloadJson(name: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function StorageApp({
@@ -36,12 +109,14 @@ export function StorageApp({
   parentId,
   folderTargets,
   actions,
+  metrics,
 }: {
   items: StorageItem[];
   crumbs: Array<{ id: string; name: string }>;
   parentId: string | null;
   folderTargets: Array<{ id: string; name: string }>;
   actions: StorageActions;
+  metrics?: StorageMetrics;
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -97,6 +172,20 @@ export function StorageApp({
       .finally(() => setVersionsLoading(false));
   };
 
+  const reloadVersions = (item: StorageItem | null) => {
+    if (!item) return;
+    const fd = new FormData();
+    fd.append("id", item.id);
+    void actions.versions(fd).then(setVersionRows);
+    refresh();
+  };
+
+  const exportEvidence = (item: StorageItem) => {
+    const fd = new FormData();
+    fd.append("id", item.id);
+    void actions.evidencePack(fd).then((pack) => downloadJson(`${item.name}-evidence.json`, pack));
+  };
+
   return (
     <div style={{ maxWidth: 1080, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: "var(--nv-space-5)" }}>
@@ -142,6 +231,19 @@ export function StorageApp({
         ))}
       </div>
 
+      {metrics ? (
+        <div className="nv-card" style={{ display: "flex", flexWrap: "wrap", gap: 20, padding: "10px 16px", marginBottom: "var(--nv-space-4)", fontSize: "var(--nv-font-xs)" }}>
+          <div><b>{metrics.items}</b> files · <b>{metrics.versions}</b> versions</div>
+          <div>Indexed <b>{Math.round(metrics.indexCoverage * 100)}%</b></div>
+          <div><b>{metrics.approvedVersions}</b> approved</div>
+          <div style={metrics.activeHolds > 0 ? { color: "#ef4444" } : undefined}>Holds <b>{metrics.activeHolds}</b> ({metrics.heldItems} files)</div>
+          <div>WORM <b>{metrics.immutable}</b> · locked <b>{metrics.complianceLocked}</b></div>
+          <div>Restricted <b>{metrics.restrictedDownloads}</b> · checked out <b>{metrics.checkedOut}</b></div>
+          <div>Restores <b>{metrics.restores}</b> · denied <b style={metrics.deniedAttempts > 0 ? { color: "#ef4444" } : undefined}>{metrics.deniedAttempts}</b></div>
+          <div>Audit <b>{metrics.accessLogs}</b> entries {metrics.chainValid ? <span style={{ color: "#22c55e" }}>· chain OK</span> : <span style={{ color: "#ef4444" }}>· CHAIN INVALID</span>}</div>
+        </div>
+      ) : null}
+
       <div className="nv-card">
         {items.length === 0 ? (
           <div className="nv-empty">
@@ -174,6 +276,13 @@ export function StorageApp({
                         📄 {item.name}
                       </a>
                     )}
+                    <span style={{ display: "inline-flex", gap: 4, marginLeft: 8, verticalAlign: "middle" }}>
+                      {item.legalHold ? <Chip label="🔒 HOLD" color="#ef4444" /> : null}
+                      {item.immutable ? <Chip label="WORM" color="#f97316" /> : item.retentionMode !== "STANDARD" ? <Chip label={item.retentionMode} color="#eab308" /> : null}
+                      {item.complianceLocked ? <Chip label="LOCKED" color="#f97316" /> : null}
+                      {item.restrictedDownload ? <Chip label="RESTRICTED" color="#a855f7" /> : null}
+                      {item.lockedById ? <Chip label={`✎ ${item.lockedById.slice(0, 8)}`} color="#3b82f6" /> : null}
+                    </span>
                   </TableCell>
                   <TableCell>{item.isFolder ? "—" : formatBytes(item.sizeBytes)}</TableCell>
                   <TableCell>{item.updatedAt.toLocaleDateString()}</TableCell>
@@ -188,6 +297,22 @@ export function StorageApp({
                             Upload new version
                           </MenuItem>
                           <MenuItem onSelect={() => openVersions(item)}>Versions</MenuItem>
+                          <MenuItem onSelect={() => exportEvidence(item)}>Evidence pack</MenuItem>
+                          <MenuItem onSelect={() => {
+                            const fd = new FormData();
+                            fd.append("id", item.id);
+                            void actions[item.lockedById ? "checkIn" : "checkOut"](fd).then(refresh);
+                          }}>
+                            {item.lockedById ? "Check in" : "Check out"}
+                          </MenuItem>
+                          <MenuItem onSelect={() => {
+                            const fd = new FormData();
+                            fd.append("id", item.id);
+                            fd.append("restricted", item.restrictedDownload ? "0" : "1");
+                            void actions.setRestrictedDownload(fd).then(refresh);
+                          }}>
+                            {item.restrictedDownload ? "Allow download" : "Restrict download"}
+                          </MenuItem>
                         </>
                       ) : null}
                       <MenuItem onSelect={() => setRenaming(item)}>Rename</MenuItem>
@@ -299,25 +424,19 @@ export function StorageApp({
           <div className="nv-empty">Loading…</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {versionsOpen ? (
-              <VersionRow
-                label={`v${versionsOpen.version}`}
-                sizeBytes={versionsOpen.sizeBytes}
-                storageKey={versionsOpen.storageKey ?? "—"}
-                date={versionsOpen.updatedAt}
-                current
-              />
-            ) : null}
-            {versionRows.length <= 1 ? (
-              <div className="nv-empty">Only the original version exists.</div>
+            <div style={{ fontSize: 11, opacity: 0.6, paddingBottom: 2 }}>
+              Immutable revision history — status, approval state, restore and recall are tracked per version.
+            </div>
+            {versionRows.length === 0 ? (
+              <div className="nv-empty">No version history.</div>
             ) : (
-              versionRows.map((v, i) => (
+              versionRows.map((v) => (
                 <VersionRow
                   key={v.id}
-                  label={`v${Math.max(1, (versionsOpen?.version ?? 1) - 1 - i)}`}
-                  sizeBytes={v.sizeBytes}
-                  storageKey={v.storageKey}
-                  date={v.createdAt}
+                  version={v}
+                  current={v.versionNumber === versionsOpen?.version}
+                  actions={actions}
+                  onReload={() => reloadVersions(versionsOpen)}
                 />
               ))
             )}
@@ -329,49 +448,99 @@ export function StorageApp({
 }
 
 function VersionRow({
-  label,
-  sizeBytes,
-  storageKey,
-  date,
+  version,
   current = false,
+  actions,
+  onReload,
 }: {
-  label: string;
-  sizeBytes: number;
-  storageKey: string;
-  date: Date;
+  version: StorageFileVersion;
   current?: boolean;
+  actions: StorageActions;
+  onReload: () => void;
 }) {
+  const [busy, setBusy] = useState(false);
+  const doRestore = () => {
+    if (busy) return;
+    setBusy(true);
+    const fd = new FormData();
+    fd.append("id", version.itemId);
+    fd.append("versionNumber", String(version.versionNumber));
+    fd.append("changeSummary", `Restored from v${version.versionNumber}`);
+    void actions
+      .restoreVersion(fd)
+      .then(onReload)
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  };
+  const doApprove = (approval: "APPROVED" | "REJECTED") => {
+    if (busy) return;
+    setBusy(true);
+    const fd = new FormData();
+    fd.append("id", version.itemId);
+    fd.append("versionNumber", String(version.versionNumber));
+    fd.append("approval", approval);
+    void actions
+      .approve(fd)
+      .then(onReload)
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  };
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "center",
-        gap: 12,
+        flexDirection: "column",
+        gap: 6,
         padding: "8px 12px",
-        border: "1px solid var(--nv-color-border)",
+        border: current ? "1px solid var(--nv-color-primary)" : "1px solid var(--nv-color-border)",
         borderRadius: "var(--nv-radius-md)",
       }}
     >
-      <span style={{ fontWeight: 700, minWidth: 44 }}>
-        {label}
-        {current ? " (current)" : ""}
-      </span>
-      <span style={{ fontSize: "var(--nv-font-sm)", minWidth: 70 }}>{formatBytes(sizeBytes)}</span>
-      <span
-        style={{
-          flex: 1,
-          fontSize: "var(--nv-font-xs)",
-          color: "var(--nv-color-text-faint)",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {storageKey}
-      </span>
-      <span style={{ fontSize: "var(--nv-font-xs)", color: "var(--nv-color-text-faint)" }}>
-        {date.toLocaleDateString()}
-      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontWeight: 700, minWidth: 44 }}>v{version.versionNumber}</span>
+        <Chip label={version.status} color={STATUS_COLORS[version.status] ?? undefined} />
+        <Chip label={version.approvalStatus} color={STATUS_COLORS[version.approvalStatus] ?? undefined} />
+        {version.isLocked ? <Chip label="LOCKED" color="#f97316" /> : null}
+        {current ? <Chip label="current" color="#22c55e" /> : null}
+        <span style={{ fontSize: "var(--nv-font-xs)", color: "var(--nv-color-text-faint)", marginLeft: "auto" }}>
+          {formatBytes(version.sizeBytes)} · {version.createdAt.toLocaleDateString()}
+        </span>
+      </div>
+      {version.changeSummary ? (
+        <div style={{ fontSize: "var(--nv-font-xs)", opacity: 0.75 }}>{version.changeSummary}</div>
+      ) : null}
+      {version.recallReason ? (
+        <div style={{ fontSize: "var(--nv-font-xs)", color: "#ef4444" }}>Recalled: {version.recallReason}</div>
+      ) : null}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {!current && version.status !== "RECALLED" ? (
+          <button
+            onClick={doRestore}
+            disabled={busy}
+            style={{ cursor: "pointer", fontSize: 10, padding: "2px 10px", borderRadius: 12, border: "1px solid var(--nv-color-border)", background: "transparent", color: "inherit" }}
+          >
+            Restore this version
+          </button>
+        ) : null}
+        {version.approvalStatus !== "APPROVED" ? (
+          <button
+            onClick={() => doApprove("APPROVED")}
+            disabled={busy}
+            style={{ cursor: "pointer", fontSize: 10, padding: "2px 10px", borderRadius: 12, border: "1px solid #22c55e", background: "transparent", color: "#22c55e" }}
+          >
+            Approve
+          </button>
+        ) : null}
+        {version.approvalStatus !== "REJECTED" ? (
+          <button
+            onClick={() => doApprove("REJECTED")}
+            disabled={busy}
+            style={{ cursor: "pointer", fontSize: 10, padding: "2px 10px", borderRadius: 12, border: "1px solid #ef4444", background: "transparent", color: "#ef4444" }}
+          >
+            Reject
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

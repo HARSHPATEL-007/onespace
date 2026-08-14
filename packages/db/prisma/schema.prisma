@@ -180,6 +180,10 @@ integrations    Integration[]
       environmentalReadings EnvironmentalReading[]
       biometricReadings     BiometricReading[]
       biometricConsents     BiometricConsent[]
+      fileIndexes           FileIndex[]
+      fileAccessLogs        FileAccessLog[]
+      fileLegalHolds        FileLegalHold[]
+      fileLinks             FileLink[]
    }
 
    /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -565,7 +569,7 @@ model Note {
 }
 
 
-/// N0VA CLOUD STORAGE — files, folders, versions.
+/// N0VA CLOUD STORAGE — files, folders, versions, retention, compliance.
 model StorageItem {
   id          String    @id @default(uuid())
   workspaceId String
@@ -579,6 +583,17 @@ model StorageItem {
   checksum    String?
   version     Int       @default(1)
   trashedAt   DateTime?
+  retentionMode String  @default("STANDARD")
+  retainUntil   DateTime?
+  complianceLocked Boolean @default(false)
+  immutable     Boolean @default(false)
+  legalHold     Boolean @default(false)
+  legalHoldReason String?
+  lastAccessedAt DateTime?
+  accessCount   Int     @default(0)
+  lockedById    String?
+  lockedAt      DateTime?
+  restrictedDownload Boolean @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -587,20 +602,137 @@ model StorageItem {
   parent    StorageItem? @relation("StorageFolder", fields: [parentId], references: [id], onDelete: Cascade)
   children  StorageItem[] @relation("StorageFolder")
   versions  StorageFileVersion[]
+  links     FileLink[]
+  fileIndex FileIndex[]
 
   @@index([workspaceId, parentId, trashedAt])
+  @@index([workspaceId, legalHold])
+  @@index([workspaceId, retentionMode])
 }
 
+/// Immutable revision of a file, with status, approval and compliance state.
 model StorageFileVersion {
   id          String   @id @default(uuid())
   itemId      String
   workspaceId String
+  versionNumber Int    @default(0)
+  status      String   @default("CURRENT")
+  approvalStatus String @default("DRAFT")
+  changeSummary String?
   sizeBytes   Int      @default(0)
   storageKey  String
+  checksum    String?
+  createdById String?
+  approvedById  String?
+  approvedAt    DateTime?
+  recalledById  String?
+  recalledAt    DateTime?
+  recallReason  String?
+  isLocked      Boolean @default(false)
   createdAt   DateTime @default(now())
 
   item StorageItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
+  @@index([itemId])
+  @@index([itemId, versionNumber])
+  @@unique([itemId, versionNumber])
+}
+
+/// Content index for files and attachments: extracted text, OCR, entities, topics.
+model FileIndex {
+  id          String   @id @default(uuid())
+  workspaceId String
+  objectType  String
+  objectId    String
+  itemId      String?
+  versionNumber Int    @default(0)
+  filename    String
+  mimeType    String
+  extractedText String?
+  ocrText     String?
+  entities    Json     @default("[]")
+  topics      Json     @default("[]")
+  indexState  String   @default("PENDING")
+  indexedAt   DateTime?
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  item      StorageItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, objectType, objectId])
+  @@index([workspaceId, indexState])
+}
+
+/// Tamper-evident file access audit chain (sha3-512), separate from platform logs.
+model FileAccessLog {
+  id          String   @id @default(uuid())
+  workspaceId String
+  actorId     String?
+  actorName   String?
+  action      String
+  objectType  String
+  objectId    String
+  itemId      String?
+  versionId   String?
+  versionNumber Int?
+  channelId   String?
+  module      String?
+  outcome     String   @default("SUCCESS")
+  policyApplied String?
+  ip          String?
+  userAgent   String?
+  details     Json     @default("{}")
+  hash        String
+  chainPrev   String?
+  chainIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([objectId])
+  @@index([workspaceId, action])
+}
+
+/// Legal hold on files/folders/workspace scope; overrides deletion and retention.
+model FileLegalHold {
+  id          String   @id @default(uuid())
+  workspaceId String
+  scope       String
+  objectId    String?
+  matterName  String?
+  reason      String
+  placedById  String
+  placedAt    DateTime @default(now())
+  noticeIssuedAt DateTime?
+  acknowledgedById String?
+  acknowledgedAt DateTime?
+  releasedById String?
+  releasedAt  DateTime?
+  active      Boolean  @default(true)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, active])
+  @@index([objectId])
+}
+
+/// File-to-context backlinks: thread, decision, task, calendar, approval, message.
+model FileLink {
+  id          String   @id @default(uuid())
+  workspaceId String
+  itemId      String
+  objectType  String
+  objectId    String
+  versionNumber Int?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  item      StorageItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, objectType, objectId, versionNumber])
+  @@index([objectType, objectId])
   @@index([itemId])
 }
 
@@ -4316,6 +4448,7 @@ enum SearchContentType {
   PIN
   BOOKMARK
   ATTACHMENT
+  STORAGE_ITEM
   LIVE_EMBED
   CONTACT
   MEETING
@@ -5521,6 +5654,9 @@ model HealthSnapshot {
   windowHours         Int             @default(24)
   windowStart         DateTime
   windowEnd           DateTime
+  messages            Int             @default(0)
+  senders             Int             @default(0)
+  members             Int             @default(0)
   sentimentScore      Float           @default(0)
   sentimentTrend      Float           @default(0)
   sentimentConfidence Float           @default(0)
