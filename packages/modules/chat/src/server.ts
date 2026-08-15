@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma, logAudit, type Prisma } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 import { publish } from "./emitter";
+import { detectApproval, ApprovalService } from "@n0va/modules-approvals/server";
 import {
   buildHyperContext,
   commitEventProposal,
@@ -512,6 +513,32 @@ export class ChatService {
     await this.applyCompliance(channel, message.id, body, opts?.parentId);
 
     await this.buildHyperContextFor(channel, message.id, message.createdAt, message.createdById);
+
+    // Approval intent detection (best-effort: must never break messaging).
+    try {
+      const detection = await detectApproval({
+        workspaceId: this.workspaceId,
+        userId: this.userId,
+        role: this.role,
+        channelId,
+        channelName: channel.name,
+        channelTopic: (channel as { topic?: string | null }).topic ?? null,
+        messageId: message.id,
+        body,
+        attachments: message.attachments.map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType ?? null })),
+      });
+      if (detection) {
+        const approvalSvc = new ApprovalService(this.workspaceId, this.userId, this.role);
+        await approvalSvc.handleMessageDetection(detection, {
+          channelId,
+          channelName: channel.name,
+          sourceMessageId: message.id,
+          requesterName: authorName,
+        });
+      }
+    } catch {
+      // best-effort
+    }
 
     const payload = {
       type: "message" as const,

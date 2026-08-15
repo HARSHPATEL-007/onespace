@@ -184,6 +184,13 @@ integrations    Integration[]
       fileAccessLogs        FileAccessLog[]
       fileLegalHolds        FileLegalHold[]
       fileLinks             FileLink[]
+      approvalRequests      ApprovalRequest[]
+      approvalPolicyRules   ApprovalPolicyRule[]
+      approvalAuditEntries  ApprovalAuditEntry[]
+      approvalComments      ApprovalComment[]
+      approvalConfig        WorkspaceApprovalConfig?
+      purchaseOrders        PurchaseOrder[]
+      paymentSchedules      PaymentSchedule[]
    }
 
    /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -234,7 +241,13 @@ createdCalendarEvents CalendarEvent[]
   ticketReplies        TicketReply[]
   createdDeals         Deal[]
   createdSubscriptions Subscription[]
-  createdPayments      Payment[]
+  createdPayments       Payment[]
+  approvalDecisions     ApprovalRequest[] @relation("ApprovalDecider")
+  approvalComments      ApprovalComment[] @relation("ApprovalCommentAuthor")
+  approvalAuditActors   ApprovalAuditEntry[] @relation("ApprovalAuditActor")
+  requestedPurchaseOrders PurchaseOrder[] @relation("PORequester")
+  approvedPurchaseOrders  PurchaseOrder[] @relation("POApprover")
+  createdPolicyRules    ApprovalPolicyRule[] @relation("ApprovalRuleCreator")
   createdCampaigns     Campaign[]
   healthCheckins       HealthCheckin[]
   createdVideoPlaylists VideoPlaylist[] @relation("createdVideoPlaylists")
@@ -267,6 +280,7 @@ createdCalendarEvents CalendarEvent[]
       chatGovernanceAssignments ChatGovernanceAssignment[]
       approvalRequests ChatApproval[] @relation("ApprovalRequestedBy")
       approvalReviews ChatApproval[] @relation("ApprovalReviewedBy")
+      businessApprovalRequests ApprovalRequest[] @relation("ApprovalRequester")
       contactChatLinks ContactChatLink[]
       neuralConsentScopes NeuralConsentScope[]
       neuralStateRecords NeuralStateRecord[]
@@ -737,6 +751,188 @@ model FileLink {
 }
 
 
+/// N0VA APPROVALS — AI-detected, policy-routed decision workflows.
+
+/// Canonical approval workflow record raised from chat or module events.
+model ApprovalRequest {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  requestType   String
+  sourceMessageId String?
+  sourceChannelId String?
+  requesterId   String
+  requesterName String?
+  amountCents   Int?
+  currency      String   @default("USD")
+  policyRuleId  String?
+  policyRuleName String?
+  thresholdCents Int?
+  costCenter    String?
+  rationale     String?
+  evidence      Json     @default("[]")
+  status        String   @default("DETECTED")
+  approverChain Json     @default("[]")
+  currentApproverIndex Int @default(0)
+  dueAt         DateTime?
+  escalationAt  DateTime?
+  lastRemindedAt DateTime?
+  decisionAt    DateTime?
+  decisionNote  String?
+  decisionById  String?
+  erpReference  String?
+  erpSyncStatus String   @default("NOT_SYNCED")
+  erpSyncAttempts Int    @default(0)
+  erpSyncError  String?
+  retryUntil    DateTime?
+  downstreamStatus String @default("NONE")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requester   User?       @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: Restrict)
+  decisionBy  User?       @relation("ApprovalDecider", fields: [decisionById], references: [id], onDelete: SetNull)
+  sourceMessage ChatMessage? @relation(fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  auditEntries ApprovalAuditEntry[]
+  comments     ApprovalComment[]
+  purchaseOrders PurchaseOrder[]
+  paymentSchedules PaymentSchedule[] @relation("ApprovalPayments")
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, sourceChannelId, status])
+  @@index([status, dueAt])
+  @@index([workspaceId, erpSyncStatus])
+}
+
+/// Policy matrix: thresholds, approvers, SLAs per request type.
+model ApprovalPolicyRule {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  name          String
+  requestType   String
+  minAmountCents Int?
+  maxAmountCents Int?
+  costCenter    String?
+  approverRole  String?
+  approverUserId String?
+  backupUserId  String?
+  slaMinutes    Int      @default(1440)
+  priority      Int      @default(10)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("ApprovalRuleCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById String?
+
+  @@index([workspaceId, active, requestType])
+}
+
+/// Tamper-evident approval trail (sha3-512 hash chain, per workspace).
+model ApprovalAuditEntry {
+  id          String   @id @default(uuid())
+  workspaceId String
+  approvalId  String
+  actorId     String?
+  actorName   String?
+  action      String
+  fromStatus  String?
+  toStatus    String?
+  details     Json     @default("{}")
+  hash        String
+  chainPrev   String?
+  chainIndex  Int
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approval  ApprovalRequest @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  actor     User?     @relation("ApprovalAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, chainIndex])
+  @@index([approvalId, chainIndex])
+}
+
+/// Comment / request-info thread on an approval.
+model ApprovalComment {
+  id          String   @id @default(uuid())
+  workspaceId String
+  approvalId  String
+  authorId    String
+  authorName  String?
+  body        String
+  kind        String   @default("COMMENT")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approval  ApprovalRequest @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  author    User?     @relation("ApprovalCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([approvalId])
+}
+
+/// Workspace-level approval config: ERP target and defaults.
+model WorkspaceApprovalConfig {
+  workspaceId String   @id
+  erpProvider String   @default("MOCK")
+  erpIntegrationId String?
+  autoRaiseThresholdCents Int?
+  defaultSlaMinutes Int @default(1440)
+  nudgeBeforeMinutes Int @default(120)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+/// Mock ERP — purchase orders.
+model PurchaseOrder {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  poNumber      String
+  vendorName    String
+  description   String?
+  amountCents   Int
+  currency      String   @default("USD")
+  status        String   @default("DRAFT")
+  approvalId    String?
+  requestedById String?
+  approvedById  String?
+  approvedAt    DateTime?
+  releasedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approval  ApprovalRequest? @relation(fields: [approvalId], references: [id], onDelete: SetNull)
+  payments  PaymentSchedule[]
+  requester User? @relation("PORequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  approver  User? @relation("POApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
+/// Mock ERP — scheduled payments (downstream of approved invoices/POs/expenses).
+model PaymentSchedule {
+  id          String   @id @default(uuid())
+  workspaceId String
+  poId        String?
+  invoiceId   String?
+  approvalId  String?
+  amountCents Int
+  currency    String   @default("USD")
+  status      String   @default("SCHEDULED")
+  scheduledAt DateTime @default(now())
+  paidAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  po        PurchaseOrder? @relation(fields: [poId], references: [id], onDelete: SetNull)
+  approval  ApprovalRequest? @relation("ApprovalPayments", fields: [approvalId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+}
+
 /// N0VA TASKS — lists and tasks.
 model TaskList {
   id          String    @id @default(uuid())
@@ -898,6 +1094,7 @@ model ChatMessage {
   sentimentRecords SentimentRecord[]
   toxicityFlags ToxicityFlag[]
   smartReplySuggestions SmartReplySuggestion[]
+  approvalRequests ApprovalRequest[]
 
   @@index([channelId, createdAt(sort: Desc)])
   @@index([parentId])

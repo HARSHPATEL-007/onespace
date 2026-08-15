@@ -1,6 +1,7 @@
 "use server";
 
 import { ChatService, channelSchema, channelMetaSchema, messageSchema, reactionSchema, channelIdSchema, savedSearchSchema } from "@n0va/modules-chat/server";
+import { ApprovalService } from "@n0va/modules-approvals/server";
 import { messageCreated } from "@n0va/modules-events";
 import { getEventBus } from "@/lib/eventbus";
 import { actionContext, requireActionContext } from "@/lib/action-context";
@@ -355,5 +356,55 @@ export async function governanceAction(input: GovernanceInput) {
       return chat.exportMessages({ scope: input.exportScope ?? "CHANNEL", channelId: input.channelId, since: input.since });
     default:
       throw new Error("Unknown governance op");
+  }
+}
+
+// ── Approval decision routing ────────────────────────────────────────────
+
+export interface ApprovalInput {
+  op: "decide" | "comment" | "provideInfo" | "cancel" | "forceSync" | "listForChannel" | "pendingCounts" | "listPolicies" | "createPolicy" | "updatePolicy" | "deletePolicy" | "getConfig" | "setConfig" | "metrics";
+  approvalId?: string;
+  decision?: string;
+  note?: string;
+  body?: string;
+  channelId?: string;
+  input?: Record<string, unknown>;
+  ruleId?: string;
+}
+
+export async function approvalAction(input: ApprovalInput) {
+  const { workspaceId, userId, role } = await actionContext();
+  const svc = new ApprovalService(workspaceId, userId, role);
+  switch (input.op) {
+    case "decide":
+      return svc.decide(input.approvalId!, input.decision!, input.note);
+    case "comment":
+      return svc.comment(input.approvalId!, input.body!);
+    case "provideInfo":
+      return svc.provideInfo(input.approvalId!, input.body!);
+    case "cancel":
+      return svc.cancel(input.approvalId!, input.note);
+    case "forceSync":
+      return svc.forceSync(input.approvalId!);
+    case "listForChannel":
+      return svc.listForChannel(input.channelId!);
+    case "pendingCounts":
+      return svc.pendingCountsByChannel();
+    case "listPolicies":
+      return svc.listPolicies();
+    case "createPolicy":
+      return svc.createPolicy(input.input as never);
+    case "updatePolicy":
+      return svc.updatePolicy(input.ruleId!, input.input ?? {});
+    case "deletePolicy":
+      return svc.deletePolicy(input.ruleId!);
+    case "getConfig":
+      return svc.config();
+    case "setConfig":
+      return svc.setConfig(input.input ?? {});
+    case "metrics":
+      return svc.metrics();
+    default:
+      throw new Error("Unknown approval op");
   }
 }

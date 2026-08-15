@@ -1,4 +1,5 @@
 import { ChatService, REACTION_EMOJIS } from "@n0va/modules-chat/server";
+import { ApprovalService } from "@n0va/modules-approvals/server";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { requireWorkspace } from "@/lib/context";
 import { auth } from "@n0va/auth";
@@ -25,6 +26,7 @@ import {
   setPresenceAction,
   governanceAction,
   hyperAction,
+  approvalAction,
 } from "./actions";
 
 export default async function ChatPage({
@@ -71,6 +73,12 @@ export default async function ChatPage({
     }
   }
 
+  const approvalSvc = new ApprovalService(workspaceId, userId, role);
+  const [approvalPendingCounts, channelApprovals] = await Promise.all([
+    approvalSvc.pendingCountsByChannel().catch(() => ({} as Record<string, number>)),
+    activeChannelId ? approvalSvc.listForChannel(activeChannelId).catch(() => []) : Promise.resolve([]),
+  ]);
+
   return (
     <ChatPanel
       workspaceId={workspaceId}
@@ -82,6 +90,8 @@ export default async function ChatPage({
       unread={unread}
       reactionEmojis={[...REACTION_EMOJIS]}
       initialPresence={initialPresence}
+      approvalPendingCounts={approvalPendingCounts}
+      channelApprovals={channelApprovals}
       actions={{
         createChannel: createChannelAction,
         createDm: createDmAction,
@@ -104,6 +114,7 @@ export default async function ChatPage({
         setPresence: setPresenceAction,
         governance: governanceAction,
         hyper: hyperAction,
+        approval: approvalAction,
       }}
       token={token}
     />

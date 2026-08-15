@@ -65,6 +65,10 @@ export function approvalRequested(payload: Record<string, unknown>, opts: Normal
   return build(EVENT_TYPES.APPROVAL_REQUESTED, "1.0", payload, opts);
 }
 
+export function approvalDecision(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.APPROVAL_DECIDED, "1.0", payload, opts);
+}
+
 export function invoiceFlagged(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.INVOICE_FLAGGED, "1.0", payload, opts);
 }

@@ -47,6 +47,9 @@ importers:
       '@n0va/modules-ani':
         specifier: workspace:*
         version: link:../../packages/modules/ani
+      '@n0va/modules-approvals':
+        specifier: workspace:*
+        version: link:../../packages/modules/approvals
       '@n0va/modules-appscript':
         specifier: workspace:*
         version: link:../../packages/modules/appscript
@@ -447,6 +450,52 @@ importers:
         specifier: ^5.8.0
         version: 5.9.3
 
+  packages/modules/approvals:
+    dependencies:
+      '@n0va/authz':
+        specifier: workspace:*
+        version: link:../../authz
+      '@n0va/db':
+        specifier: workspace:*
+        version: link:../../db
+      '@n0va/modules-events':
+        specifier: workspace:*
+        version: link:../events
+      '@n0va/modules-n0va1o':
+        specifier: workspace:*
+        version: link:../n0va1o
+      '@n0va/modules-notification-engine':
+        specifier: workspace:*
+        version: link:../notification-engine
+      '@n0va/modules-tasks':
+        specifier: workspace:*
+        version: link:../tasks
+      '@n0va/ui':
+        specifier: workspace:*
+        version: link:../../ui
+      next:
+        specifier: ^15.3.0
+        version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.8(react@19.2.8)
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.18
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
+
   packages/modules/appscript:
     dependencies:
       '@n0va/authz':
@@ -623,6 +672,9 @@ importers:
       '@n0va/db':
         specifier: workspace:*
         version: link:../../db
+      '@n0va/modules-approvals':
+        specifier: workspace:*
+        version: link:../approvals
       '@n0va/ui':
         specifier: workspace:*
         version: link:../../ui

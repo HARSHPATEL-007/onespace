@@ -62,6 +62,7 @@ export const EVENT_TYPES = {
   TASK_COMPLETED: "task.completed",
   CALENDAR_EVENT_SCHEDULED: "calendar.event.scheduled",
   APPROVAL_REQUESTED: "approval.requested",
+  APPROVAL_DECIDED: "approval.decision",
   INVOICE_FLAGGED: "invoice.flagged",
   CONNECTOR_SYNC_FAILED: "connector.sync.failed",
   CRM_LEAD_UPDATED: "crm.lead.updated",
@@ -106,6 +107,10 @@ export const EVENT_SCHEMAS: Record<string, { currentVersion: string; required: s
   [EVENT_TYPES.APPROVAL_REQUESTED]: {
     currentVersion: "1.0",
     required: ["approvalId", "requestType", "requestedBy"],
+  },
+  [EVENT_TYPES.APPROVAL_DECIDED]: {
+    currentVersion: "1.0",
+    required: ["approvalId", "requestType", "decision", "decidedBy"],
   },
   [EVENT_TYPES.INVOICE_FLAGGED]: {
     currentVersion: "1.0",

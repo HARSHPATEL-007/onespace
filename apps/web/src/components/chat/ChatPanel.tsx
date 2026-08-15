@@ -13,7 +13,8 @@ import { AISlashCommandMenu } from "./AISlashCommandMenu";
 import "./chat-adaptive.css";
 import { GovernancePanel } from "./GovernancePanel";
 import { HypercontextPanel } from "./HypercontextPanel";
-import type { GovernanceInput, HyperInput } from "@/app/(app)/m/chat/actions";
+import type { GovernanceInput, HyperInput, ApprovalInput } from "@/app/(app)/m/chat/actions";
+import { ApprovalCard, type ApprovalView } from "@n0va/modules-approvals/components";
 
 export interface ChatActions {
   createChannel: (formData: FormData) => Promise<void>;
@@ -37,6 +38,7 @@ export interface ChatActions {
   setPresence: (formData: FormData) => Promise<void>;
   governance: (input: GovernanceInput) => Promise<unknown>;
   hyper: (input: HyperInput) => Promise<unknown>;
+  approval: (input: ApprovalInput) => Promise<unknown>;
 }
 
 const TTL_OPTIONS = [
@@ -149,6 +151,8 @@ export function ChatPanel({
   actions,
   token,
   initialPresence = {},
+  approvalPendingCounts = {},
+  channelApprovals = [],
 }: {
   workspaceId: string;
   userId: string;
@@ -161,8 +165,26 @@ export function ChatPanel({
   actions: ChatActions;
   token: string;
   initialPresence?: Record<string, string>;
+  approvalPendingCounts?: Record<string, number>;
+  channelApprovals?: ApprovalView[];
 }) {
   const router = useRouter();
+  const approvalsByMessage = useMemo(() => {
+    const map: Record<string, ApprovalView> = {};
+    for (const a of channelApprovals) if (a.sourceMessageId) map[a.sourceMessageId] = a;
+    return map;
+  }, [channelApprovals]);
+  const approvalActions: {
+    decide: (id: string, d: "APPROVED" | "REJECTED", note?: string) => Promise<unknown>;
+    cancel: (id: string) => Promise<unknown>;
+    forceSync: (id: string) => Promise<unknown>;
+    refresh: () => void;
+  } = {
+    decide: (id, d, note) => actions.approval({ op: "decide", approvalId: id, decision: d, note }),
+    cancel: (id) => actions.approval({ op: "cancel", approvalId: id }),
+    forceSync: (id) => actions.approval({ op: "forceSync", approvalId: id }),
+    refresh: () => router.refresh(),
+  };
   type LiveMsg = ChatMessage & { attachments?: Array<{ id: string; filename: string; mimeType: string; sizeBytes: number; storageKey: string; thumbnailKey?: string | null; }> };
   const [liveMessages, setLiveMessages] = useState<LiveMsg[]>([]);
   const [presence, setPresence] = useState<Record<string, string>>(initialPresence);
@@ -609,6 +631,9 @@ export function ChatPanel({
                   {unreadCount > 0 && activeChannelId !== c.id ? (
                     <span className="nv-badge nv-badge-amber">{unreadCount}</span>
                   ) : null}
+                  {(approvalPendingCounts[c.id] ?? 0) > 0 ? (
+                    <span className="nv-badge" title="Pending approvals" style={{ background: "var(--nv-color-primary-alpha)", color: "var(--nv-color-primary)" }}>⏳ {approvalPendingCounts[c.id] ?? 0}</span>
+                  ) : null}
                   <span className="nv-channel-count" style={{ color: "var(--nv-color-text-faint)", fontSize: 12 }}>{c._count.messages}</span>
                 </a>
                 {c.kind === "CHANNEL" && (c.createdById === userId) ? (
@@ -699,6 +724,7 @@ export function ChatPanel({
             const prev = idx > 0 ? messages[idx - 1] : null;
             const showHeader = !prev || prev.createdById !== m.createdById || !isSameMinute(prev.createdAt, m.createdAt);
             const isEditing = editing === m.id;
+            const approval = approvalsByMessage[m.id];
             return (
               <div key={m.id}>
                 {showHeader ? (
@@ -735,6 +761,9 @@ export function ChatPanel({
                           <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m)}</div>
                         )}
                         {renderAttachments(m)}
+                        {approval && (
+                          <ApprovalCard approval={approval} currentUserId={userId} onAction={approvalActions} />
+                        )}
                       </div>
                       {renderReactions(m)}
                     </div>
