@@ -5,6 +5,7 @@ import { ApprovalService } from "@n0va/modules-approvals/server";
 import { messageCreated } from "@n0va/modules-events";
 import { getEventBus } from "@/lib/eventbus";
 import { actionContext, requireActionContext } from "@/lib/action-context";
+import { getDeliveryEngine, resolvePolicy, listPolicies, upsertPolicy, deletePolicy, resetPolicies, matrixRows, breakerStates, resetBreaker, quotaState, resetQuota, listDlq, replayDlq, resolveDlq, dropDlq } from "@n0va/modules-chat/delivery";
 
 const svc = async () => {
   const { workspaceId, userId, role } = await actionContext();
@@ -406,5 +407,71 @@ export async function approvalAction(input: ApprovalInput) {
       return svc.metrics();
     default:
       throw new Error("Unknown approval op");
+  }
+}
+
+// ── Delivery matrix ─────────────────────────────────────────────────────────
+
+export interface DeliveryInput {
+  op:
+    | "listDeliveries" | "retryDelivery" | "cancelDelivery" | "deliveryAttempts"
+    | "stats" | "deliverDue"
+    | "listPolicies" | "upsertPolicy" | "deletePolicy" | "resetPolicies" | "matrix"
+    | "listDlq" | "replayDlq" | "resolveDlq" | "dropDlq"
+    | "breakerStates" | "resetBreaker"
+    | "quotaState" | "resetQuota";
+  deliveryId?: string;
+  channelId?: string;
+  state?: string;
+  target?: string;
+  channelKind?: string;
+  patch?: Record<string, unknown>;
+  path?: "read" | "write";
+}
+
+export async function deliveryAction(input: DeliveryInput) {
+  const { workspaceId } = await requireActionContext();
+  const engine = getDeliveryEngine();
+  switch (input.op) {
+    case "listDeliveries":
+      return engine.deliveries(workspaceId, input.channelId, input.state);
+    case "retryDelivery":
+      return engine.retryDelivery(input.deliveryId!);
+    case "cancelDelivery":
+      return engine.cancelDelivery(input.deliveryId!);
+    case "deliveryAttempts":
+      return engine.deliveryAttempts(input.deliveryId!);
+    case "stats":
+      return engine.stats(workspaceId);
+    case "deliverDue":
+      return engine.deliverDue(new Date());
+    case "listPolicies":
+      return listPolicies(workspaceId);
+    case "upsertPolicy":
+      return upsertPolicy(workspaceId, (input.channelKind as "CHANNEL" | "DM" | "ANNOUNCEMENT" | "ALL") ?? "ALL", (input.target as "chat" | "notifications" | "approvals" | "telemetry" | "media" | "voice" | "broker" | "connector") ?? "chat", input.patch ?? {});
+    case "deletePolicy":
+      return deletePolicy(workspaceId, (input.channelKind as "CHANNEL" | "DM" | "ANNOUNCEMENT" | "ALL") ?? "ALL", (input.target as "chat" | "notifications" | "approvals" | "telemetry" | "media" | "voice" | "broker" | "connector") ?? "chat");
+    case "resetPolicies":
+      return resetPolicies(workspaceId);
+    case "matrix":
+      return matrixRows();
+    case "listDlq":
+      return listDlq(workspaceId, input.state);
+    case "replayDlq":
+      return replayDlq(workspaceId, input.deliveryId!);
+    case "resolveDlq":
+      return resolveDlq(workspaceId, input.deliveryId!);
+    case "dropDlq":
+      return dropDlq(workspaceId, input.deliveryId!);
+    case "breakerStates":
+      return breakerStates(workspaceId);
+    case "resetBreaker":
+      return resetBreaker(workspaceId, input.target!, input.path ?? "write");
+    case "quotaState":
+      return quotaState(workspaceId);
+    case "resetQuota":
+      return resetQuota(workspaceId);
+    default:
+      throw new Error("Unknown delivery op");
   }
 }

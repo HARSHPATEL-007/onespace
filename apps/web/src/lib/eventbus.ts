@@ -7,8 +7,13 @@
  */
 import { createBroker, createEventBus, type EventBusServer } from "@n0va/modules-events/server";
 import { startApprovalSweep } from "@n0va/modules-approvals/sweep";
+import { startDeliverySweep } from "@n0va/modules-chat/delivery";
 
-const globalForBus = globalThis as unknown as { __n0vaEventBus?: EventBusServer; __n0vaApprovalSweep?: { stop: () => void } };
+const globalForBus = globalThis as unknown as {
+  __n0vaEventBus?: EventBusServer;
+  __n0vaApprovalSweep?: { stop: () => void };
+  __n0vaDeliverySweep?: { stop: () => void };
+};
 
 export function getEventBus(): EventBusServer {
   if (!globalForBus.__n0vaEventBus) {
@@ -21,6 +26,9 @@ export function getEventBus(): EventBusServer {
     if (!globalForBus.__n0vaApprovalSweep) {
       globalForBus.__n0vaApprovalSweep = startApprovalSweep({ intervalMs: 60_000 });
     }
+    if (!globalForBus.__n0vaDeliverySweep) {
+      globalForBus.__n0vaDeliverySweep = startDeliverySweep({ intervalMs: 15_000 });
+    }
   }
   return globalForBus.__n0vaEventBus;
 }
@@ -32,4 +40,6 @@ export async function stopEventBus(): Promise<void> {
   }
   globalForBus.__n0vaApprovalSweep?.stop();
   globalForBus.__n0vaApprovalSweep = undefined;
+  globalForBus.__n0vaDeliverySweep?.stop();
+  globalForBus.__n0vaDeliverySweep = undefined;
 }

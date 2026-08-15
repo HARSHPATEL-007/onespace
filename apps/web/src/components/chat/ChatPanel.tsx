@@ -13,7 +13,7 @@ import { AISlashCommandMenu } from "./AISlashCommandMenu";
 import "./chat-adaptive.css";
 import { GovernancePanel } from "./GovernancePanel";
 import { HypercontextPanel } from "./HypercontextPanel";
-import type { GovernanceInput, HyperInput, ApprovalInput } from "@/app/(app)/m/chat/actions";
+import type { GovernanceInput, HyperInput, ApprovalInput, DeliveryInput } from "@/app/(app)/m/chat/actions";
 import { ApprovalCard, type ApprovalView } from "@n0va/modules-approvals/components";
 
 export interface ChatActions {
@@ -39,7 +39,32 @@ export interface ChatActions {
   governance: (input: GovernanceInput) => Promise<unknown>;
   hyper: (input: HyperInput) => Promise<unknown>;
   approval: (input: ApprovalInput) => Promise<unknown>;
+  delivery: (input: DeliveryInput) => Promise<unknown>;
 }
+
+export interface DeliveryView {
+  id: string;
+  state: string;
+  attemptCount: number;
+  maxAttempts: number;
+  lastError: string | null;
+  deliveredCount: number;
+  targetCount: number;
+  deliveredAt: string | null;
+  correlationId: string;
+}
+
+const DELIVERY_STATE_META: Record<string, { label: string; color: string }> = {
+  PENDING: { label: "pending", color: "var(--nv-color-text-faint)" },
+  SENDING: { label: "sending", color: "var(--nv-color-warning)" },
+  QUEUED: { label: "queued", color: "var(--nv-color-warning)" },
+  DELAYED: { label: "delayed", color: "var(--nv-color-warning)" },
+  RETRIED: { label: "retried", color: "var(--nv-color-warning)" },
+  PARTIALLY_DELIVERED: { label: "partial", color: "var(--nv-color-warning)" },
+  FAILED: { label: "failed", color: "var(--nv-color-danger)" },
+  CONFIRMED: { label: "delivered", color: "var(--nv-color-success)" },
+  CANCELLED: { label: "cancelled", color: "var(--nv-color-text-faint)" },
+};
 
 const TTL_OPTIONS = [
   { label: "Off", seconds: 0 },
@@ -153,6 +178,7 @@ export function ChatPanel({
   initialPresence = {},
   approvalPendingCounts = {},
   channelApprovals = [],
+  deliveryMap = {},
 }: {
   workspaceId: string;
   userId: string;
@@ -167,6 +193,7 @@ export function ChatPanel({
   initialPresence?: Record<string, string>;
   approvalPendingCounts?: Record<string, number>;
   channelApprovals?: ApprovalView[];
+  deliveryMap?: Record<string, DeliveryView>;
 }) {
   const router = useRouter();
   const approvalsByMessage = useMemo(() => {
@@ -184,6 +211,47 @@ export function ChatPanel({
     cancel: (id) => actions.approval({ op: "cancel", approvalId: id }),
     forceSync: (id) => actions.approval({ op: "forceSync", approvalId: id }),
     refresh: () => router.refresh(),
+  };
+  const retryDelivery = (deliveryId: string) => {
+    void actions.delivery({ op: "retryDelivery", deliveryId }).then(() => router.refresh()).catch(() => {});
+  };
+  const cancelDelivery = (deliveryId: string) => {
+    void actions.delivery({ op: "cancelDelivery", deliveryId }).then(() => router.refresh()).catch(() => {});
+  };
+  const deliveryBadge = (m: ChatMessage) => {
+    const d = deliveryMap[m.id];
+    if (!d) return null;
+    const meta = DELIVERY_STATE_META[d.state] ?? { label: d.state.toLowerCase(), color: "var(--nv-color-text-faint)" };
+    return (
+      <span
+        title={d.lastError ?? `correlation ${d.correlationId}`}
+        style={{
+          color: meta.color, fontSize: 10, border: `1px solid ${meta.color}`, borderRadius: 999,
+          padding: "0 6px", cursor: "default",
+        }}
+      >
+        {meta.label}
+        {d.state === "FAILED" && (
+          <>
+            {" "}
+            <button
+              onClick={(e) => { e.stopPropagation(); retryDelivery(d.id); }}
+              title="Retry delivery"
+              style={{ border: "none", background: "none", color: "inherit", cursor: "pointer", fontSize: 10, padding: 0 }}
+            >
+              ↻
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); cancelDelivery(d.id); }}
+              title="Cancel delivery"
+              style={{ border: "none", background: "none", color: "inherit", cursor: "pointer", fontSize: 10, padding: 0 }}
+            >
+              ✕
+            </button>
+          </>
+        )}
+      </span>
+    );
   };
   type LiveMsg = ChatMessage & { attachments?: Array<{ id: string; filename: string; mimeType: string; sizeBytes: number; storageKey: string; thumbnailKey?: string | null; }> };
   const [liveMessages, setLiveMessages] = useState<LiveMsg[]>([]);
@@ -736,6 +804,7 @@ export function ChatPanel({
                       <div style={{ fontSize: 13, display: "flex", alignItems: "baseline", gap: 8 }}>
                         <span style={{ fontWeight: 700 }}>{m.authorName}</span>
                         <span style={{ color: "var(--nv-color-text-faint)", fontSize: 11 }}>{formatTime(m.createdAt)}</span>
+                        {deliveryBadge(m)}
                         {m.editedAt && <span style={{ color: "var(--nv-color-text-faint)", fontSize: 10 }}>(edited)</span>}
                         {m.pinnedAt && <span style={{ color: "var(--nv-color-warning)", fontSize: 10 }}>📌</span>}
                         {(m as any).expiresAt && <span style={{ color: "var(--nv-color-warning)", fontSize: 10 }}>⏳</span>}

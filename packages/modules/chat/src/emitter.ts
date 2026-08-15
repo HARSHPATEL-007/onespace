@@ -12,16 +12,19 @@ export function subscribe(workspaceId: string, listener: Listener): () => void {
   };
 }
 
-export function publish(workspaceId: string, payload: unknown) {
+export function publish(workspaceId: string, payload: unknown): { listenerCount: number } {
   const set = listeners.get(workspaceId);
-  if (!set) return;
+  if (!set || set.size === 0) return { listenerCount: 0 };
+  let ok = 0;
   for (const l of set) {
     try {
       l(payload);
+      ok += 1;
     } catch {
       // ignore listener errors
     }
   }
+  return { listenerCount: ok };
 }
 
 export interface LiveMessage {

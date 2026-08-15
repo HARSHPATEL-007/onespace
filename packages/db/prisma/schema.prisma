@@ -191,6 +191,12 @@ integrations    Integration[]
       approvalConfig        WorkspaceApprovalConfig?
       purchaseOrders        PurchaseOrder[]
       paymentSchedules      PaymentSchedule[]
+      chatDeliveryPolicies  ChatDeliveryPolicy[]
+      chatMessageDeliveries ChatMessageDelivery[]
+      chatDeliveryAttempts  ChatDeliveryAttempt[]
+      chatBreakers          ChatBreaker[]
+      chatQuotaCounters     ChatQuotaCounter[]
+      chatDeliveryDLQs      ChatDeliveryDLQ[]
    }
 
    /// A user is global; they belong to workspaces via WorkspaceMember.
@@ -1095,6 +1101,7 @@ model ChatMessage {
   toxicityFlags ToxicityFlag[]
   smartReplySuggestions SmartReplySuggestion[]
   approvalRequests ApprovalRequest[]
+  deliveries ChatMessageDelivery[]
 
   @@index([channelId, createdAt(sort: Desc)])
   @@index([parentId])
@@ -1591,6 +1598,219 @@ model ChatHyperConfig {
   updatedAt         DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA DELIVERY MATRIX — policy-driven reliability, retry, breaker, quota, DLQ
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum DeliverySemantic {
+  AT_MOST_ONCE
+  AT_LEAST_ONCE
+  EFFECTIVELY_ONCE
+  BOUNDED_LOSS
+}
+
+enum ChatDeliveryState {
+  PENDING
+  SENDING
+  QUEUED
+  DELAYED
+  RETRIED
+  PARTIALLY_DELIVERED
+  FAILED
+  CONFIRMED
+  CANCELLED
+}
+
+enum ChatAttemptOutcome {
+  SUCCESS
+  TRANSIENT
+  PERMANENT
+  MALFORMED
+  UNAUTHORIZED
+  QUOTA_DEFERRED
+  QUOTA_EXCEEDED
+  BREAKER_OPEN
+  DEDUPED
+  TIMEOUT
+  DLQ
+  DEFERRED
+}
+
+enum ChatBreakerState {
+  CLOSED
+  OPEN
+  HALF_OPEN
+}
+
+enum ChatDLQStatus {
+  QUARANTINED
+  REQUEUED
+  DROPPED
+  RELEASED
+}
+
+/// Per-channel delivery policy (spec §12 data model).
+model ChatDeliveryPolicy {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  channelKind   String   @default("CHANNEL") // CHANNEL | DM | ANNOUNCEMENT | ALL
+  target        String   @default("chat")     // chat | notifications | approvals | telemetry | media | voice | broker
+  deliverySemantic DeliverySemantic @default(AT_LEAST_ONCE)
+  latencyTargetMs Int    @default(5000)
+  priority      Int      @default(0)          // higher = more critical
+  retryMaxAttempts Int   @default(5)
+  retryBackoff  String   @default("EXPONENTIAL_JITTER") // FIXED | LINEAR | EXPONENTIAL | EXPONENTIAL_JITTER
+  retryMaxDurationSec Int @default(300)
+  breakerEnabled Boolean  @default(true)
+  breakerFailureThreshold Float @default(0.5)
+  breakerWindowMs Int     @default(60000)
+  breakerCooldownSec Int  @default(60)
+  breakerHalfOpenProbes Int @default(1)
+  quotaEnabled   Boolean  @default(true)
+  quotaTenantDailyLimit Int @default(10000)
+  quotaTenantHourlyLimit Int @default(2000)
+  quotaBurstLimit Int     @default(50)
+  quotaBudgetCost Int     @default(1)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, channelKind, target])
+  @@index([workspaceId, active])
+}
+
+/// Per-message aggregate delivery tracking with user-visible states.
+model ChatMessageDelivery {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  channelId      String
+  messageId      String
+  target         String   @default("chat")
+  channelKind    String   @default("CHANNEL")
+  state          ChatDeliveryState @default(PENDING)
+  payload        Json     @default("{}")
+  attemptCount   Int      @default(0)
+  maxAttempts    Int      @default(5)
+  correlationId  String
+  idempotencyKey String   @unique
+  targetCount    Int      @default(0)
+  deliveredCount Int      @default(0)
+  lastOutcome    ChatAttemptOutcome?
+  lastError      String?
+  nextRetryAt    DateTime?
+  enqueuedAt     DateTime @default(now())
+  firstAttemptAt DateTime?
+  deliveredAt    DateTime?
+  failedAt       DateTime?
+  cancelledAt    DateTime?
+  queueWaitMs    Int?
+  totalLatencyMs Int?
+  dedupHit       Boolean  @default(false)
+  dlqId          String?  @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  message        ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  attempts       ChatDeliveryAttempt[]
+  dlq            ChatDeliveryDLQ? @relation("MessageDeliveryDLQ", fields: [dlqId], references: [id], onDelete: SetNull)
+
+  @@index([channelId, state])
+  @@index([workspaceId, state, nextRetryAt])
+}
+
+/// Observability record per delivery attempt (spec §10).
+model ChatDeliveryAttempt {
+  id            String   @id @default(uuid())
+  deliveryId    String
+  workspaceId   String
+  attempt       Int
+  outcome       ChatAttemptOutcome
+  reason        String?
+  latencyMs     Int?
+  breakerState  ChatBreakerState?
+  quotaConsumed Int       @default(0)
+  queueWaitMs   Int?
+  retryAfterMs  Int?
+  at            DateTime  @default(now())
+
+  delivery      ChatMessageDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId, attempt])
+  @@index([workspaceId, at(sort: Desc)])
+}
+
+/// DB-backed circuit breaker per target/path (spec §3).
+model ChatBreaker {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  target          String
+  path            String   @default("write") // read | write
+  state           ChatBreakerState @default(CLOSED)
+  failures        Int      @default(0)
+  total           Int      @default(0)
+  windowStartedAt DateTime @default(now())
+  openedAt        DateTime?
+  cooldownUntil   DateTime?
+  halfOpenProbes  Int      @default(0)
+  lastProbeAt     DateTime?
+  lastError       String?
+  updatedAt       DateTime @updatedAt
+
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, target, path])
+  @@index([workspaceId])
+}
+
+/// DB-backed quota counters with lazy daily/hourly/burst windows (spec §4).
+model ChatQuotaCounter {
+  id          String   @id @default(uuid())
+  workspaceId String
+  scope       String   // tenant | connector | channel
+  scopeKey    String
+  bucket      String   // daily | hourly | burst
+  windowStart DateTime @default(now())
+  used        Int      @default(0)
+  burstUsed   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, scope, scopeKey, bucket])
+  @@index([workspaceId])
+}
+
+/// Dead-letter / holding queue with reason codes and replay (spec §8).
+model ChatDeliveryDLQ {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  deliveryId    String?  @unique
+  channelId     String?
+  messageId     String?
+  target        String   @default("chat")
+  reasonCode    String   // PERMANENT | MALFORMED | UNAUTHORIZED | QUOTA_EXCEEDED | BREAKER | POISON
+  reason        String?
+  attempts      Int      @default(0)
+  payload       Json     @default("{}")
+  status        ChatDLQStatus @default(QUARANTINED)
+  quarantinedAt DateTime @default(now())
+  requeueAt     DateTime?
+  requeuedAt    DateTime?
+  resolvedAt    DateTime?
+  lastError     String?
+
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  delivery      ChatMessageDelivery? @relation("MessageDeliveryDLQ")
+
+  @@index([status])
+  @@index([workspaceId, status])
+  @@index([requeueAt])
 }
 
 enum ChatMemberRole {

@@ -1,5 +1,6 @@
 import { ChatService, REACTION_EMOJIS } from "@n0va/modules-chat/server";
 import { ApprovalService } from "@n0va/modules-approvals/server";
+import { getDeliveryEngine } from "@n0va/modules-chat/delivery";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { requireWorkspace } from "@/lib/context";
 import { auth } from "@n0va/auth";
@@ -27,6 +28,7 @@ import {
   governanceAction,
   hyperAction,
   approvalAction,
+  deliveryAction,
 } from "./actions";
 
 export default async function ChatPage({
@@ -74,10 +76,26 @@ export default async function ChatPage({
   }
 
   const approvalSvc = new ApprovalService(workspaceId, userId, role);
-  const [approvalPendingCounts, channelApprovals] = await Promise.all([
+  const [approvalPendingCounts, channelApprovals, deliveryRows] = await Promise.all([
     approvalSvc.pendingCountsByChannel().catch(() => ({} as Record<string, number>)),
     activeChannelId ? approvalSvc.listForChannel(activeChannelId).catch(() => []) : Promise.resolve([]),
+    activeChannelId
+      ? getDeliveryEngine().deliveries(workspaceId, activeChannelId).catch(() => [])
+      : Promise.resolve([]),
   ]);
+  const deliveryMap = Object.fromEntries(
+    deliveryRows.map((d) => [d.messageId, {
+      id: d.id,
+      state: d.state,
+      attemptCount: d.attemptCount,
+      maxAttempts: d.maxAttempts,
+      lastError: d.lastError,
+      deliveredCount: d.deliveredCount,
+      targetCount: d.targetCount,
+      deliveredAt: d.deliveredAt?.toISOString() ?? null,
+      correlationId: d.correlationId,
+    }]),
+  );
 
   return (
     <ChatPanel
@@ -92,6 +110,7 @@ export default async function ChatPage({
       initialPresence={initialPresence}
       approvalPendingCounts={approvalPendingCounts}
       channelApprovals={channelApprovals}
+      deliveryMap={deliveryMap}
       actions={{
         createChannel: createChannelAction,
         createDm: createDmAction,
@@ -115,6 +134,7 @@ export default async function ChatPage({
         governance: governanceAction,
         hyper: hyperAction,
         approval: approvalAction,
+        delivery: deliveryAction,
       }}
       token={token}
     />

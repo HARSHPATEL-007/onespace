@@ -51,6 +51,7 @@ export const CATALOG: CatalogApp[] = [
   { id: "founder-dashboard", name: "Founder Dashboard", description: "Company KPIs across every module.", category: "Leadership", url: "/m/founder-dashboard", accent: "#7c5cff", badge: "v5" },
   { id: "business-dashboard", name: "Business Dashboard", description: "Department views over ops data.", category: "Leadership", url: "/m/business-dashboard", accent: "#0ea5e9", badge: "v5" },
   { id: "approvals", name: "Approvals", description: "AI-assisted approval routing, ERP write-back and reconciliation.", category: "Business", url: "/m/approvals", accent: "#f59e0b", badge: "v5" },
+  { id: "delivery", name: "Delivery Matrix", description: "Policy-driven reliability: semantics, retry, breakers, quotas and DLQ.", category: "Leadership", url: "/m/delivery", accent: "#7c5cff", badge: "v5" },
 ];
 
 export class AppSetService {

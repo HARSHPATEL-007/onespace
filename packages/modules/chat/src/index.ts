@@ -1,5 +1,6 @@
 export { ChatService } from "./server";
 export { subscribe, publish, type LiveMessage } from "./emitter";
+export * from "./delivery";
 export {
   MODES, MODE_ORDER, DEFAULT_MODE, FADE_MS,
   resolveEffectiveState, storedToState, fadeProgress, labelFor,

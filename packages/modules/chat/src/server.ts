@@ -3,6 +3,9 @@ import { prisma, logAudit, type Prisma } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 import { publish } from "./emitter";
 import { detectApproval, ApprovalService } from "@n0va/modules-approvals/server";
+import { registerBackend, getDeliveryEngine, idempotencyKeyFor } from "./delivery";
+import type { PolicyChannelKind } from "./delivery";
+import { publishToRedis } from "./delivery/redis-bridge";
 import {
   buildHyperContext,
   commitEventProposal,
@@ -41,6 +44,29 @@ import {
 } from "./compliance";
 
 const MODULE = "chat";
+
+// Register the chat fan-out backend once (in-process SSE emitter + Redis bridge
+// so WS-gateway clients also receive Server-Action messages).
+let __chatBackendRegistered = false;
+function ensureChatBackend() {
+  if (__chatBackendRegistered) return;
+  __chatBackendRegistered = true;
+  registerBackend("chat", async (ctx) => {
+    const messagePayload = (ctx.payload as { message?: unknown }).message ?? ctx.payload;
+    const { listenerCount } = publish(ctx.workspaceId, { type: "message", message: messagePayload });
+    const channelId =
+      (messagePayload as { channelId?: string } | null)?.channelId ?? ctx.channelId;
+    await publishToRedis("n0va:chat:events", { type: "message", channel_id: channelId, message: messagePayload });
+    const delivered = Math.max(listenerCount, 0);
+    return {
+      ok: true,
+      targetCount: delivered,
+      deliveredCount: delivered,
+      reason: delivered === 0 ? "queued_durable" : "fanned_out",
+    };
+  });
+}
+ensureChatBackend();
 
 export const channelSchema = z.object({
   name: z.string().min(1).max(80),
@@ -565,7 +591,21 @@ export class ChatService {
         })),
       },
     };
-    publish(this.workspaceId, payload);
+
+    // Policy-driven delivery: fan-out + durable delivery-state tracking.
+    try {
+      await getDeliveryEngine().deliver({
+        workspaceId: this.workspaceId,
+        channelId,
+        messageId: message.id,
+        target: "chat",
+        channelKind: (channel.kind as PolicyChannelKind) ?? "CHANNEL",
+        payload: { message: payload.message },
+        idempotencyKey: idempotencyKeyFor([this.workspaceId, "chat", message.id]),
+      });
+    } catch {
+      // best-effort: must never break messaging
+    }
 
     // Populate search index
     try {

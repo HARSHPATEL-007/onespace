@@ -1,5 +1,6 @@
 import { prisma } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
+import { dispatchNotificationEvent } from "./delivery";
 
 const MODULE = "notifications";
 
@@ -92,6 +93,14 @@ export class NotificationEngine {
         },
       });
     }
+
+    // Dispatch each channel through the delivery matrix (idempotent, breaker+quota gated).
+    await dispatchNotificationEvent({
+      workspaceId: this.workspaceId,
+      notificationId: event.id,
+      recipientId: input.recipientId,
+      channelPlan: scoring.channelPlan,
+    }).catch(() => {});
 
     return { id: event.id, score: scoring.score, status: event.status };
   }
