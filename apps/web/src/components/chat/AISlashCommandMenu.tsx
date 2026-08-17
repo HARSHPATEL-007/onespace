@@ -5,6 +5,8 @@ import { Button } from "@n0va/ui";
 const NATIVE_COMMANDS = [
   { cmd: "/task", desc: "Create a task from chat", icon: "✅" },
   { cmd: "/status", desc: "Set your presence (ONLINE/AWAY/BUSY/DND/IDLE)", icon: "🟢" },
+  { cmd: "/poll", desc: "Create a poll (\"Q\" | A | B ... ttl:5m)", icon: "📊" },
+  { cmd: "/remind", desc: "Set a reminder (in 10m / at 15:30)", icon: "⏰" },
   { cmd: "/help", desc: "List available commands", icon: "❓" },
 ];
 

@@ -1138,7 +1138,7 @@ if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Pris
         workspaceId: this.workspaceId,
         channelId,
         question: question.trim(),
-        options: clean as unknown as Prisma.InputJsonValue,
+        options: clean.map((t) => ({ text: t })) as unknown as Prisma.InputJsonValue,
         createdById: this.userId,
         messageId: message.id,
         expiresAt,
@@ -1191,7 +1191,9 @@ if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Pris
       include: { votes: { select: { userId: true, optionIndex: true } } },
     });
     if (!poll) return null;
-    const options = (Array.isArray(poll.options) ? poll.options : []) as unknown as Array<{ text: string }>;
+    const options = (Array.isArray(poll.options) ? poll.options : []).map((o) =>
+      typeof o === "string" ? { text: o } : o
+    ) as unknown as Array<{ text: string }>;
     const counts = options.map((_, i) => poll.votes.filter((v) => v.optionIndex === i).length);
     const total = poll.votes.length;
     return {
