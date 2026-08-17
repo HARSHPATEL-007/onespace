@@ -8,6 +8,7 @@
     "./server": "./src/server.ts",
     "./components": "./src/components.tsx",
     "./delivery": "./src/delivery/index.ts",
+    "./personalization": "./src/personalization/index.ts",
     "./adaptive-policy": "./src/adaptive-policy.ts"
   },
   "dependencies": {

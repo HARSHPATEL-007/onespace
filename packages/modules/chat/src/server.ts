@@ -5,6 +5,7 @@ import { publish } from "./emitter";
 import { detectApproval, ApprovalService } from "@n0va/modules-approvals/server";
 import { registerBackend, getDeliveryEngine, idempotencyKeyFor } from "./delivery";
 import type { PolicyChannelKind } from "./delivery";
+import { PersonalizationEngine } from "./personalization";
 import { publishToRedis } from "./delivery/redis-bridge";
 import {
   buildHyperContext,
@@ -605,6 +606,13 @@ export class ChatService {
       });
     } catch {
       // best-effort: must never break messaging
+    }
+
+    // Personalization telemetry: per-member notification decision (why-fired).
+    try {
+      await new PersonalizationEngine(this.userId, this.workspaceId).fanOutNotifications(channelId, message.id, this.userId, body);
+    } catch {
+      // best-effort
     }
 
     // Populate search index

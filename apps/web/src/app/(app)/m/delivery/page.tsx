@@ -1,4 +1,4 @@
-import { getDeliveryEngine, listPolicies, matrixRows, breakerStates, quotaState, listDlq } from "@n0va/modules-chat/delivery";
+import { getDeliveryEngine, listPolicies, matrixRows, breakerStates, quotaState, listDlq, concurrencyState } from "@n0va/modules-chat/delivery";
 import { requireWorkspace } from "@/lib/context";
 import { DeliveryDashboard } from "@/components/delivery/DeliveryDashboard";
 import { deliveryAction } from "../chat/actions";
@@ -8,8 +8,9 @@ export const dynamic = "force-dynamic";
 export default async function DeliveryPage() {
   const { workspaceId, role } = await requireWorkspace();
   const engine = getDeliveryEngine();
+  const now = new Date();
 
-  const [stats, policies, matrix, breakers, quota, dlq, recent] = await Promise.all([
+  const [stats, policies, matrix, breakers, quota, dlq, recent, depth, backlog, concurrency] = await Promise.all([
     engine.stats(workspaceId),
     listPolicies(workspaceId),
     matrixRows(),
@@ -17,6 +18,9 @@ export default async function DeliveryPage() {
     quotaState(workspaceId),
     listDlq(workspaceId),
     engine.deliveries(workspaceId, undefined, undefined, 25),
+    engine.queueDepth(now),
+    engine.backlog(now),
+    concurrencyState(),
   ]);
 
   return (
@@ -29,6 +33,7 @@ export default async function DeliveryPage() {
       quota={quota}
       dlq={dlq}
       recent={recent}
+      queue={{ depth, backlog, concurrency }}
       action={deliveryAction}
     />
   );

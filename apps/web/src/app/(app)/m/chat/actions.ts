@@ -5,7 +5,8 @@ import { ApprovalService } from "@n0va/modules-approvals/server";
 import { messageCreated } from "@n0va/modules-events";
 import { getEventBus } from "@/lib/eventbus";
 import { actionContext, requireActionContext } from "@/lib/action-context";
-import { getDeliveryEngine, resolvePolicy, listPolicies, upsertPolicy, deletePolicy, resetPolicies, matrixRows, breakerStates, resetBreaker, quotaState, resetQuota, listDlq, replayDlq, resolveDlq, dropDlq } from "@n0va/modules-chat/delivery";
+import { getDeliveryEngine, resolvePolicy, listPolicies, upsertPolicy, deletePolicy, resetPolicies, matrixRows, breakerStates, resetBreaker, quotaState, resetQuota, listDlq, replayDlq, resolveDlq, dropDlq, concurrencyState } from "@n0va/modules-chat/delivery";
+import { PersonalizationEngine, PRESETS, type RuleInput, type DndWindowInput, type PinInput, type SampleEvent, type PresetName, type Suggestion } from "@n0va/modules-chat/personalization";
 
 const svc = async () => {
   const { workspaceId, userId, role } = await actionContext();
@@ -415,7 +416,7 @@ export async function approvalAction(input: ApprovalInput) {
 export interface DeliveryInput {
   op:
     | "listDeliveries" | "retryDelivery" | "cancelDelivery" | "deliveryAttempts"
-    | "stats" | "deliverDue"
+    | "stats" | "deliverDue" | "reconcile" | "queueDepth" | "concurrencyState"
     | "listPolicies" | "upsertPolicy" | "deletePolicy" | "resetPolicies" | "matrix"
     | "listDlq" | "replayDlq" | "resolveDlq" | "dropDlq"
     | "breakerStates" | "resetBreaker"
@@ -445,6 +446,12 @@ export async function deliveryAction(input: DeliveryInput) {
       return engine.stats(workspaceId);
     case "deliverDue":
       return engine.deliverDue(new Date());
+    case "reconcile":
+      return engine.reconcile(new Date());
+    case "queueDepth":
+      return { depth: await engine.queueDepth(new Date()), backlog: await engine.backlog(new Date()) };
+    case "concurrencyState":
+      return concurrencyState();
     case "listPolicies":
       return listPolicies(workspaceId);
     case "upsertPolicy":
@@ -473,5 +480,110 @@ export async function deliveryAction(input: DeliveryInput) {
       return resetQuota(workspaceId);
     default:
       throw new Error("Unknown delivery op");
+  }
+}
+
+// ── Personalization (rules, DND, priority inbox, pins, suggestions) ────────
+
+export interface PersonalizationInput {
+  op:
+    | "profile" | "updateProfile"
+    | "listRules" | "upsertRule" | "deleteRule" | "snoozeRule"
+    | "listWorkspaceDefaults" | "upsertWorkspaceDefault" | "deleteWorkspaceDefault"
+    | "listDnd" | "upsertDnd" | "deleteDnd" | "dndStatus"
+    | "evaluate" | "testRule"
+    | "priorityInbox" | "recordClick"
+    | "listPins" | "pin" | "unpin" | "deletePin"
+    | "applyPreset"
+    | "suggestions" | "acceptSuggestion" | "dismissSuggestion"
+    | "recentEvents" | "metrics" | "workspaceMetrics";
+  rule?: RuleInput;
+  ruleId?: string;
+  snoozeUntil?: string | null;
+  dnd?: DndWindowInput;
+  dndId?: string;
+  pin?: PinInput;
+  preset?: PresetName;
+  suggestion?: Suggestion;
+  samples?: SampleEvent[];
+  messageId?: string;
+  roomId?: string;
+  patch?: Record<string, unknown>;
+  limit?: number;
+  targetUserId?: string;
+}
+
+export async function personalizationAction(input: PersonalizationInput) {
+  const { workspaceId, userId } = await requireActionContext();
+  const engine = new PersonalizationEngine(userId, workspaceId);
+  switch (input.op) {
+    case "profile":
+      return engine.getProfile();
+    case "updateProfile":
+      return engine.updateProfile({
+        prioritySort: input.patch?.prioritySort as string | undefined,
+        digestEnabled: input.patch?.digestEnabled as boolean | undefined,
+        workingHoursStart: input.patch?.workingHoursStart as number | undefined,
+        workingHoursEnd: input.patch?.workingHoursEnd as number | undefined,
+        workdays: input.patch?.workdays as string[] | undefined,
+        timezone: input.patch?.timezone as string | undefined,
+        calendarAwareDnd: input.patch?.calendarAwareDnd as boolean | undefined,
+        aiSuggestionsEnabled: input.patch?.aiSuggestionsEnabled as boolean | undefined,
+        pauseUntil: input.patch?.pauseUntil ? new Date(input.patch.pauseUntil as string) : input.patch?.pauseUntil === null ? null : undefined,
+      });
+    case "listRules":
+      return engine.listRules();
+    case "upsertRule":
+      return engine.upsertRule(input.rule!);
+    case "deleteRule":
+      return engine.deleteRule(input.ruleId!);
+    case "snoozeRule":
+      return engine.snoozeRule(input.ruleId!, input.snoozeUntil ? new Date(input.snoozeUntil) : null);
+    case "listWorkspaceDefaults":
+      return engine.listWorkspaceDefaults();
+    case "upsertWorkspaceDefault":
+      return engine.upsertWorkspaceDefault(input.rule!);
+    case "deleteWorkspaceDefault":
+      return engine.deleteWorkspaceDefault(input.ruleId!);
+    case "listDnd":
+      return engine.listDnd();
+    case "upsertDnd":
+      return engine.upsertDnd(input.dnd!);
+    case "deleteDnd":
+      return engine.deleteDnd(input.dndId!);
+    case "dndStatus":
+      return engine.dndStatus();
+    case "evaluate":
+      return engine.evaluateNotification({ userId, workspaceId, roomId: input.roomId, messageId: input.messageId, text: input.patch?.text as string | undefined, messageType: input.patch?.messageType as SampleEvent["messageType"] | undefined });
+    case "testRule":
+      return engine.testRule(input.rule!, input.samples ?? []);
+    case "priorityInbox":
+      return engine.priorityInbox({ limit: input.limit ?? 50 });
+    case "recordClick":
+      return engine.recordClick(input.messageId!, input.roomId);
+    case "listPins":
+      return engine.listPins();
+    case "pin":
+      return engine.pin(input.pin!);
+    case "unpin":
+      return engine.unpin(input.pin!.kind, input.pin!.refId);
+    case "deletePin":
+      return engine.deletePin(input.pin!.kind, input.pin!.refId);
+    case "applyPreset":
+      return engine.applyPreset(input.preset ?? "FOCUS");
+    case "suggestions":
+      return engine.suggestions();
+    case "acceptSuggestion":
+      return engine.acceptSuggestion(input.suggestion!);
+    case "dismissSuggestion":
+      return engine.dismissSuggestion(input.suggestion!);
+    case "recentEvents":
+      return engine.recentEvents(input.limit ?? 10);
+    case "metrics":
+      return engine.metrics();
+    case "workspaceMetrics":
+      return PersonalizationEngine.workspaceMetrics(workspaceId);
+    default:
+      throw new Error("Unknown personalization op");
   }
 }

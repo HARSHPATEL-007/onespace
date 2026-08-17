@@ -62,6 +62,7 @@ export function DeliveryDashboard({
   quota,
   dlq,
   recent,
+  queue,
   action,
 }: {
   role: string;
@@ -72,6 +73,7 @@ export function DeliveryDashboard({
   quota: Array<Record<string, unknown> & { scope: string; scopeKey: string; bucket: string; used: number; windowStart: Date }>;
   dlq: DlqRow[];
   recent: DeliveryRow[];
+  queue: { depth: number; backlog: number; concurrency: Array<{ target: string; active: number; cap: number }> };
   action: (input: DeliveryInput) => Promise<unknown>;
 }) {
   const router = useRouter();
@@ -109,6 +111,7 @@ export function DeliveryDashboard({
         </div>
         <div style={{ display: "flex", gap: 6 }}>
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => run({ op: "deliverDue" })}>▶ Run sweep now</Button>
+          <Button size="sm" variant="secondary" disabled={busy} onClick={() => run({ op: "reconcile" })}>♻ Reconcile</Button>
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => run({ op: "resetPolicies" })}>Reset policies</Button>
           <Button size="sm" variant="secondary" disabled={busy} onClick={() => run({ op: "resetQuota" })}>Reset quota</Button>
         </div>
@@ -132,6 +135,8 @@ export function DeliveryDashboard({
             { label: "Avg queue wait", value: stats.avgQueueWaitMs == null ? "—" : stats.avgQueueWaitMs + "ms" },
             { label: "Max latency", value: stats.maxLatencyMs == null ? "—" : stats.maxLatencyMs + "ms" },
             { label: "DLQ", value: stats.dlqCount },
+            { label: "Queue depth (due)", value: queue.depth },
+            { label: "Backlog (scheduled)", value: queue.backlog },
           ].map((c) => (
             <div key={c.label} style={{ border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", padding: 10, background: "var(--nv-color-surface-2)" }}>
               <div style={{ fontSize: 11, color: "var(--nv-color-text-muted)" }}>{c.label}</div>
@@ -144,6 +149,17 @@ export function DeliveryDashboard({
               {Object.entries(stats.byState).map(([s, n]) => (
                 <span key={s} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: `1px solid ${STATE_COLORS[s] ?? "var(--nv-color-border)"}`, color: STATE_COLORS[s] ?? "var(--nv-color-text)" }}>
                   {s.toLowerCase()} {n}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div style={{ gridColumn: "1 / -1", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", padding: 10, background: "var(--nv-color-surface-2)" }}>
+            <div style={{ fontSize: 11, color: "var(--nv-color-text-muted)", marginBottom: 6 }}>Concurrency caps (per target)</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {queue.concurrency.length === 0 && <span style={{ fontSize: 11, color: "var(--nv-color-text-faint)" }}>no targets dispatched yet</span>}
+              {queue.concurrency.map((c) => (
+                <span key={c.target} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: "1px solid var(--nv-color-border)", color: c.active >= c.cap ? "var(--nv-color-danger)" : "var(--nv-color-text)" }}>
+                  {c.target} {c.active}/{c.cap}
                 </span>
               ))}
             </div>

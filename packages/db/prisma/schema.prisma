@@ -246,6 +246,7 @@ createdCalendarEvents CalendarEvent[]
   createdTickets       Ticket[]
   ticketReplies        TicketReply[]
   createdDeals         Deal[]
+  personalizationProfiles ChatPersonalizationProfile[]
   createdSubscriptions Subscription[]
   createdPayments       Payment[]
   approvalDecisions     ApprovalRequest[] @relation("ApprovalDecider")
@@ -1818,6 +1819,133 @@ enum ChatMemberRole {
   ADMIN
   MEMBER
   VIEWER
+}
+
+/// Personalization profile per user — notification rules, DND windows,
+/// bookmarks/pins and preference telemetry (spec §1–§10).
+model ChatPersonalizationProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  workspaceId     String
+  prioritySort    String   @default("ACTIONABILITY_RECENCY") // ACTIONABILITY_RECENCY | RECENCY | PINNED_FIRST
+  digestEnabled   Boolean  @default(false)
+  workingHoursStart Int    @default(540) // minutes from midnight, 09:00
+  workingHoursEnd   Int    @default(1020) // 17:00
+  workdays        String   @default("[\"mon\",\"tue\",\"wed\",\"thu\",\"fri\"]")
+  timezone        String   @default("UTC")
+  calendarAwareDnd Boolean @default(false)
+  aiSuggestionsEnabled Boolean @default(true)
+  pauseUntil      DateTime? // global "pause notifications until <time>" override (non-emergency)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rules           ChatNotificationRule[]
+  dndWindows      ChatDndWindow[]
+  pinnedItems     ChatPinnedItem[]
+  events          ChatPreferenceEvent[]
+}
+
+/// §1 — rule-based notification preferences (scope × value × mode).
+model ChatNotificationRule {
+  id         String   @id @default(uuid())
+  profileId  String
+  scope      String   // room | sender | keyword | mention | thread | file | task | approval | channel | global
+  value      String   // room/sender id, keyword, or channel type (desktop|mobile|email|push)
+  mode       String   // ALWAYS | MENTIONS_ONLY | DIGEST | SILENT
+  urgency    Int      @default(0) // 0..3 — 3 = crisis
+  bypassDnd  Boolean  @default(false)
+  snoozeUntil DateTime?
+  source     String   @default("USER") // USER | SUGGESTED | PRESET
+  reason     String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  profile    ChatPersonalizationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, active])
+  @@index([scope, value])
+}
+
+/// §4/§5 — DND windows (one-off, recurring, workday, calendar, travel, weekend, meeting).
+model ChatDndWindow {
+  id              String   @id @default(uuid())
+  profileId       String
+  kind            String   // ONE_OFF | RECURRING | WORKDAY | CALENDAR_BLOCK | TRAVEL | WEEKEND | MEETING
+  days            String   @default("[]") // ["mon","tue",...]
+  startMin        Int      // minutes from midnight
+  endMin          Int
+  startDate       DateTime?
+  endDate         DateTime?
+  calendarEventId String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  profile         ChatPersonalizationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, active])
+}
+
+/// §3 — bookmarks and pins (personal recall + ranking signal). The legacy
+/// ChatBookmark (message bookmarks) and ChatPin (room pins) remain; this model
+/// covers unified pins across messages, threads, rooms, files, tasks and
+/// approvals with pin-until and shared semantics.
+model ChatPinnedItem {
+  id        String   @id @default(uuid())
+  profileId String
+  kind      String   // MESSAGE | THREAD | ROOM | FILE | TASK | APPROVAL
+  refId     String
+  shared    Boolean  @default(false)
+  pinned    Boolean  @default(false)
+  pinUntil  DateTime?
+  pinUntilResolved Boolean @default(false) // keep until referenced item resolves (approval decided / task completed)
+  note      String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile   ChatPersonalizationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, kind, refId])
+  @@index([profileId, pinned])
+}
+
+/// §6 — team/workspace default rules (between user rules and org policy in the hierarchy).
+model ChatWorkspaceDefaultRule {
+  id          String   @id @default(uuid())
+  workspaceId String
+  scope       String   // room | sender | keyword | mention | thread | file | task | approval | channel | global
+  value       String   // room/sender id, keyword, or channel type (desktop|mobile|email|push)
+  mode        String   // ALWAYS | MENTIONS_ONLY | DIGEST | SILENT
+  urgency     Int      @default(0) // 0..3 — 3 = crisis
+  bypassDnd   Boolean  @default(false)
+  active      Boolean  @default(true)
+  reason      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([workspaceId, scope, value])
+  @@index([workspaceId, active])
+}
+
+/// §10 — preference telemetry (why-fired, suppression, acceptance, overrides).
+model ChatPreferenceEvent {
+  id          String   @id @default(uuid())
+  profileId   String
+  kind        String   // NOTIFICATION | DND_OVERRIDE | PIN | DIGEST | RECOMMENDATION | CLICK
+  action      String   // DELIVERED | SUPPRESSED | DIGESTED | BYPASSED | ACCEPTED | REJECTED | ...
+  messageId   String?
+  roomId      String?
+  channelType String?
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  profile     ChatPersonalizationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId, createdAt])
+  @@index([profileId, kind])
 }
 
 /// N0VA MAIL - messages, threads and labels.
