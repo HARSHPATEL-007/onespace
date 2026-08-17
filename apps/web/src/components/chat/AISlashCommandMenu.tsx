@@ -25,7 +25,7 @@ export function AISlashCommandMenu({
 }: {
   channelId: string;
   typed: string;
-  onNative: (command: string, args: string) => Promise<{ ok: boolean; message: string }> | void;
+  onNative: (command: string, args: string, channelId: string) => Promise<{ ok: boolean; message: string }> | void;
   onResult: (text: string, command: string) => void;
   onClose: () => void;
 }) {
@@ -54,7 +54,7 @@ export function AISlashCommandMenu({
     try {
       const typedCmd = typed.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
       const args = typedCmd === command ? typed.trim().slice(command.length).trim() : "";
-      const res = await onNative(command, args);
+      const res = await onNative(command, args, channelId);
       if (res && "ok" in res) {
         if (res.ok) setNotice(res.message);
         else setError(res.message);

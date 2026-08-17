@@ -6,6 +6,7 @@ import { TasksService } from "@n0va/modules-tasks/server";
 import { FederationService, type GuestTier } from "@n0va/modules-federation/server";
 import { HuddleService } from "@n0va/modules-huddle-media/server";
 import { ThreadMemoryService } from "@n0va/modules-thread-memory/server";
+import { NotificationEngine } from "@n0va/modules-notification-engine/server";
 import { prisma } from "@n0va/db";
 import { messageCreated } from "@n0va/modules-events";
 import { getEventBus } from "@/lib/eventbus";
@@ -595,7 +596,7 @@ export async function personalizationAction(input: PersonalizationInput) {
 
 // ── Chat Nexus: slash commands (spec §8.7) ───────────────────────────────
 
-export async function slashCommandAction(input: { command: string; args?: string }) {
+export async function slashCommandAction(input: { command: string; args?: string; channelId?: string }) {
   const ctx = await requireActionContext();
   const cmd = input.command.trim().toLowerCase();
   const args = (input.args ?? "").trim();
@@ -603,7 +604,7 @@ export async function slashCommandAction(input: { command: string; args?: string
     case "/help":
       return {
         ok: true,
-        message: "Commands: /task <title> · /status <ONLINE|AWAY|BUSY|DND|IDLE> · /summarize · /smart-reply · /translate · /action-items · /sentiment",
+        message: "Commands: /task <title> · /status <ONLINE|AWAY|BUSY|DND|IDLE> · /summarize · /smart-reply · /translate · /action-items · /sentiment · /poll \"<Q>\" | <A> | <B> · /remind <text> in <2h|30m|17:00>",
       };
     case "/task": {
       if (!args) return { ok: false, message: "Usage: /task <title>" };
@@ -626,9 +627,137 @@ export async function slashCommandAction(input: { command: string; args?: string
       await (await svc()).setPresence(status as (typeof valid)[number]);
       return { ok: true, message: `Presence set to ${status}` };
     }
+    case "/poll": {
+      const parts = args.split("|").map((p) => p.trim());
+      const question = parts[0]?.replace(/^"+|"+$/g, "");
+      const options = parts.slice(1);
+      if (!question || options.length < 2) {
+        return { ok: false, message: 'Usage: /poll "<Question>" | <Option A> | <Option B>' };
+      }
+      const ttlMatch = /ttl:(\d+)(m|h)/i.exec(question) ?? null;
+      let ttlMinutes: number | undefined;
+      if (ttlMatch) {
+        ttlMinutes = ttlMatch[2] === "h" ? Number(ttlMatch[1]) * 60 : Number(ttlMatch[1]);
+      }
+      const poll = await (await svc()).createPoll(input.channelId ?? "", question, options, { ttlMinutes });
+      if (poll.messageId) {
+        await emitMessageCreated({
+          workspaceId: ctx.workspaceId,
+          userId: ctx.user.id,
+          messageId: poll.messageId,
+          channelId: input.channelId ?? "",
+          body: `📊 ${question}`,
+        });
+      }
+      return { ok: true, message: `Poll created: ${question}`, pollId: poll.id };
+    }
+    case "/remind": {
+      const inMatch = /^(.*?)\s+in\s+(\d+)(m|h|d)$/i.exec(args);
+      const atMatch = /^(.*?)\s+at\s+(\d{1,2}):(\d{2})$/i.exec(args);
+      let text: string;
+      let remindAt: Date;
+      if (inMatch) {
+        text = (inMatch[1] ?? "").trim();
+        const unit = (inMatch[3] ?? "m").toLowerCase();
+        const n = Number(inMatch[2] ?? "0");
+        const ms = unit === "m" ? n * 60_000 : unit === "h" ? n * 3_600_000 : n * 86_400_000;
+        remindAt = new Date(Date.now() + ms);
+      } else if (atMatch) {
+        text = (atMatch[1] ?? "").trim();
+        const now = new Date();
+        remindAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), Number(atMatch[2] ?? "0"), Number(atMatch[3] ?? "0"));
+        if (remindAt.getTime() <= Date.now()) remindAt.setDate(remindAt.getDate() + 1);
+      } else {
+        return { ok: false, message: "Usage: /remind <text> in <10m|2h|1d> or at <17:00>" };
+      }
+      const r = await (await svc()).createReminder(text, remindAt, { channelId: input.channelId ?? undefined });
+      return { ok: true, message: `Reminder set for ${remindAt.toLocaleString()}`, reminderId: r.id };
+    }
     default:
       return { ok: false, message: `Unknown command ${cmd}. Try /help` };
   }
+}
+
+// ── Gap sweep: polls / reminders / thread ops / digest / edits (spec §8.7, §8.3) ──
+
+export async function pollAction(input: { op: "create" | "vote" | "resolve" | "get" | "list"; channelId?: string; pollId?: string; question?: string; options?: string[]; optionIndex?: number; ttlMinutes?: number }) {
+  const chat = await svc();
+  switch (input.op) {
+    case "create": {
+      const poll = await chat.createPoll(input.channelId ?? "", input.question ?? "", input.options ?? [], {
+        ttlMinutes: input.ttlMinutes,
+      });
+      return { ok: true, poll };
+    }
+    case "vote":
+      return { ok: true, poll: await chat.votePoll(input.pollId ?? "", input.optionIndex ?? 0) };
+    case "resolve":
+      return { ok: true, poll: await chat.resolvePoll(input.pollId ?? "") };
+    case "get":
+      return { ok: true, poll: await chat.getPoll(input.pollId ?? "") };
+    case "list":
+      return { ok: true, polls: await chat.listPolls(input.channelId ?? "") };
+    default:
+      throw new Error("Unknown poll op");
+  }
+}
+
+export async function reminderAction(input: { op: "create" | "list" | "cancel" | "fire"; text?: string; remindAt?: string; channelId?: string; reminderId?: string; status?: "PENDING" | "FIRED" | "CANCELLED" }) {
+  const chat = await svc();
+  switch (input.op) {
+    case "create":
+      return { ok: true, reminder: await chat.createReminder(input.text ?? "", new Date(input.remindAt ?? ""), { channelId: input.channelId }) };
+    case "list":
+      return { ok: true, reminders: await chat.listReminders(input.status) };
+    case "cancel":
+      return { ok: true, reminder: await chat.cancelReminder(input.reminderId ?? "") };
+    case "fire":
+      return { ok: true, result: await chat.fireDueReminders() };
+    default:
+      throw new Error("Unknown reminder op");
+  }
+}
+
+export async function threadPinAction(input: { threadId: string; pinType: "ROOM" | "PERSONAL" | "PRIORITY"; reason?: string; expiresAt?: string }) {
+  const { workspaceId, userId, role } = await actionContext();
+  const tm = new ThreadMemoryService(workspaceId, userId, role);
+  const parent = await prisma.chatMessage.findFirst({ where: { id: input.threadId, workspaceId } });
+  if (!parent) throw new Error("Thread not found");
+  await tm.getOrCreateThreadMetadata(input.threadId, parent.id, parent.channelId);
+  return tm.pinThread(input.threadId, input.pinType, input.reason, input.expiresAt ? new Date(input.expiresAt) : undefined);
+}
+
+export async function threadExportAction(input: { threadId: string; format: "MARKDOWN" | "PDF" | "DOCX" | "JSON"; exportMode: "FULL" | "BRANCH" | "RANGE" | "SUMMARY_ONLY" | "SUMMARY_TRANSCRIPT" }) {
+  const { workspaceId, userId, role } = await actionContext();
+  const tm = new ThreadMemoryService(workspaceId, userId, role);
+  const parent = await prisma.chatMessage.findFirst({ where: { id: input.threadId, workspaceId } });
+  if (!parent) throw new Error("Thread not found");
+  await tm.getOrCreateThreadMetadata(input.threadId, parent.id, parent.channelId);
+  return tm.exportThread(input.threadId, input.format, input.exportMode);
+}
+
+export async function threadActionItemsAction(input: { threadId: string; messageId?: string }) {
+  const { workspaceId, userId, role } = await actionContext();
+  const tm = new ThreadMemoryService(workspaceId, userId, role);
+  const parent = await prisma.chatMessage.findFirst({ where: { id: input.threadId, workspaceId } });
+  if (!parent) throw new Error("Thread not found");
+  await tm.getOrCreateThreadMetadata(input.threadId, parent.id, parent.channelId);
+  return tm.extractActionItems(input.threadId, input.messageId);
+}
+
+export async function messageEditsAction(input: { messageId: string }) {
+  const rows = await prisma.chatMessageEdit.findMany({
+    where: { messageId: input.messageId },
+    orderBy: { editedAt: "desc" },
+    take: 20,
+  });
+  return rows.map((r) => ({ id: r.id, body: r.oldBody, editedAt: r.editedAt.toISOString() }));
+}
+
+export async function digestAction(input: { roomId?: string }) {
+  const { workspaceId, userId, role } = await actionContext();
+  const ne = new NotificationEngine(workspaceId, userId, role);
+  return ne.getDigest(userId, input.roomId);
 }
 
 // ── Chat Nexus: space templates (spec §8.1.2) ───────────────────────────

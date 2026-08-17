@@ -40,12 +40,17 @@ export interface ChatActions {
   hyper: (input: HyperInput) => Promise<unknown>;
   approval: (input: ApprovalInput) => Promise<unknown>;
   delivery: (input: DeliveryInput) => Promise<unknown>;
-  slash: (input: { command: string; args?: string }) => Promise<unknown>;
+  slash: (input: { command: string; args?: string; channelId?: string }) => Promise<unknown>;
   createFromTemplate: (formData: FormData) => Promise<void>;
   inviteGuest: (input: { guestEmail: string; guestName: string; accessTier?: "VIEWER" | "CONTRIBUTOR" | "PARTNER" | "VENDOR" | "TEMPORARY"; roomScope?: string[] }) => Promise<unknown>;
   huddle: (input: { op: "start" | "get"; channelId: string; title?: string }) => Promise<unknown>;
   threadSummary: (input: { threadId: string }) => Promise<unknown>;
   threadDecision: (input: { threadId: string; decisionText: string; sourceMessageId?: string }) => Promise<unknown>;
+  threadPin: (input: { threadId: string; pinType: "ROOM" | "PERSONAL" | "PRIORITY"; reason?: string }) => Promise<unknown>;
+  threadExport: (input: { threadId: string; format: "MARKDOWN" | "PDF" | "DOCX" | "JSON"; exportMode: "FULL" | "BRANCH" | "RANGE" | "SUMMARY_ONLY" | "SUMMARY_TRANSCRIPT" }) => Promise<unknown>;
+  threadActionItems: (input: { threadId: string }) => Promise<unknown>;
+  messageEdits: (input: { messageId: string }) => Promise<Array<{ id: string; body: string; editedAt: string }>>;
+  digest: (input: { roomId?: string }) => Promise<unknown>;
 }
 
 export interface DeliveryView {
@@ -154,6 +159,95 @@ function renderBody(m: ChatMessage) {
     return <div className="nv-message-body" dangerouslySetInnerHTML={{ __html: m.bodyHtml }} />;
   }
   return <div className="nv-message-body">{m.body}</div>;
+}
+
+interface PollData {
+  id: string;
+  question: string;
+  status: "OPEN" | "CLOSED";
+  expiresAt: string | null;
+  closedAt: string | null;
+  options: Array<{ text: string; count: number; pct: number }>;
+  totalVotes: number;
+  myVote: number | null;
+}
+
+function PollCard({ messageId }: { messageId: string }) {
+  const [poll, setPoll] = useState<PollData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/chat/poll?messageId=${encodeURIComponent(messageId)}`);
+      const data = await res.json();
+      setPoll(data.poll);
+    } catch {
+      setPoll(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [messageId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const act = async (op: "vote" | "resolve", optionIndex?: number) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/chat/poll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ op, pollId: poll?.id, optionIndex }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setPoll(data.poll);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) return <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", marginTop: 6 }}>Loading poll…</div>;
+  if (!poll) return null;
+  const open = poll.status === "OPEN" && (!poll.expiresAt || new Date(poll.expiresAt).getTime() > Date.now());
+  return (
+    <div style={{ marginTop: 8, border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", padding: 10, maxWidth: 420, background: "var(--nv-color-surface)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+        <span style={{ fontWeight: 700, fontSize: 13 }}>📊 {poll.question}</span>
+        <span style={{ fontSize: 10, color: open ? "var(--nv-color-success)" : "var(--nv-color-text-faint)", border: `1px solid ${open ? "var(--nv-color-success)" : "var(--nv-color-border)"}`, borderRadius: 999, padding: "0 6px" }}>
+          {open ? "open" : "closed"} · {poll.totalVotes} vote{poll.totalVotes === 1 ? "" : "s"}
+        </span>
+        {poll.expiresAt && open && <span style={{ fontSize: 10, color: "var(--nv-color-text-faint)" }}>⏳ {new Date(poll.expiresAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}</span>}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {poll.options.map((o, i) => {
+          const mine = poll.myVote === i;
+          return (
+            <button
+              key={i}
+              disabled={!open || busy}
+              onClick={() => void act("vote", i)}
+              style={{ position: "relative", textAlign: "left", padding: "6px 8px", borderRadius: "var(--nv-radius-sm)", border: mine ? "1px solid var(--nv-color-primary)" : "1px solid var(--nv-color-border)", background: mine ? "var(--nv-color-primary-alpha)" : "transparent", cursor: open ? "pointer" : "default", overflow: "hidden", fontSize: 12 }}
+              title={open ? `Vote: ${o.text}` : undefined}
+            >
+              <div style={{ position: "absolute", inset: 0, width: `${o.pct}%`, background: "var(--nv-color-primary-alpha)", opacity: 0.5 }} />
+              <span style={{ position: "relative" }}>{mine ? "✓ " : ""}{o.text} · {o.count} ({o.pct}%)</span>
+            </button>
+          );
+        })}
+      </div>
+      {open && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+          <button onClick={() => void act("resolve")} disabled={busy} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-sm)", padding: "2px 8px", fontSize: 11, cursor: "pointer", color: "var(--nv-color-text)" }} title="Close poll (creator or admin)">Close</button>
+          {error && <span style={{ fontSize: 11, color: "var(--nv-color-danger)" }}>{error}</span>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function renderAttachments(m: ChatMessage) {
@@ -305,6 +399,11 @@ export function ChatPanel({
   const [flowStart, setFlowStart] = useState<number | null>(null);
   const [flowElapsed, setFlowElapsed] = useState(0);
   const [highContrast, setHighContrast] = useState(false);
+  const [editsFor, setEditsFor] = useState<ChatMessage | null>(null);
+  const [editHistory, setEditHistory] = useState<Array<{ id: string; body: string; editedAt: string }>>([]);
+  const [showDigest, setShowDigest] = useState(false);
+  const [digestData, setDigestData] = useState<unknown>(null);
+  const [digestBusy, setDigestBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -678,7 +777,31 @@ export function ChatPanel({
   const startEdit = (m: ChatMessage) => {
     setEditing(m.id);
     setEditValue(m.body);
-    setReplyingTo(null);
+  };
+
+  const openEdits = async (m: ChatMessage) => {
+    setEditsFor(m);
+    setEditHistory([]);
+    try {
+      const history = await actions.messageEdits({ messageId: m.id });
+      setEditHistory(history);
+    } catch {
+      setEditHistory([]);
+    }
+  };
+
+  const openDigest = async () => {
+    setShowDigest(true);
+    setDigestBusy(true);
+    setDigestData(null);
+    try {
+      const data = await actions.digest({});
+      setDigestData(data);
+    } catch {
+      setDigestData(null);
+    } finally {
+      setDigestBusy(false);
+    }
   };
 
   const channelLabel = (c: ChannelWithMeta): string => {
@@ -856,6 +979,7 @@ export function ChatPanel({
             <button onClick={() => setShowNotifications(!showNotifications)} style={{ position: "relative", border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>
               🔔 {notifUnread > 0 && <span style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "var(--nv-color-danger)", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>{notifUnread}</span>}
             </button>
+            <button className="nv-chrome-optional" onClick={() => void openDigest()} title="Unread digest (spec §8.9)" style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>📋 Digest</button>
             <button className="nv-chrome-optional" onClick={() => setShowPinned(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>📌 Pins</button>
             <button className="nv-chrome-optional" onClick={() => setShowMembers(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>👥 {active?.members.length ?? 0}</button>
           </div>
@@ -909,7 +1033,11 @@ export function ChatPanel({
                         <span style={{ fontWeight: 700 }}>{m.authorName}</span>
                         <span style={{ color: "var(--nv-color-text-faint)", fontSize: 11 }}>{formatTime(m.createdAt)}</span>
                         {deliveryBadge(m)}
-                        {m.editedAt && <span style={{ color: "var(--nv-color-text-faint)", fontSize: 10 }}>(edited)</span>}
+                        {m.editedAt && (
+                          <button onClick={() => void openEdits(m)} title="View edit history" style={{ border: "none", background: "none", color: "var(--nv-color-text-faint)", fontSize: 10, cursor: "pointer", padding: 0, textDecoration: "underline dotted" }}>
+                            (edited)
+                          </button>
+                        )}
                         {m.pinnedAt && <span style={{ color: "var(--nv-color-warning)", fontSize: 10 }}>📌</span>}
                         {(m as any).expiresAt && <span style={{ color: "var(--nv-color-warning)", fontSize: 10 }}>⏳</span>}
                         {((m as any).compliance?.[0]?.classification || (m as any).compliance?.[0]?.legalHold && <span style={{ color: "var(--nv-color-danger)", fontSize: 10 }}>⛔</span>)}
@@ -934,6 +1062,7 @@ export function ChatPanel({
                           <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m)}</div>
                         )}
                         {renderAttachments(m)}
+                        {(m as any).pollId && <PollCard messageId={m.id} />}
                         {approval && (
                           <ApprovalCard approval={approval} currentUserId={userId} onAction={approvalActions} />
                         )}
@@ -960,6 +1089,7 @@ export function ChatPanel({
                         <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m)}</div>
                       )}
                       {renderAttachments(m)}
+                      {(m as any).pollId && <PollCard messageId={m.id} />}
                       {renderReactions(m)}
                     </div>
                     <MessageMenu m={m} />
@@ -1029,7 +1159,7 @@ export function ChatPanel({
               <AISlashCommandMenu
                 channelId={activeChannelId}
                 typed={inputValue}
-                onNative={async (command, args) => (await actions.slash({ command, args })) as { ok: boolean; message: string }}
+                onNative={async (command, args, channelId) => (await actions.slash({ command, args, channelId })) as { ok: boolean; message: string }}
                 onResult={(text) => { setInputValue(text); }}
                 onClose={() => setShowAICommand(false)}
               />
@@ -1059,6 +1189,9 @@ export function ChatPanel({
           }}
           onSummary={(threadId) => actions.threadSummary({ threadId })}
           onDecision={(threadId, decisionText, sourceMessageId) => actions.threadDecision({ threadId, decisionText, sourceMessageId })}
+          onPin={(threadId, pinType) => actions.threadPin({ threadId, pinType })}
+          onExport={(threadId, format) => actions.threadExport({ threadId, format, exportMode: "FULL" })}
+          onActionItems={(threadId) => actions.threadActionItems({ threadId })}
         />
       )}
 
@@ -1287,6 +1420,40 @@ export function ChatPanel({
               </div>
             );
           })}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={editsFor !== null}
+        onClose={() => setEditsFor(null)}
+        title="Edit history"
+        actions={<Button variant="secondary" onClick={() => setEditsFor(null)}>Close</Button>}
+      >
+        <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+          {editHistory.length === 0 && <div className="nv-empty">No edit history recorded</div>}
+          {editHistory.map((e) => (
+            <div key={e.id} style={{ padding: "6px 8px", borderRadius: "var(--nv-radius-md)", background: "var(--nv-color-bg)", fontSize: "var(--nv-font-sm)" }}>
+              <div style={{ color: "var(--nv-color-text-faint)", fontSize: 11, marginBottom: 2 }}>{formatTime(e.editedAt)}</div>
+              <div style={{ wordBreak: "break-word" }}>{e.body}</div>
+            </div>
+          ))}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={showDigest}
+        onClose={() => setShowDigest(false)}
+        title="Unread digest"
+        actions={<Button variant="secondary" onClick={() => setShowDigest(false)}>Close</Button>}
+      >
+        <div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+          {digestBusy && <div className="nv-empty">Building digest…</div>}
+          {!digestBusy && !digestData && <div className="nv-empty">No unread highlights right now</div>}
+          {!digestBusy && !!digestData && (
+            <pre style={{ fontSize: "var(--nv-font-sm)", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, fontFamily: "var(--nv-font-body)" }}>
+              {JSON.stringify(digestData, null, 2)}
+            </pre>
+          )}
         </div>
       </Dialog>
     </div>

@@ -232,6 +232,7 @@ export interface ParsedSearch {
   typeCode?: boolean;
   language?: string;
   reaction?: string;
+  sentiment?: "negative" | "positive" | "neutral";
 }
 
 // Script-range heuristic language detection (spec §8.5 `language:` operator).
@@ -290,6 +291,9 @@ export function parseSearchQuery(query: string): ParsedSearch {
         break;
       case "reaction":
         if (value && value.length <= 8) parsed.reaction = value;
+        break;
+      case "sentiment":
+        if (value === "negative" || value === "positive" || value === "neutral") parsed.sentiment = value;
         break;
       default:
         if (part.trim()) terms.push(part);
@@ -680,6 +684,20 @@ export class ChatService {
       // best-effort
     }
 
+    // Toxicity auto-moderation (best-effort: flags + HIDE/QUARANTINE enforcement).
+    try {
+      const tox = await new AiMonitoringService(this.workspaceId, this.userId, this.role).checkMessage(message.id);
+      if (tox.action === "HIDE" || tox.action === "QUARANTINE") {
+        await prisma.chatMessage.update({
+          where: { id: message.id },
+          data: { deletedAt: new Date(), body: "[blocked by moderation]", bodyHtml: "<p>[blocked by moderation]</p>" },
+        });
+        await prisma.chatSearchIndex.deleteMany({ where: { messageId: message.id } });
+      }
+    } catch {
+      // best-effort
+    }
+
     const payload = {
       type: "message" as const,
       message: {
@@ -991,6 +1009,13 @@ if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Pris
   if (parsed.reaction) {
     extraFilters.push({ reactions: { array_contains: [{ emoji: parsed.reaction }] as unknown as Prisma.InputJsonValue } });
   }
+  if (parsed.sentiment) {
+    const score =
+      parsed.sentiment === "negative" ? { lt: -0.3 }
+      : parsed.sentiment === "positive" ? { gt: 0.3 }
+      : { lte: 0.3, gte: -0.3 };
+    extraFilters.push({ sentimentRecords: { some: { score } } });
+  }
   if (extraFilters.length > 0) {
     const existing = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
     where.AND = [...existing, ...extraFilters];
@@ -1087,6 +1112,178 @@ if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Pris
     });
   }
 
+  // ── Polls (spec §8.7 /poll) ────────────────────────────────────────
+
+  async createPoll(channelId: string, question: string, options: string[], opts?: { ttlMinutes?: number }) {
+    await this.assert("CREATE");
+    const channel = await this.ownedChannel(channelId);
+    const clean = options.map((o) => o.trim()).filter(Boolean).slice(0, 12);
+    if (clean.length < 2) throw new Error("A poll needs at least 2 options");
+    if (!question.trim()) throw new Error("Poll question required");
+    const expiresAt = opts?.ttlMinutes ? new Date(Date.now() + opts.ttlMinutes * 60_000) : null;
+    const body = `📊 ${question.trim()}`;
+    const message = await prisma.chatMessage.create({
+      data: {
+        channelId,
+        workspaceId: this.workspaceId,
+        createdById: this.userId,
+        authorName: "Poll",
+        body,
+        bodyHtml: renderMarkdown(body),
+        lang: detectLanguage(body),
+      },
+    });
+    const poll = await prisma.chatPoll.create({
+      data: {
+        workspaceId: this.workspaceId,
+        channelId,
+        question: question.trim(),
+        options: clean as unknown as Prisma.InputJsonValue,
+        createdById: this.userId,
+        messageId: message.id,
+        expiresAt,
+      },
+      include: { votes: true },
+    });
+    await prisma.chatMessage.update({ where: { id: message.id }, data: { pollId: poll.id } });
+    return poll;
+  }
+
+  async votePoll(pollId: string, optionIndex: number) {
+    await this.assert("UPDATE");
+    const poll = await prisma.chatPoll.findFirst({
+      where: { id: pollId, workspaceId: this.workspaceId },
+      include: { votes: true },
+    });
+    if (!poll) throw new Error("Poll not found");
+    if (poll.status !== "OPEN") throw new Error("Poll is closed");
+    if (poll.expiresAt && poll.expiresAt < new Date()) throw new Error("Poll has expired");
+    const options = (Array.isArray(poll.options) ? poll.options : []) as unknown as Array<{ text: string }>;
+    if (optionIndex < 0 || optionIndex >= options.length) throw new Error("Invalid option");
+    await prisma.chatPollVote.upsert({
+      where: { pollId_userId: { pollId, userId: this.userId } },
+      create: { pollId, userId: this.userId, optionIndex },
+      update: { optionIndex },
+    });
+    return this.getPoll(pollId);
+  }
+
+  async resolvePoll(pollId: string) {
+    await this.assert("UPDATE");
+    const poll = await prisma.chatPoll.findFirst({
+      where: { id: pollId, workspaceId: this.workspaceId },
+    });
+    if (!poll) throw new Error("Poll not found");
+    if (poll.createdById !== this.userId && this.role !== "ADMIN" && this.role !== "OWNER") {
+      throw new Error("Only the poll creator or an admin can resolve");
+    }
+    await prisma.chatPoll.update({
+      where: { id: pollId },
+      data: { status: "CLOSED", closedAt: new Date() },
+    });
+    return this.getPoll(pollId);
+  }
+
+  async getPoll(pollId: string) {
+    await this.assert("READ");
+    const poll = await prisma.chatPoll.findFirst({
+      where: { id: pollId, workspaceId: this.workspaceId },
+      include: { votes: { select: { userId: true, optionIndex: true } } },
+    });
+    if (!poll) return null;
+    const options = (Array.isArray(poll.options) ? poll.options : []) as unknown as Array<{ text: string }>;
+    const counts = options.map((_, i) => poll.votes.filter((v) => v.optionIndex === i).length);
+    const total = poll.votes.length;
+    return {
+      ...poll,
+      options: options.map((o, i) => ({ ...o, count: counts[i] ?? 0, pct: total > 0 ? Math.round(((counts[i] ?? 0) / total) * 100) : 0 })),
+      totalVotes: total,
+      myVote: poll.votes.find((v) => v.userId === this.userId)?.optionIndex ?? null,
+    };
+  }
+
+  async listPolls(channelId: string) {
+    await this.assert("READ");
+    const polls = await prisma.chatPoll.findMany({
+      where: { workspaceId: this.workspaceId, channelId },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    });
+    return Promise.all(polls.map((p) => this.getPoll(p.id)));
+  }
+
+  // ── Reminders (spec §8.7 /remind) ──────────────────────────────────
+
+  async createReminder(text: string, remindAt: Date, opts?: { channelId?: string; targetUserId?: string; sourceMessageId?: string }) {
+    await this.assert("CREATE");
+    if (!text.trim()) throw new Error("Reminder text required");
+    if (isNaN(remindAt.getTime()) || remindAt.getTime() <= Date.now()) throw new Error("Remind time must be in the future");
+    return prisma.reminder.create({
+      data: {
+        workspaceId: this.workspaceId,
+        userId: this.userId,
+        text: text.trim(),
+        remindAt,
+        channelId: opts?.channelId,
+        targetUserId: opts?.targetUserId,
+        sourceMessageId: opts?.sourceMessageId,
+      },
+    });
+  }
+
+  async listReminders(status?: "PENDING" | "FIRED" | "CANCELLED", limit = 20) {
+    await this.assert("READ");
+    return prisma.reminder.findMany({
+      where: { workspaceId: this.workspaceId, userId: this.userId, ...(status ? { status } : {}) },
+      orderBy: { remindAt: "asc" },
+      take: limit,
+    });
+  }
+
+  async cancelReminder(reminderId: string) {
+    await this.assert("DELETE");
+    const r = await prisma.reminder.findFirst({
+      where: { id: reminderId, workspaceId: this.workspaceId, userId: this.userId },
+    });
+    if (!r) throw new Error("Reminder not found");
+    return prisma.reminder.update({
+      where: { id: reminderId },
+      data: { status: "CANCELLED", cancelledAt: new Date() },
+    });
+  }
+
+  async fireDueReminders() {
+    await this.assert("UPDATE");
+    const due = await prisma.reminder.findMany({
+      where: { workspaceId: this.workspaceId, status: "PENDING", remindAt: { lte: new Date() } },
+      take: 25,
+    });
+    let fired = 0;
+    for (const r of due) {
+      await prisma.reminder.update({ where: { id: r.id }, data: { status: "FIRED", firedAt: new Date() } });
+      try {
+        if (r.channelId) {
+          const body = `⏰ Reminder for @${r.userId.slice(0, 8)}: ${r.text}`;
+          await prisma.chatMessage.create({
+            data: {
+              channelId: r.channelId,
+              workspaceId: this.workspaceId,
+              createdById: r.userId,
+              authorName: "Ani",
+              body,
+              bodyHtml: renderMarkdown(body),
+              lang: detectLanguage(body),
+            },
+          });
+        }
+      } catch {
+        // best-effort: reminder is already marked FIRED
+      }
+      fired += 1;
+    }
+    return { fired, total: due.length };
+  }
+
   // ── Presence ───────────────────────────────────────────────────────
 
   async setPresence(status: "ONLINE" | "AWAY" | "BUSY" | "DND" | "IDLE", customStatus?: string) {
@@ -1181,7 +1378,7 @@ if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Pris
       parentClassification: parent?.classification ?? null,
     });
     const config = await getConfig(this.workspaceId);
-    const tier = (parent?.retentionMode ?? channel.retentionTier ?? "STANDARD") as RetentionTier;
+    const tier = (((parent?.retentionMode ?? channel.retentionTier ?? "STANDARD") as string).toUpperCase()) as RetentionTier;
     const policy = await getPolicy(this.workspaceId, tier, "MESSAGE");
     const retainUntil = computeRetainUntil(policy);
     const envelope = await getEnvelope(this.workspaceId, "PRODUCTION");

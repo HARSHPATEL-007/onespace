@@ -30,6 +30,8 @@ model Workspace {
   docs         Doc[]
   chatChannels ChatChannel[]
   chatMessages ChatMessage[]
+  chatPolls    ChatPoll[]   @relation("ChatPollWorkspace")
+  reminders    Reminder[]   @relation("ReminderWorkspace")
   mailMessages MailMessage[]
   mailLabels   MailLabel[]
   sheetWorkbooks SheetWorkbook[]
@@ -285,6 +287,9 @@ createdCalendarEvents CalendarEvent[]
       chatBookmarks ChatBookmark[]
       chatSavedSearches ChatSavedSearch[]
       chatGovernanceAssignments ChatGovernanceAssignment[]
+      chatPolls ChatPoll[] @relation("ChatPollCreatedBy")
+      chatPollVotes ChatPollVote[]
+      reminders Reminder[] @relation("ReminderOwner")
       approvalRequests ChatApproval[] @relation("ApprovalRequestedBy")
       approvalReviews ChatApproval[] @relation("ApprovalReviewedBy")
       businessApprovalRequests ApprovalRequest[] @relation("ApprovalRequester")
@@ -1053,6 +1058,8 @@ model ChatChannel {
    members   ChatMember[]
     pins      ChatPin[]
    bookmarks  ChatBookmark[]
+   chatPolls  ChatPoll[]   @relation("ChatPollChannel")
+   reminders  Reminder[]   @relation("ReminderChannel")
    chatLinks ContactChatLink[]
    liveEmbeds LiveEmbed[]
    presentationSessions PresentationSession[]
@@ -1104,6 +1111,8 @@ model ChatMessage {
   smartReplySuggestions SmartReplySuggestion[]
   approvalRequests ApprovalRequest[]
   deliveries ChatMessageDelivery[]
+  poll         ChatPoll?      @relation("ChatPollMessage", fields: [pollId], references: [id], onDelete: SetNull)
+  pollId       String?        @unique
 
   @@index([channelId, createdAt(sort: Desc)])
   @@index([parentId])
@@ -1221,6 +1230,79 @@ model ChatBookmark {
   @@unique([userId, messageId])
   @@index([workspaceId, userId])
   @@index([channelId])
+}
+
+/// Poll attached to a chat message (slash /poll).
+model ChatPoll {
+  id          String    @id @default(uuid())
+  workspaceId String
+  channelId   String
+  question    String
+  options     Json      @default("[]") // [{ text }]
+  createdById String
+  status      PollStatus @default(OPEN)
+  expiresAt   DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace   Workspace     @relation("ChatPollWorkspace", fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel     ChatChannel   @relation("ChatPollChannel", fields: [channelId], references: [id], onDelete: Cascade)
+  createdBy   User          @relation("ChatPollCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  message     ChatMessage?  @relation("ChatPollMessage")
+  messageId   String?       @unique
+  votes       ChatPollVote[]
+
+  @@index([workspaceId, channelId, createdAt(sort: Desc)])
+}
+
+/// One user vote per poll.
+model ChatPollVote {
+  id          String   @id @default(uuid())
+  pollId      String
+  userId      String
+  optionIndex Int
+  createdAt   DateTime @default(now())
+
+  poll ChatPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@index([pollId])
+}
+
+/// Personal reminders created from chat (slash /remind).
+model Reminder {
+  id            String          @id @default(uuid())
+  workspaceId   String
+  userId        String
+  text          String
+  remindAt      DateTime
+  channelId     String?
+  sourceMessageId String?
+  targetUserId  String?
+  status        ReminderStatus  @default(PENDING)
+  firedAt       DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime        @default(now())
+
+  workspace Workspace    @relation("ReminderWorkspace", fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User         @relation("ReminderOwner", fields: [userId], references: [id], onDelete: Cascade)
+  channel   ChatChannel? @relation("ReminderChannel", fields: [channelId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, remindAt])
+  @@index([workspaceId, status])
+}
+
+enum PollStatus {
+  OPEN
+  CLOSED
+}
+
+enum ReminderStatus {
+  PENDING
+  FIRED
+  CANCELLED
 }
 
 enum ChatChannelKind {

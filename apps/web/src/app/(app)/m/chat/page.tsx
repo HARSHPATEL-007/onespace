@@ -35,6 +35,11 @@ import {
   huddleAction,
   threadSummaryAction,
   threadDecisionAction,
+  threadPinAction,
+  threadExportAction,
+  threadActionItemsAction,
+  messageEditsAction,
+  digestAction,
 } from "./actions";
 
 export default async function ChatPage({
@@ -147,6 +152,11 @@ export default async function ChatPage({
         huddle: huddleAction,
         threadSummary: threadSummaryAction,
         threadDecision: threadDecisionAction,
+        threadPin: threadPinAction,
+        threadExport: threadExportAction,
+        threadActionItems: threadActionItemsAction,
+        messageEdits: messageEditsAction,
+        digest: digestAction,
       }}
       token={token}
     />

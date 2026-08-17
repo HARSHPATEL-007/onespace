@@ -60,6 +60,9 @@ export function ThreadPanel({
   onSendReply,
   onSummary,
   onDecision,
+  onPin,
+  onExport,
+  onActionItems,
 }: {
   parentId: string;
   workspaceId: string;
@@ -67,6 +70,9 @@ export function ThreadPanel({
   onSendReply: (parentId: string, body: string) => Promise<void>;
   onSummary: (threadId: string) => Promise<unknown>;
   onDecision: (threadId: string, decisionText: string, sourceMessageId?: string) => Promise<unknown>;
+  onPin: (threadId: string, pinType: "ROOM" | "PERSONAL" | "PRIORITY") => Promise<unknown>;
+  onExport: (threadId: string, format: "MARKDOWN" | "PDF" | "DOCX" | "JSON") => Promise<unknown>;
+  onActionItems: (threadId: string) => Promise<unknown>;
 }) {
   const [data, setData] = useState<ThreadData | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -75,6 +81,13 @@ export function ThreadPanel({
   const [summary, setSummary] = useState<ThreadSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinNotice, setPinNotice] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState<"MARKDOWN" | "PDF" | "DOCX" | "JSON">("MARKDOWN");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [actionItems, setActionItems] = useState<Array<{ id: string; text: string; assignee: string | null; status: string }> | null>(null);
+  const [actionItemsLoading, setActionItemsLoading] = useState(false);
 
   const fetchThread = useCallback(async () => {
     try {
@@ -116,6 +129,44 @@ export function ThreadPanel({
     } catch { /* silent */ }
   };
 
+  const handlePin = async () => {
+    setPinBusy(true);
+    setPinNotice(null);
+    try {
+      await onPin(parentId, "ROOM");
+      setPinNotice("Thread pinned (ROOM)");
+    } catch (e) {
+      setPinNotice(e instanceof Error ? e.message : "Pin failed");
+    } finally { setPinBusy(false); }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const res = (await onExport(parentId, exportFormat)) as { content?: string; format?: string };
+      const content = res?.content ?? "";
+      const blob = new Blob([content], { type: exportFormat === "JSON" ? "application/json" : "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `thread-${parentId.slice(0, 8)}.${exportFormat === "JSON" ? "json" : "md"}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Export failed");
+    } finally { setExporting(false); }
+  };
+
+  const handleActionItems = async () => {
+    setActionItemsLoading(true);
+    try {
+      const res = (await onActionItems(parentId)) as Array<{ id: string; text: string; assignee: string | null; status: string }>;
+      setActionItems(res);
+    } catch { setActionItems([]); }
+    finally { setActionItemsLoading(false); }
+  };
+
   if (loading) return <div className="nv-empty">Loading thread...</div>;
   if (!data) return <div className="nv-empty">Thread not found</div>;
 
@@ -128,8 +179,46 @@ export function ThreadPanel({
         <Button variant="ghost" size="sm" onClick={() => void handleSummary()} disabled={summaryLoading} title="AI thread summary (spec §8.3)">
           {summaryLoading ? "…" : "✨ Summary"}
         </Button>
+        <Button variant="ghost" size="sm" onClick={() => void handlePin()} disabled={pinBusy} title="Pin thread (ROOM)">
+          {pinBusy ? "…" : "📌"}
+        </Button>
         <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
       </div>
+      {pinNotice && (
+        <div style={{ padding: "6px var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", fontSize: 11, color: "var(--nv-color-primary)" }}>
+          {pinNotice}
+        </div>
+      )}
+
+      {/* Thread ops row (spec §8.3) */}
+      <div style={{ padding: "var(--nv-space-2) var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", display: "flex", alignItems: "center", gap: 6 }}>
+        <select className="nv-input" value={exportFormat} onChange={(e) => setExportFormat(e.target.value as typeof exportFormat)} style={{ padding: "2px 6px", fontSize: 11, width: "auto" }}>
+          <option value="MARKDOWN">MD</option>
+          <option value="JSON">JSON</option>
+          <option value="PDF">PDF</option>
+          <option value="DOCX">DOCX</option>
+        </select>
+        <Button variant="secondary" size="sm" onClick={() => void handleExport()} disabled={exporting} title="Export thread transcript">
+          {exporting ? "…" : "⬇ Export"}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => void handleActionItems()} disabled={actionItemsLoading} title="Extract action items (spec §8.3)">
+          {actionItemsLoading ? "…" : "✅ Action items"}
+        </Button>
+        {exportError && <span style={{ fontSize: 11, color: "var(--nv-color-danger)" }}>{exportError}</span>}
+      </div>
+      {actionItems && actionItems.length > 0 && (
+        <div style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", background: "var(--nv-color-primary-alpha)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--nv-color-primary)", marginBottom: 6 }}>✅ Action Items</div>
+          <ul style={{ margin: 0, paddingLeft: 16, fontSize: "var(--nv-font-sm)", display: "flex", flexDirection: "column", gap: 3 }}>
+            {actionItems.map((a) => (
+              <li key={a.id}>
+                {a.text}
+                {a.assignee && <span style={{ color: "var(--nv-color-text-faint)" }}> — {a.assignee}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* AI summary card */}
       {summary && (
