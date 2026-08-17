@@ -16,6 +16,7 @@
     "@n0va/authz": "workspace:*",
     "@n0va/ui": "workspace:*",
     "@n0va/modules-approvals": "workspace:*",
+    "@n0va/modules-ai-monitoring": "workspace:*",
     "next": "^15.3.0",
     "redis": "^4.7.0",
     "zod": "^3.24.0"

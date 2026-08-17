@@ -29,6 +29,12 @@ import {
   hyperAction,
   approvalAction,
   deliveryAction,
+  slashCommandAction,
+  createChannelFromTemplateAction,
+  inviteGuestAction,
+  huddleAction,
+  threadSummaryAction,
+  threadDecisionAction,
 } from "./actions";
 
 export default async function ChatPage({
@@ -135,6 +141,12 @@ export default async function ChatPage({
         hyper: hyperAction,
         approval: approvalAction,
         delivery: deliveryAction,
+        slash: slashCommandAction,
+        createFromTemplate: createChannelFromTemplateAction,
+        inviteGuest: inviteGuestAction,
+        huddle: huddleAction,
+        threadSummary: threadSummaryAction,
+        threadDecision: threadDecisionAction,
       }}
       token={token}
     />

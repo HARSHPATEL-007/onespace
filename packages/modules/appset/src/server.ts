@@ -53,6 +53,7 @@ export const CATALOG: CatalogApp[] = [
   { id: "approvals", name: "Approvals", description: "AI-assisted approval routing, ERP write-back and reconciliation.", category: "Business", url: "/m/approvals", accent: "#f59e0b", badge: "v5" },
   { id: "delivery", name: "Delivery Matrix", description: "Policy-driven reliability: semantics, retry, breakers, quotas and DLQ.", category: "Leadership", url: "/m/delivery", accent: "#7c5cff", badge: "v5" },
   { id: "personalization", name: "Personalization", description: "Notification rules, DND schedules, priority inbox, pins and AI suggestions.", category: "Communication", url: "/m/personalization", accent: "#10b981", badge: "v5" },
+  { id: "neural", name: "Neural Lab", description: "Opt-in research platform — flow estimation, commands, coarse state sharing, huddles.", category: "Communication", url: "/m/neural", accent: "#8b5cf6", badge: "research" },
 ];
 
 export class AppSetService {

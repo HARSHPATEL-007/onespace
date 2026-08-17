@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
-    "@n0va/authz": "workspace:*"
+    "@n0va/authz": "workspace:*",
+    "@n0va/modules-chat": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.0"

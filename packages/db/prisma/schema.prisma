@@ -1078,6 +1078,7 @@ model ChatMessage {
   authorAvatar String?
   body        String
   bodyHtml    String?
+  lang        String?
   reactions   Json     @default("[]")
   parentId    String?
   editedAt    DateTime?
@@ -1946,6 +1947,73 @@ model ChatPreferenceEvent {
 
   @@index([profileId, createdAt])
   @@index([profileId, kind])
+}
+
+// ── NEURAL — opt-in experimental research platform (§1–§14) ─────────────────
+// Raw neural signals are never stored; only derived coarse states and explicit
+// commands, under granular revocable consent with access logging.
+
+/// §1/§11 — per-user tier + per-user calibration (personalized flow models).
+model NeuralProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  workspaceId  String
+  tier         Int      @default(0) // 0..6 — capability tier, default 0 (no sensing)
+  calibration  String   @default("{}") // JSON: {corrections, samples, acceptedCorrections, withinPersonAccuracy, calibrationSessions}
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+/// §4 — coarse user-controlled state sharing with audience + auto-expiry.
+model NeuralSharing {
+  id         String   @id @default(uuid())
+  userId     String
+  workspaceId String
+  state      String   // available | focused | in_meeting | low_interruption_tolerance | open_to_collaboration | needs_recovery | uncertain
+  audience   String   // NOBODY | PEOPLE | ROOM | DELAYED_AGGREGATE
+  personIds  String   @default("[]") // JSON
+  roomId     String?
+  precision  String   @default("COARSE")
+  expiresAt  DateTime?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  revokedAt  DateTime?
+
+  @@index([userId, active])
+  @@index([workspaceId, active])
+}
+
+/// §3/§8 — decoded command transcript: preview, confirm, execute, cancel.
+model NeuralCommand {
+  id          String   @id @default(uuid())
+  sessionId   String?
+  huddleId    String?
+  userId      String
+  workspaceId String
+  kind        String   // mute | join | bookmark | create_task | send | agree | clarify | pause | raise_hand
+  decoded     String?  // visible decoded text preview
+  confidence  Float
+  threshold   Float    @default(0.7)
+  source      String   // INFERENCE | EXPLICIT
+  status      String   @default("PENDING") // PENDING | CONFIRMED | CANCELLED | EXECUTED | REJECTED
+  detail      String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([huddleId])
+}
+
+/// §9 — access log for every neural-data operation.
+model NeuralAccessLog {
+  id          String   @id @default(uuid())
+  userId      String
+  workspaceId String
+  operation   String   // read | infer | share | delete | command | consent | session | huddle
+  target      String
+  detail      String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 /// N0VA MAIL - messages, threads and labels.
@@ -3957,6 +4025,7 @@ model NeuralConsentScope {
   epsilon         Float    @default(1.0)
   enabled         Boolean  @default(true)
   revokedAt       DateTime?
+  expiresAt       DateTime? // §10 — expiry-bound consent (null = PERSISTENT)
   lastConfirmedAt DateTime @default(now())
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -3984,6 +4053,9 @@ model NeuralStateRecord {
   flowProb        Float    @default(0)
   blinkRate       Int      @default(0)
   heartRate       Int?
+  confidence      Float    @default(0) // §6 — probabilistic estimate, not ground truth
+  corrected       Boolean  @default(false) // §6 — user-corrected via self-report/feedback
+  selfReport      Boolean  @default(false) // §6 — signal came from voluntary user feedback
   embedding       Json
   provenanceHash  String
   consentScopeId  String?
@@ -4037,6 +4109,11 @@ model NeuralHuddleParticipant {
   leftAt          DateTime?
   neuralStreamOk  Boolean  @default(false)
   subvocalOk      Boolean  @default(false)
+  sharedState     String?  // §2/§4 — coarse user-controlled state
+  sharedConfidence Float?  // §8 — decoding confidence for the shared state
+  handRaised      Boolean  @default(false) // §2 — silent "raise hand"
+  paused          Boolean  @default(false) // §8 — neural signal pause
+  consentVersion  Int      @default(1) // §8 — consent indicator (which consent version joined with)
 
   session NeuralHuddleSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -4442,7 +4519,7 @@ model ThreadDecision {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread      ThreadMetadata @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([threadId])
@@ -4469,7 +4546,7 @@ model ThreadActionItem {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread      ThreadMetadata @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([threadId])
@@ -4490,7 +4567,7 @@ model ThreadPin {
   expiresAt   DateTime?
   createdAt   DateTime @default(now())
 
-  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread      ThreadMetadata @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -4508,7 +4585,7 @@ model ThreadBookmark {
   note        String?
   createdAt   DateTime @default(now())
 
-  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread      ThreadMetadata @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -4527,7 +4604,7 @@ model ThreadExport {
   fileSize    Int      @default(0)
   createdAt   DateTime @default(now())
 
-  thread      ThreadMetadata @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread      ThreadMetadata @relation(fields: [threadId], references: [threadId], onDelete: Cascade)
   workspace   Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdBy   User           @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
@@ -5313,14 +5390,14 @@ model FederationPolicy {
 
 model FederationAuditLog {
   id              String   @id @default(uuid())
-  connectionId    String
+  connectionId    String?
   workspaceId     String
   action          String
   actorId         String?
   details         Json     @default("{}")
   createdAt       DateTime @default(now())
 
-  connection      FederationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  connection      FederationConnection? @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([connectionId, createdAt(sort: Desc)])

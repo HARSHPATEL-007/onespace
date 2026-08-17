@@ -26,9 +26,15 @@ interface ThreadData {
   };
 }
 
+interface ThreadSummary {
+  short: string;
+  bullets: string[];
+  decisions: Array<{ text: string; status: string; sourceMessageId?: string }>;
+}
+
 function formatTime(d: string | Date): string {
   const date = typeof d === "string" ? new Date(d) : d;
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function renderBody(body: string) {
@@ -52,16 +58,23 @@ export function ThreadPanel({
   workspaceId,
   onClose,
   onSendReply,
+  onSummary,
+  onDecision,
 }: {
   parentId: string;
   workspaceId: string;
   onClose: () => void;
   onSendReply: (parentId: string, body: string) => Promise<void>;
+  onSummary: (threadId: string) => Promise<unknown>;
+  onDecision: (threadId: string, decisionText: string, sourceMessageId?: string) => Promise<unknown>;
 }) {
   const [data, setData] = useState<ThreadData | null>(null);
   const [replyText, setReplyText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [summary, setSummary] = useState<ThreadSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const fetchThread = useCallback(async () => {
     try {
@@ -84,6 +97,25 @@ export function ThreadPanel({
     } finally { setSending(false); }
   };
 
+  const handleSummary = async () => {
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const res = (await onSummary(parentId)) as ThreadSummary;
+      setSummary(res);
+    } catch (e) {
+      setSummaryError(e instanceof Error ? e.message : "Summary failed");
+    } finally { setSummaryLoading(false); }
+  };
+
+  const handleDecision = async (reply: ThreadMessage) => {
+    try {
+      await onDecision(parentId, reply.body.slice(0, 200), reply.id);
+      setSummary(null);
+      setSummaryError(null);
+    } catch { /* silent */ }
+  };
+
   if (loading) return <div className="nv-empty">Loading thread...</div>;
   if (!data) return <div className="nv-empty">Thread not found</div>;
 
@@ -93,8 +125,40 @@ export function ThreadPanel({
       <div style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, flex: 1 }}>Thread</span>
         <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{data.info.replyCount} replies</span>
+        <Button variant="ghost" size="sm" onClick={() => void handleSummary()} disabled={summaryLoading} title="AI thread summary (spec §8.3)">
+          {summaryLoading ? "…" : "✨ Summary"}
+        </Button>
         <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
       </div>
+
+      {/* AI summary card */}
+      {summary && (
+        <div style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", background: "var(--nv-color-primary-alpha)" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--nv-color-primary)", marginBottom: 6 }}>✨ AI Summary</div>
+          {summary.short && <div style={{ fontSize: "var(--nv-font-sm)", fontWeight: 600, marginBottom: 4 }}>{summary.short}</div>}
+          {summary.bullets.length > 0 && (
+            <ul style={{ margin: 0, paddingLeft: 16, fontSize: "var(--nv-font-sm)", display: "flex", flexDirection: "column", gap: 2 }}>
+              {summary.bullets.map((b, i) => <li key={i}>{b}</li>)}
+            </ul>
+          )}
+          {summary.decisions.length > 0 && (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-color-text-faint)" }}>📌 Decisions</div>
+              {summary.decisions.map((d, i) => (
+                <div key={i} style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ color: d.status === "CONFIRMED" ? "var(--nv-color-success)" : "var(--nv-color-warning)" }}>{d.status === "CONFIRMED" ? "✓" : "◌"} {d.status}</span>
+                  <span style={{ flex: 1 }}>{d.text.slice(0, 90)}{d.text.length > 90 ? "…" : ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {summaryError && (
+        <div style={{ padding: "6px var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", fontSize: 11, color: "var(--nv-color-danger)" }}>
+          {summaryError}
+        </div>
+      )}
 
       {/* Parent message */}
       <div style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", background: "var(--nv-color-surface-2)" }}>
@@ -133,6 +197,13 @@ export function ThreadPanel({
                 {reply.editedAt && <span style={{ fontSize: 10, color: "var(--nv-color-text-faint)" }}>(ed.)</span>}
               </div>
               <div style={{ fontSize: "var(--nv-font-sm)" }}>{renderBody(reply.body)}</div>
+              <button
+                onClick={() => void handleDecision(reply)}
+                title="Mark as decision (spec §8.3)"
+                style={{ marginTop: 2, border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: 999, padding: "1px 8px", fontSize: 10, cursor: "pointer", color: "var(--nv-color-text-faint)" }}
+              >
+                📌 decision
+              </button>
               {reply.attachments && reply.attachments.length > 0 && (
                 <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
                   {reply.attachments.map(a => (

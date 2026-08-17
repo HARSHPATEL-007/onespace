@@ -157,7 +157,7 @@ const TOPIC_KEYWORDS: Array<{ topic: string; keywords: RegExp[] }> = [
   { topic: "Support", keywords: [/\bhelp\b/i, /\bissue\b/i, /\bproblem\b/i, /\bbug\b/i, /\bnot working\b/i, /\bfaq\b/i, /\berror\b/i, /\bticket\b/i] },
 ];
 
-const STYLE_REPLY_MAP: Record<string, string[]> = {
+const STYLE_REPLY_MAP: Record<string, Record<string, string[]>> = {
   ACKNOWLEDGEMENT: {
     CONCISE: ["Got it.", "Noted.", "Will do."],
     FRIENDLY: ["Sounds good!", "Thanks for the update!", "Got it — appreciate you."],
@@ -793,14 +793,14 @@ export class AiMonitoringService {
 
     let replyLatencySec = 0, latencyCount = 0;
     for (let i = 1; i < messages.length; i++) {
-      if (messages[i].createdById !== messages[i - 1].createdById) {
-        replyLatencySec += (new Date(messages[i].createdAt).getTime() - new Date(messages[i - 1].createdAt).getTime()) / 1000;
+      if (messages[i]!.createdById !== messages[i - 1]!.createdById) {
+        replyLatencySec += (new Date(messages[i]!.createdAt).getTime() - new Date(messages[i - 1]!.createdAt).getTime()) / 1000;
         latencyCount++;
       }
     }
     replyLatencySec = latencyCount ? replyLatencySec / latencyCount : 0;
 
-    const questionMsgs = messages.filter(m => INTENT_PATTERNS.QUESTION.some(p => p.test(m.body)));
+    const questionMsgs = messages.filter(m => INTENT_PATTERNS.QUESTION!.some(p => p.test(m.body)));
     const unansweredQuestions = questionMsgs.filter(q => !messages.some(m => m.parentId === q.id && m.createdById !== q.createdById)).length;
 
     const threadRows = await prisma.threadMetadata.findMany({ where: { channelId } });
@@ -896,7 +896,7 @@ export class AiMonitoringService {
       });
     }
 
-    const questionMsgs = messages.filter(m => INTENT_PATTERNS.QUESTION.some(p => p.test(m.body)));
+    const questionMsgs = messages.filter(m => INTENT_PATTERNS.QUESTION!.some(p => p.test(m.body)));
     const questionCounts: Record<string, number> = {};
     for (const q of questionMsgs) {
       const key = q.body.toLowerCase().slice(0, 80).replace(/[?.,!]/g, "");
@@ -921,7 +921,7 @@ export class AiMonitoringService {
       });
     }
 
-    const decisionMsgs = messages.filter(m => INTENT_PATTERNS.DECISION_CONFIRMATION.some(p => p.test(m.body)));
+    const decisionMsgs = messages.filter(m => INTENT_PATTERNS.DECISION_CONFIRMATION!.some(p => p.test(m.body)));
     if (decisionMsgs.length) {
       insights.push({
         kind: "DECISION_CLUSTER", title: `${decisionMsgs.length} decisions confirmed`, summary: "Decisions cluster around confirmations and sign-offs.",
@@ -1045,7 +1045,7 @@ export class AiMonitoringService {
       orderBy: { createdAt: "asc" }, take: 500,
     });
 
-    const questions = messages.filter(m => INTENT_PATTERNS.QUESTION.some(p => p.test(m.body)));
+    const questions = messages.filter(m => INTENT_PATTERNS.QUESTION!.some(p => p.test(m.body)));
     const clusters: Record<string, { question: string; ids: string[]; threadIds: string[]; channelIds: string[] }> = {};
 
     for (const q of questions) {
@@ -1121,7 +1121,7 @@ export class AiMonitoringService {
       select: { body: true }, take: 10,
     });
     for (const m of followUps) {
-      if (m.body.length > 30 && !INTENT_PATTERNS.QUESTION.some(p => p.test(m.body))) return m.body.slice(0, 200);
+      if (m.body.length > 30 && !INTENT_PATTERNS.QUESTION!.some(p => p.test(m.body))) return m.body.slice(0, 200);
     }
     return undefined;
   }
@@ -1131,7 +1131,7 @@ export class AiMonitoringService {
     const where: any = { workspaceId: this.workspaceId };
     if (options?.status) where.status = options.status;
     return prisma.faqEntry.findMany({
-      where, orderBy: [{ frequency: "desc" }, { updatedAt: "desc" }], take: options?.limit ?? 100,
+      where, orderBy: [{ frequency: "desc" }, { lastUpdated: "desc" }], take: options?.limit ?? 100,
     });
   }
 

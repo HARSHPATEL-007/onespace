@@ -2,6 +2,11 @@
 
 import { ChatService, channelSchema, channelMetaSchema, messageSchema, reactionSchema, channelIdSchema, savedSearchSchema } from "@n0va/modules-chat/server";
 import { ApprovalService } from "@n0va/modules-approvals/server";
+import { TasksService } from "@n0va/modules-tasks/server";
+import { FederationService, type GuestTier } from "@n0va/modules-federation/server";
+import { HuddleService } from "@n0va/modules-huddle-media/server";
+import { ThreadMemoryService } from "@n0va/modules-thread-memory/server";
+import { prisma } from "@n0va/db";
 import { messageCreated } from "@n0va/modules-events";
 import { getEventBus } from "@/lib/eventbus";
 import { actionContext, requireActionContext } from "@/lib/action-context";
@@ -586,4 +591,119 @@ export async function personalizationAction(input: PersonalizationInput) {
     default:
       throw new Error("Unknown personalization op");
   }
+}
+
+// ── Chat Nexus: slash commands (spec §8.7) ───────────────────────────────
+
+export async function slashCommandAction(input: { command: string; args?: string }) {
+  const ctx = await requireActionContext();
+  const cmd = input.command.trim().toLowerCase();
+  const args = (input.args ?? "").trim();
+  switch (cmd) {
+    case "/help":
+      return {
+        ok: true,
+        message: "Commands: /task <title> · /status <ONLINE|AWAY|BUSY|DND|IDLE> · /summarize · /smart-reply · /translate · /action-items · /sentiment",
+      };
+    case "/task": {
+      if (!args) return { ok: false, message: "Usage: /task <title>" };
+      const tasks = new TasksService(ctx.workspaceId, ctx.user.id, ctx.memberRole);
+      let list: Awaited<ReturnType<TasksService["lists"]>>[number] | null =
+        (await tasks.lists()).find((l) => l.name === "Chat Tasks") ?? null;
+      if (!list) {
+        const created = await tasks.createList({ name: "Chat Tasks", color: "#8b5cf6" });
+        list = { ...created, tasks: [] };
+      }
+      const task = await tasks.createTask(list.id, { title: args, priority: "MEDIUM" });
+      return { ok: true, message: `Task created: ${task.title}`, taskId: task.id };
+    }
+    case "/status": {
+      const valid = ["ONLINE", "AWAY", "BUSY", "DND", "IDLE"] as const;
+      const status = args.toUpperCase();
+      if (!(valid as readonly string[]).includes(status)) {
+        return { ok: false, message: "Usage: /status <ONLINE|AWAY|BUSY|DND|IDLE>" };
+      }
+      await (await svc()).setPresence(status as (typeof valid)[number]);
+      return { ok: true, message: `Presence set to ${status}` };
+    }
+    default:
+      return { ok: false, message: `Unknown command ${cmd}. Try /help` };
+  }
+}
+
+// ── Chat Nexus: space templates (spec §8.1.2) ───────────────────────────
+
+export async function createChannelFromTemplateAction(formData: FormData) {
+  const templateId = String(formData.get("templateId") ?? "");
+  const name = String(formData.get("name") ?? "");
+  const { name: parsed } = channelSchema.parse({ name });
+  await (await svc()).createChannelFromTemplate(templateId, parsed);
+}
+
+// ── Chat Nexus: auto-archiving (spec §8.1.3) ────────────────────────────
+
+export async function archiveChannelsAction(input: { days?: number; dryRun?: boolean }) {
+  return (await svc()).archiveInactiveChannels(input.days ?? 90, !!input.dryRun);
+}
+
+// ── Chat Nexus: guest access (spec §8.8) ────────────────────────────────
+
+export async function inviteGuestAction(input: { guestEmail: string; guestName: string; accessTier?: GuestTier; roomScope?: string[]; expiresAt?: string }) {
+  const { workspaceId, userId, role } = await actionContext();
+  const fed = new FederationService(workspaceId, userId, role);
+  return fed.inviteGuest({
+    guestEmail: input.guestEmail,
+    guestName: input.guestName,
+    accessTier: input.accessTier ?? "VIEWER",
+    roomScope: input.roomScope ?? [],
+    expiresAt: input.expiresAt ? new Date(input.expiresAt) : undefined,
+  });
+}
+
+// ── Chat Nexus: huddles from chat (spec §8.6) ───────────────────────────
+
+export async function huddleAction(input: { op: "start" | "get"; channelId: string; title?: string }) {
+  const { workspaceId, userId, role } = await actionContext();
+  if (input.op === "start") {
+    const hud = new HuddleService(workspaceId, userId, role);
+    const existing = await prisma.huddleSession.findFirst({
+      where: { workspaceId, channelId: input.channelId, status: "LIVE" },
+    });
+    if (existing) return { session: existing, created: false };
+    const session = await hud.createHuddle({
+      title: input.title ?? "Channel huddle",
+      mode: "INSTANT",
+      channelId: input.channelId,
+    });
+    return { session, created: true };
+  }
+  const session = await prisma.huddleSession.findFirst({
+    where: { workspaceId, channelId: input.channelId, status: "LIVE" },
+    include: { participants: { include: { user: { select: { id: true, name: true, email: true } } } } },
+    orderBy: { createdAt: "desc" },
+  });
+  return { session: session ?? null };
+}
+
+// ── Chat Nexus: thread memory (spec §8.3) ───────────────────────────────
+
+export async function threadSummaryAction(input: { threadId: string }) {
+  const { workspaceId, userId, role } = await actionContext();
+  const tm = new ThreadMemoryService(workspaceId, userId, role);
+  const parent = await prisma.chatMessage.findFirst({ where: { id: input.threadId, workspaceId } });
+  if (!parent) throw new Error("Thread not found");
+  await tm.getOrCreateThreadMetadata(input.threadId, parent.id, parent.channelId);
+  return tm.generateSummary(input.threadId);
+}
+
+export async function threadDecisionAction(input: { threadId: string; decisionText: string; sourceMessageId?: string }) {
+  const { workspaceId, userId, role } = await actionContext();
+  const tm = new ThreadMemoryService(workspaceId, userId, role);
+  const parent = await prisma.chatMessage.findFirst({ where: { id: input.threadId, workspaceId } });
+  if (!parent) throw new Error("Thread not found");
+  await tm.getOrCreateThreadMetadata(input.threadId, parent.id, parent.channelId);
+  return tm.createDecision(input.threadId, {
+    decisionText: input.decisionText,
+    sourceMessageId: input.sourceMessageId,
+  });
 }

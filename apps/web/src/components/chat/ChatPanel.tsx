@@ -40,6 +40,12 @@ export interface ChatActions {
   hyper: (input: HyperInput) => Promise<unknown>;
   approval: (input: ApprovalInput) => Promise<unknown>;
   delivery: (input: DeliveryInput) => Promise<unknown>;
+  slash: (input: { command: string; args?: string }) => Promise<unknown>;
+  createFromTemplate: (formData: FormData) => Promise<void>;
+  inviteGuest: (input: { guestEmail: string; guestName: string; accessTier?: "VIEWER" | "CONTRIBUTOR" | "PARTNER" | "VENDOR" | "TEMPORARY"; roomScope?: string[] }) => Promise<unknown>;
+  huddle: (input: { op: "start" | "get"; channelId: string; title?: string }) => Promise<unknown>;
+  threadSummary: (input: { threadId: string }) => Promise<unknown>;
+  threadDecision: (input: { threadId: string; decisionText: string; sourceMessageId?: string }) => Promise<unknown>;
 }
 
 export interface DeliveryView {
@@ -119,14 +125,14 @@ function formatTime(d: Date | string): string {
   const now = new Date();
   const isToday = date.toDateString() === now.toDateString();
   if (isToday) {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
   }
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) {
-    return "Yesterday " + date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return "Yesterday " + date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
   }
-  return date.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " + date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function isSameMinute(a: Date | string, b: Date | string): boolean {
@@ -286,6 +292,13 @@ export function ChatPanel({
   const [showGovernance, setShowGovernance] = useState(false);
   const [hyperFor, setHyperFor] = useState<string | null>(null);
   const [complianceError, setComplianceError] = useState("");
+  const [showGuest, setShowGuest] = useState(false);
+  const [guestBusy, setGuestBusy] = useState(false);
+  const [guestNotice, setGuestNotice] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState("");
+  const [huddleLive, setHuddleLive] = useState<{ session: { id: string; title: string; mode: string; status: string; startedAt: string | null; channelId: string | null } | null; participants?: Array<{ user: { id: string; name: string | null; email: string } }> } | null>(null);
+  const [huddleBusy, setHuddleBusy] = useState(false);
+  const [smartReplies, setSmartReplies] = useState<Array<{ id: string; intent: string; tone: string; body: string; rank: number; knowledgeBased: boolean; approvalRequired: boolean }>>([]);
   const [mode, setMode] = useState<WorkspaceModeValue>("COLLABORATION");
   const [modeSource, setModeSource] = useState<ModeSource>("default");
   const [modeFade, setModeFade] = useState(1);
@@ -336,6 +349,71 @@ export function ChatPanel({
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [liveMessages, initialMessages]);
 
+  // Chat Nexus: smart replies for the latest message (spec §8.9)
+  useEffect(() => {
+    const topLevel = messages.filter((m) => !m.parentId);
+    const last = topLevel[topLevel.length - 1];
+    if (!last || !activeChannelId) { setSmartReplies([]); return; }
+    let stale = false;
+    void fetch(`/api/chat/suggestions?messageId=${last.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!stale) setSmartReplies(d?.suggestions ?? []); })
+      .catch(() => { if (!stale) setSmartReplies([]); });
+    return () => { stale = true; };
+  }, [messages, activeChannelId]);
+
+  const acceptSuggestion = (s: { id: string; body: string }) => {
+    setInputValue(s.body);
+    void fetch("/api/chat/suggestions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "accept", id: s.id }) })
+      .then(() => setSmartReplies((prev) => prev.filter((x) => x.id !== s.id)))
+      .catch(() => {});
+  };
+
+  const dismissSuggestion = (id: string) => {
+    void fetch("/api/chat/suggestions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op: "dismiss", id }) })
+      .then(() => setSmartReplies((prev) => prev.filter((x) => x.id !== id)))
+      .catch(() => {});
+  };
+
+  // Chat Nexus: live huddle in the active channel (spec §8.6)
+  const refreshHuddle = useCallback(async () => {
+    if (!activeChannelId) { setHuddleLive(null); return; }
+    try {
+      const res = (await actions.huddle({ op: "get", channelId: activeChannelId })) as
+        | { session: { id: string; title: string; mode: string; status: string; startedAt: string | null; channelId: string | null; participants?: Array<{ user: { id: string; name: string | null; email: string } }> } | null }
+        | undefined;
+      setHuddleLive(res?.session ? { session: res.session, participants: res.session.participants ?? [] } : null);
+    } catch { /* silent */ }
+  }, [activeChannelId, actions]);
+
+  useEffect(() => { void refreshHuddle(); }, [refreshHuddle]);
+
+  const startHuddle = async () => {
+    if (!activeChannelId || huddleBusy) return;
+    setHuddleBusy(true);
+    try {
+      await actions.huddle({ op: "start", channelId: activeChannelId, title: `Huddle: ${active ? channelLabel(active) : "channel"}` });
+      await refreshHuddle();
+    } catch { /* silent */ }
+    finally { setHuddleBusy(false); }
+  };
+
+  const submitGuest = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (guestBusy) return;
+    const fd = new FormData(e.currentTarget);
+    const guestEmail = String(fd.get("guestEmail") ?? "");
+    const guestName = String(fd.get("guestName") ?? "");
+    const accessTier = String(fd.get("accessTier") ?? "VIEWER") as "VIEWER" | "CONTRIBUTOR" | "PARTNER" | "VENDOR" | "TEMPORARY";
+    if (!guestEmail.trim() || !guestName.trim()) return;
+    setGuestBusy(true);
+    setGuestNotice(null);
+    void actions.inviteGuest({ guestEmail, guestName, accessTier, roomScope: activeChannelId ? [activeChannelId] : [] })
+      .then(() => { setGuestNotice("Guest invited"); setShowGuest(false); })
+      .catch((err) => setGuestNotice(err instanceof Error ? err.message : "Invite failed"))
+      .finally(() => setGuestBusy(false));
+  };
+
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -384,6 +462,17 @@ export function ChatPanel({
   const active = channels.find((c) => c.id === activeChannelId);
 
   const submitCreate = (fd: FormData) => {
+    if (templateId) {
+      const tf = new FormData();
+      tf.set("templateId", templateId);
+      tf.set("name", String(fd.get("name") ?? ""));
+      void actions.createFromTemplate(tf).then(() => {
+        setShowNew(false);
+        setTemplateId("");
+        router.refresh();
+      });
+      return;
+    }
     void actions.createChannel(fd).then(() => {
       setShowNew(false);
       router.refresh();
@@ -762,6 +851,8 @@ export function ChatPanel({
             </div>
             <button className="nv-chrome-optional" onClick={() => { setShowBookmarks(true); fetchBookmarks(); }} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Bookmarks">🔖</button>
             <button className="nv-chrome-optional" onClick={() => setShowGovernance(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Compliance & governance">🛡️</button>
+            <button className="nv-chrome-optional" onClick={() => void startHuddle()} disabled={!active || huddleBusy} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Start a channel huddle (spec §8.6)">🔊 {huddleBusy ? "..." : "Huddle"}</button>
+            <button className="nv-chrome-optional" onClick={() => setShowGuest(true)} disabled={!active} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Invite an external guest (spec §8.8)">👤 Invite</button>
             <button onClick={() => setShowNotifications(!showNotifications)} style={{ position: "relative", border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>
               🔔 {notifUnread > 0 && <span style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "var(--nv-color-danger)", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>{notifUnread}</span>}
             </button>
@@ -773,6 +864,19 @@ export function ChatPanel({
         <div className="nv-crisis-banner" role="alert" style={{ display: "none", alignItems: "center", gap: 8, padding: "6px var(--nv-space-4)", background: "var(--nv-color-danger-alpha)", borderBottom: "1px solid var(--nv-color-danger)", color: "var(--nv-color-danger)", fontSize: 12, fontWeight: 700 }}>
           <span>🚨 Crisis mode — incident response. Priority traffic only; escalation exceptions always break through.</span>
         </div>
+
+        {huddleLive?.session && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px var(--nv-space-4)", background: "var(--nv-color-primary-alpha)", borderBottom: "1px solid var(--nv-color-border)", fontSize: 12 }}>
+            <span style={{ color: "var(--nv-color-danger)", fontWeight: 700 }}>🔴 Live huddle</span>
+            <span style={{ fontWeight: 600 }}>{huddleLive.session.title}</span>
+            <span style={{ color: "var(--nv-color-text-faint)" }}>
+              {huddleLive.participants && huddleLive.participants.length > 0
+                ? `${huddleLive.participants.length} in call: ${huddleLive.participants.map((p) => p.user.name ?? p.user.email).join(", ")}`
+                : "no participants yet"}
+            </span>
+            <button onClick={() => void refreshHuddle()} style={{ marginLeft: "auto", border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-sm)", padding: "2px 8px", fontSize: 11, cursor: "pointer" }} title="Refresh">↻</button>
+          </div>
+        )}
 
         <div ref={listRef} style={{ flex: 1, overflowY: "auto", padding: "var(--nv-space-4)", display: "flex", flexDirection: "column" }}>
           {!active && (
@@ -841,7 +945,7 @@ export function ChatPanel({
                 ) : (
                   <div style={{ display: "flex", gap: 10, padding: "2px 8px" }}>
                     <div style={{ width: 36, flexShrink: 0, display: "flex", justifyContent: "center" }}>
-                      <span style={{ fontSize: 10, color: "var(--nv-color-text-faint)", opacity: 0 }}>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      <span style={{ fontSize: 10, color: "var(--nv-color-text-faint)", opacity: 0 }}>{new Date(m.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}</span>
                     </div>
                     <div style={{ flex: 1 }}>
                       {isEditing ? (
@@ -880,6 +984,30 @@ export function ChatPanel({
           </div>
         )}
 
+        {/* Smart reply chips (spec §8.9) */}
+        {smartReplies.length > 0 && (
+          <div style={{ padding: "6px var(--nv-space-4)", borderTop: "1px solid var(--nv-color-border)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", background: "var(--nv-color-surface-2)" }}>
+            <span style={{ fontSize: 11, color: "var(--nv-color-text-faint)" }}>💡 Smart replies:</span>
+            {smartReplies.map((s) => (
+              <span
+                key={s.id}
+                onClick={() => acceptSuggestion(s)}
+                title={`${s.intent} · ${s.tone}${s.knowledgeBased ? " · knowledge-based" : ""}${s.approvalRequired ? " · approval required" : ""}`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRadius: 999, border: "1px solid var(--nv-color-primary)", background: "var(--nv-color-primary-alpha)", fontSize: 11, cursor: "pointer" }}
+              >
+                {s.body}
+                <button
+                  onClick={(e) => { e.stopPropagation(); dismissSuggestion(s.id); }}
+                  style={{ border: "none", background: "none", cursor: "pointer", fontSize: 10, padding: 0, color: "var(--nv-color-text-faint)" }}
+                  title="Dismiss"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* Message input */}
         <form onSubmit={handleSend} style={{ padding: "var(--nv-space-3)", borderTop: "1px solid var(--nv-color-border)", display: "flex", gap: 8, alignItems: "flex-end" }}>
           <input type="hidden" name="channelId" value={activeChannelId ?? ""} />
@@ -898,7 +1026,13 @@ export function ChatPanel({
               style={{ width: "100%" }}
             />
             {showAICommand && activeChannelId && (
-              <AISlashCommandMenu channelId={activeChannelId} onResult={(text) => { setInputValue(text); }} onClose={() => setShowAICommand(false)} />
+              <AISlashCommandMenu
+                channelId={activeChannelId}
+                typed={inputValue}
+                onNative={async (command, args) => (await actions.slash({ command, args })) as { ok: boolean; message: string }}
+                onResult={(text) => { setInputValue(text); }}
+                onClose={() => setShowAICommand(false)}
+              />
             )}
           </div>
           <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileUpload} />
@@ -923,6 +1057,8 @@ export function ChatPanel({
             await actions.send(fd);
             router.refresh();
           }}
+          onSummary={(threadId) => actions.threadSummary({ threadId })}
+          onDecision={(threadId, decisionText, sourceMessageId) => actions.threadDecision({ threadId, decisionText, sourceMessageId })}
         />
       )}
 
@@ -966,6 +1102,15 @@ export function ChatPanel({
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--nv-font-sm)" }}>
               <input type="checkbox" name="kind" value="ANNOUNCEMENT" /> Announcement (admins-only posting)
             </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--nv-font-sm)" }}>
+              <span style={{ color: "var(--nv-color-text-faint)" }}>Space template (spec §8.1.2)</span>
+              <select className="nv-input" name="templateId" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                <option value="">None — blank channel</option>
+                <option value="project-kickoff">🚀 Project Kickoff — public hub for goals, milestones, owners</option>
+                <option value="incident-response">🚨 Incident Response — private war room</option>
+                <option value="all-hands">📣 All-Hands — announcement channel (admins post)</option>
+              </select>
+            </label>
           </div>
         </form>
       </Dialog>
@@ -989,6 +1134,29 @@ export function ChatPanel({
               ),
             )}
           </select>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={showGuest}
+        onClose={() => { setShowGuest(false); setGuestNotice(null); }}
+        title={`Invite guest${active ? ` to ${channelLabel(active)}` : ""}`}
+        actions={<>
+          <Button variant="secondary" onClick={() => setShowGuest(false)}>Cancel</Button>
+          <Button type="submit" form="invite-guest-form" disabled={guestBusy}>Invite</Button>
+        </>}
+      >
+        <form id="invite-guest-form" onSubmit={submitGuest} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input className="nv-input" name="guestEmail" type="email" placeholder="guest@partner.com" required autoFocus />
+          <input className="nv-input" name="guestName" placeholder="Guest display name" required />
+          <select className="nv-input" name="accessTier" defaultValue="VIEWER">
+            <option value="VIEWER">VIEWER — read-only</option>
+            <option value="CONTRIBUTOR">CONTRIBUTOR — can post</option>
+            <option value="PARTNER">PARTNER — extended access</option>
+            <option value="VENDOR">VENDOR — scoped vendor</option>
+            <option value="TEMPORARY">TEMPORARY — time-boxed</option>
+          </select>
+          {guestNotice && <div style={{ fontSize: 11, color: "var(--nv-color-danger)" }}>{guestNotice}</div>}
         </form>
       </Dialog>
 

@@ -44,6 +44,9 @@ importers:
       '@n0va/modules-ads-marketing':
         specifier: workspace:*
         version: link:../../packages/modules/ads-marketing
+      '@n0va/modules-ai-monitoring':
+        specifier: workspace:*
+        version: link:../../packages/modules/ai-monitoring
       '@n0va/modules-ani':
         specifier: workspace:*
         version: link:../../packages/modules/ani
@@ -672,6 +675,9 @@ importers:
       '@n0va/db':
         specifier: workspace:*
         version: link:../../db
+      '@n0va/modules-ai-monitoring':
+        specifier: workspace:*
+        version: link:../ai-monitoring
       '@n0va/modules-approvals':
         specifier: workspace:*
         version: link:../approvals
@@ -1348,6 +1354,9 @@ importers:
       '@n0va/db':
         specifier: workspace:*
         version: link:../../db
+      '@n0va/modules-chat':
+        specifier: workspace:*
+        version: link:../chat
     devDependencies:
       typescript:
         specifier: ^5.8.0

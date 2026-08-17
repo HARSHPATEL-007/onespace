@@ -72,7 +72,7 @@ export class FederationService {
       data: { workspaceId: this.workspaceId, guestEmail: input.guestEmail, guestName: input.guestName, accessTier: input.accessTier, invitedById: this.userId, roomScope: input.roomScope ?? [], expiresAt: input.expiresAt },
     });
 
-    await prisma.federationAuditLog.create({ data: { connectionId: "none", workspaceId: this.workspaceId, action: "guest.invited", actorId: this.userId, details: { guestEmail: input.guestEmail, tier: input.accessTier } } });
+    await prisma.federationAuditLog.create({ data: { connectionId: null, workspaceId: this.workspaceId, action: "guest.invited", actorId: this.userId, details: { guestEmail: input.guestEmail, tier: input.accessTier } } });
     return guest;
   }
 
@@ -110,6 +110,6 @@ export class FederationService {
     await this.assert("UPDATE");
     await prisma.federationPolicy.update({ where: { workspaceId: this.workspaceId }, data: { breakGlass: true } });
     await prisma.federationConnection.updateMany({ where: { workspaceId: this.workspaceId }, data: { status: "PAUSED" } });
-    await prisma.federationAuditLog.create({ data: { connectionId: "none", workspaceId: this.workspaceId, action: "break_glass.activated", actorId: this.userId, details: {} } });
+    await prisma.federationAuditLog.create({ data: { connectionId: null, workspaceId: this.workspaceId, action: "break_glass.activated", actorId: this.userId, details: {} } });
   }
 }

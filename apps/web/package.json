@@ -16,6 +16,7 @@
     "@n0va/modules-calendar": "workspace:*",
     "@n0va/modules-chat": "workspace:*",
     "@n0va/modules-approvals": "workspace:*",
+    "@n0va/modules-ai-monitoring": "workspace:*",
     "@n0va/modules-cloud-search": "workspace:*",
     "@n0va/modules-contacts": "workspace:*",
     "@n0va/modules-booklm": "workspace:*",

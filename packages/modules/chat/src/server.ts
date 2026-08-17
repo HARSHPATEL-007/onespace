@@ -6,6 +6,7 @@ import { detectApproval, ApprovalService } from "@n0va/modules-approvals/server"
 import { registerBackend, getDeliveryEngine, idempotencyKeyFor } from "./delivery";
 import type { PolicyChannelKind } from "./delivery";
 import { PersonalizationEngine } from "./personalization";
+import { AiMonitoringService } from "@n0va/modules-ai-monitoring/server";
 import { publishToRedis } from "./delivery/redis-bridge";
 import {
   buildHyperContext,
@@ -229,6 +230,21 @@ export interface ParsedSearch {
   before?: Date;
   after?: Date;
   typeCode?: boolean;
+  language?: string;
+  reaction?: string;
+}
+
+// Script-range heuristic language detection (spec §8.5 `language:` operator).
+export function detectLanguage(body: string): string {
+  if (/[\u3040-\u30ff]/.test(body)) return "ja";
+  if (/[\uac00-\ud7af]/.test(body)) return "ko";
+  if (/[\u4e00-\u9fff]/.test(body)) return "zh";
+  if (/[\u0400-\u04ff]/.test(body)) return "ru";
+  if (/[\u0370-\u03ff]/.test(body)) return "el";
+  if (/[\u0600-\u06ff]/.test(body)) return "ar";
+  if (/[\u0590-\u05ff]/.test(body)) return "he";
+  if (/[\u0900-\u097f]/.test(body)) return "hi";
+  return "en";
 }
 
 export function parseSearchQuery(query: string): ParsedSearch {
@@ -269,6 +285,12 @@ export function parseSearchQuery(query: string): ParsedSearch {
       case "type":
         if (value === "code") parsed.typeCode = true;
         break;
+      case "language":
+        if (value && value.length <= 8) parsed.language = value.toLowerCase();
+        break;
+      case "reaction":
+        if (value && value.length <= 8) parsed.reaction = value;
+        break;
       default:
         if (part.trim()) terms.push(part);
     }
@@ -276,6 +298,48 @@ export function parseSearchQuery(query: string): ParsedSearch {
   parsed.term = terms.join(" ");
   return parsed;
 }
+
+// ── Space templates (spec §8.1.2) ─────────────────────────────────────
+
+export interface ChannelTemplate {
+  id: string;
+  label: string;
+  description: string;
+  kind: "CHANNEL" | "ANNOUNCEMENT";
+  isPrivate: boolean;
+  topic: string;
+  welcome: string;
+}
+
+export const CHANNEL_TEMPLATES: ChannelTemplate[] = [
+  {
+    id: "project-kickoff",
+    label: "Project Kickoff",
+    description: "Central hub for a new project: goals, milestones, owners.",
+    kind: "CHANNEL",
+    isPrivate: false,
+    topic: "Project hub — goals, milestones, owners",
+    welcome: "Welcome to **{name}** 🚀 This is the central hub for the project. Post goals, milestones, and status updates here.",
+  },
+  {
+    id: "incident-response",
+    label: "Incident Response",
+    description: "Private war room for incidents: severity, timeline, on-call.",
+    kind: "CHANNEL",
+    isPrivate: true,
+    topic: "Incident war room — severity, timeline, on-call",
+    welcome: "Welcome to **{name}** 🚨 This is a private war room. Keep updates chronological and tag the on-call owner for incidents.",
+  },
+  {
+    id: "all-hands",
+    label: "All-Hands",
+    description: "Company-wide announcements and updates (admin-post only).",
+    kind: "ANNOUNCEMENT",
+    isPrivate: false,
+    topic: "Company-wide announcements",
+    welcome: "Welcome to **{name}** 📣 This is an announcement channel — only admins can post.",
+  },
+];
 
 export class ChatService {
   constructor(
@@ -339,6 +403,54 @@ export class ChatService {
     });
     await this.audit("channel.created", channel.id);
     return channel;
+  }
+
+  // ── Space templates (spec §8.1.2) ──────────────────────────────────
+
+  async createChannelFromTemplate(templateId: string, name: string) {
+    await this.assert("CREATE");
+    const template = CHANNEL_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) throw new Error("Unknown channel template");
+    if (template.kind === "ANNOUNCEMENT" && this.role !== "ADMIN" && this.role !== "OWNER") {
+      throw new Error("Only admins can create announcement channels");
+    }
+    const channel = await this.createChannel(name, {
+      kind: template.kind,
+      isPrivate: template.isPrivate,
+      topic: template.topic,
+    });
+    try {
+      await this.sendMessage(channel.id, template.welcome.replaceAll("{name}", name), "N0VA", {});
+    } catch {
+      // welcome message is best-effort
+    }
+    await this.audit("channel.created.template", channel.id);
+    return channel;
+  }
+
+  // ── Auto-archiving (spec §8.1.3) ───────────────────────────────────
+
+  async archiveInactiveChannels(days = 90, dryRun = false) {
+    await this.assert("UPDATE");
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const candidates = await prisma.chatChannel.findMany({
+      where: {
+        workspaceId: this.workspaceId,
+        archivedAt: null,
+        kind: { not: "ANNOUNCEMENT" },
+        updatedAt: { lt: cutoff },
+      },
+      select: { id: true, name: true, kind: true, updatedAt: true },
+      orderBy: { updatedAt: "asc" },
+      take: 100,
+    });
+    if (dryRun) return { archived: 0, candidates };
+    const res = await prisma.chatChannel.updateMany({
+      where: { id: { in: candidates.map((c) => c.id) } },
+      data: { archivedAt: new Date() },
+    });
+    for (const c of candidates) await this.audit("channel.archived.auto", c.id);
+    return { archived: res.count, candidates };
   }
 
   async updateChannel(channelId: string, data: { name?: string; topic?: string; description?: string; isPrivate?: boolean }) {
@@ -513,6 +625,7 @@ export class ChatService {
         authorName,
         body,
         bodyHtml,
+        lang: detectLanguage(body),
         parentId: opts?.parentId,
         ttlSeconds,
         expiresAt,
@@ -629,6 +742,20 @@ export class ChatService {
       });
     } catch {
       // Search index is best-effort
+    }
+
+    // Smart replies (spec §8.9): tier-gated suggestion generation on send, fail-silent.
+    try {
+      const tierRow = await prisma.aiTierConfig.findUnique({
+        where: { workspaceId_scope: { workspaceId: this.workspaceId, scope: `room:${channelId}` } },
+      });
+      const rank: Record<string, number> = { TIER_0: 0, TIER_1: 1, TIER_2: 2, TIER_3: 3, TIER_4: 4 };
+      const tier = (tierRow?.tier as string) ?? "TIER_0";
+      if ((rank[tier] ?? 0) >= 1 && !opts?.parentId) {
+        await new AiMonitoringService(this.workspaceId, this.userId, this.role).suggestReplies(message.id);
+      }
+    } catch {
+      // best-effort: never break messaging
     }
 
     return message;
@@ -857,8 +984,17 @@ export class ChatService {
             : undefined,
       };
     }
-    if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Prisma.QueryMode };
-    if (parsed.typeCode) where.body = { contains: "```" };
+if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Prisma.QueryMode };
+  if (parsed.typeCode) where.body = { contains: "```" };
+  const extraFilters: Prisma.ChatMessageWhereInput[] = [];
+  if (parsed.language) extraFilters.push({ lang: parsed.language });
+  if (parsed.reaction) {
+    extraFilters.push({ reactions: { array_contains: [{ emoji: parsed.reaction }] as unknown as Prisma.InputJsonValue } });
+  }
+  if (extraFilters.length > 0) {
+    const existing = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
+    where.AND = [...existing, ...extraFilters];
+  }
     if (parsed.before || parsed.after) {
       const createdAt: Prisma.DateTimeFilter = {};
       if (parsed.before) createdAt.lt = parsed.before;
