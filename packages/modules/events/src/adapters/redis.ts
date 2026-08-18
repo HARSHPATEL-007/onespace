@@ -19,10 +19,15 @@ export function createRedisBroker(opts: { url?: string; consumerGroup?: string; 
 
   async function ensure(): Promise<Redis> {
     if (!client) {
-      client = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 2 });
-      await client.connect().catch((e) => {
-        log(`[redis] connect failed: ${e.message}`);
-      });
+      const c = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 2, enableOfflineQueue: false });
+      try {
+        await c.connect();
+        client = c;
+      } catch (e) {
+        log(`[redis] connect failed: ${e instanceof Error ? e.message : String(e)}`);
+        void c.disconnect();
+        throw e;
+      }
     }
     return client;
   }
@@ -103,7 +108,14 @@ export function createRedisBroker(opts: { url?: string; consumerGroup?: string; 
           }
         } catch (e) {
           if (!shuttingDown) {
-            log(`[redis] consume error: ${e instanceof Error ? e.message : String(e)}`);
+            const msg = e instanceof Error ? e.message : String(e);
+            log(`[redis] consume error: ${msg}`);
+            if (msg.includes("NOGROUP")) {
+              for (const topic of streams) {
+                await c.xgroup("CREATE", topic, streamGroup, "$", "MKSTREAM").catch(() => {});
+              }
+              await c.xgroup("CREATE", "n0va.events:dlq", streamGroup, "$", "MKSTREAM").catch(() => {});
+            }
             await sleep(1000);
           }
         }

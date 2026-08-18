@@ -2191,7 +2191,7 @@ if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Pris
 
 // ── Simple markdown renderer ─────────────────────────────────────────
 
-function renderMarkdown(input: string): string {
+export function renderMarkdown(input: string): string {
   let html = input
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

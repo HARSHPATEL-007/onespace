@@ -8,6 +8,7 @@
     "./server": "./src/server.ts",
     "./components": "./src/components.tsx",
     "./delivery": "./src/delivery/index.ts",
+    "./bridge": "./src/bridge.ts",
     "./personalization": "./src/personalization/index.ts",
     "./adaptive-policy": "./src/adaptive-policy.ts"
   },
@@ -17,6 +18,7 @@
     "@n0va/ui": "workspace:*",
     "@n0va/modules-approvals": "workspace:*",
     "@n0va/modules-ai-monitoring": "workspace:*",
+    "@n0va/modules-events": "workspace:*",
     "next": "^15.3.0",
     "redis": "^4.7.0",
     "zod": "^3.24.0"

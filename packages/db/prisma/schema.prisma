@@ -967,6 +967,7 @@ model Task {
   listId      String
   workspaceId String
   createdById String?
+  sourceChannelId String?
   title       String
   notes       String?
   dueDate     DateTime?
@@ -981,6 +982,7 @@ model Task {
 
   @@index([workspaceId, completedAt])
   @@index([listId, position])
+  @@index([workspaceId, sourceChannelId])
 }
 
 enum Priority {

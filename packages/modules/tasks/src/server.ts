@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { prisma, logAudit } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
+import { taskCreated, taskCompleted, emitEvent } from "@n0va/modules-events/server";
 
 const MODULE = "tasks";
 
@@ -10,6 +11,7 @@ export const taskInputSchema = z.object({
   dueDate: z.string().optional().nullable(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH"]).default("MEDIUM"),
   assigneeId: z.string().optional().nullable(),
+  sourceChannelId: z.string().optional().nullable(),
 });
 
 export type TaskInput = z.infer<typeof taskInputSchema>;
@@ -85,10 +87,29 @@ export class TasksService {
         dueDate: input.dueDate ? new Date(input.dueDate) : null,
         priority: input.priority,
         assigneeId: input.assigneeId ?? null,
+        sourceChannelId: input.sourceChannelId ?? null,
         position: count,
       },
     });
     await this.audit("task.created", task.id);
+    try {
+      await emitEvent(taskCreated({
+        taskId: task.id,
+        listId,
+        title: task.title,
+        assigneeId: task.assigneeId ?? "",
+        workspaceId: this.workspaceId,
+        createdBy: this.userId,
+        channelId: task.sourceChannelId ?? undefined,
+      }, {
+        producer: "tasks",
+        tenantId: this.workspaceId,
+        aggregateId: task.id,
+        partitionKey: task.sourceChannelId ?? task.id,
+      }), "memory");
+    } catch {
+      // best-effort
+    }
     return task;
   }
 
@@ -103,6 +124,7 @@ export class TasksService {
         ...(input.dueDate !== undefined ? { dueDate: input.dueDate ? new Date(input.dueDate) : null } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.assigneeId !== undefined ? { assigneeId: input.assigneeId ?? null } : {}),
+        ...(input.sourceChannelId !== undefined ? { sourceChannelId: input.sourceChannelId ?? null } : {}),
       },
     });
     await this.audit("task.updated", id);
@@ -115,6 +137,23 @@ export class TasksService {
     const completedAt = task.completedAt ? null : new Date();
     await prisma.task.update({ where: { id }, data: { completedAt } });
     await this.audit(completedAt ? "task.completed" : "task.reopened", id);
+    if (completedAt) {
+      try {
+        await emitEvent(taskCompleted({
+          taskId: task.id,
+          title: task.title,
+          completedBy: this.userId,
+          channelId: task.sourceChannelId ?? undefined,
+        }, {
+          producer: "tasks",
+          tenantId: this.workspaceId,
+          aggregateId: task.id,
+          partitionKey: task.sourceChannelId ?? task.id,
+        }), "memory");
+      } catch {
+        // best-effort
+      }
+    }
   }
 
   async moveTask(id: string, direction: "up" | "down") {

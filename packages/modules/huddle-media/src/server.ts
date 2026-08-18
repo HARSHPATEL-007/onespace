@@ -1,5 +1,6 @@
 import { prisma } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
+import { huddleStarted, huddleEnded, emitEvent } from "@n0va/modules-events/server";
 
 const MODULE = "huddle";
 
@@ -37,6 +38,24 @@ export class HuddleService {
       data: { huddleId: huddle.id, userId: this.userId, displayName: "Host", role: "HOST", isPresenter: true, videoEnabled: true, audioEnabled: true },
     });
 
+    if (huddle.status === "LIVE") {
+      try {
+        await emitEvent(huddleStarted({
+          huddleId: huddle.id,
+          title: huddle.title,
+          channelId: huddle.channelId ?? undefined,
+          startedBy: this.userId,
+        }, {
+          producer: "huddle",
+          tenantId: this.workspaceId,
+          aggregateId: huddle.id,
+          partitionKey: huddle.channelId ?? huddle.id,
+        }), "memory");
+      } catch {
+        // best-effort
+      }
+    }
+
     return huddle;
   }
 
@@ -72,7 +91,24 @@ export class HuddleService {
     if (participant) { await prisma.huddleParticipant.update({ where: { id: participant.id }, data: { leftAt: new Date() } }); }
 
     const remaining = await prisma.huddleParticipant.count({ where: { huddleId, leftAt: null } });
-    if (remaining === 0) { await prisma.huddleSession.update({ where: { id: huddleId }, data: { status: "ENDED", endedAt: new Date() } }); }
+    if (remaining === 0) {
+      const huddle = await prisma.huddleSession.update({ where: { id: huddleId }, data: { status: "ENDED", endedAt: new Date() } });
+      try {
+        await emitEvent(huddleEnded({
+          huddleId: huddle.id,
+          title: huddle.title,
+          channelId: huddle.channelId ?? undefined,
+          endedBy: this.userId,
+        }, {
+          producer: "huddle",
+          tenantId: this.workspaceId,
+          aggregateId: huddle.id,
+          partitionKey: huddle.channelId ?? huddle.id,
+        }), "memory");
+      } catch {
+        // best-effort
+      }
+    }
   }
 
   async startRecording(huddleId: string, recordingType?: RecordingType) {

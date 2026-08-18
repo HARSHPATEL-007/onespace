@@ -615,7 +615,7 @@ export async function slashCommandAction(input: { command: string; args?: string
         const created = await tasks.createList({ name: "Chat Tasks", color: "#8b5cf6" });
         list = { ...created, tasks: [] };
       }
-      const task = await tasks.createTask(list.id, { title: args, priority: "MEDIUM" });
+      const task = await tasks.createTask(list.id, { title: args, priority: "MEDIUM", sourceChannelId: input.channelId ?? null });
       return { ok: true, message: `Task created: ${task.title}`, taskId: task.id };
     }
     case "/status": {

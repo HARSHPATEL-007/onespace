@@ -681,6 +681,9 @@ importers:
       '@n0va/modules-approvals':
         specifier: workspace:*
         version: link:../approvals
+      '@n0va/modules-events':
+        specifier: workspace:*
+        version: link:../events
       '@n0va/ui':
         specifier: workspace:*
         version: link:../../ui
@@ -1131,6 +1134,9 @@ importers:
       '@n0va/db':
         specifier: workspace:*
         version: link:../../db
+      '@n0va/modules-events':
+        specifier: workspace:*
+        version: link:../events
     devDependencies:
       typescript:
         specifier: ^5.8.0
@@ -1663,6 +1669,9 @@ importers:
       '@n0va/db':
         specifier: workspace:*
         version: link:../../db
+      '@n0va/modules-events':
+        specifier: workspace:*
+        version: link:../events
       '@n0va/ui':
         specifier: workspace:*
         version: link:../../ui

@@ -2,7 +2,7 @@
 import { useState, type CSSProperties } from "react";
 import { Button } from "@n0va/ui";
 
-const NATIVE_COMMANDS = [
+export const NATIVE_COMMANDS = [
   { cmd: "/task", desc: "Create a task from chat", icon: "✅" },
   { cmd: "/status", desc: "Set your presence (ONLINE/AWAY/BUSY/DND/IDLE)", icon: "🟢" },
   { cmd: "/poll", desc: "Create a poll (\"Q\" | A | B ... ttl:5m)", icon: "📊" },
@@ -10,7 +10,7 @@ const NATIVE_COMMANDS = [
   { cmd: "/help", desc: "List available commands", icon: "❓" },
 ];
 
-const AI_COMMANDS = [
+export const AI_COMMANDS = [
   { cmd: "/summarize", desc: "Summarize recent messages", icon: "📝" },
   { cmd: "/smart-reply", desc: "Suggest a reply to last message", icon: "💡" },
   { cmd: "/translate", desc: "Translate last message", icon: "🌐" },
@@ -73,7 +73,7 @@ export function AISlashCommandMenu({
     <div style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, right: 0, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-lg)", boxShadow: "var(--nv-shadow-lg)", padding: "var(--nv-space-2)", zIndex: 30 }}>
       <div style={sectionLabel}>Commands</div>
       {NATIVE_COMMANDS.map(c => (
-        <button key={c.cmd} onClick={() => runNative(c.cmd)} disabled={loading} style={itemStyle}>
+        <button key={c.cmd} type="button" onClick={() => runNative(c.cmd)} disabled={loading} style={itemStyle}>
           <span>{c.icon}</span>
           <div>
             <div style={{ fontWeight: 600, fontFamily: "var(--nv-font-mono)", fontSize: 12 }}>{c.cmd}</div>
@@ -83,7 +83,7 @@ export function AISlashCommandMenu({
       ))}
       <div style={{ ...sectionLabel, marginTop: 4 }}>AI Commands</div>
       {AI_COMMANDS.map(c => (
-        <button key={c.cmd} onClick={() => runAI(c.cmd)} disabled={loading} style={itemStyle}>
+        <button key={c.cmd} type="button" onClick={() => runAI(c.cmd)} disabled={loading} style={itemStyle}>
           <span>{c.icon}</span>
           <div>
             <div style={{ fontWeight: 600, fontFamily: "var(--nv-font-mono)", fontSize: 12 }}>{c.cmd}</div>

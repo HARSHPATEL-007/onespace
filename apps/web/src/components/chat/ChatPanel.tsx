@@ -9,7 +9,7 @@ import { useChatSocket } from "@/hooks/useChatSocket";
 import { ThreadPanel } from "./ThreadPanel";
 import { NotificationPanel } from "./NotificationPanel";
 import { AdaptiveModeBar } from "./AdaptiveModeBar";
-import { AISlashCommandMenu } from "./AISlashCommandMenu";
+import { AISlashCommandMenu, NATIVE_COMMANDS, AI_COMMANDS } from "./AISlashCommandMenu";
 import "./chat-adaptive.css";
 import { GovernancePanel } from "./GovernancePanel";
 import { HypercontextPanel } from "./HypercontextPanel";
@@ -706,6 +706,36 @@ export function ChatPanel({
   const handleSend = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!inputValue.trim() || !active) return;
+
+    const raw = inputValue.trim();
+    const typedCmd = raw.split(/\s+/)[0]?.toLowerCase() ?? "";
+    if (showAICommand && activeChannelId) {
+      if (NATIVE_COMMANDS.some((c) => c.cmd === typedCmd)) {
+        const args = raw.slice(typedCmd.length).trim();
+        setShowAICommand(false);
+        void actions.slash({ command: typedCmd, args, channelId: activeChannelId }).then(() => {
+          setInputValue("");
+          router.refresh();
+        });
+        return;
+      }
+      if (AI_COMMANDS.some((c) => c.cmd === typedCmd)) {
+        setShowAICommand(false);
+        setInputValue("");
+        void fetch("/api/chat/ai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: typedCmd, channelId: activeChannelId }),
+        })
+          .then(async (r) => {
+            if (!r.ok) throw new Error("Command failed");
+            const data = await r.json();
+            setInputValue(data.result ?? "");
+          })
+          .catch(() => {});
+        return;
+      }
+    }
 
     const ttlSeconds = TTL_OPTIONS[ttlIndex]?.seconds ?? 0;
 

@@ -8,12 +8,15 @@
 import { createBroker, createEventBus, type EventBusServer } from "@n0va/modules-events/server";
 import { startApprovalSweep } from "@n0va/modules-approvals/sweep";
 import { startDeliverySweep } from "@n0va/modules-chat/delivery";
+import { bridgeEvent } from "@n0va/modules-chat/bridge";
 
 const globalForBus = globalThis as unknown as {
   __n0vaEventBus?: EventBusServer;
   __n0vaApprovalSweep?: { stop: () => void };
   __n0vaDeliverySweep?: { stop: () => void };
 };
+
+const BRIDGE_EVENTS = ["task.created", "task.completed", "huddle.started", "huddle.ended"];
 
 export function getEventBus(): EventBusServer {
   if (!globalForBus.__n0vaEventBus) {
@@ -23,6 +26,15 @@ export function getEventBus(): EventBusServer {
     });
     globalForBus.__n0vaEventBus = bus;
     void bus.start().then(() => bus.wireDefaultSubscriptions());
+    void bus.start().then(async () => {
+      console.log("[eventbus] wiring bridge consumers…");
+      for (const type of BRIDGE_EVENTS) {
+        await bus.broker.subscribe([type], `bridge:${type}`, async ({ event }) => {
+          await bridgeEvent(event).catch(() => {});
+        });
+        console.log(`[eventbus] bridge consumer wired: ${type}`);
+      }
+    });
     if (!globalForBus.__n0vaApprovalSweep) {
       globalForBus.__n0vaApprovalSweep = startApprovalSweep({ intervalMs: 60_000 });
     }

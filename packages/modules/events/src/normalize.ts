@@ -77,6 +77,14 @@ export function connectorSyncFailed(payload: Record<string, unknown>, opts: Norm
   return build(EVENT_TYPES.CONNECTOR_SYNC_FAILED, "1.0", payload, opts);
 }
 
+export function huddleStarted(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.HUDDLE_STARTED, "1.0", payload, opts);
+}
+
+export function huddleEnded(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
+  return build(EVENT_TYPES.HUDDLE_ENDED, "1.0", payload, opts);
+}
+
 export function crmLeadUpdated(payload: Record<string, unknown>, opts: NormalizeOptions): CanonicalEvent {
   return build(EVENT_TYPES.CRM_LEAD_UPDATED, "1.0", payload, opts);
 }
