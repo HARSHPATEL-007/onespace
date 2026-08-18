@@ -450,6 +450,21 @@ export function ChatPanel({
     workspaceId,
     channelId: activeChannelId || "",
     onMessage: (msg) => {
+      if ((msg as { type?: string }).type === "message.deleted") {
+        const id = (msg as { message?: { id?: string } }).message?.id;
+        if (id) setLiveMessages((prev) => prev.filter((m) => m.id !== id));
+        return;
+      }
+      if ((msg as { type?: string }).type === "message.updated") {
+        const updated = (msg as { message?: ChatMessage }).message;
+        if (updated) {
+          setLiveMessages((prev) => {
+            if (!prev.some((m) => m.id === updated.id)) return prev;
+            return prev.map((m) => (m.id === updated.id ? updated : m));
+          });
+        }
+        return;
+      }
       setLiveMessages((prev) =>
         prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
       );
@@ -1784,7 +1799,10 @@ export function ChatPanel({
         {isAuthor && <MenuItem danger onSelect={() => {
           const fd = new FormData();
           fd.set("messageId", m.id);
-          void actions.delete(fd).then(() => router.refresh()).catch((e) => setComplianceError((e as Error).message));
+          void actions.delete(fd).then(() => {
+            setLiveMessages((prev) => prev.filter((x) => x.id !== m.id));
+            router.refresh();
+          }).catch((e) => setComplianceError((e as Error).message));
         }}>Delete</MenuItem>}
         {rec && (
           <MenuItem onSelect={() => {

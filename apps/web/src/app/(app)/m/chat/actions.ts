@@ -118,20 +118,16 @@ export async function sendMessageAction(formData: FormData) {
 
 async function notifyMentions(opts: { workspaceId: string; senderId: string; senderName: string; body: string; channelId: string; messageId?: string }) {
   try {
-    const tokens = new Set(
-      (opts.body.match(/@([^\s@]+(?:\s+[^\s@]+)*)/g) ?? [])
-        .map((t) => t.slice(1).trim().toLowerCase())
-        .filter(Boolean),
-    );
-    if (tokens.size === 0) return;
+    if (!opts.body.includes("@")) return;
+    const body = opts.body.toLowerCase();
     const members = await prisma.workspaceMember.findMany({
       where: { workspaceId: opts.workspaceId, status: "ACTIVE", userId: { not: opts.senderId } },
       include: { user: { select: { id: true, name: true, email: true } } },
     });
     const targets = members.filter((m) => {
-      const name = (m.user.name ?? "").toLowerCase();
-      const email = (m.user.email ?? "").toLowerCase();
-      return tokens.has(name) || tokens.has(email);
+      const name = (m.user.name ?? "").trim().toLowerCase();
+      const email = (m.user.email ?? "").trim().toLowerCase();
+      return (name.length > 0 && body.includes(`@${name}`)) || (email.length > 0 && body.includes(`@${email}`));
     });
     if (targets.length === 0) return;
     const preview = opts.body.length > 120 ? `${opts.body.slice(0, 120)}…` : opts.body;

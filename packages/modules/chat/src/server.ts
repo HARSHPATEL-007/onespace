@@ -845,6 +845,11 @@ export class ChatService {
     });
     const channel = await this.ownedChannel(message.channelId);
     await this.buildHyperContextFor(channel, messageId, message.createdAt, message.createdById);
+    publish(this.workspaceId, {
+      type: "message.updated",
+      channel_id: message.channelId,
+      message: updated,
+    });
     return updated;
   }
 
@@ -870,6 +875,11 @@ export class ChatService {
       objectId: messageId,
       channelId: message.channelId,
       policyApplied: "retention",
+    });
+    publish(this.workspaceId, {
+      type: "message.deleted",
+      channel_id: message.channelId,
+      message: { id: messageId },
     });
   }
 

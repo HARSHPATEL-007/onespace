@@ -69,6 +69,7 @@ export function useChatSocket<T = ChatMessage>({
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subscribedChannel = useRef<string | null>(null);
   const wsFailedRef = useRef(false);
+  const esChannelRef = useRef<string | null>(null);
 
   // Update status and notify parent
   const updateStatus = useCallback(
@@ -81,11 +82,15 @@ export function useChatSocket<T = ChatMessage>({
 
   // Connect via SSE (fallback)
   const connectSSE = useCallback(() => {
+    // Already subscribed to this channel — keep the existing stream
+    if (esRef.current && esChannelRef.current === channelId) return;
+
     if (esRef.current) esRef.current.close();
 
     const url = `${SSE_URL}?workspaceId=${encodeURIComponent(workspaceId)}&channelId=${encodeURIComponent(channelId)}`;
     const es = new EventSource(url);
     esRef.current = es;
+    esChannelRef.current = channelId;
 
     es.onopen = () => updateStatus("fallback");
     es.onerror = () => updateStatus("disconnected");
@@ -99,6 +104,10 @@ export function useChatSocket<T = ChatMessage>({
           }
         } else if (payload.type === "message" && payload.message) {
           onMessage(payload.message as T);
+        } else if (payload.type === "message.deleted") {
+          onMessage(payload as T);
+        } else if (payload.type === "message.updated" && payload.message) {
+          onMessage(payload as T);
         } else if (payload.type === "typing" && payload.channel_id && payload.user_id) {
           onTyping(payload.channel_id, payload.user_id);
         } else if (payload.type === "presence" && payload.user_id && payload.status) {
@@ -232,8 +241,11 @@ export function useChatSocket<T = ChatMessage>({
       // Subscribe to new channel
       wsRef.current.send(JSON.stringify({ type: "subscribe", channel_id: channelId }));
       subscribedChannel.current = channelId;
+    } else if (status === "fallback" && esRef.current && channelId !== esChannelRef.current) {
+      // SSE stream is per-channel — reopen it for the new channel
+      connectSSE();
     }
-  }, [channelId, status]);
+  }, [channelId, status, connectSSE]);
 
   // Send a message via WebSocket or fallback to form action
   const sendMessage = useCallback(
