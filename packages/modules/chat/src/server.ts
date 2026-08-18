@@ -6,6 +6,7 @@ import { detectApproval, ApprovalService } from "@n0va/modules-approvals/server"
 import { registerBackend, getDeliveryEngine, idempotencyKeyFor } from "./delivery";
 import type { PolicyChannelKind } from "./delivery";
 import { PersonalizationEngine } from "./personalization";
+import { NotificationEngine } from "@n0va/modules-notification-engine/server";
 import { AiMonitoringService } from "@n0va/modules-ai-monitoring/server";
 import { publishToRedis } from "./delivery/redis-bridge";
 import {
@@ -46,6 +47,27 @@ import {
 } from "./compliance";
 
 const MODULE = "chat";
+
+/** Match @tokens: full names ("@Alex Rivera"), emails ("@alex@nova.io") or first names ("@alex"). */
+const MENTION_RE = /@([\w.'\-]+(?:\s+[\w.'\-]+)?)/g;
+
+async function extractMentionedUserIds(body: string, channelId: string): Promise<string[]> {
+  const tokens = [...body.matchAll(MENTION_RE)].map((m) => (m[1] ?? "").toLowerCase().trim());
+  if (tokens.length === 0) return [];
+  const members = await prisma.chatMember.findMany({
+    where: { channelId },
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+  const hits: string[] = [];
+  for (const mem of members) {
+    const name = (mem.user.name ?? "").toLowerCase();
+    const email = (mem.user.email ?? "").toLowerCase();
+    if (tokens.some((t) => t === name || t === email || (t.length >= 3 && (name.startsWith(t) || email.startsWith(t))))) {
+      hits.push(mem.userId);
+    }
+  }
+  return hits;
+}
 
 // Register the chat fan-out backend once (in-process SSE emitter + Redis bridge
 // so WS-gateway clients also receive Server-Action messages).
@@ -742,6 +764,25 @@ export class ChatService {
     // Personalization telemetry: per-member notification decision (why-fired).
     try {
       await new PersonalizationEngine(this.userId, this.workspaceId).fanOutNotifications(channelId, message.id, this.userId, body);
+    } catch {
+      // best-effort
+    }
+
+    // @-mentions: notify every mentioned member (best-effort; must never break messaging).
+    try {
+      for (const uid of await extractMentionedUserIds(body, channelId)) {
+        if (uid === this.userId) continue;
+        await new NotificationEngine(this.workspaceId, this.userId, this.role).createEvent({
+          recipientId: uid,
+          sourceType: "chat_mention",
+          sourceId: this.userId,
+          roomId: channelId,
+          title: `${authorName} mentioned you in #${channel.name}`,
+          body: body.slice(0, 200),
+          link: `/m/chat?c=${channelId}`,
+          signals: { mention: 1.0 },
+        });
+      }
     } catch {
       // best-effort
     }

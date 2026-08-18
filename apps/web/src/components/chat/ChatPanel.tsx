@@ -155,11 +155,40 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
-function renderBody(m: ChatMessage) {
+function renderBody(m: ChatMessage, members?: Array<{ user: { id: string; name: string | null; email: string } }>) {
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const highlightHtml = (html: string): string => {
+    if (!members || members.length === 0) return html;
+    let out = html;
+    for (const raw of members) {
+      const n = (raw.user.name ?? "").trim();
+      const e = (raw.user.email ?? "").trim();
+      const re = new RegExp(`@${esc(n || e)}`, "gi");
+      out = out.replace(re, (mm) => `<span style="color:var(--nv-color-primary);font-weight:600">${mm}</span>`);
+    }
+    return out;
+  };
   if (m.bodyHtml) {
-    return <div className="nv-message-body" dangerouslySetInnerHTML={{ __html: m.bodyHtml }} />;
+    return <div className="nv-message-body" dangerouslySetInnerHTML={{ __html: highlightHtml(m.bodyHtml) }} />;
   }
-  return <div className="nv-message-body">{m.body}</div>;
+  if (!members || members.length === 0) {
+    return <div className="nv-message-body">{m.body}</div>;
+  }
+  const names = members.map((x) => (x.user.name ?? "").toLowerCase()).filter(Boolean);
+  const emails = members.map((x) => (x.user.email ?? "").toLowerCase()).filter(Boolean);
+  const parts = m.body.split(/(@[\w.'\-]+(?:\s+[\w.'\-]+)?)/g);
+  return (
+    <div className="nv-message-body">
+      {parts.map((p, i) => {
+        if (p.startsWith("@")) {
+          const t = p.slice(1).toLowerCase().trim();
+          const known = names.includes(t) || emails.includes(t) || (t.length >= 3 && (names.some((n) => n.startsWith(t)) || emails.some((e) => e.startsWith(t))));
+          if (known) return <span key={i} style={{ color: "var(--nv-color-primary)", fontWeight: 600 }}>{p}</span>;
+        }
+        return <span key={i}>{p}</span>;
+      })}
+    </div>
+  );
 }
 
 interface PollData {
@@ -376,6 +405,9 @@ export function ChatPanel({
   const [activeThread, setActiveThread] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAICommand, setShowAICommand] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionIndex, setMentionIndex] = useState(0);
   const [notifUnread, setNotifUnread] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [ttlIndex, setTtlIndex] = useState(0);
@@ -760,6 +792,7 @@ export function ChatPanel({
   const handleSend = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!inputValue.trim() || !active) return;
+    setMentionOpen(false);
 
     const raw = inputValue.trim();
     const typedCmd = raw.split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -841,6 +874,46 @@ export function ChatPanel({
     if (wsStatus === "connected") {
       sendTyping();
     }
+  };
+
+  const mentionCandidates = useMemo(() => {
+    if (!mentionOpen) return [];
+    const q = mentionQuery.toLowerCase();
+    return members
+      .filter((m) => (m.user.name ?? "").toLowerCase().includes(q) || (m.user.email ?? "").toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [mentionOpen, mentionQuery, members]);
+
+  const pickMention = (m: { user: { id: string; name: string | null; email: string } }) => {
+    const name = m.user.name ?? m.user.email;
+    setInputValue((prev) => prev.replace(/@[\w.'\-]*$/, `@${name} `));
+    setMentionOpen(false);
+    setMentionQuery("");
+    inputRef.current?.focus();
+  };
+
+  const handleInputChange = (v: string) => {
+    setInputValue(v);
+    setShowAICommand(v.startsWith("/"));
+    if (v.startsWith("/")) { setMentionOpen(false); return; }
+    const m = v.match(/(?:^|\s)@([\w.'\-]*)$/);
+    if (m) {
+      setMentionQuery(m[1] ?? "");
+      setMentionIndex(0);
+      setMentionOpen(true);
+    } else {
+      setMentionOpen(false);
+    }
+  };
+
+  const handleComposerKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (mentionOpen && mentionCandidates.length > 0) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => (i + 1) % mentionCandidates.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); const target = mentionCandidates[mentionIndex] ?? mentionCandidates[0]; if (target) pickMention(target); return; }
+      if (e.key === "Escape") { setMentionOpen(false); return; }
+    }
+    if (wsStatus === "connected") sendTyping();
   };
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
@@ -1150,7 +1223,7 @@ export function ChatPanel({
                             </div>
                           </form>
                         ) : (
-                          <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m)}</div>
+                          <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m, members)}</div>
                         )}
                         {renderAttachments(m)}
                         {(m as any).pollId && <PollCard messageId={m.id} />}
@@ -1177,7 +1250,7 @@ export function ChatPanel({
                           </div>
                         </form>
                       ) : (
-                        <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m)}</div>
+                        <div style={{ fontSize: "var(--nv-font-md)" }}>{renderBody(m, members)}</div>
                       )}
                       {renderAttachments(m)}
                       {(m as any).pollId && <PollCard messageId={m.id} />}
@@ -1242,10 +1315,27 @@ export function ChatPanel({
               required
               autoComplete="off"
               value={inputValue}
-              onChange={(e) => { setInputValue(e.target.value); setShowAICommand(e.target.value.startsWith("/")); }}
-              onKeyDown={handleTyping}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onKeyDown={handleComposerKey}
               style={{ width: "100%" }}
             />
+            {mentionOpen && mentionCandidates.length > 0 && (
+              <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: 4, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", boxShadow: "var(--nv-shadow-md)", maxHeight: 220, overflowY: "auto", zIndex: 60, padding: 4 }}>
+                {mentionCandidates.map((c, i) => (
+                  <button
+                    key={c.user.id}
+                    type="button"
+                    onClick={() => pickMention(c)}
+                    onMouseEnter={() => setMentionIndex(i)}
+                    style={{ display: "flex", width: "100%", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: "var(--nv-radius-sm)", border: "none", background: i === mentionIndex ? "var(--nv-color-primary-alpha)" : "transparent", cursor: "pointer", textAlign: "left", fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text)" }}
+                  >
+                    <span>{presenceEmoji(presence[c.user.id])}</span>
+                    <span style={{ fontWeight: 600 }}>{c.user.name ?? c.user.email}</span>
+                    <span style={{ color: "var(--nv-color-text-faint)", fontSize: 11, marginLeft: "auto" }}>{c.user.email}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             {showAICommand && activeChannelId && (
               <AISlashCommandMenu
                 channelId={activeChannelId}
