@@ -43,7 +43,8 @@ export interface ChatActions {
   slash: (input: { command: string; args?: string; channelId?: string }) => Promise<unknown>;
   createFromTemplate: (formData: FormData) => Promise<void>;
   inviteGuest: (input: { guestEmail: string; guestName: string; accessTier?: "VIEWER" | "CONTRIBUTOR" | "PARTNER" | "VENDOR" | "TEMPORARY"; roomScope?: string[] }) => Promise<unknown>;
-  huddle: (input: { op: "start" | "get"; channelId: string; title?: string }) => Promise<unknown>;
+  huddle: (input: { op: "start" | "get" | "leave" | "end"; channelId: string; title?: string }) => Promise<unknown>;
+  reminders: (input: { op: "create" | "list" | "cancel" | "fire"; text?: string; remindAt?: string; channelId?: string; reminderId?: string; status?: "PENDING" | "FIRED" | "CANCELLED" }) => Promise<unknown>;
   threadSummary: (input: { threadId: string }) => Promise<unknown>;
   threadDecision: (input: { threadId: string; decisionText: string; sourceMessageId?: string }) => Promise<unknown>;
   threadPin: (input: { threadId: string; pinType: "ROOM" | "PERSONAL" | "PRIORITY"; reason?: string }) => Promise<unknown>;
@@ -390,8 +391,11 @@ export function ChatPanel({
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestNotice, setGuestNotice] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState("");
-  const [huddleLive, setHuddleLive] = useState<{ session: { id: string; title: string; mode: string; status: string; startedAt: string | null; channelId: string | null } | null; participants?: Array<{ user: { id: string; name: string | null; email: string } }> } | null>(null);
+  const [huddleLive, setHuddleLive] = useState<{ session: { id: string; title: string; mode: string; status: string; startedAt: string | null; channelId: string | null; createdById: string | null } | null; participants?: Array<{ user: { id: string; name: string | null; email: string } }> } | null>(null);
   const [huddleBusy, setHuddleBusy] = useState(false);
+  const [showReminders, setShowReminders] = useState(false);
+  const [reminders, setReminders] = useState<Array<{ id: string; text: string; remindAt: string; status: string; channelId: string | null }>>([]);
+  const [reminderBusy, setReminderBusy] = useState(false);
   const [smartReplies, setSmartReplies] = useState<Array<{ id: string; intent: string; tone: string; body: string; rank: number; knowledgeBased: boolean; approvalRequired: boolean }>>([]);
   const [mode, setMode] = useState<WorkspaceModeValue>("COLLABORATION");
   const [modeSource, setModeSource] = useState<ModeSource>("default");
@@ -479,13 +483,17 @@ export function ChatPanel({
     if (!activeChannelId) { setHuddleLive(null); return; }
     try {
       const res = (await actions.huddle({ op: "get", channelId: activeChannelId })) as
-        | { session: { id: string; title: string; mode: string; status: string; startedAt: string | null; channelId: string | null; participants?: Array<{ user: { id: string; name: string | null; email: string } }> } | null }
+        | { session: { id: string; title: string; mode: string; status: string; startedAt: string | null; channelId: string | null; createdById: string | null; participants?: Array<{ user: { id: string; name: string | null; email: string } }> } | null }
         | undefined;
       setHuddleLive(res?.session ? { session: res.session, participants: res.session.participants ?? [] } : null);
     } catch { /* silent */ }
   }, [activeChannelId, actions]);
 
-  useEffect(() => { void refreshHuddle(); }, [refreshHuddle]);
+  useEffect(() => {
+    void refreshHuddle();
+    const t = setInterval(() => void refreshHuddle(), 15000);
+    return () => clearInterval(t);
+  }, [refreshHuddle]);
 
   const startHuddle = async () => {
     if (!activeChannelId || huddleBusy) return;
@@ -496,6 +504,52 @@ export function ChatPanel({
     } catch { /* silent */ }
     finally { setHuddleBusy(false); }
   };
+
+  const leaveHuddle = async () => {
+    if (!activeChannelId || huddleBusy) return;
+    setHuddleBusy(true);
+    try {
+      await actions.huddle({ op: "leave", channelId: activeChannelId });
+      await refreshHuddle();
+    } catch { /* silent */ }
+    finally { setHuddleBusy(false); }
+  };
+
+  const endHuddle = async () => {
+    if (!activeChannelId || huddleBusy) return;
+    setHuddleBusy(true);
+    try {
+      await actions.huddle({ op: "end", channelId: activeChannelId });
+      await refreshHuddle();
+    } catch { /* silent */ }
+    finally { setHuddleBusy(false); }
+  };
+
+  const openReminders = async () => {
+    setShowReminders(true);
+    setReminderBusy(true);
+    try {
+      const res = (await actions.reminders({ op: "fire" })) as { ok?: boolean; reminders?: Array<{ id: string; text: string; remindAt: string; status: string; channelId: string | null }> } | undefined;
+      const list = (await actions.reminders({ op: "list" })) as { ok?: boolean; reminders?: Array<{ id: string; text: string; remindAt: string; status: string; channelId: string | null }> } | undefined;
+      setReminders(list?.reminders ?? []);
+      void res;
+    } catch {
+      setReminders([]);
+    } finally {
+      setReminderBusy(false);
+    }
+  };
+
+  const cancelReminder = async (id: string) => {
+    try {
+      await actions.reminders({ op: "cancel", reminderId: id });
+      setReminders((prev) => prev.map((r) => (r.id === id ? { ...r, status: "CANCELLED" } : r)));
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => {
+    void actions.reminders({ op: "fire" }).catch(() => {});
+  }, [actions]);
 
   const submitGuest = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -1009,6 +1063,7 @@ export function ChatPanel({
             <button onClick={() => setShowNotifications(!showNotifications)} style={{ position: "relative", border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>
               🔔 {notifUnread > 0 && <span style={{ position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "var(--nv-color-danger)", color: "#fff", fontSize: 9, display: "flex", alignItems: "center", justifyContent: "center" }}>{notifUnread}</span>}
             </button>
+            <button className="nv-chrome-optional" onClick={() => void openReminders()} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }} title="Reminders">⏰ Reminders</button>
             <button className="nv-chrome-optional" onClick={() => void openDigest()} title="Unread digest (spec §8.9)" style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>📋 Digest</button>
             <button className="nv-chrome-optional" onClick={() => setShowPinned(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>📌 Pins</button>
             <button className="nv-chrome-optional" onClick={() => setShowMembers(true)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-md)", padding: "4px 8px", fontSize: 12, cursor: "pointer", color: "var(--nv-color-text)" }}>👥 {active?.members.length ?? 0}</button>
@@ -1028,7 +1083,13 @@ export function ChatPanel({
                 ? `${huddleLive.participants.length} in call: ${huddleLive.participants.map((p) => p.user.name ?? p.user.email).join(", ")}`
                 : "no participants yet"}
             </span>
-            <button onClick={() => void refreshHuddle()} style={{ marginLeft: "auto", border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-sm)", padding: "2px 8px", fontSize: 11, cursor: "pointer" }} title="Refresh">↻</button>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+              <button onClick={() => void refreshHuddle()} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-sm)", padding: "2px 8px", fontSize: 11, cursor: "pointer" }} title="Refresh">↻</button>
+              <button onClick={() => void leaveHuddle()} disabled={huddleBusy} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-sm)", padding: "2px 8px", fontSize: 11, cursor: "pointer", color: "var(--nv-color-warning)" }} title="Leave the huddle">🚪 Leave</button>
+              {huddleLive.session.createdById === userId && (
+                <button onClick={() => void endHuddle()} disabled={huddleBusy} style={{ border: "1px solid var(--nv-color-danger)", background: "var(--nv-color-danger-alpha)", borderRadius: "var(--nv-radius-sm)", padding: "2px 8px", fontSize: 11, cursor: "pointer", color: "var(--nv-color-danger)", fontWeight: 700 }} title="End the huddle for everyone">⏹ End</button>
+              )}
+            </div>
           </div>
         )}
 
@@ -1479,11 +1540,46 @@ export function ChatPanel({
         <div style={{ maxHeight: 360, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
           {digestBusy && <div className="nv-empty">Building digest…</div>}
           {!digestBusy && !digestData && <div className="nv-empty">No unread highlights right now</div>}
-          {!digestBusy && !!digestData && (
-            <pre style={{ fontSize: "var(--nv-font-sm)", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0, fontFamily: "var(--nv-font-body)" }}>
-              {JSON.stringify(digestData, null, 2)}
-            </pre>
-          )}
+          {!digestBusy && !!digestData && (() => {
+            const d = digestData as { title?: string; summary?: string; highlights?: string[]; messageCount?: number };
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontWeight: 700 }}>{d.title ?? "Unread digest"}</div>
+                {d.summary && <div style={{ fontSize: "var(--nv-font-sm)", color: "var(--nv-color-text-muted)" }}>{d.summary}</div>}
+                {(d.highlights ?? []).map((h, i) => (
+                  <div key={i} style={{ padding: "6px 8px", borderRadius: "var(--nv-radius-md)", background: "var(--nv-color-bg)", fontSize: "var(--nv-font-sm)", wordBreak: "break-word" }}>
+                    {h}
+                  </div>
+                ))}
+                {typeof d.messageCount === "number" && <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)" }}>{d.messageCount} items in scope</div>}
+              </div>
+            );
+          })()}
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={showReminders}
+        onClose={() => setShowReminders(false)}
+        title="Reminders"
+        actions={<Button variant="secondary" onClick={() => setShowReminders(false)}>Close</Button>}
+      >
+        <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+          {reminderBusy && <div className="nv-empty">Loading reminders…</div>}
+          {!reminderBusy && reminders.length === 0 && <div className="nv-empty">No reminders yet — try /remind in the composer</div>}
+          {reminders.map((r) => (
+            <div key={r.id} style={{ padding: "6px 8px", borderRadius: "var(--nv-radius-md)", background: "var(--nv-color-bg)", display: "flex", alignItems: "center", gap: 8, fontSize: "var(--nv-font-sm)" }}>
+              <span>{r.status === "PENDING" ? "⏳" : r.status === "FIRED" ? "✅" : "✖️"}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ wordBreak: "break-word" }}>{r.text}</div>
+                <div style={{ color: "var(--nv-color-text-faint)", fontSize: 11 }}>{new Date(r.remindAt).toLocaleString()}</div>
+              </div>
+              <span style={{ color: "var(--nv-color-text-faint)", fontSize: 10, textTransform: "uppercase" }}>{r.status.toLowerCase()}</span>
+              {r.status === "PENDING" && (
+                <button onClick={() => void cancelReminder(r.id)} style={{ border: "1px solid var(--nv-color-border)", background: "transparent", borderRadius: "var(--nv-radius-sm)", padding: "2px 8px", fontSize: 11, cursor: "pointer" }}>Cancel</button>
+              )}
+            </div>
+          ))}
         </div>
       </Dialog>
     </div>

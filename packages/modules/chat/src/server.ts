@@ -999,7 +999,7 @@ export class ChatService {
           ? { mimeType: { startsWith: "image/" } }
           : parsed.hasVideo
             ? { mimeType: { startsWith: "video/" } }
-            : undefined,
+            : {},
       };
     }
 if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Prisma.QueryMode };

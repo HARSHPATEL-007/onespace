@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { Role, PermissionAction } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma, logAudit } from "../src/index";
 
 // Demo-only credentials. Change in production.
@@ -29,6 +30,7 @@ async function main() {
   await seedConnectionDemo(workspace.id, owner.id, admin.id);
   await seedAniDemo(workspace.id, owner.id);
   await seedVoiceDemo(workspace.id, owner.id);
+  await seedChatDemo(workspace.id, owner.id, admin.id);
 
   const coreModules = [
     "mail",
@@ -776,6 +778,371 @@ async function seedVoiceDemo(workspaceId: string, ownerId: string) {
   });
   await prisma.voiceTranscriptSegment.createMany({ data: segments });
   console.log("✓ Voice huddle demo seeded (run Transcribe in /m/voice to extract commitments)");
+}
+
+async function seedChatDemo(workspaceId: string, ownerId: string, adminId: string) {
+  const OWNER = { id: ownerId, name: "N0VA Founder" };
+  const ADMIN = { id: adminId, name: "N0VA Admin" };
+  const ago = (hours: number) => new Date(Date.now() - hours * 3600_000);
+  const reaction = (emoji: string, u: { id: string; name: string }) => ({ emoji, userId: u.id, authorName: u.name });
+
+  type SeedReply = {
+    author: typeof OWNER;
+    hoursAgo: number;
+    body: string;
+    reactions?: ReturnType<typeof reaction>[];
+  };
+  type SeedMessage = {
+    author: typeof OWNER;
+    hoursAgo: number;
+    body: string;
+    reactions?: ReturnType<typeof reaction>[];
+    replies?: SeedReply[];
+    taskProposal?: { title: string; priority: string; confidence: number };
+    eventProposal?: { title: string; startsInDays: number; durationHours: number; agenda: string; room: string };
+    hyperLinks?: Array<{ module: string; kind: string }>;
+  };
+  type SeedChannel = {
+    name: string;
+    topic: string;
+    description: string;
+    kind: "CHANNEL" | "DM";
+    messages: SeedMessage[];
+  };
+
+  const channels: SeedChannel[] = [
+    {
+      name: "general",
+      topic: "Workspace-wide announcements and conversation",
+      description: "Everyone. The default channel for the whole workspace.",
+      kind: "CHANNEL",
+      messages: [
+        {
+          author: OWNER, hoursAgo: 96, body: "House rules: this is a demo workspace — credentials are demo-only and everything is tenant-scoped. Never push real secrets here.",
+        },
+        {
+          author: OWNER, hoursAgo: 30, body: "Morning team — welcome to N0VA Workspace. Everything here is a live demo of the chat module. Type / in the composer to see the command menu.",
+        },
+        {
+          author: ADMIN, hoursAgo: 29, body: "Nice — the event bridge writes 📋 task cards back into the channel automatically when a task is created.",
+          reactions: [reaction("👍", OWNER)],
+        },
+        { author: ADMIN, hoursAgo: 29, body: "Also: real modules are seeded — check #engineering for the migration thread, and #sales for deal updates." },
+        { author: OWNER, hoursAgo: 26, body: "The Q3 budget workbook is ready in Sheets — please review before Thursday's sync." },
+        {
+          author: ADMIN, hoursAgo: 24, body: "Tue 10am works for me.",
+          reactions: [reaction("👍", OWNER)],
+        },
+        {
+          author: OWNER, hoursAgo: 20, body: "Weekly product sync — agenda for tomorrow",
+          replies: [
+            { author: ADMIN, hoursAgo: 19, body: "1. OKR review\n2. Module demos\n3. Dogfooding retro\n4. Roadmap", reactions: [reaction("🔥", OWNER)] },
+            { author: OWNER, hoursAgo: 18, body: "Adding a roadmap freeze discussion after the retro." },
+          ],
+        },
+        {
+          author: OWNER, hoursAgo: 5, body: "Just shipped the schema baseline migration — prod check passed.",
+        },
+        { author: ADMIN, hoursAgo: 4, body: "🚀 Deploy went out clean. Bridge consumer groups are live in redis." },
+      ],
+    },
+    {
+      name: "engineering",
+      topic: "Build & ship — architecture, deploys, incidents",
+      description: "Implementation discussions, code reviews, release notes.",
+      kind: "CHANNEL",
+      messages: [
+        {
+          author: OWNER, hoursAgo: 48, body: "The events relay is now eager-initialized at server start (instrumentation.ts) — no more cold-start misses.",
+        },
+        {
+          author: ADMIN, hoursAgo: 47, body: "Nice — that was the race where bridge consumers registered after the first bus.start().",
+          reactions: [reaction("🔥", OWNER)],
+        },
+        {
+          author: OWNER, hoursAgo: 46, body: "Redis adapter got a real fix: ensure() only keeps a client after a successful connect, and the dispatch loop re-creates consumer groups on NOGROUP.",
+        },
+        {
+          author: ADMIN, hoursAgo: 45, body: "Confirmed — XINFO GROUPS shows all four bridge groups: task.created, task.completed, huddle.started, huddle.ended.",
+        },
+        {
+          author: OWNER, hoursAgo: 40, body: "Commitment: I'll send the weekly report to Marcus by Friday.",
+          taskProposal: { title: "Send weekly report to Marcus", priority: "MEDIUM", confidence: 0.93 },
+          hyperLinks: [{ module: "tasks", kind: "task.proposal" }],
+        },
+        {
+          author: ADMIN, hoursAgo: 39, body: "Adding that to the sprint backlog — and scheduling the security review for next week.",
+          eventProposal: { title: "Security review", startsInDays: 7, durationHours: 1, agenda: "Access control review\nEncryption at rest audit\nBackup restore test", room: "Meet — Team standup (demo)" },
+        },
+        {
+          author: ADMIN, hoursAgo: 30, body: "Migration note — schema baseline 20260817000000 requires a fresh deploy; verify migrate status first.",
+          replies: [
+            { author: OWNER, hoursAgo: 29, body: "Verified on prod check. BOM bytes were the culprit — keep files UTF-8 without BOM." },
+            { author: ADMIN, hoursAgo: 28, body: "Noted — adding that to the runbook.", reactions: [reaction("✅", OWNER)] },
+          ],
+        },
+        { author: OWNER, hoursAgo: 8, body: "WS gateway (8080) is still down in dev — server actions + polling cover chat, so don't rely on push yet." },
+        { author: ADMIN, hoursAgo: 6, body: "Ack. Huddle start/end events bridge to chat now; ending a huddle requires the last participant to leave." },
+      ],
+    },
+    {
+      name: "design",
+      topic: "Design system, mockups, user research",
+      description: "Visual direction and design reviews.",
+      kind: "CHANNEL",
+      messages: [
+        { author: OWNER, hoursAgo: 72, body: "Design tokens are live in the shared system — surface-2, accent, mono." },
+        { author: ADMIN, hoursAgo: 70, body: "Using them for the new chat message cards. Consistency is night and day." },
+        {
+          author: OWNER, hoursAgo: 24, body: "Mockups for the mobile app drawer — feedback by Friday.",
+          reactions: [reaction("👍", ADMIN)],
+        },
+        {
+          author: ADMIN, hoursAgo: 20, body: "Love the dark theme. One nit: the huddle bar needs more contrast.",
+        },
+        { author: OWNER, hoursAgo: 18, body: "Shipping the fix today." },
+      ],
+    },
+    {
+      name: "sales",
+      topic: "Pipeline, deals, customer conversations",
+      description: "Deal reviews and customer updates.",
+      kind: "CHANNEL",
+      messages: [
+        { author: OWNER, hoursAgo: 96, body: "Acme expansion (200 seats) is in negotiation — target close in 12 days." },
+        { author: ADMIN, hoursAgo: 90, body: "Deal card is updated in the Sales module. Quote sent for the enterprise bundle." },
+        { author: OWNER, hoursAgo: 50, body: "Globex pilot starts next week — onboarding call Tuesday." },
+        { author: ADMIN, hoursAgo: 10, body: "Ticket from Dana (CSV export) is resolved; she confirmed on the call." },
+        { author: OWNER, hoursAgo: 9, body: "Good — that's the reference story for the Q3 launch page." },
+      ],
+    },
+    {
+      name: "direct",
+      topic: "",
+      description: "",
+      kind: "DM",
+      messages: [
+        { author: OWNER, hoursAgo: 24, body: "Heads up — I'm merging the chat seed later today; dev DB will get demo channels." },
+        { author: ADMIN, hoursAgo: 23, body: "Cool. Remind me to snapshot the bridge logs before the merge." },
+        { author: OWNER, hoursAgo: 22, body: "Done — I'll flag it in the thread." },
+      ],
+    },
+  ];
+
+  for (const ch of channels) {
+    let channel = await prisma.chatChannel.findFirst({ where: { workspaceId, name: ch.name, kind: ch.kind } });
+    if (!channel) {
+      channel = await prisma.chatChannel.create({
+        data: { workspaceId, createdById: OWNER.id, name: ch.name, kind: ch.kind, topic: ch.topic, description: ch.description },
+      });
+    }
+    await prisma.chatMember.upsert({
+      where: { channelId_userId: { channelId: channel.id, userId: OWNER.id } },
+      update: { role: "OWNER", lastReadAt: new Date() },
+      create: { channelId: channel.id, userId: OWNER.id, role: "OWNER", lastReadAt: new Date() },
+    });
+    await prisma.chatMember.upsert({
+      where: { channelId_userId: { channelId: channel.id, userId: ADMIN.id } },
+      update: { role: "ADMIN", lastReadAt: new Date() },
+      create: { channelId: channel.id, userId: ADMIN.id, role: "ADMIN", lastReadAt: new Date() },
+    });
+
+    const existingMessages = await prisma.chatMessage.count({ where: { channelId: channel.id } });
+    if (existingMessages > 0) continue;
+
+    for (const m of ch.messages) {
+      const message = await prisma.chatMessage.create({
+        data: {
+          channelId: channel.id,
+          workspaceId,
+          createdById: m.author.id,
+          authorName: m.author.name,
+          body: m.body,
+          reactions: (m.reactions ?? []) as unknown as Prisma.InputJsonValue,
+          createdAt: ago(m.hoursAgo),
+        },
+      });
+      await prisma.chatSearchIndex.create({
+        data: {
+          messageId: message.id,
+          channelId: channel.id,
+          workspaceId,
+          authorName: m.author.name,
+          body: m.body,
+          searchVector: m.body.toLowerCase(),
+        },
+      });
+      if (m.taskProposal) {
+        await prisma.chatTaskProposal.create({
+          data: {
+            workspaceId,
+            messageId: message.id,
+            title: m.taskProposal.title,
+            priority: m.taskProposal.priority,
+            sourceQuote: m.body,
+            status: "DRAFT",
+            confidence: m.taskProposal.confidence,
+            createdById: m.author.id,
+            createdAt: ago(m.hoursAgo),
+          },
+        });
+      }
+      if (m.eventProposal) {
+        await prisma.chatEventProposal.create({
+          data: {
+            workspaceId,
+            messageId: message.id,
+            title: m.eventProposal.title,
+            startsAt: new Date(Date.now() + m.eventProposal.startsInDays * 86_400_000),
+            endsAt: new Date(Date.now() + m.eventProposal.startsInDays * 86_400_000 + m.eventProposal.durationHours * 3600_000),
+            agendaDraft: m.eventProposal.agenda,
+            suggestedRoom: m.eventProposal.room,
+            status: "SUGGESTED",
+            createdById: m.author.id,
+            createdAt: ago(m.hoursAgo),
+          },
+        });
+      }
+      if (m.hyperLinks) {
+        await prisma.chatHyperContext.create({
+          data: {
+            messageId: message.id,
+            workspaceId,
+            links: m.hyperLinks as unknown as Prisma.InputJsonValue,
+            extractedAt: ago(m.hoursAgo),
+          },
+        });
+      }
+      for (const r of m.replies ?? []) {
+        const reply = await prisma.chatMessage.create({
+          data: {
+            channelId: channel.id,
+            workspaceId,
+            createdById: r.author.id,
+            authorName: r.author.name,
+            body: r.body,
+            parentId: message.id,
+            reactions: (r.reactions ?? []) as unknown as Prisma.InputJsonValue,
+            createdAt: ago(r.hoursAgo),
+          },
+        });
+        await prisma.chatSearchIndex.create({
+          data: {
+            messageId: reply.id,
+            channelId: channel.id,
+            workspaceId,
+            authorName: r.author.name,
+            body: r.body,
+            searchVector: r.body.toLowerCase(),
+          },
+        });
+      }
+    }
+    console.log(`✓ Chat seeded: #${ch.name} (${ch.messages.length} messages)`);
+  }
+
+  if ((await prisma.chatSavedSearch.count({ where: { workspaceId } })) === 0) {
+    await prisma.chatSavedSearch.createMany({
+      data: [
+        { workspaceId, userId: OWNER.id, name: "Decisions", query: "is:thread" },
+        { workspaceId, userId: ADMIN.id, name: "Budget", query: "budget" },
+      ],
+    });
+  }
+
+  // Feature artifacts attach to real messages. Works whether the conversation
+  // above was just seeded or the channel already had messages (dev).
+  const eng = await prisma.chatChannel.findFirst({ where: { workspaceId, name: "engineering" } });
+  const design = await prisma.chatChannel.findFirst({ where: { workspaceId, name: "design" } });
+  const findMsg = async (channel: { id: string } | null, needle?: string) => {
+    if (!channel) return null;
+    const hit = needle
+      ? await prisma.chatMessage.findFirst({ where: { channelId: channel.id, body: { contains: needle } } })
+      : null;
+    return hit ?? prisma.chatMessage.findFirst({ where: { channelId: channel.id }, orderBy: { createdAt: "asc" } });
+  };
+
+  if ((await prisma.chatPoll.count({ where: { workspaceId } })) === 0) {
+    const msg = await findMsg(eng, "bridge consumer groups");
+    if (msg) {
+      const poll = await prisma.chatPoll.create({
+        data: {
+          workspaceId,
+          channelId: msg.channelId,
+          question: "What should we tackle first next sprint?",
+          options: [
+            { text: "Governance & retention tooling" },
+            { text: "Real-time push (WS gateway)" },
+            { text: "AI digest" },
+          ] as unknown as Prisma.InputJsonValue,
+          createdById: ADMIN.id,
+          status: "OPEN",
+        },
+      });
+      await prisma.chatMessage.update({ where: { id: msg.id }, data: { pollId: poll.id } });
+      await prisma.chatPollVote.createMany({
+        data: [
+          { pollId: poll.id, userId: ADMIN.id, optionIndex: 0 },
+          { pollId: poll.id, userId: OWNER.id, optionIndex: 1 },
+        ],
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  if ((await prisma.reminder.count({ where: { workspaceId, status: "PENDING" } })) === 0) {
+    const msg = await findMsg(eng, "weekly report to Marcus");
+    if (msg) {
+      await prisma.reminder.create({
+        data: {
+          workspaceId,
+          userId: OWNER.id,
+          text: "Send the weekly report to Marcus",
+          remindAt: new Date(Date.now() + 3 * 3600_000),
+          channelId: msg.channelId,
+          sourceMessageId: msg.id,
+          status: "PENDING",
+        },
+      });
+    }
+  }
+
+  if ((await prisma.chatPin.count({ where: { channel: { workspaceId } } })) === 0) {
+    const msg = await findMsg(eng, "Migration note");
+    if (msg) {
+      await prisma.chatPin.create({ data: { messageId: msg.id, channelId: msg.channelId, pinnedById: ADMIN.id } });
+      await prisma.chatMessage.update({ where: { id: msg.id }, data: { pinnedAt: new Date() } });
+    }
+  }
+
+  if ((await prisma.chatBookmark.count({ where: { workspaceId } })) === 0) {
+    const msg = await findMsg(eng, "eager-initialized");
+    if (msg) {
+      await prisma.chatBookmark.create({ data: { workspaceId, userId: ADMIN.id, messageId: msg.id, channelId: msg.channelId } });
+    }
+  }
+
+  if ((await prisma.chatMessageEdit.count({ where: { message: { channel: { workspaceId } } } })) === 0) {
+    const msg = await findMsg(design, "dark theme");
+    if (msg) {
+      const revised = "Love the dark theme. One nit: huddle live bar could use more contrast.";
+      await prisma.chatMessageEdit.create({
+        data: { messageId: msg.id, oldBody: msg.body, newBody: revised, editedAt: new Date() },
+      });
+      await prisma.chatMessage.update({ where: { id: msg.id }, data: { body: revised, editedAt: new Date() } });
+    }
+  }
+
+  if ((await prisma.chatHyperContext.count({ where: { workspaceId } })) === 0) {
+    const msg = await findMsg(eng, "weekly report to Marcus");
+    if (msg) {
+      await prisma.chatHyperContext.create({
+        data: { messageId: msg.id, workspaceId, links: [{ module: "tasks", kind: "task.proposal" }] as unknown as Prisma.InputJsonValue },
+      });
+    }
+  }
+
+  console.log("✓ Chat demo seeded (channels, threads, polls, reminders, pins, bookmarks, saved searches)");
 }
 
 main()

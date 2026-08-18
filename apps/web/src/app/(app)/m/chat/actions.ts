@@ -704,6 +704,13 @@ export async function pollAction(input: { op: "create" | "vote" | "resolve" | "g
 
 export async function reminderAction(input: { op: "create" | "list" | "cancel" | "fire"; text?: string; remindAt?: string; channelId?: string; reminderId?: string; status?: "PENDING" | "FIRED" | "CANCELLED" }) {
   const chat = await svc();
+  if (input.op !== "create") {
+    try {
+      await chat.fireDueReminders();
+    } catch {
+      // best-effort sweep
+    }
+  }
   switch (input.op) {
     case "create":
       return { ok: true, reminder: await chat.createReminder(input.text ?? "", new Date(input.remindAt ?? ""), { channelId: input.channelId }) };
@@ -791,10 +798,10 @@ export async function inviteGuestAction(input: { guestEmail: string; guestName: 
 
 // ── Chat Nexus: huddles from chat (spec §8.6) ───────────────────────────
 
-export async function huddleAction(input: { op: "start" | "get"; channelId: string; title?: string }) {
+export async function huddleAction(input: { op: "start" | "get" | "leave" | "end"; channelId: string; title?: string }) {
   const { workspaceId, userId, role } = await actionContext();
+  const hud = new HuddleService(workspaceId, userId, role);
   if (input.op === "start") {
-    const hud = new HuddleService(workspaceId, userId, role);
     const existing = await prisma.huddleSession.findFirst({
       where: { workspaceId, channelId: input.channelId, status: "LIVE" },
     });
@@ -806,9 +813,22 @@ export async function huddleAction(input: { op: "start" | "get"; channelId: stri
     });
     return { session, created: true };
   }
+  if (input.op === "leave" || input.op === "end") {
+    const session = await prisma.huddleSession.findFirst({
+      where: { workspaceId, channelId: input.channelId, status: "LIVE" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!session) return { ok: false, message: "No live huddle in this channel" };
+    if (input.op === "leave") {
+      await hud.leaveHuddle(session.id);
+      return { ok: true, message: "Left the huddle" };
+    }
+    await hud.endHuddle(session.id);
+    return { ok: true, message: "Huddle ended" };
+  }
   const session = await prisma.huddleSession.findFirst({
     where: { workspaceId, channelId: input.channelId, status: "LIVE" },
-    include: { participants: { include: { user: { select: { id: true, name: true, email: true } } } } },
+    include: { participants: { where: { leftAt: null }, include: { user: { select: { id: true, name: true, email: true } } } } },
     orderBy: { createdAt: "desc" },
   });
   return { session: session ?? null };

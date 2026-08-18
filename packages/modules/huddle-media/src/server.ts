@@ -111,6 +111,36 @@ export class HuddleService {
     }
   }
 
+  async endHuddle(huddleId: string) {
+    await this.assert("UPDATE");
+    const huddle = await prisma.huddleSession.findFirst({ where: { id: huddleId, workspaceId: this.workspaceId } });
+    if (!huddle) throw new Error("Huddle not found");
+    const participant = await prisma.huddleParticipant.findFirst({ where: { huddleId, userId: this.userId, leftAt: null } });
+    const isHost = participant?.role === "HOST" || huddle.createdById === this.userId;
+    if (!isHost) throw new Error("Only the host can end the huddle");
+
+    await prisma.huddleParticipant.updateMany({ where: { huddleId, leftAt: null }, data: { leftAt: new Date() } });
+    if (huddle.status !== "ENDED") {
+      await prisma.huddleSession.update({ where: { id: huddleId }, data: { status: "ENDED", endedAt: new Date() } });
+      try {
+        await emitEvent(huddleEnded({
+          huddleId: huddle.id,
+          title: huddle.title,
+          channelId: huddle.channelId ?? undefined,
+          endedBy: this.userId,
+        }, {
+          producer: "huddle",
+          tenantId: this.workspaceId,
+          aggregateId: huddle.id,
+          partitionKey: huddle.channelId ?? huddle.id,
+        }), "memory");
+      } catch {
+        // best-effort
+      }
+    }
+    return prisma.huddleSession.findFirst({ where: { id: huddleId, workspaceId: this.workspaceId } });
+  }
+
   async startRecording(huddleId: string, recordingType?: RecordingType) {
     await this.assert("CREATE");
     const huddle = await prisma.huddleSession.findFirst({ where: { id: huddleId, workspaceId: this.workspaceId } });
