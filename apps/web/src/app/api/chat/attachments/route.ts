@@ -1,5 +1,4 @@
 import { auth } from "@n0va/auth";
-import { prisma } from "@n0va/db";
 import { requireWorkspace } from "@/lib/context";
 import { NextResponse } from "next/server";
 import { writeFile } from "fs/promises";
@@ -15,7 +14,6 @@ export async function POST(req: Request) {
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
-  const messageId = formData.get("messageId") as string | null;
 
   if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
 
@@ -36,26 +34,13 @@ export async function POST(req: Request) {
   const hashBuf = await crypto.subtle.digest("SHA-256", bytes);
   const checksum = Buffer.from(hashBuf).toString("hex");
 
-  const attachment = await prisma.chatAttachment.create({
-    data: {
-      messageId: messageId ?? "pending",
-      workspaceId: ctx.workspace.id,
-      filename: file.name,
-      mimeType: file.type,
-      sizeBytes: bytes.length,
-      storageKey,
-      thumbnailKey: isImage ? storageKey : null,
-      checksum,
-    },
-  });
-
   return NextResponse.json({
-    id: attachment.id,
-    filename: attachment.filename,
-    mimeType: attachment.mimeType,
-    sizeBytes: attachment.sizeBytes,
-    storageKey: attachment.storageKey,
-    thumbnailKey: attachment.thumbnailKey,
-    url: `/api/chat/attachments/${attachment.id}/download`,
+    filename: file.name,
+    mimeType: file.type,
+    sizeBytes: bytes.length,
+    storageKey,
+    thumbnailKey: isImage ? storageKey : null,
+    checksum,
+    url: "", // resolved after send: /api/chat/attachments/{id}/download
   });
 }

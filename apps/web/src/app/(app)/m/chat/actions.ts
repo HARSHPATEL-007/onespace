@@ -1,6 +1,6 @@
 "use server";
 
-import { ChatService, channelSchema, channelMetaSchema, messageSchema, reactionSchema, channelIdSchema, savedSearchSchema } from "@n0va/modules-chat/server";
+import { ChatService, channelSchema, channelMetaSchema, messageSchema, reactionSchema, channelIdSchema, savedSearchSchema, attachmentSchema } from "@n0va/modules-chat/server";
 import { ApprovalService } from "@n0va/modules-approvals/server";
 import { TasksService } from "@n0va/modules-tasks/server";
 import { FederationService, type GuestTier } from "@n0va/modules-federation/server";
@@ -34,7 +34,8 @@ export async function createChannelAction(formData: FormData) {
 }
 
 export async function createDmAction(formData: FormData) {
-  await (await svc()).createDm(String(formData.get("targetUserId") ?? ""));
+  const channel = await (await svc()).createDm(String(formData.get("targetUserId") ?? ""));
+  return channel.id;
 }
 
 export async function updateChannelAction(formData: FormData) {
@@ -78,12 +79,22 @@ export async function sendMessageAction(formData: FormData) {
   const body = String(formData.get("body") ?? "");
   const parentId = formData.get("parentId") ? String(formData.get("parentId")) : undefined;
   const ttl = Number(formData.get("ttlSeconds") ?? "");
+  const attachmentsRaw = formData.get("attachments");
+  let attachments: Array<z.infer<typeof attachmentSchema>> | undefined;
+  if (attachmentsRaw) {
+    try {
+      attachments = z.array(attachmentSchema).parse(JSON.parse(String(attachmentsRaw)));
+    } catch {
+      attachments = undefined;
+    }
+  }
   const { body: parsed } = messageSchema.parse({ body });
   const ctx = await requireActionContext();
   const name = ctx.user.name ?? ctx.user.email ?? "Member";
   const message = await (await svc()).sendMessage(channelId, parsed, name, {
     parentId,
     ttlSeconds: Number.isInteger(ttl) && ttl > 0 ? ttl : undefined,
+    attachments,
   });
   await emitMessageCreated({
     workspaceId: ctx.workspaceId,

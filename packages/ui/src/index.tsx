@@ -275,25 +275,51 @@ export function Dropdown({
   children: ReactNode;
   align?: "start" | "end";
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="nv-dropdown" style={{ position: "relative", display: "inline-block" }}>
-      {trigger}
-      <div
-        style={{
-          position: "absolute",
-          top: "calc(100% + 6px)",
-          [align]: 0,
-          minWidth: 180,
-          background: "var(--nv-color-surface)",
-          border: "1px solid var(--nv-color-border)",
-          borderRadius: "var(--nv-radius-md)",
-          boxShadow: "var(--nv-shadow-md)",
-          padding: 4,
-          zIndex: 40,
-        }}
+    <div ref={ref} className="nv-dropdown" style={{ position: "relative", display: "inline-block" }}>
+      <span
+        style={{ display: "inline-block", cursor: "pointer" }}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        title="Open menu"
       >
-        {children}
-      </div>
+        {trigger}
+      </span>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            [align]: 0,
+            minWidth: 180,
+            background: "var(--nv-color-surface)",
+            border: "1px solid var(--nv-color-border)",
+            borderRadius: "var(--nv-radius-md)",
+            boxShadow: "var(--nv-shadow-md)",
+            padding: 4,
+            zIndex: 40,
+          }}
+          onClick={() => setOpen(false)}
+        >
+          {children}
+        </div>
+      )}
     </div>
   );
 }

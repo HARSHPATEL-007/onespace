@@ -18,7 +18,7 @@ import { ApprovalCard, type ApprovalView } from "@n0va/modules-approvals/compone
 
 export interface ChatActions {
   createChannel: (formData: FormData) => Promise<void>;
-  createDm: (formData: FormData) => Promise<void>;
+  createDm: (formData: FormData) => Promise<string>;
   send: (formData: FormData) => Promise<void>;
   edit: (formData: FormData) => Promise<void>;
   delete: (formData: FormData) => Promise<void>;
@@ -441,7 +441,7 @@ export function ChatPanel({
   const [digestData, setDigestData] = useState<unknown>(null);
   const [digestBusy, setDigestBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -605,6 +605,13 @@ export function ChatPanel({
     }
   }, [messages.length, activeChannelId]);
 
+  useEffect(() => {
+    if (activeChannelId) {
+      const t = window.setTimeout(() => inputRef.current?.focus(), 80);
+      return () => window.clearTimeout(t);
+    }
+  }, [activeChannelId]);
+
   // Workspace-adaptive state (spec: adaptive workspace modes).
   const handleModeChange = useCallback((m: WorkspaceModeValue, src: ModeSource) => {
     setMode(m);
@@ -665,9 +672,9 @@ export function ChatPanel({
   };
 
   const submitDm = (fd: FormData) => {
-    void actions.createDm(fd).then(() => {
+    void actions.createDm(fd).then((id) => {
       setShowDm(false);
-      router.refresh();
+      router.push(`/m/chat?c=${id}`);
     });
   };
 
@@ -731,14 +738,20 @@ export function ChatPanel({
         const fd = new FormData();
         fd.append("file", file);
         const res = await fetch("/api/chat/attachments", { method: "POST", body: fd });
-        if (res.ok) {
-          const attachment = await res.json();
-          const msg = `[📎 ${attachment.filename}](${attachment.url})`;
-          const sendFd = new FormData();
-          sendFd.set("channelId", active.id);
-          sendFd.set("body", msg);
-          await actions.send(sendFd);
-        }
+        if (!res.ok) continue;
+        const a = await res.json();
+        const sendFd = new FormData();
+        sendFd.set("channelId", active.id);
+        sendFd.set("body", `📎 ${a.filename}`);
+        sendFd.set("attachments", JSON.stringify([{
+          filename: a.filename,
+          mimeType: a.mimeType,
+          sizeBytes: a.sizeBytes,
+          storageKey: a.storageKey,
+          thumbnailKey: a.thumbnailKey ?? null,
+          checksum: a.checksum ?? null,
+        }]));
+        await actions.send(sendFd);
       }
       router.refresh();
     } finally {
@@ -906,12 +919,17 @@ export function ChatPanel({
     }
   };
 
-  const handleComposerKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleComposerKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionOpen && mentionCandidates.length > 0) {
       if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => (i + 1) % mentionCandidates.length); return; }
       if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length); return; }
       if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); const target = mentionCandidates[mentionIndex] ?? mentionCandidates[0]; if (target) pickMention(target); return; }
       if (e.key === "Escape") { setMentionOpen(false); return; }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      e.currentTarget.form?.requestSubmit();
+      return;
     }
     if (wsStatus === "connected") sendTyping();
   };
@@ -1306,18 +1324,23 @@ export function ChatPanel({
         <form onSubmit={handleSend} style={{ padding: "var(--nv-space-3)", borderTop: "1px solid var(--nv-color-border)", display: "flex", gap: 8, alignItems: "flex-end" }}>
           <input type="hidden" name="channelId" value={activeChannelId ?? ""} />
           <div style={{ position: "relative", flex: 1 }}>
-            <input
+            <textarea
               ref={inputRef}
               className="nv-input"
               name="body"
-              placeholder={active ? `Message ${channelLabel(active)}` : "Select a channel first"}
+              rows={1}
+              placeholder={active ? `Message ${channelLabel(active)} (Enter to send · Shift+Enter for a new line)` : "Select a channel first"}
               disabled={!active}
               required
               autoComplete="off"
               value={inputValue}
-              onChange={(e) => handleInputChange(e.target.value)}
+              onChange={(e) => {
+                handleInputChange(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+              }}
               onKeyDown={handleComposerKey}
-              style={{ width: "100%" }}
+              style={{ width: "100%", resize: "none", maxHeight: 160, overflowY: "auto", lineHeight: 1.45 }}
             />
             {mentionOpen && mentionCandidates.length > 0 && (
               <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: 4, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", boxShadow: "var(--nv-shadow-md)", maxHeight: 220, overflowY: "auto", zIndex: 60, padding: 4 }}>
@@ -1378,9 +1401,15 @@ export function ChatPanel({
 
       {/* Notification panel */}
       {showNotifications && (
-        <div style={{ position: "absolute", top: 40, right: 16, zIndex: 50 }}>
-          <NotificationPanel mode={mode} onClose={() => setShowNotifications(false)} />
-        </div>
+        <>
+          <div
+            onClick={() => setShowNotifications(false)}
+            style={{ position: "fixed", inset: 0, zIndex: 49 }}
+          />
+          <div style={{ position: "absolute", top: 40, right: 16, zIndex: 50 }}>
+            <NotificationPanel mode={mode} onClose={() => setShowNotifications(false)} />
+          </div>
+        </>
       )}
 
       {/* Compliance error / explanation banner */}
@@ -1734,7 +1763,18 @@ export function ChatPanel({
     const replyCount = (m as any)._count?.replies ?? 0;
     const rec = (m as any).compliance?.[0];
     return (
-      <Dropdown trigger={<Button variant="ghost" size="sm" style={{ minWidth: 0, padding: "2px 6px", opacity: 0.4 }}>⋯</Button>}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+        {replyCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setActiveThread(m.id)}
+            title={`View thread (${replyCount})`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 4, border: "none", background: "transparent", color: "var(--nv-color-primary)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "2px 4px" }}
+          >
+            💬 {replyCount}
+          </button>
+        )}
+        <Dropdown trigger={<Button variant="ghost" size="sm" style={{ minWidth: 0, padding: "2px 6px", opacity: 0.4 }}>⋯</Button>}>
         <MenuItem onSelect={() => { setReplyingTo(m); inputRef.current?.focus(); }}>Reply in thread</MenuItem>
         {replyCount > 0 && <MenuItem onSelect={() => setActiveThread(m.id)}>View thread ({replyCount})</MenuItem>}
         {isAuthor && <MenuItem onSelect={() => startEdit(m)}>Edit</MenuItem>}
@@ -1765,7 +1805,8 @@ export function ChatPanel({
           fd.set("classification", "CONFIDENTIAL");
           void actions.governance({ op: "classify", messageId: m.id, classification: "CONFIDENTIAL" }).then(() => router.refresh()).catch((e) => setComplianceError((e as Error).message));
         }}>🔒 Mark confidential</MenuItem>
-      </Dropdown>
+        </Dropdown>
+      </div>
     );
   }
 }

@@ -590,7 +590,7 @@ export class ChatService {
 
   // ── Messages ───────────────────────────────────────────────────────
 
-  async listMessages(channelId: string, limit = 50) {
+  async listMessages(channelId: string, limit = 200) {
     await this.assert("READ");
     const channel = await this.ownedChannel(channelId);
     const messages = await prisma.chatMessage.findMany({
