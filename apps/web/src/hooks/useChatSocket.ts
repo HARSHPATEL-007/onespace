@@ -68,6 +68,7 @@ export function useChatSocket<T = ChatMessage>({
   const reconnectCount = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subscribedChannel = useRef<string | null>(null);
+  const wsFailedRef = useRef(false);
 
   // Update status and notify parent
   const updateStatus = useCallback(
@@ -98,12 +99,16 @@ export function useChatSocket<T = ChatMessage>({
           }
         } else if (payload.type === "message" && payload.message) {
           onMessage(payload.message as T);
+        } else if (payload.type === "typing" && payload.channel_id && payload.user_id) {
+          onTyping(payload.channel_id, payload.user_id);
+        } else if (payload.type === "presence" && payload.user_id && payload.status) {
+          onPresence(payload.user_id, payload.status);
         }
       } catch {
         // ignore parse errors
       }
     };
-  }, [workspaceId, channelId, onMessage, updateStatus]);
+  }, [workspaceId, channelId, onMessage, onPresence, onTyping, updateStatus]);
 
   // Connect via WebSocket (primary)
   const connectWS = useCallback(() => {
@@ -125,6 +130,7 @@ export function useChatSocket<T = ChatMessage>({
 
     ws.onopen = () => {
       reconnectCount.current = 0;
+      wsFailedRef.current = false;
       updateStatus("connected");
 
       // Subscribe to the channel
@@ -166,12 +172,17 @@ export function useChatSocket<T = ChatMessage>({
     };
 
     ws.onerror = () => {
+      wsFailedRef.current = true;
       // WebSocket error — try fallback
       connectSSE();
     };
 
     ws.onclose = () => {
       updateStatus("disconnected");
+
+      // If the WebSocket failed (gateway down), stay on SSE instead of
+      // tearing down the EventSource every reconnect attempt.
+      if (wsFailedRef.current) return;
 
       // Attempt reconnect with exponential backoff
       if (reconnectCount.current < MAX_RECONNECT_ATTEMPTS) {
@@ -195,6 +206,7 @@ export function useChatSocket<T = ChatMessage>({
     const fallbackTimer = setTimeout(() => {
       if (status === "connecting") {
         // WebSocket didn't connect fast enough — try SSE
+        wsFailedRef.current = true;
         if (wsRef.current) wsRef.current.close();
         connectSSE();
       }
@@ -240,6 +252,12 @@ export function useChatSocket<T = ChatMessage>({
   const sendTyping = useCallback(() => {
     if (status === "connected" && wsRef.current) {
       wsRef.current.send(JSON.stringify({ type: "typing", channel_id: channelId }));
+    } else {
+      fetch("/api/chat/typing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId }),
+      }).catch(() => {});
     }
   }, [status, channelId]);
 

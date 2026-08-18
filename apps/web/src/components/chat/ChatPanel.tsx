@@ -884,9 +884,11 @@ export function ChatPanel({
   };
 
   const handleTyping = () => {
-    if (wsStatus === "connected") {
-      sendTyping();
-    }
+    if (typingTimeout.current) return;
+    typingTimeout.current = setTimeout(() => {
+      typingTimeout.current = null;
+    }, 2000);
+    sendTyping();
   };
 
   const mentionCandidates = useMemo(() => {
@@ -931,7 +933,7 @@ export function ChatPanel({
       e.currentTarget.form?.requestSubmit();
       return;
     }
-    if (wsStatus === "connected") sendTyping();
+    handleTyping();
   };
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
@@ -992,6 +994,7 @@ export function ChatPanel({
     const typing = typingUsers[activeChannelId];
     if (!typing || typing.length === 0) return "";
     const names = typing
+      .filter((uid) => uid !== userId)
       .map((uid) => {
         const member = members.find((m) => m.user.id === uid);
         return member ? member.user.name ?? member.user.email : "Someone";

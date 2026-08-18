@@ -1,5 +1,6 @@
 "use server";
 
+import { z } from "zod";
 import { ChatService, channelSchema, channelMetaSchema, messageSchema, reactionSchema, channelIdSchema, savedSearchSchema, attachmentSchema } from "@n0va/modules-chat/server";
 import { ApprovalService } from "@n0va/modules-approvals/server";
 import { TasksService } from "@n0va/modules-tasks/server";
@@ -11,6 +12,7 @@ import { prisma } from "@n0va/db";
 import { messageCreated } from "@n0va/modules-events";
 import { getEventBus } from "@/lib/eventbus";
 import { actionContext, requireActionContext } from "@/lib/action-context";
+import { publishLiveEvent } from "@/lib/live";
 import { getDeliveryEngine, resolvePolicy, listPolicies, upsertPolicy, deletePolicy, resetPolicies, matrixRows, breakerStates, resetBreaker, quotaState, resetQuota, listDlq, replayDlq, resolveDlq, dropDlq, concurrencyState } from "@n0va/modules-chat/delivery";
 import { PersonalizationEngine, PRESETS, type RuleInput, type DndWindowInput, type PinInput, type SampleEvent, type PresetName, type Suggestion } from "@n0va/modules-chat/personalization";
 
@@ -104,6 +106,48 @@ export async function sendMessageAction(formData: FormData) {
     threadId: parentId,
     body: parsed,
   });
+  await notifyMentions({
+    workspaceId: ctx.workspaceId,
+    senderId: ctx.user.id,
+    senderName: name,
+    body: parsed,
+    channelId,
+    messageId: message.id,
+  });
+}
+
+async function notifyMentions(opts: { workspaceId: string; senderId: string; senderName: string; body: string; channelId: string; messageId?: string }) {
+  try {
+    const tokens = new Set(
+      (opts.body.match(/@([^\s@]+(?:\s+[^\s@]+)*)/g) ?? [])
+        .map((t) => t.slice(1).trim().toLowerCase())
+        .filter(Boolean),
+    );
+    if (tokens.size === 0) return;
+    const members = await prisma.workspaceMember.findMany({
+      where: { workspaceId: opts.workspaceId, status: "ACTIVE", userId: { not: opts.senderId } },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+    const targets = members.filter((m) => {
+      const name = (m.user.name ?? "").toLowerCase();
+      const email = (m.user.email ?? "").toLowerCase();
+      return tokens.has(name) || tokens.has(email);
+    });
+    if (targets.length === 0) return;
+    const preview = opts.body.length > 120 ? `${opts.body.slice(0, 120)}…` : opts.body;
+    await prisma.notification.createMany({
+      data: targets.map((m) => ({
+        workspaceId: opts.workspaceId,
+        userId: m.userId,
+        type: "chat_mention",
+        title: `${opts.senderName} mentioned you`,
+        body: preview,
+        link: `/m/chat?c=${opts.channelId}${opts.messageId ? `&m=${opts.messageId}` : ""}`,
+      })),
+    });
+  } catch (e) {
+    console.error("[mentions] failed to notify", e);
+  }
 }
 
 async function emitMessageCreated(opts: { workspaceId: string; userId: string; messageId: string; channelId: string; threadId?: string; body: string }) {
@@ -176,7 +220,15 @@ export async function replyMessageAction(formData: FormData) {
   const { body: parsed } = messageSchema.parse({ body });
   const ctx = await requireActionContext();
   const name = ctx.user.name ?? ctx.user.email ?? "Member";
-  await (await svc()).sendMessage(channelId, parsed, name, { parentId });
+  const message = await (await svc()).sendMessage(channelId, parsed, name, { parentId });
+  await notifyMentions({
+    workspaceId: ctx.workspaceId,
+    senderId: ctx.user.id,
+    senderName: name,
+    body: parsed,
+    channelId,
+    messageId: message.id,
+  });
 }
 
 // ── Read Tracking ───────────────────────────────────────────────────
@@ -230,7 +282,13 @@ export async function setPresenceAction(formData: FormData) {
   const customStatus = formData.get("customStatus") ? String(formData.get("customStatus")) : undefined;
   const valid = ["ONLINE", "AWAY", "BUSY", "DND", "IDLE"] as const;
   if (!(valid as readonly string[]).includes(status)) return;
+  const { workspaceId, userId } = await actionContext();
   await (await svc()).setPresence(status as (typeof valid)[number], customStatus);
+  void publishLiveEvent(workspaceId, {
+    type: "presence",
+    user_id: userId,
+    status: status.toLowerCase(),
+  });
 }
 
 // ── Hyper-context ───────────────────────────────────────────────────────

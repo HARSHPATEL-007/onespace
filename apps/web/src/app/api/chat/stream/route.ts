@@ -63,8 +63,14 @@ export async function GET(req: Request) {
 
       // Subscribe to in-memory events (from Server Actions)
       const unsubscribeMemory = subscribe(workspaceId, (payload) => {
-        const msg = payload as { type: string };
-        if (msg.type === "message") send(payload);
+        const msg = payload as { type: string; channel_id?: string };
+        if (msg.type === "message") {
+          send(payload);
+        } else if (msg.type === "typing" && msg.channel_id === channelId) {
+          send(payload);
+        } else if (msg.type === "presence") {
+          send(payload);
+        }
       });
 
       // Subscribe to Redis events (from Rust gateway)
@@ -75,8 +81,13 @@ export async function GET(req: Request) {
         await redisSub.subscribe("n0va:chat:events", (message) => {
           try {
             const event = JSON.parse(message);
+            if (event.workspace_id && event.workspace_id !== workspaceId) return;
             if (event.type === "message" && event.channel_id === channelId) {
               send({ type: "message", message: event.message });
+            } else if (event.type === "typing" && event.channel_id === channelId) {
+              send(event);
+            } else if (event.type === "presence") {
+              send(event);
             }
           } catch {
             // ignore parse errors

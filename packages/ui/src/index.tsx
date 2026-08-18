@@ -254,8 +254,9 @@ export function Dialog({
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
     >
-      <div className="nv-dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="nv-dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
         <div className="nv-dialog-title">{title}</div>
         <div className="nv-dialog-body">{children}</div>
         {actions ? <div className="nv-dialog-actions">{actions}</div> : null}
