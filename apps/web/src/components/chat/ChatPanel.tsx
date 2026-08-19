@@ -309,6 +309,7 @@ export function ChatPanel({
   approvalPendingCounts = {},
   channelApprovals = [],
   deliveryMap = {},
+  targetMessageId = null,
 }: {
   workspaceId: string;
   userId: string;
@@ -324,6 +325,7 @@ export function ChatPanel({
   approvalPendingCounts?: Record<string, number>;
   channelApprovals?: ApprovalView[];
   deliveryMap?: Record<string, DeliveryView>;
+  targetMessageId?: string | null;
 }) {
   const router = useRouter();
   const approvalsByMessage = useMemo(() => {
@@ -411,6 +413,8 @@ export function ChatPanel({
   const [notifUnread, setNotifUnread] = useState(0);
   const [messageOverrides, setMessageOverrides] = useState<Record<string, ChatMessage>>({});
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [liveReplies, setLiveReplies] = useState<Record<string, LiveMsg[]>>({});
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [ttlIndex, setTtlIndex] = useState(0);
   const [showBookmarks, setShowBookmarks] = useState(false);
@@ -472,6 +476,15 @@ export function ChatPanel({
         setNotifUnread((prev) => prev + delta);
         return;
       }
+      const pid = msg.parentId;
+      if (pid) {
+        setLiveReplies((prev) => {
+          const list = prev[pid] ?? [];
+          if (list.some((m) => m.id === msg.id)) return prev;
+          return { ...prev, [pid]: [...list, msg as LiveMsg] };
+        });
+        return;
+      }
       setLiveMessages((prev) =>
         prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
       );
@@ -506,6 +519,21 @@ export function ChatPanel({
       .filter((m) => !deletedIds.has(m.id) && !m.deletedAt && !m.parentId)
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [liveMessages, initialMessages, messageOverrides, deletedIds]);
+
+  // Scroll to the message referenced by ?m= (notification links)
+  useEffect(() => {
+    if (!targetMessageId || highlightId) return;
+    const el = listRef.current?.querySelector(`[data-message-id="${targetMessageId}"]`);
+    if (!el) return;
+    (el as HTMLElement).scrollIntoView({ block: "center" });
+    setHighlightId(targetMessageId);
+  }, [targetMessageId, messages, highlightId]);
+
+  useEffect(() => {
+    if (!highlightId) return;
+    const t = setTimeout(() => setHighlightId(null), 3000);
+    return () => clearTimeout(t);
+  }, [highlightId]);
 
   // Chat Nexus: smart replies for the latest message (spec §8.9)
   useEffect(() => {
@@ -809,6 +837,10 @@ export function ChatPanel({
       if (res.ok) setSavedSearches((await res.json()).searches ?? []);
     } catch { }
   }, []);
+
+  useEffect(() => {
+    if (showSearch) void fetchSavedSearches();
+  }, [showSearch, fetchSavedSearches]);
 
   const toggleBookmark = (messageId: string) => {
     const fd = new FormData();
@@ -1235,7 +1267,7 @@ export function ChatPanel({
             const isEditing = editing === m.id;
             const approval = approvalsByMessage[m.id];
             return (
-              <div key={m.id}>
+              <div key={m.id} data-message-id={m.id} style={highlightId === m.id ? { background: "var(--nv-color-primary-alpha)", borderRadius: "var(--nv-radius-md)", padding: "2px 4px" } : undefined}>
                 {showHeader ? (
                   <div style={{ display: "flex", gap: 10, padding: "10px 8px 4px", marginTop: idx > 0 ? 8 : 0 }}>
                     <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--nv-color-primary-alpha)", color: "var(--nv-color-primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
@@ -1427,6 +1459,9 @@ export function ChatPanel({
           onPin={(threadId, pinType) => actions.threadPin({ threadId, pinType })}
           onExport={(threadId, format) => actions.threadExport({ threadId, format, exportMode: "FULL" })}
           onActionItems={(threadId) => actions.threadActionItems({ threadId })}
+          liveReplies={liveReplies[activeThread] ?? []}
+          deletedIds={deletedIds}
+          messageOverrides={messageOverrides}
         />
       )}
 
@@ -1791,7 +1826,7 @@ export function ChatPanel({
   function MessageMenu({ m }: { m: ChatMessage }) {
     if (m.deletedAt) return null;
     const isAuthor = m.createdById === userId;
-    const replyCount = (m as any)._count?.replies ?? 0;
+    const replyCount = (m as any)._count?.replies ?? liveReplies[m.id]?.length ?? 0;
     const rec = (m as any).compliance?.[0];
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>

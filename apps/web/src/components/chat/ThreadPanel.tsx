@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button, Avatar, cn } from "@n0va/ui";
 import type { ChatMessage } from "@n0va/db";
 
@@ -63,6 +63,9 @@ export function ThreadPanel({
   onPin,
   onExport,
   onActionItems,
+  liveReplies,
+  deletedIds,
+  messageOverrides,
 }: {
   parentId: string;
   workspaceId: string;
@@ -73,6 +76,9 @@ export function ThreadPanel({
   onPin: (threadId: string, pinType: "ROOM" | "PERSONAL" | "PRIORITY") => Promise<unknown>;
   onExport: (threadId: string, format: "MARKDOWN" | "PDF" | "DOCX" | "JSON") => Promise<unknown>;
   onActionItems: (threadId: string) => Promise<unknown>;
+  liveReplies?: ThreadMessage[];
+  deletedIds?: Set<string>;
+  messageOverrides?: Record<string, ChatMessage>;
 }) {
   const [data, setData] = useState<ThreadData | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -98,6 +104,19 @@ export function ThreadPanel({
   }, [parentId]);
 
   useEffect(() => { fetchThread(); }, [fetchThread]);
+
+  const replies = useMemo(() => {
+    const byId = new Map<string, ThreadMessage>();
+    for (const r of data?.replies ?? []) byId.set(r.id, r);
+    for (const r of liveReplies ?? []) byId.set(r.id, r);
+    const removed = deletedIds ?? new Set<string>();
+    for (const [id, m] of Object.entries(messageOverrides ?? {})) {
+      if (byId.has(id)) byId.set(id, m as ThreadMessage);
+    }
+    return [...byId.values()]
+      .filter((r) => !removed.has(r.id))
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [data?.replies, liveReplies, deletedIds, messageOverrides]);
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,7 +194,7 @@ export function ThreadPanel({
       {/* Header */}
       <div style={{ padding: "var(--nv-space-3)", borderBottom: "1px solid var(--nv-color-border)", display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontWeight: 700, flex: 1 }}>Thread</span>
-        <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{data.info.replyCount} replies</span>
+        <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{replies.length} replies</span>
         <Button variant="ghost" size="sm" onClick={() => void handleSummary()} disabled={summaryLoading} title="AI thread summary (spec §8.3)">
           {summaryLoading ? "…" : "✨ Summary"}
         </Button>
@@ -271,12 +290,12 @@ export function ThreadPanel({
 
       {/* Replies */}
       <div style={{ flex: 1, overflowY: "auto", padding: "var(--nv-space-3)", display: "flex", flexDirection: "column", gap: 8 }}>
-        {data.replies.length === 0 && (
+        {replies.length === 0 && (
           <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", textAlign: "center", padding: "var(--nv-space-4)" }}>
             No replies yet. Start the conversation!
           </div>
         )}
-        {data.replies.map((reply) => (
+        {replies.map((reply) => (
           <div key={reply.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <Avatar name={reply.authorName} size="sm" />
             <div style={{ flex: 1, minWidth: 0 }}>
