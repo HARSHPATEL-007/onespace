@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Button, Avatar, cn, Dropdown, MenuItem } from "@n0va/ui";
 import type { ChatMessage } from "@n0va/db";
 
@@ -69,6 +69,7 @@ export function ThreadPanel({
   liveReplies,
   deletedIds,
   messageOverrides,
+  targetReplyId,
 }: {
   parentId: string;
   workspaceId: string;
@@ -85,6 +86,7 @@ export function ThreadPanel({
   liveReplies?: ThreadMessage[];
   deletedIds?: Set<string>;
   messageOverrides?: Record<string, ChatMessage>;
+  targetReplyId?: string | null;
 }) {
   const [data, setData] = useState<ThreadData | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -103,6 +105,8 @@ export function ThreadPanel({
   const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editBusy, setEditBusy] = useState(false);
+  const [highlightReplyId, setHighlightReplyId] = useState<string | null>(null);
+  const repliesRef = useRef<HTMLDivElement>(null);
 
   const fetchThread = useCallback(async () => {
     try {
@@ -126,6 +130,21 @@ export function ThreadPanel({
       .filter((r) => !removed.has(r.id))
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [data?.replies, liveReplies, deletedIds, messageOverrides]);
+
+  // Scroll to the reply referenced by ?m=&p= (notification links into threads)
+  useEffect(() => {
+    if (!targetReplyId || highlightReplyId) return;
+    const el = repliesRef.current?.querySelector(`[data-reply-id="${targetReplyId}"]`);
+    if (!el) return;
+    (el as HTMLElement).scrollIntoView({ block: "center" });
+    setHighlightReplyId(targetReplyId);
+  }, [targetReplyId, replies, highlightReplyId]);
+
+  useEffect(() => {
+    if (!highlightReplyId) return;
+    const t = setTimeout(() => setHighlightReplyId(null), 3000);
+    return () => clearTimeout(t);
+  }, [highlightReplyId]);
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -318,7 +337,7 @@ export function ThreadPanel({
       </div>
 
       {/* Replies */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "var(--nv-space-3)", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div ref={repliesRef} style={{ flex: 1, overflowY: "auto", padding: "var(--nv-space-3)", display: "flex", flexDirection: "column", gap: 8 }}>
         {replies.length === 0 && (
           <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", textAlign: "center", padding: "var(--nv-space-4)" }}>
             No replies yet. Start the conversation!
@@ -327,7 +346,7 @@ export function ThreadPanel({
         {replies.map((reply) => {
           const isAuthor = reply.createdById === userId;
           return (
-          <div key={reply.id} data-reply-id={reply.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <div key={reply.id} data-reply-id={reply.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", borderRadius: "var(--nv-radius-md)", padding: 6, background: reply.id === highlightReplyId ? "var(--nv-color-primary-alpha)" : "transparent" }}>
             <Avatar name={reply.authorName} size="sm" />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>

@@ -310,6 +310,7 @@ export function ChatPanel({
   channelApprovals = [],
   deliveryMap = {},
   targetMessageId = null,
+  targetParentId = null,
 }: {
   workspaceId: string;
   userId: string;
@@ -326,6 +327,7 @@ export function ChatPanel({
   channelApprovals?: ApprovalView[];
   deliveryMap?: Record<string, DeliveryView>;
   targetMessageId?: string | null;
+  targetParentId?: string | null;
 }) {
   const router = useRouter();
   const approvalsByMessage = useMemo(() => {
@@ -528,6 +530,13 @@ export function ChatPanel({
     (el as HTMLElement).scrollIntoView({ block: "center" });
     setHighlightId(targetMessageId);
   }, [targetMessageId, messages, highlightId]);
+
+  // Auto-open the thread when the ?m= target is a reply (?p= carries its parent)
+  useEffect(() => {
+    if (targetParentId && targetMessageId && !activeThread) {
+      setActiveThread(targetParentId);
+    }
+  }, [targetParentId, targetMessageId, activeThread]);
 
   useEffect(() => {
     if (!highlightId) return;
@@ -1474,6 +1483,7 @@ export function ChatPanel({
           liveReplies={liveReplies[activeThread] ?? []}
           deletedIds={deletedIds}
           messageOverrides={messageOverrides}
+          targetReplyId={targetParentId ? targetMessageId : null}
         />
       )}
 

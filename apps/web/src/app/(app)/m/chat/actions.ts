@@ -113,11 +113,12 @@ export async function sendMessageAction(formData: FormData) {
     body: parsed,
     channelId,
     messageId: message.id,
+    parentId,
   });
   return message;
 }
 
-async function notifyMentions(opts: { workspaceId: string; senderId: string; senderName: string; body: string; channelId: string; messageId?: string }) {
+async function notifyMentions(opts: { workspaceId: string; senderId: string; senderName: string; body: string; channelId: string; messageId?: string; parentId?: string }) {
   try {
     if (!opts.body.includes("@")) return;
     const body = opts.body.toLowerCase();
@@ -139,7 +140,7 @@ async function notifyMentions(opts: { workspaceId: string; senderId: string; sen
         type: "chat_mention",
         title: `${opts.senderName} mentioned you`,
         body: preview,
-        link: `/m/chat?c=${opts.channelId}${opts.messageId ? `&m=${opts.messageId}` : ""}`,
+        link: `/m/chat?c=${opts.channelId}${opts.messageId ? `&m=${opts.messageId}` : ""}${opts.parentId ? `&p=${opts.parentId}` : ""}`,
       })),
     });
     for (const m of targets) {
@@ -233,6 +234,7 @@ export async function replyMessageAction(formData: FormData) {
     body: parsed,
     channelId,
     messageId: message.id,
+    parentId,
   });
 }
 

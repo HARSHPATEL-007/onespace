@@ -46,9 +46,9 @@ huddleAction,
 export default async function ChatPage({
   searchParams,
 }: {
-  searchParams: Promise<{ c?: string; m?: string }>;
+  searchParams: Promise<{ c?: string; m?: string; p?: string }>;
 }) {
-  const { c, m } = await searchParams;
+  const { c, m, p } = await searchParams;
   const { workspaceId, userId, role } = await requireWorkspace();
   const svc = new ChatService(workspaceId, userId, role);
 
@@ -162,6 +162,7 @@ export default async function ChatPage({
       }}
       token={token}
       targetMessageId={m ?? null}
+      targetParentId={p ?? null}
     />
   );
 }
