@@ -414,6 +414,7 @@ export function ChatPanel({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [notifUnread, setNotifUnread] = useState(0);
   const [messageOverrides, setMessageOverrides] = useState<Record<string, ChatMessage>>({});
+  const [localOverrides, setLocalOverrides] = useState<Record<string, ChatMessage>>({});
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [liveReplies, setLiveReplies] = useState<Record<string, LiveMsg[]>>({});
   const [highlightId, setHighlightId] = useState<string | null>(null);
@@ -517,10 +518,11 @@ export function ChatPanel({
     for (const m of liveMessages) byId.set(m.id, m);
     for (const m of initialMessages) byId.set(m.id, m);
     for (const m of Object.values(messageOverrides)) byId.set(m.id, m);
+    for (const m of Object.values(localOverrides)) byId.set(m.id, m);
     return [...byId.values()]
       .filter((m) => !deletedIds.has(m.id) && !m.deletedAt && !m.parentId)
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  }, [liveMessages, initialMessages, messageOverrides, deletedIds]);
+  }, [liveMessages, initialMessages, messageOverrides, localOverrides, deletedIds]);
 
   // Scroll to the message referenced by ?m= (notification links)
   useEffect(() => {
@@ -755,12 +757,17 @@ export function ChatPanel({
   const submitEdit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editing || !editValue.trim()) return;
+    const nextBody = editValue.trim();
+    const base = messages.find((x) => x.id === editing);
+    if (base) {
+      setLocalOverrides((prev) => ({ ...prev, [editing]: { ...base, body: nextBody, bodyHtml: null, editedAt: new Date() } }));
+    }
+    setEditing(null);
+    setEditValue("");
     const fd = new FormData();
     fd.set("messageId", editing);
-    fd.set("body", editValue.trim());
+    fd.set("body", nextBody);
     void actions.edit(fd).then(() => {
-      setEditing(null);
-      setEditValue("");
       router.refresh();
     });
   };
@@ -1331,6 +1338,13 @@ export function ChatPanel({
                       <span style={{ fontSize: 10, color: "var(--nv-color-text-faint)", opacity: 0 }}>{new Date(m.createdAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}</span>
                     </div>
                     <div style={{ flex: 1 }}>
+                      {m.editedAt && (
+                        <div style={{ fontSize: 10, lineHeight: 1 }}>
+                          <button onClick={() => void openEdits(m)} title="View edit history" style={{ border: "none", background: "none", color: "var(--nv-color-text-faint)", fontSize: 10, cursor: "pointer", padding: 0, textDecoration: "underline dotted" }}>
+                            (edited)
+                          </button>
+                        </div>
+                      )}
                       {isEditing ? (
                         <form onSubmit={submitEdit} style={{ display: "flex", gap: 6, flexDirection: "column" }}>
                           <input className="nv-input" value={editValue} onChange={(e) => setEditValue(e.target.value)} autoFocus style={{ fontSize: "var(--nv-font-md)" }} />
@@ -1868,13 +1882,23 @@ export function ChatPanel({
         {replyCount > 0 && <MenuItem onSelect={() => setActiveThread(m.id)}>View thread ({replyCount})</MenuItem>}
         {isAuthor && <MenuItem onSelect={() => startEdit(m)}>Edit</MenuItem>}
         {isAuthor && <MenuItem danger onSelect={() => {
+          setLiveMessages((prev) => prev.filter((x) => x.id !== m.id));
+          setDeletedIds((prev) => new Set(prev).add(m.id));
           const fd = new FormData();
           fd.set("messageId", m.id);
           void actions.delete(fd).then(() => {
-            setLiveMessages((prev) => prev.filter((x) => x.id !== m.id));
-            setDeletedIds((prev) => new Set(prev).add(m.id));
             router.refresh();
-          }).catch((e) => setComplianceError((e as Error).message));
+          }).catch((e) => {
+            setDeletedIds((prev) => {
+              const n = new Set(prev);
+              n.delete(m.id);
+              return n;
+            });
+            setLiveMessages((prev) =>
+              prev.some((x) => x.id === m.id) ? prev : [...prev, m],
+            );
+            setComplianceError((e as Error).message);
+          });
         }}>Delete</MenuItem>}
         {rec && (
           <MenuItem onSelect={() => {

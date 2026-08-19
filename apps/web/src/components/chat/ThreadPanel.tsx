@@ -245,7 +245,13 @@ export function ThreadPanel({
     try {
       await onDeleteReply(reply.id);
       await fetchThread();
-    } catch { /* keep the optimistic state; next refetch reconciles */ }
+    } catch {
+      setLocalDeleted((prev) => {
+        const n = new Set(prev);
+        n.delete(reply.id);
+        return n;
+      });
+    }
   };
 
   const handleEditHistory = async (reply: ThreadMessage) => {
