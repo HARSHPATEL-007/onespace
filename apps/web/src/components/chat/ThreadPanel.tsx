@@ -106,6 +106,8 @@ export function ThreadPanel({
   const [editText, setEditText] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const [highlightReplyId, setHighlightReplyId] = useState<string | null>(null);
+  const [localOverrides, setLocalOverrides] = useState<Record<string, ThreadMessage>>({});
+  const [localDeleted, setLocalDeleted] = useState<Set<string>>(() => new Set());
   const repliesRef = useRef<HTMLDivElement>(null);
 
   const fetchThread = useCallback(async () => {
@@ -122,14 +124,17 @@ export function ThreadPanel({
     const byId = new Map<string, ThreadMessage>();
     for (const r of data?.replies ?? []) byId.set(r.id, r);
     for (const r of liveReplies ?? []) byId.set(r.id, r);
-    const removed = deletedIds ?? new Set<string>();
+    const removed = new Set([...(deletedIds ?? new Set<string>()), ...localDeleted]);
     for (const [id, m] of Object.entries(messageOverrides ?? {})) {
       if (byId.has(id)) byId.set(id, m as ThreadMessage);
+    }
+    for (const [id, m] of Object.entries(localOverrides)) {
+      if (byId.has(id)) byId.set(id, m);
     }
     return [...byId.values()]
       .filter((r) => !removed.has(r.id))
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  }, [data?.replies, liveReplies, deletedIds, messageOverrides]);
+  }, [data?.replies, liveReplies, deletedIds, messageOverrides, localOverrides, localDeleted]);
 
   // Scroll to the reply referenced by ?m=&p= (notification links into threads)
   useEffect(() => {
@@ -216,22 +221,25 @@ export function ThreadPanel({
 
   const handleEditReply = async (reply: ThreadMessage) => {
     if (!onEditReply || editBusy) return;
+    const nextBody = editText.trim();
     setEditBusy(true);
+    setLocalOverrides((prev) => ({ ...prev, [reply.id]: { ...reply, body: nextBody, editedAt: new Date() } }));
+    setEditingReplyId(null);
+    setEditText("");
     try {
-      await onEditReply(reply.id, editText.trim());
-      setEditingReplyId(null);
-      setEditText("");
+      await onEditReply(reply.id, nextBody);
       await fetchThread();
-    } catch { /* silent */ }
+    } catch { /* keep the optimistic state; next refetch reconciles */ }
     finally { setEditBusy(false); }
   };
 
   const handleDeleteReply = async (reply: ThreadMessage) => {
     if (!onDeleteReply) return;
+    setLocalDeleted((prev) => new Set(prev).add(reply.id));
     try {
       await onDeleteReply(reply.id);
       await fetchThread();
-    } catch { /* silent */ }
+    } catch { /* keep the optimistic state; next refetch reconciles */ }
   };
 
   if (loading) return <div className="nv-empty">Loading thread...</div>;
