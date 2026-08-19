@@ -1445,6 +1445,7 @@ export function ChatPanel({
         <ThreadPanel
           parentId={activeThread}
           workspaceId={workspaceId}
+          userId={userId}
           onClose={() => setActiveThread(null)}
           onSendReply={async (parentId, body) => {
             const fd = new FormData();
@@ -1459,6 +1460,17 @@ export function ChatPanel({
           onPin={(threadId, pinType) => actions.threadPin({ threadId, pinType })}
           onExport={(threadId, format) => actions.threadExport({ threadId, format, exportMode: "FULL" })}
           onActionItems={(threadId) => actions.threadActionItems({ threadId })}
+          onEditReply={(messageId, body) => {
+            const fd = new FormData();
+            fd.set("messageId", messageId);
+            fd.set("body", body);
+            return actions.edit(fd);
+          }}
+          onDeleteReply={(messageId) => {
+            const fd = new FormData();
+            fd.set("messageId", messageId);
+            return actions.delete(fd);
+          }}
           liveReplies={liveReplies[activeThread] ?? []}
           deletedIds={deletedIds}
           messageOverrides={messageOverrides}

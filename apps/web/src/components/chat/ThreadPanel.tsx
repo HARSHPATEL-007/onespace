@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Button, Avatar, cn } from "@n0va/ui";
+import { Button, Avatar, cn, Dropdown, MenuItem } from "@n0va/ui";
 import type { ChatMessage } from "@n0va/db";
 
 interface ThreadMessage extends ChatMessage {
@@ -56,6 +56,7 @@ function renderBody(body: string) {
 export function ThreadPanel({
   parentId,
   workspaceId,
+  userId,
   onClose,
   onSendReply,
   onSummary,
@@ -63,12 +64,15 @@ export function ThreadPanel({
   onPin,
   onExport,
   onActionItems,
+  onEditReply,
+  onDeleteReply,
   liveReplies,
   deletedIds,
   messageOverrides,
 }: {
   parentId: string;
   workspaceId: string;
+  userId: string;
   onClose: () => void;
   onSendReply: (parentId: string, body: string) => Promise<void>;
   onSummary: (threadId: string) => Promise<unknown>;
@@ -76,6 +80,8 @@ export function ThreadPanel({
   onPin: (threadId: string, pinType: "ROOM" | "PERSONAL" | "PRIORITY") => Promise<unknown>;
   onExport: (threadId: string, format: "MARKDOWN" | "PDF" | "DOCX" | "JSON") => Promise<unknown>;
   onActionItems: (threadId: string) => Promise<unknown>;
+  onEditReply?: (messageId: string, body: string) => Promise<unknown>;
+  onDeleteReply?: (messageId: string) => Promise<unknown>;
   liveReplies?: ThreadMessage[];
   deletedIds?: Set<string>;
   messageOverrides?: Record<string, ChatMessage>;
@@ -94,6 +100,9 @@ export function ThreadPanel({
   const [exportError, setExportError] = useState<string | null>(null);
   const [actionItems, setActionItems] = useState<Array<{ id: string; text: string; assignee: string | null; status: string }> | null>(null);
   const [actionItemsLoading, setActionItemsLoading] = useState(false);
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
 
   const fetchThread = useCallback(async () => {
     try {
@@ -184,6 +193,26 @@ export function ThreadPanel({
       setActionItems(res);
     } catch { setActionItems([]); }
     finally { setActionItemsLoading(false); }
+  };
+
+  const handleEditReply = async (reply: ThreadMessage) => {
+    if (!onEditReply || editBusy) return;
+    setEditBusy(true);
+    try {
+      await onEditReply(reply.id, editText.trim());
+      setEditingReplyId(null);
+      setEditText("");
+      await fetchThread();
+    } catch { /* silent */ }
+    finally { setEditBusy(false); }
+  };
+
+  const handleDeleteReply = async (reply: ThreadMessage) => {
+    if (!onDeleteReply) return;
+    try {
+      await onDeleteReply(reply.id);
+      await fetchThread();
+    } catch { /* silent */ }
   };
 
   if (loading) return <div className="nv-empty">Loading thread...</div>;
@@ -295,16 +324,42 @@ export function ThreadPanel({
             No replies yet. Start the conversation!
           </div>
         )}
-        {replies.map((reply) => (
-          <div key={reply.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        {replies.map((reply) => {
+          const isAuthor = reply.createdById === userId;
+          return (
+          <div key={reply.id} data-reply-id={reply.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
             <Avatar name={reply.authorName} size="sm" />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                 <span style={{ fontSize: 12, fontWeight: 700 }}>{reply.authorName}</span>
                 <span style={{ fontSize: 10, color: "var(--nv-color-text-faint)" }}>{formatTime(reply.createdAt)}</span>
                 {reply.editedAt && <span style={{ fontSize: 10, color: "var(--nv-color-text-faint)" }}>(ed.)</span>}
+                {isAuthor && onEditReply && onDeleteReply && (
+                  <Dropdown
+                    trigger={<Button variant="ghost" size="sm" style={{ minWidth: 0, padding: "0 4px", opacity: 0.4, fontSize: 12 }}>⋯</Button>}
+                  >
+                    <MenuItem onSelect={() => { setEditingReplyId(reply.id); setEditText(reply.body); }}>Edit</MenuItem>
+                    <MenuItem danger onSelect={() => void handleDeleteReply(reply)}>Delete</MenuItem>
+                  </Dropdown>
+                )}
               </div>
-              <div style={{ fontSize: "var(--nv-font-sm)" }}>{renderBody(reply.body)}</div>
+              {editingReplyId === reply.id ? (
+                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                  <input
+                    className="nv-input"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    style={{ flex: 1 }}
+                    autoFocus
+                  />
+                  <Button size="sm" disabled={!editText.trim() || editBusy} onClick={() => void handleEditReply(reply)}>
+                    {editBusy ? "..." : "Save"}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setEditingReplyId(null); setEditText(""); }}>Cancel</Button>
+                </div>
+              ) : (
+                <div style={{ fontSize: "var(--nv-font-sm)" }}>{renderBody(reply.body)}</div>
+              )}
               <button
                 onClick={() => void handleDecision(reply)}
                 title="Mark as decision (spec §8.3)"
@@ -323,7 +378,8 @@ export function ThreadPanel({
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Reply input */}
