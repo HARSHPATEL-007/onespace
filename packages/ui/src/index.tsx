@@ -1,6 +1,9 @@
 "use client";
 
 import {
+  Children,
+  cloneElement,
+  isValidElement,
   useEffect,
   useId,
   useMemo,
@@ -297,7 +300,8 @@ export function Dropdown({
     <div ref={ref} className="nv-dropdown" style={{ position: "relative", display: "inline-block" }}>
       <span
         style={{ display: "inline-block", cursor: "pointer" }}
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onMouseDown={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => (o ? o : true)); }}
         title="Open menu"
       >
         {trigger}
@@ -318,7 +322,16 @@ export function Dropdown({
           }}
           onClick={() => setOpen(false)}
         >
-          {children}
+          {Children.map(children, (child) =>
+            isValidElement<{ onSelect?: () => void }>(child)
+              ? cloneElement(child, {
+                  onSelect: () => {
+                    child.props.onSelect?.();
+                    setOpen(false);
+                  },
+                })
+              : child
+          )}
         </div>
       )}
     </div>
@@ -342,7 +355,10 @@ export function MenuItem({
         padding: "8px 12px",
         width: "100%",
       }}
-      onClick={onSelect}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        onSelect?.();
+      }}
     >
       {children}
     </button>
