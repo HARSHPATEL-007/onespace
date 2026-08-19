@@ -409,6 +409,8 @@ export function ChatPanel({
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionIndex, setMentionIndex] = useState(0);
   const [notifUnread, setNotifUnread] = useState(0);
+  const [messageOverrides, setMessageOverrides] = useState<Record<string, ChatMessage>>({});
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [uploading, setUploading] = useState(false);
   const [ttlIndex, setTtlIndex] = useState(0);
   const [showBookmarks, setShowBookmarks] = useState(false);
@@ -452,16 +454,16 @@ export function ChatPanel({
     onMessage: (msg) => {
       if ((msg as { type?: string }).type === "message.deleted") {
         const id = (msg as { message?: { id?: string } }).message?.id;
-        if (id) setLiveMessages((prev) => prev.filter((m) => m.id !== id));
+        if (id) {
+          setLiveMessages((prev) => prev.filter((m) => m.id !== id));
+          setDeletedIds((prev) => new Set(prev).add(id));
+        }
         return;
       }
       if ((msg as { type?: string }).type === "message.updated") {
         const updated = (msg as { message?: ChatMessage }).message;
         if (updated) {
-          setLiveMessages((prev) => {
-            if (!prev.some((m) => m.id === updated.id)) return prev;
-            return prev.map((m) => (m.id === updated.id ? updated : m));
-          });
+          setMessageOverrides((prev) => ({ ...prev, [updated.id]: updated }));
         }
         return;
       }
@@ -491,13 +493,14 @@ export function ChatPanel({
   });
 
   const messages = useMemo(() => {
-    if (!liveMessages.length) return initialMessages;
-    const byId = new Map<string, ChatMessage>(liveMessages.map((m) => [m.id, m]));
+    const byId = new Map<string, ChatMessage>();
+    for (const m of liveMessages) byId.set(m.id, m);
     for (const m of initialMessages) byId.set(m.id, m);
+    for (const m of Object.values(messageOverrides)) byId.set(m.id, m);
     return [...byId.values()]
-      .filter((m) => !m.deletedAt && !m.parentId)
+      .filter((m) => !deletedIds.has(m.id) && !m.deletedAt && !m.parentId)
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  }, [liveMessages, initialMessages]);
+  }, [liveMessages, initialMessages, messageOverrides, deletedIds]);
 
   // Chat Nexus: smart replies for the latest message (spec §8.9)
   useEffect(() => {
@@ -1801,6 +1804,7 @@ export function ChatPanel({
           fd.set("messageId", m.id);
           void actions.delete(fd).then(() => {
             setLiveMessages((prev) => prev.filter((x) => x.id !== m.id));
+            setDeletedIds((prev) => new Set(prev).add(m.id));
             router.refresh();
           }).catch((e) => setComplianceError((e as Error).message));
         }}>Delete</MenuItem>}

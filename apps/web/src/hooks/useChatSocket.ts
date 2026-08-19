@@ -213,7 +213,9 @@ export function useChatSocket<T = ChatMessage>({
     connectWS();
 
     const fallbackTimer = setTimeout(() => {
-      if (status === "connecting") {
+      const wsOpen = wsRef.current?.readyState === WebSocket.OPEN;
+      const esOpen = esRef.current?.readyState === EventSource.OPEN;
+      if (!wsOpen && !esOpen) {
         // WebSocket didn't connect fast enough — try SSE
         wsFailedRef.current = true;
         if (wsRef.current) wsRef.current.close();
