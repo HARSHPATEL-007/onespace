@@ -66,6 +66,7 @@ export function ThreadPanel({
   onActionItems,
   onEditReply,
   onDeleteReply,
+  onEditHistory,
   liveReplies,
   deletedIds,
   messageOverrides,
@@ -83,6 +84,7 @@ export function ThreadPanel({
   onActionItems: (threadId: string) => Promise<unknown>;
   onEditReply?: (messageId: string, body: string) => Promise<unknown>;
   onDeleteReply?: (messageId: string) => Promise<unknown>;
+  onEditHistory?: (messageId: string) => Promise<Array<{ id: string; body: string; editedAt: string }>>;
   liveReplies?: ThreadMessage[];
   deletedIds?: Set<string>;
   messageOverrides?: Record<string, ChatMessage>;
@@ -108,6 +110,10 @@ export function ThreadPanel({
   const [highlightReplyId, setHighlightReplyId] = useState<string | null>(null);
   const [localOverrides, setLocalOverrides] = useState<Record<string, ThreadMessage>>({});
   const [localDeleted, setLocalDeleted] = useState<Set<string>>(() => new Set());
+  const [editHistory, setEditHistory] = useState<Array<{ id: string; body: string; editedAt: string }> | null>(null);
+  const [editHistoryFor, setEditHistoryFor] = useState<string | null>(null);
+  const [editHistoryBusy, setEditHistoryBusy] = useState(false);
+  const [editHistoryError, setEditHistoryError] = useState<string | null>(null);
   const repliesRef = useRef<HTMLDivElement>(null);
 
   const fetchThread = useCallback(async () => {
@@ -242,6 +248,19 @@ export function ThreadPanel({
     } catch { /* keep the optimistic state; next refetch reconciles */ }
   };
 
+  const handleEditHistory = async (reply: ThreadMessage) => {
+    if (!onEditHistory || editHistoryBusy) return;
+    setEditHistoryBusy(true);
+    setEditHistoryError(null);
+    try {
+      const res = await onEditHistory(reply.id);
+      setEditHistory(res ?? []);
+      setEditHistoryFor(reply.id);
+    } catch (e) {
+      setEditHistoryError(e instanceof Error ? e.message : "History failed");
+    } finally { setEditHistoryBusy(false); }
+  };
+
   if (loading) return <div className="nv-empty">Loading thread...</div>;
   if (!data) return <div className="nv-empty">Thread not found</div>;
 
@@ -367,6 +386,9 @@ export function ThreadPanel({
                   >
                     <MenuItem onSelect={() => { setEditingReplyId(reply.id); setEditText(reply.body); }}>Edit</MenuItem>
                     <MenuItem danger onSelect={() => void handleDeleteReply(reply)}>Delete</MenuItem>
+                    {reply.editedAt && onEditHistory && (
+                      <MenuItem onSelect={() => void handleEditHistory(reply)}>{editHistoryBusy && editHistoryFor === reply.id ? "Loading..." : "View history"}</MenuItem>
+                    )}
                   </Dropdown>
                 )}
               </div>
@@ -386,6 +408,20 @@ export function ThreadPanel({
                 </div>
               ) : (
                 <div style={{ fontSize: "var(--nv-font-sm)" }}>{renderBody(reply.body)}</div>
+              )}
+              {editHistoryFor === reply.id && editHistory && (
+                <div data-history-block style={{ marginTop: 6, padding: "6px 8px", borderRadius: "var(--nv-radius-sm)", background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-border)", fontSize: 11, display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ fontWeight: 700, color: "var(--nv-color-text-faint)", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 10 }}>Edit history</div>
+                  {editHistory.length === 0 && <div>No prior versions.</div>}
+                  {editHistory.map((h) => (
+                    <div key={h.id}>
+                      <span style={{ color: "var(--nv-color-text-faint)" }}>{formatTime(h.editedAt)}</span> — {h.body}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {editHistoryError && editHistoryFor === reply.id && (
+                <div style={{ fontSize: 11, color: "var(--nv-color-danger)", marginTop: 4 }}>{editHistoryError}</div>
               )}
               <button
                 onClick={() => void handleDecision(reply)}

@@ -1480,6 +1480,7 @@ export function ChatPanel({
             fd.set("messageId", messageId);
             return actions.delete(fd);
           }}
+          onEditHistory={(messageId) => actions.messageEdits({ messageId })}
           liveReplies={liveReplies[activeThread] ?? []}
           deletedIds={deletedIds}
           messageOverrides={messageOverrides}
