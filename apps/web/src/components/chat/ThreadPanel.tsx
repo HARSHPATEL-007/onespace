@@ -408,6 +408,12 @@ export function ThreadPanel({
           placeholder="Reply..."
           value={replyText}
           onChange={(e) => setReplyText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
           style={{ flex: 1 }}
         />
         <Button type="submit" size="sm" disabled={!replyText.trim() || sending}>
