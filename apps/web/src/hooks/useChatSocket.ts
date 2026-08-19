@@ -108,6 +108,8 @@ export function useChatSocket<T = ChatMessage>({
           onMessage(payload as T);
         } else if (payload.type === "message.updated" && payload.message) {
           onMessage(payload as T);
+        } else if (payload.type === "notif" && payload.userId) {
+          onMessage(payload as T);
         } else if (payload.type === "typing" && payload.channel_id && payload.user_id) {
           onTyping(payload.channel_id, payload.user_id);
         } else if (payload.type === "presence" && payload.user_id && payload.status) {

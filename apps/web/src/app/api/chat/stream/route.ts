@@ -63,7 +63,7 @@ export async function GET(req: Request) {
 
       // Subscribe to in-memory events (from Server Actions)
       const unsubscribeMemory = subscribe(workspaceId, (payload) => {
-        const msg = payload as { type: string; channel_id?: string };
+        const msg = payload as { type: string; channel_id?: string; userId?: string };
         if (msg.type === "message" && msg.channel_id === channelId) {
           send(payload);
         } else if (msg.type === "message.deleted" && msg.channel_id === channelId) {
@@ -73,6 +73,8 @@ export async function GET(req: Request) {
         } else if (msg.type === "typing" && msg.channel_id === channelId) {
           send(payload);
         } else if (msg.type === "presence") {
+          send(payload);
+        } else if (msg.type === "notif" && msg.userId === session.user.id) {
           send(payload);
         }
       });
@@ -95,6 +97,8 @@ export async function GET(req: Request) {
             } else if (event.type === "typing" && event.channel_id === channelId) {
               send(event);
             } else if (event.type === "presence") {
+              send(event);
+            } else if (event.type === "notif" && event.userId === session.user.id) {
               send(event);
             }
           } catch {

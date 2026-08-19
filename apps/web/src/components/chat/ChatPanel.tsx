@@ -19,7 +19,7 @@ import { ApprovalCard, type ApprovalView } from "@n0va/modules-approvals/compone
 export interface ChatActions {
   createChannel: (formData: FormData) => Promise<void>;
   createDm: (formData: FormData) => Promise<string>;
-  send: (formData: FormData) => Promise<void>;
+  send: (formData: FormData) => Promise<ChatMessage | undefined>;
   edit: (formData: FormData) => Promise<void>;
   delete: (formData: FormData) => Promise<void>;
   reply: (formData: FormData) => Promise<void>;
@@ -467,6 +467,11 @@ export function ChatPanel({
         }
         return;
       }
+      if ((msg as { type?: string }).type === "notif") {
+        const delta = (msg as { delta?: number }).delta || 1;
+        setNotifUnread((prev) => prev + delta);
+        return;
+      }
       setLiveMessages((prev) =>
         prev.some((m) => m.id === msg.id) ? prev : [...prev, msg],
       );
@@ -863,10 +868,15 @@ export function ChatPanel({
       fd.set("body", inputValue.trim());
       if (replyingTo) fd.set("parentId", replyingTo.id);
       if (ttlSeconds > 0) fd.set("ttlSeconds", String(ttlSeconds));
-      void actions.send(fd).then(() => {
+      void actions.send(fd).then((created) => {
         setInputValue("");
         setReplyingTo(null);
         setTtlIndex(0);
+        if (created) {
+          setLiveMessages((prev) =>
+            prev.some((m) => m.id === created.id) ? prev : [...prev, created as LiveMsg],
+          );
+        }
         router.refresh();
       });
     };

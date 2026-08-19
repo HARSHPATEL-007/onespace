@@ -114,6 +114,7 @@ export async function sendMessageAction(formData: FormData) {
     channelId,
     messageId: message.id,
   });
+  return message;
 }
 
 async function notifyMentions(opts: { workspaceId: string; senderId: string; senderName: string; body: string; channelId: string; messageId?: string }) {
@@ -141,6 +142,14 @@ async function notifyMentions(opts: { workspaceId: string; senderId: string; sen
         link: `/m/chat?c=${opts.channelId}${opts.messageId ? `&m=${opts.messageId}` : ""}`,
       })),
     });
+    for (const m of targets) {
+      await publishLiveEvent(opts.workspaceId, {
+        type: "notif",
+        userId: m.userId,
+        channel_id: opts.channelId,
+        delta: 1,
+      });
+    }
   } catch (e) {
     console.error("[mentions] failed to notify", e);
   }
