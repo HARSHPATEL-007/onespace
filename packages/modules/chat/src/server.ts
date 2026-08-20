@@ -124,8 +124,8 @@ export const attachmentSchema = z.object({
   mimeType: z.string().min(1).max(127),
   sizeBytes: z.number().int().min(0).max(10737418240),
   storageKey: z.string().min(1),
-  thumbnailKey: z.string().optional(),
-  checksum: z.string().optional(),
+  thumbnailKey: z.string().nullable().optional(),
+  checksum: z.string().nullable().optional(),
 });
 
 export const REACTION_EMOJIS = ["👍", "❤️", "😂", "🎉", "👀", "🚀"] as const;
@@ -273,52 +273,63 @@ export function detectLanguage(body: string): string {
 export function parseSearchQuery(query: string): ParsedSearch {
   const parsed: ParsedSearch = { term: "" };
   const terms: string[] = [];
+  let fromPending = false;
   const dateRe = /^\d{4}-\d{2}-\d{2}$/;
   for (const part of query.split(/\s+/)) {
     const [key = "", ...rest] = part.split(":");
     const value = rest.join(":");
     switch (key.toLowerCase()) {
       case "from":
-        if (value) parsed.fromName = value;
+        if (value) { parsed.fromName = value; fromPending = true; }
         break;
       case "in":
         if (value) parsed.channelName = value.replace(/^#/, "");
+        fromPending = false;
         break;
       case "has":
         if (value === "file") parsed.hasFile = true;
         else if (value === "image") parsed.hasImage = true;
         else if (value === "video") parsed.hasVideo = true;
         else if (value === "link") parsed.hasLink = true;
+        fromPending = false;
         break;
       case "is":
         if (value === "thread") parsed.isThread = true;
+        fromPending = false;
         break;
       case "before":
         if (value && (dateRe.test(value) || !isNaN(Date.parse(value)))) {
           const d = dateRe.test(value) ? new Date(value + "T23:59:59Z") : new Date(value);
           if (!isNaN(d.getTime())) parsed.before = d;
         }
+        fromPending = false;
         break;
       case "after":
         if (value && (dateRe.test(value) || !isNaN(Date.parse(value)))) {
           const d = dateRe.test(value) ? new Date(value + "T00:00:00Z") : new Date(value);
           if (!isNaN(d.getTime())) parsed.after = d;
         }
+        fromPending = false;
         break;
       case "type":
         if (value === "code") parsed.typeCode = true;
+        fromPending = false;
         break;
       case "language":
         if (value && value.length <= 8) parsed.language = value.toLowerCase();
+        fromPending = false;
         break;
       case "reaction":
         if (value && value.length <= 8) parsed.reaction = value;
+        fromPending = false;
         break;
       case "sentiment":
         if (value === "negative" || value === "positive" || value === "neutral") parsed.sentiment = value;
+        fromPending = false;
         break;
       default:
-        if (part.trim()) terms.push(part);
+        if (fromPending) { parsed.fromName = `${parsed.fromName ?? ""} ${part}`.trim(); }
+        else if (part.trim()) terms.push(part);
     }
   }
   parsed.term = terms.join(" ");
