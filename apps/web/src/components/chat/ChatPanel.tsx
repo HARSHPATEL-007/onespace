@@ -428,6 +428,7 @@ export function ChatPanel({
   const [showGovernance, setShowGovernance] = useState(false);
   const [hyperFor, setHyperFor] = useState<string | null>(null);
   const [complianceError, setComplianceError] = useState("");
+  const [slashNotice, setSlashNotice] = useState("");
   const [showGuest, setShowGuest] = useState(false);
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestNotice, setGuestNotice] = useState<string | null>(null);
@@ -884,8 +885,11 @@ export function ChatPanel({
       if (NATIVE_COMMANDS.some((c) => c.cmd === typedCmd)) {
         const args = raw.slice(typedCmd.length).trim();
         setShowAICommand(false);
-        void actions.slash({ command: typedCmd, args, channelId: activeChannelId }).then(() => {
+        void actions.slash({ command: typedCmd, args, channelId: activeChannelId }).then((res) => {
           setInputValue("");
+          const msg = (res as { ok?: boolean; message?: string } | undefined)?.message;
+          setSlashNotice(msg && msg.trim() ? msg : `/${typedCmd} — done`);
+          window.setTimeout(() => setSlashNotice(""), 6000);
           router.refresh();
         });
         return;
@@ -1520,6 +1524,12 @@ export function ChatPanel({
         <div style={{ position: "absolute", top: 44, left: "50%", transform: "translateX(-50%)", zIndex: 70, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-warning)", borderRadius: "var(--nv-radius-md)", padding: "8px 12px", fontSize: 12, maxWidth: 480, boxShadow: "var(--nv-shadow-md)" }}>
           {complianceError}
           <button onClick={() => setComplianceError("")} style={{ marginLeft: 8, border: "none", background: "none", cursor: "pointer", color: "var(--nv-color-text-faint)" }}>✕</button>
+        </div>
+      )}
+
+      {slashNotice && (
+        <div style={{ position: "absolute", top: 44, left: "50%", transform: "translateX(-50%)", zIndex: 70, background: "var(--nv-color-surface)", border: "1px solid var(--nv-color-primary)", borderRadius: "var(--nv-radius-md)", padding: "8px 12px", fontSize: 12, maxWidth: 480, boxShadow: "var(--nv-shadow-md)" }}>
+          {slashNotice}
         </div>
       )}
 

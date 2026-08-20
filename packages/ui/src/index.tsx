@@ -311,7 +311,7 @@ export function Dropdown({
           style={{
             position: "absolute",
             top: "calc(100% + 6px)",
-            [align]: 0,
+            ...(align === "end" ? { right: 0 } : { left: 0 }),
             minWidth: 180,
             background: "var(--nv-color-surface)",
             border: "1px solid var(--nv-color-border)",
