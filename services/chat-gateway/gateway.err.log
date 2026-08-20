@@ -1,0 +1,60 @@
+warning: value captured by `last_pong` is never read
+   --> src\ws.rs:150:21
+    |
+150 |                     last_pong = Instant::now();
+    |                     ^^^^^^^^^
+    |
+    = help: did you mean to capture by reference instead?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `last_pong` is never read
+   --> src\ws.rs:150:21
+    |
+150 |                     last_pong = Instant::now();
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: variants `Presence` and `Typing` are never constructed
+  --> src\messages.rs:37:5
+   |
+31 | pub enum ServerMessage {
+   |          ------------- variants in this enum
+...
+37 |     Presence {
+   |     ^^^^^^^^
+...
+42 |     Typing {
+   |     ^^^^^^
+   |
+   = note: `ServerMessage` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `workspace_id` is never read
+ --> src\state.rs:8:9
+  |
+6 | pub struct Connection {
+  |            ---------- field in this struct
+7 |     pub user_id: String,
+8 |     pub workspace_id: String,
+  |         ^^^^^^^^^^^^
+  |
+  = note: `Connection` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: field `nextjs_api_url` is never read
+  --> src\state.rs:28:9
+   |
+14 | pub struct GatewayState {
+   |            ------------ field in this struct
+...
+28 |     pub nextjs_api_url: String,
+   |         ^^^^^^^^^^^^^^
+   |
+   = note: `GatewayState` has a derived impl for the trait `Clone`, but this is intentionally ignored during dead code analysis
+
+warning: `chat-gateway` (bin "chat-gateway") generated 5 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.67s
+warning: the following packages contain code that will be rejected by a future version of Rust: sqlx-postgres v0.7.4
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running `target\debug\chat-gateway.exe`
+error: process didn't exit successfully: `target\debug\chat-gateway.exe` (exit code: 0xffffffff)

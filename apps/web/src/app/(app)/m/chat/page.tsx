@@ -54,7 +54,10 @@ export default async function ChatPage({
 
   // Generate WebSocket token for the Rust gateway
   const session = await auth();
-  const secret = process.env.NEXTAUTH_SECRET || "change-me-in-production";
+  const secret =
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "change-me-in-production";
   const key = new TextEncoder().encode(secret);
   const token = await new SignJWT({
     sub: session?.user?.id || "",

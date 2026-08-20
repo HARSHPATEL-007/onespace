@@ -11,7 +11,7 @@ pub async fn publish_event(
 ) -> anyhow::Result<()> {
     let mut conn = state.redis.clone();
     let payload = serde_json::to_string(event)?;
-    conn.publish(CHAT_CHANNEL, payload).await?;
+    conn.publish::<_, _, ()>(CHAT_CHANNEL, payload).await?;
     Ok(())
 }
 

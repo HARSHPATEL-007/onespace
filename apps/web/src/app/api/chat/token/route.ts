@@ -31,7 +31,10 @@ export async function GET() {
   }
 
   // Generate a short-lived token (5 minutes) for WebSocket auth
-  const secret = process.env.NEXTAUTH_SECRET || "change-me-in-production";
+  const secret =
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "change-me-in-production";
   const key = new TextEncoder().encode(secret);
 
   const token = await new SignJWT({

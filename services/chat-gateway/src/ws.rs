@@ -8,13 +8,22 @@ use actix_ws;
 use chrono::Utc;
 use futures::StreamExt;
 use sqlx::Row;
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::interval;
 
 /// How often to send ping frames to detect dead connections
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// If no pong received within this time, disconnect
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
 
 /// Handle a new WebSocket connection
 pub async fn handle_ws(
@@ -99,13 +108,15 @@ pub async fn handle_ws(
 
     // Spawn heartbeat task
     let mut heartbeat = interval(HEARTBEAT_INTERVAL);
-    let mut last_pong = Instant::now();
-    let hb_session = session.clone();
+    let last_pong = Arc::new(AtomicU64::new(now_millis()));
+    let hb_last_pong = last_pong.clone();
+    let mut hb_session = session.clone();
     let hb_user_id = user_id.clone();
     actix_rt::spawn(async move {
         loop {
             heartbeat.tick().await;
-            if last_pong.elapsed() > CLIENT_TIMEOUT {
+            let idle = now_millis().saturating_sub(hb_last_pong.load(Ordering::Relaxed));
+            if idle > CLIENT_TIMEOUT.as_millis() as u64 {
                 tracing::info!("Client {} timed out, closing connection", hb_user_id);
                 let _ = hb_session.close(None).await;
                 break;
@@ -147,7 +158,7 @@ pub async fn handle_ws(
                     let _ = session.pong(&bytes).await;
                 }
                 Ok(actix_ws::Message::Pong(_)) => {
-                    last_pong = Instant::now();
+                    last_pong.store(now_millis(), Ordering::Relaxed);
                 }
                 Ok(actix_ws::Message::Close(_)) => {
                     tracing::info!("Client {} closed connection", ws_user_id);
@@ -155,6 +166,9 @@ pub async fn handle_ws(
                 }
                 Ok(actix_ws::Message::Binary(_)) => {
                     // Ignore binary messages
+                }
+                Ok(actix_ws::Message::Nop) => {
+                    // No-op frame
                 }
                 Ok(actix_ws::Message::Continuation(_)) => {
                     // Ignore continuation frames
@@ -280,7 +294,6 @@ async fn persist_message(
 
     let author_name = member_row
         .and_then(|r| r.get::<Option<String>, _>("name"))
-        .flatten()
         .unwrap_or_else(|| "Unknown".to_string());
 
     // Get workspace_id from channel
@@ -294,7 +307,7 @@ async fn persist_message(
     let row = sqlx::query(
         r#"
         INSERT INTO "ChatMessage" (id, "channelId", "workspaceId", "createdById", "authorName", body, "createdAt", "updatedAt", reactions, "parentId")
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $10, $8, $9)
         RETURNING id, "channelId", "workspaceId", "createdById", "authorName", body, "createdAt"
         "#,
     )
@@ -307,6 +320,7 @@ async fn persist_message(
     .bind(Utc::now())
     .bind(serde_json::json!([]))
     .bind(Option::<String>::None)
+    .bind(Utc::now())
     .fetch_one(&state.db)
     .await?;
 
@@ -339,7 +353,10 @@ async fn persist_message(
         created_by_id: row.get("createdById"),
         author_name: row.get("authorName"),
         body: row.get("body"),
-        created_at: row.get::<chrono::DateTime<Utc>, _>("createdAt").to_rfc3339(),
+        created_at: row
+            .get::<chrono::NaiveDateTime, _>("createdAt")
+            .and_utc()
+            .to_rfc3339(),
     })
 }
 

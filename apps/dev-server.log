@@ -11,53 +11,877 @@
    - Environments: .env
 
  ✓ Starting...
- ✓ Ready in 2.5s
+ ○ Compiling /instrumentation ...
+ ✓ Compiled /instrumentation in 4s (1166 modules)
+[eventbus] wiring bridge consumers…
+[eventbus] bridge consumer wired: task.created
+[eventbus] bridge consumer wired: task.completed
+[eventbus] bridge consumer wired: huddle.started
+[eventbus] bridge consumer wired: huddle.ended
+ ✓ Ready in 17.4s
+[eventbus] broker=redis health=ok
+[eventbus] default subscriptions wired (projections + sagas)
  ○ Compiling /api/auth/[...nextauth] ...
- ✓ Compiled /api/auth/[...nextauth] in 4.6s (445 modules)
- GET /api/auth/csrf 200 in 5552ms
+ ✓ Compiled /api/auth/[...nextauth] in 4.8s (1586 modules)
+ GET /api/auth/csrf 200 in 7761ms
+ POST /api/auth/callback/credentials 302 in 283ms
+ ○ Compiling /middleware ...
+ ✓ Compiled /middleware in 793ms (116 modules)
+ ○ Compiling /m/chat ...
+ ✓ Compiled /m/chat in 9.7s (3308 modules)
+ POST /m/chat 200 in 12349ms
+ GET /m/chat?c=general 200 in 445ms
+ ○ Compiling /api/chat/stream ...
+ ✓ Compiled /api/chat/stream in 2.5s (2739 modules)
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 4000ms
  ○ Compiling /signin ...
- ✓ Compiled /signin in 6s (979 modules)
- GET /signin 200 in 6417ms
- GET /api/auth/csrf 200 in 101ms
- GET /signin 200 in 72ms
- GET /api/auth/csrf 200 in 37ms
- POST /api/auth/callback/credentials 302 in 130ms
- GET /api/auth/session 200 in 44ms
- ○ Compiling /api/ani/health ...
- ✓ Compiled /api/ani/health in 538ms (957 modules)
- GET /api/ani/health 200 in 1174ms
- ✓ Compiled /api/ani in 275ms (959 modules)
- GET /api/ani 200 in 926ms
-{"timestamp":"2026-08-08T14:09:33.704Z","level":"info","message":"N0VA ANI processing request","metadata":{"correlationId":"corr_1jvgraa07_gksdmf","intent":"Summarize the workspace activity in one sentence"}}
-{"timestamp":"2026-08-08T14:09:33.705Z","level":"info","message":"N0VA ANI response generated","metadata":{"correlationId":"corr_1jvgraa07_gksdmf","latencyMs":2,"safetyFlags":[]}}
- POST /api/ani 200 in 52ms
- ○ Compiling /api/ani/stream ...
- ✓ Compiled /api/ani/stream in 550ms (1031 modules)
-{"timestamp":"2026-08-08T14:09:39.168Z","level":"info","message":"N0VA ANI processing request","metadata":{"correlationId":"corr_1jvgrafb0_1zp2zc","intent":"What is our Q4 strategy"}}
-{"timestamp":"2026-08-08T14:09:39.169Z","level":"info","message":"N0VA ANI response generated","metadata":{"correlationId":"corr_1jvgrafb0_1zp2zc","latencyMs":1,"safetyFlags":[]}}
- GET /api/ani/stream?content=What+is+our+Q4+strategy&depth=balanced 200 in 5952ms
- ✓ Compiled /api/ani/complexity in 311ms (1033 modules)
- POST /api/ani/complexity 200 in 916ms
-{"timestamp":"2026-08-08T14:09:40.653Z","level":"info","message":"N0VA ANI processing request","metadata":{"correlationId":"corr_1jvgragpd_iwxgzs","intent":"What modules are available in this workspace?"}}
-{"timestamp":"2026-08-08T14:09:40.653Z","level":"info","message":"N0VA ANI response generated","metadata":{"correlationId":"corr_1jvgragpd_iwxgzs","latencyMs":1,"safetyFlags":[]}}
- POST /api/ani 200 in 71ms
-
-C:\Users\hvipa\Downloads\New NOVA\onespace\apps\web>ext" dev -p 3004
-'ext" dev -p 3004' is not recognized as an internal or external command,
-operable program or batch file.
-
-C:\Users\hvipa\Downloads\New NOVA\onespace\apps\web>node  "C:\Users\hvipa\Downloads\New NOVA\onespace\apps\web\node_modules\.bin\\..\..\..\..\node_modules\.pnpm\next@15.5.22_react-dom@19.2.8_react@19.2.8__react@19.2.8\node_modules\next\dist\bin\next" dev -p 3004 
- ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
- We detected multiple lockfiles and selected the directory of C:\Users\hvipa\package-lock.json as the root directory.
- To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
-   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
- Detected additional lockfiles: 
-   * C:\Users\hvipa\Downloads\New NOVA\onespace\pnpm-lock.yaml
-
-   ▲ Next.js 15.5.22
-   - Local:        http://localhost:3004
-   - Network:      http://192.168.137.1:3004
-   - Environments: .env
-
- ✓ Starting...
- ✓ Ready in 2.6s
+ ✓ Compiled /signin in 4.9s (1928 modules)
+ GET /signin?callbackUrl=%2Fm%2Fchat 200 in 5677ms
+ GET /signin?callbackUrl=%2Fm%2Fchat 200 in 222ms
+ ○ Compiling /m/chat ...
+ ✓ Compiled /m/chat in 4.2s (3070 modules)
+ GET /m/chat 200 in 7280ms
+ ○ Compiling /api/chat/stream ...
+ ✓ Compiled /api/chat/stream in 6.9s (3326 modules)
+ GET /api/chat/suggestions?messageId=5aca29cf-978e-4cc7-a3b8-c4cc3dff51ee 200 in 7944ms
+ GET /api/notifications?unread=true 200 in 7902ms
+ GET /api/chat/adaptive/state 200 in 7962ms
+ POST /m/chat 200 in 7756ms
+ GET /api/chat/adaptive/state 200 in 280ms
+ GET /api/chat/suggestions?messageId=5aca29cf-978e-4cc7-a3b8-c4cc3dff51ee 200 in 260ms
+ POST /m/chat 200 in 171ms
+ POST /m/chat 200 in 194ms
+ GET /m/chat 200 in 521ms
+ GET /m/chat 200 in 359ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 9076ms
+ GET /api/chat/suggestions?messageId=5aca29cf-978e-4cc7-a3b8-c4cc3dff51ee 200 in 232ms
+ POST /m/chat 200 in 173ms
+ POST /m/chat 200 in 178ms
+ POST /m/chat 200 in 156ms
+ GET /api/notifications?unread=true 200 in 136ms
+ POST /m/chat 200 in 163ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 149ms
+ POST /m/chat 200 in 6506ms
+ POST /m/chat 200 in 132ms
+ GET /m/chat 200 in 328ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 48512ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 183ms
+ POST /m/chat 200 in 168ms
+ POST /m/chat 200 in 281ms
+ GET /api/notifications?unread=true 200 in 105ms
+ POST /m/chat 200 in 138ms
+ POST /m/chat 200 in 166ms
+ GET /api/notifications?unread=true 200 in 130ms
+ POST /m/chat 200 in 139ms
+ POST /m/chat 200 in 117ms
+ GET /api/notifications?unread=true 200 in 107ms
+ ✓ Compiled in 1762ms (3075 modules)
+ ✓ Compiled in 789ms (3075 modules)
+ GET /m/chat 200 in 3763ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 71971ms
+ ○ Compiling /api/chat/suggestions ...
+ ✓ Compiled /api/chat/suggestions in 1056ms (3077 modules)
+ POST /m/chat 200 in 2315ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 2445ms
+ POST /m/chat 200 in 121ms
+ GET /m/chat 200 in 771ms
+ ○ Compiling /api/chat/adaptive/state ...
+ ✓ Compiled /api/chat/adaptive/state in 2.9s (3079 modules)
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 4546ms
+ POST /m/chat 200 in 4411ms
+ GET /api/notifications?unread=true 200 in 4520ms
+ GET /api/chat/adaptive/state 200 in 4571ms
+ GET /api/chat/adaptive/state 200 in 328ms
+ POST /m/chat 200 in 238ms
+ POST /m/chat 200 in 156ms
+ GET /m/chat 200 in 399ms
+ GET /m/chat 200 in 260ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 160ms
+ POST /m/chat 200 in 131ms
+ POST /m/chat 200 in 152ms
+ GET /m/chat 200 in 667ms
+ GET /api/chat/adaptive/state 200 in 322ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 319ms
+ GET /api/notifications?unread=true 200 in 290ms
+ POST /m/chat 200 in 265ms
+ GET /api/chat/adaptive/state 200 in 166ms
+ POST /m/chat 200 in 143ms
+ POST /m/chat 200 in 176ms
+ GET /m/chat 200 in 304ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 200ms
+ POST /m/chat 200 in 159ms
+ POST /m/chat 200 in 177ms
+ POST /m/chat 200 in 137ms
+ GET /api/notifications?unread=true 200 in 174ms
+ POST /m/chat 200 in 131ms
+ POST /m/chat 200 in 171ms
+ GET /api/notifications?unread=true 200 in 134ms
+ POST /m/chat 200 in 133ms
+ POST /m/chat 200 in 137ms
+ GET /api/notifications?unread=true 200 in 122ms
+ POST /m/chat 200 in 118ms
+ POST /m/chat 200 in 159ms
+ GET /api/notifications?unread=true 200 in 127ms
+ POST /m/chat 200 in 122ms
+ ○ Compiling /api/chat/stream ...
+ ✓ Compiled /api/chat/stream in 2.9s (3077 modules)
+ GET /m/chat 200 in 832ms
+ ○ Compiling /api/chat/suggestions ...
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 4859ms
+ ✓ Compiled /api/chat/suggestions in 1273ms (3079 modules)
+ POST /m/chat 200 in 2518ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 3331ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 318ms
+ POST /m/chat 200 in 262ms
+ POST /m/chat 200 in 1080ms
+ GET /api/notifications?unread=true 200 in 954ms
+ POST /m/chat 200 in 600ms
+ POST /m/chat 200 in 1161ms
+ GET /api/notifications?unread=true 200 in 1002ms
+ POST /m/chat 200 in 793ms
+ GET /api/notifications?unread=true 200 in 1006ms
+ POST /m/chat 200 in 1314ms
+ POST /m/chat 200 in 739ms
+ POST /m/chat 200 in 2100ms
+ GET /api/notifications?unread=true 200 in 2113ms
+ POST /m/chat 200 in 617ms
+ POST /m/chat 200 in 1241ms
+ GET /api/notifications?unread=true 200 in 962ms
+ POST /m/chat 200 in 708ms
+ POST /m/chat 200 in 1054ms
+ GET /api/notifications?unread=true 200 in 844ms
+ POST /m/chat 200 in 634ms
+ POST /m/chat 200 in 1047ms
+ GET /api/notifications?unread=true 200 in 850ms
+ POST /m/chat 200 in 950ms
+ POST /m/chat 200 in 1265ms
+ GET /api/notifications?unread=true 200 in 1056ms
+ POST /m/chat 200 in 797ms
+ POST /m/chat 200 in 1447ms
+ GET /api/notifications?unread=true 200 in 1180ms
+ POST /m/chat 200 in 741ms
+ GET /signin?callbackUrl=%2Fm%2Fchat 200 in 1601ms
+ POST /m/chat 200 in 992ms
+ GET /api/notifications?unread=true 200 in 778ms
+ POST /m/chat 200 in 600ms
+ GET /api/notifications?unread=true 200 in 1069ms
+ POST /m/chat 200 in 1320ms
+ POST /m/chat 200 in 528ms
+ GET /api/notifications?unread=true 200 in 1068ms
+ POST /m/chat 200 in 1311ms
+ POST /m/chat 200 in 630ms
+ POST /m/chat 200 in 1295ms
+ GET /api/notifications?unread=true 200 in 1068ms
+ POST /m/chat 200 in 582ms
+ POST /m/chat 200 in 1215ms
+ GET /api/notifications?unread=true 200 in 1026ms
+ POST /m/chat 200 in 705ms
+ POST /m/chat 200 in 1260ms
+ GET /api/notifications?unread=true 200 in 1029ms
+ POST /m/chat 200 in 1351ms
+ GET /m/chat 200 in 4135ms
+ ○ Compiling /api/chat/suggestions ...
+ ✓ Compiled /api/chat/suggestions in 10.4s (3077 modules)
+ ✓ Compiled (3079 modules)
+ GET /api/notifications?unread=true 200 in 12393ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 19488ms
+ GET /api/notifications?unread=true 200 in 19476ms
+ GET /api/chat/adaptive/state 200 in 19710ms
+ POST /m/chat 200 in 18824ms
+ POST /m/chat 200 in 12670ms
+ GET /api/chat/adaptive/state 200 in 2032ms
+ POST /m/chat 200 in 2224ms
+ GET /m/chat 200 in 3485ms
+ POST /m/chat 200 in 1233ms
+ POST /m/chat 200 in 985ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 480612ms
+ GET /m/chat 200 in 3068ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 2498ms
+ POST /m/chat 200 in 1064ms
+ POST /m/chat 200 in 1807ms
+ POST /m/chat 200 in 1852ms
+ GET /m/chat 200 in 2710ms
+ GET /api/notifications?unread=true 200 in 974ms
+ POST /m/chat 200 in 652ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 932ms
+ POST /m/chat 200 in 718ms
+ POST /m/chat 200 in 750ms
+ GET /api/notifications?unread=true 200 in 650ms
+ POST /m/chat 200 in 590ms
+ POST /m/chat 200 in 529ms
+ POST /m/chat 200 in 753ms
+ GET /api/notifications?unread=true 200 in 455ms
+ POST /m/chat 200 in 570ms
+ GET /api/notifications?unread=true 200 in 498ms
+ POST /m/chat 200 in 588ms
+ POST /m/chat 200 in 1082ms
+ POST /m/chat 200 in 596ms
+ GET /api/notifications?unread=true 200 in 573ms
+ POST /m/chat 200 in 525ms
+ GET /api/notifications?unread=true 200 in 624ms
+ POST /m/chat 200 in 706ms
+ POST /m/chat 200 in 593ms
+ POST /m/chat 200 in 605ms
+ GET /api/notifications?unread=true 200 in 488ms
+ POST /m/chat 200 in 649ms
+ GET /api/notifications?unread=true 200 in 592ms
+ POST /m/chat 200 in 570ms
+ POST /m/chat 200 in 877ms
+ POST /m/chat 200 in 625ms
+ GET /api/notifications?unread=true 200 in 619ms
+ POST /m/chat 200 in 697ms
+ GET /api/notifications?unread=true 200 in 701ms
+ POST /m/chat 200 in 614ms
+ POST /m/chat 200 in 588ms
+ POST /m/chat 200 in 548ms
+ GET /api/notifications?unread=true 200 in 524ms
+ POST /m/chat 200 in 638ms
+ GET /api/notifications?unread=true 200 in 592ms
+ POST /m/chat 200 in 530ms
+ POST /m/chat 200 in 667ms
+ POST /m/chat 200 in 579ms
+ GET /api/notifications?unread=true 200 in 614ms
+ POST /m/chat 200 in 600ms
+ GET /api/notifications?unread=true 200 in 637ms
+ POST /m/chat 200 in 894ms
+ POST /m/chat 200 in 517ms
+ POST /m/chat 200 in 571ms
+ GET /api/notifications?unread=true 200 in 582ms
+ POST /m/chat 200 in 530ms
+ GET /api/notifications?unread=true 200 in 555ms
+ POST /m/chat 200 in 568ms
+ POST /m/chat 200 in 563ms
+ POST /m/chat 200 in 587ms
+ GET /api/notifications?unread=true 200 in 569ms
+ POST /m/chat 200 in 1017ms
+ GET /api/notifications?unread=true 200 in 661ms
+ POST /m/chat 200 in 653ms
+ POST /m/chat 200 in 649ms
+ POST /m/chat 200 in 570ms
+ GET /api/notifications?unread=true 200 in 531ms
+ POST /m/chat 200 in 494ms
+ GET /api/notifications?unread=true 200 in 580ms
+ POST /m/chat 200 in 657ms
+ POST /m/chat 200 in 489ms
+ POST /m/chat 200 in 682ms
+ GET /api/notifications?unread=true 200 in 565ms
+ POST /m/chat 200 in 593ms
+ GET /api/notifications?unread=true 200 in 567ms
+ POST /m/chat 200 in 831ms
+ POST /m/chat 200 in 604ms
+ POST /m/chat 200 in 872ms
+ GET /api/notifications?unread=true 200 in 599ms
+ POST /m/chat 200 in 732ms
+ GET /api/notifications?unread=true 200 in 640ms
+ POST /m/chat 200 in 546ms
+ ○ Compiling /api/chat/stream ...
+ ✓ Compiled /api/chat/stream in 13.6s (3077 modules)
+ ✓ Compiled in 4ms (3077 modules)
+ ✓ Compiled in 2ms (3077 modules)
+ ✓ Compiled in 3ms (3077 modules)
+ POST /m/chat 200 in 22837ms
+ POST /m/chat 200 in 30778ms
+ ✓ Compiled /api/chat/suggestions in 3ms (3077 modules)
+ GET /api/notifications?unread=true 200 in 24153ms
+ GET /api/notifications?unread=true 200 in 16352ms
+ ✓ Compiled in 5ms (3079 modules)
+ ✓ Compiled in 4ms (3079 modules)
+ ✓ Compiled in 4ms (3079 modules)
+ GET /m/chat 200 in 29044ms
+ GET /m/chat 200 in 28308ms
+ ✓ Compiled in 4ms (3079 modules)
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 33929ms
+ GET /api/notifications?unread=true 200 in 20609ms
+ ✓ Compiled in 3ms (3079 modules)
+ ✓ Compiled in 3ms (3079 modules)
+ GET /api/notifications?unread=true 200 in 25110ms
+ ✓ Compiled in 3ms (3079 modules)
+ POST /m/chat 200 in 22659ms
+ POST /m/chat 200 in 22703ms
+ ✓ Compiled in 4ms (3079 modules)
+ GET /api/notifications?unread=true 200 in 14757ms
+ ✓ Compiled in 3ms (3077 modules)
+ ✓ Compiled in 5ms (3077 modules)
+ GET /api/notifications?unread=true 200 in 14667ms
+ POST /m/chat 200 in 20630ms
+ POST /m/chat 200 in 20626ms
+ GET /api/notifications?unread=true 200 in 2127ms
+ POST /m/chat 200 in 1101ms
+ POST /m/chat 200 in 1106ms
+ POST /m/chat 200 in 1003ms
+ POST /m/chat 200 in 1000ms
+ POST /m/chat 200 in 892ms
+ POST /m/chat 200 in 895ms
+ POST /m/chat 200 in 828ms
+ POST /m/chat 200 in 828ms
+ POST /m/chat 200 in 1172ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 1406ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 112233ms
+ POST /m/chat 200 in 1954ms
+ GET /api/notifications?unread=true 200 in 1738ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 1564ms
+ POST /m/chat 200 in 1352ms
+ POST /m/chat 200 in 953ms
+ POST /m/chat 200 in 716ms
+ POST /m/chat 200 in 857ms
+ POST /m/chat 200 in 740ms
+ GET /api/notifications?unread=true 200 in 621ms
+ POST /m/chat 200 in 1221ms
+ GET /api/notifications?unread=true 200 in 1206ms
+ POST /m/chat 200 in 1107ms
+ ○ Compiling /api/chat/stream ...
+ ✓ Compiled /api/chat/stream in 7.1s (3079 modules)
+ POST /m/chat 200 in 1270ms
+ POST /m/chat 200 in 726ms
+ GET /api/notifications?unread=true 200 in 579ms
+ POST /m/chat 200 in 674ms
+ GET /api/notifications?unread=true 200 in 1057ms
+ POST /m/chat 200 in 638ms
+ POST /m/chat 200 in 784ms
+ POST /m/chat 200 in 783ms
+ GET /api/notifications?unread=true 200 in 509ms
+ POST /m/chat 200 in 634ms
+ GET /api/notifications?unread=true 200 in 887ms
+ POST /m/chat 200 in 653ms
+ POST /m/chat 200 in 600ms
+ POST /m/chat 200 in 720ms
+ GET /api/notifications?unread=true 200 in 601ms
+ POST /m/chat 200 in 603ms
+ GET /api/notifications?unread=true 200 in 481ms
+ POST /m/chat 200 in 505ms
+ POST /m/chat 200 in 660ms
+ POST /m/chat 200 in 656ms
+ GET /api/notifications?unread=true 200 in 524ms
+ POST /m/chat 200 in 1562ms
+ GET /api/notifications?unread=true 200 in 1333ms
+ POST /m/chat 200 in 728ms
+ POST /m/chat 200 in 806ms
+ POST /m/chat 200 in 595ms
+ GET /api/notifications?unread=true 200 in 577ms
+ POST /m/chat 200 in 619ms
+ GET /api/notifications?unread=true 200 in 481ms
+ POST /m/chat 200 in 764ms
+ POST /m/chat 200 in 583ms
+ POST /m/chat 200 in 766ms
+ GET /api/notifications?unread=true 200 in 636ms
+ GET /api/notifications?unread=true 200 in 2350ms
+ POST /m/chat 200 in 2297ms
+ POST /m/chat 200 in 1519ms
+ POST /m/chat 200 in 644ms
+ POST /m/chat 200 in 669ms
+ GET /api/notifications?unread=true 200 in 535ms
+ POST /m/chat 200 in 678ms
+ GET /api/notifications?unread=true 200 in 781ms
+ POST /m/chat 200 in 531ms
+ POST /m/chat 200 in 725ms
+ POST /m/chat 200 in 769ms
+ GET /api/notifications?unread=true 200 in 597ms
+ POST /m/chat 200 in 716ms
+ GET /api/notifications?unread=true 200 in 1376ms
+ POST /m/chat 200 in 842ms
+ POST /m/chat 200 in 649ms
+ POST /m/chat 200 in 588ms
+ GET /api/notifications?unread=true 200 in 489ms
+ GET /api/notifications?unread=true 200 in 1699ms
+ POST /m/chat 200 in 1512ms
+ POST /m/chat 200 in 1515ms
+ POST /m/chat 200 in 824ms
+ POST /m/chat 200 in 694ms
+ GET /api/notifications?unread=true 200 in 579ms
+ POST /m/chat 200 in 699ms
+ GET /api/notifications?unread=true 200 in 1147ms
+ POST /m/chat 200 in 862ms
+ POST /m/chat 200 in 596ms
+ POST /m/chat 200 in 712ms
+ GET /api/notifications?unread=true 200 in 561ms
+ POST /m/chat 200 in 629ms
+ GET /api/notifications?unread=true 200 in 601ms
+ POST /m/chat 200 in 591ms
+ POST /m/chat 200 in 670ms
+ POST /m/chat 200 in 530ms
+ GET /api/notifications?unread=true 200 in 506ms
+ POST /m/chat 200 in 562ms
+ GET /api/notifications?unread=true 200 in 805ms
+ POST /m/chat 200 in 625ms
+ POST /m/chat 200 in 558ms
+ POST /m/chat 200 in 677ms
+ GET /api/notifications?unread=true 200 in 513ms
+ POST /m/chat 200 in 918ms
+ GET /api/notifications?unread=true 200 in 572ms
+ POST /m/chat 200 in 702ms
+ POST /m/chat 200 in 618ms
+ POST /m/chat 200 in 803ms
+ GET /api/notifications?unread=true 200 in 662ms
+ POST /m/chat 200 in 967ms
+ GET /api/notifications?unread=true 200 in 1150ms
+ POST /m/chat 200 in 778ms
+ POST /m/chat 200 in 542ms
+ POST /m/chat 200 in 538ms
+ GET /api/notifications?unread=true 200 in 600ms
+ POST /m/chat 200 in 567ms
+ GET /api/notifications?unread=true 200 in 890ms
+ POST /m/chat 200 in 648ms
+ POST /m/chat 200 in 832ms
+ POST /m/chat 200 in 752ms
+ GET /api/notifications?unread=true 200 in 579ms
+ POST /m/chat 200 in 1382ms
+ GET /api/notifications?unread=true 200 in 1486ms
+ POST /m/chat 200 in 945ms
+ POST /m/chat 200 in 622ms
+ POST /m/chat 200 in 603ms
+ GET /api/notifications?unread=true 200 in 531ms
+ POST /m/chat 200 in 669ms
+ GET /api/notifications?unread=true 200 in 718ms
+ POST /m/chat 200 in 658ms
+ POST /m/chat 200 in 768ms
+ POST /m/chat 200 in 702ms
+ GET /api/notifications?unread=true 200 in 549ms
+ POST /m/chat 200 in 1497ms
+ GET /api/notifications?unread=true 200 in 1415ms
+ POST /m/chat 200 in 799ms
+ POST /m/chat 200 in 721ms
+ POST /m/chat 200 in 669ms
+ GET /api/notifications?unread=true 200 in 565ms
+ POST /m/chat 200 in 645ms
+ GET /api/notifications?unread=true 200 in 822ms
+ POST /m/chat 200 in 658ms
+ POST /m/chat 200 in 798ms
+ POST /m/chat 200 in 716ms
+ GET /api/notifications?unread=true 200 in 607ms
+ POST /m/chat 200 in 991ms
+ GET /api/notifications?unread=true 200 in 1316ms
+ POST /m/chat 200 in 857ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 158280ms
+ GET /m/chat 200 in 4693ms
+ ○ Compiling /api/chat/suggestions ...
+ ✓ Compiled /api/chat/suggestions in 20.1s (3077 modules)
+ ✓ Compiled (3079 modules)
+ GET /api/notifications?unread=true 200 in 15838ms
+ GET /api/notifications?unread=true 200 in 31339ms
+ GET /api/chat/adaptive/state 200 in 31738ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 31652ms
+ POST /m/chat 200 in 30602ms
+ POST /m/chat 200 in 30918ms
+ GET /api/chat/adaptive/state 200 in 11754ms
+ GET /api/notifications?unread=true 200 in 1944ms
+ POST /m/chat 200 in 1048ms
+ POST /m/chat 200 in 1470ms
+ POST /m/chat 200 in 2577ms
+ GET /m/chat 200 in 3724ms
+ POST /m/chat 200 in 1778ms
+ POST /m/chat 200 in 921ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 652059ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 2286ms
+ GET /m/chat 200 in 3672ms
+ POST /m/chat 200 in 2157ms
+ POST /m/chat 200 in 1070ms
+ POST /m/chat 200 in 1546ms
+ GET /m/chat 200 in 1661ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 1023ms
+ POST /m/chat 200 in 1369ms
+ GET /api/notifications?unread=true 200 in 931ms
+ POST /m/chat 200 in 645ms
+ POST /m/chat 200 in 635ms
+ POST /m/chat 200 in 1037ms
+ GET /api/notifications?unread=true 200 in 909ms
+ POST /m/chat 200 in 608ms
+ POST /m/chat 200 in 620ms
+ GET /api/notifications?unread=true 200 in 602ms
+ POST /m/chat 200 in 610ms
+ POST /m/chat 200 in 1458ms
+ GET /api/notifications?unread=true 200 in 1230ms
+ POST /m/chat 200 in 964ms
+ GET /api/notifications?unread=true 200 in 1157ms
+ POST /m/chat 200 in 1399ms
+ POST /m/chat 200 in 444ms
+ GET /api/notifications?unread=true 200 in 1536ms
+ POST /m/chat 200 in 943ms
+ POST /m/chat 200 in 791ms
+ GET /api/notifications?unread=true 200 in 976ms
+ POST /m/chat 200 in 1143ms
+ POST /m/chat 200 in 653ms
+ POST /m/chat 200 in 1205ms
+ GET /api/notifications?unread=true 200 in 1023ms
+ POST /m/chat 200 in 847ms
+ GET /api/notifications?unread=true 200 in 1421ms
+ POST /m/chat 200 in 1403ms
+ POST /m/chat 200 in 877ms
+ POST /m/chat 200 in 1499ms
+ GET /api/notifications?unread=true 200 in 1501ms
+ POST /m/chat 200 in 746ms
+ POST /m/chat 200 in 1412ms
+ GET /api/notifications?unread=true 200 in 897ms
+ POST /m/chat 200 in 716ms
+ POST /m/chat 200 in 1093ms
+ GET /api/notifications?unread=true 200 in 972ms
+ POST /m/chat 200 in 709ms
+ POST /m/chat 200 in 1121ms
+ GET /api/notifications?unread=true 200 in 940ms
+ POST /m/chat 200 in 726ms
+ ○ Compiling /api/chat/stream ...
+ ✓ Compiled /api/chat/stream in 8.7s (3077 modules)
+ ○ Compiling /api/chat/suggestions ...
+ GET /m/chat 200 in 2999ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 14775ms
+ ✓ Compiled /api/chat/suggestions in 4.9s (3079 modules)
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 11197ms
+ GET /api/notifications?unread=true 200 in 8410ms
+ POST /m/chat 200 in 8082ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 990ms
+ POST /m/chat 200 in 690ms
+ POST /m/chat 200 in 539ms
+ GET /api/notifications?unread=true 200 in 1112ms
+ POST /m/chat 200 in 1346ms
+ POST /m/chat 200 in 735ms
+ POST /m/chat 200 in 1154ms
+ GET /api/notifications?unread=true 200 in 996ms
+ POST /m/chat 200 in 646ms
+ POST /m/chat 200 in 1023ms
+ GET /api/notifications?unread=true 200 in 833ms
+ POST /m/chat 200 in 593ms
+ POST /m/chat 200 in 1296ms
+ GET /api/notifications?unread=true 200 in 1101ms
+ POST /m/chat 200 in 1780ms
+ POST /m/chat 200 in 1160ms
+ GET /api/notifications?unread=true 200 in 918ms
+ POST /m/chat 200 in 784ms
+ POST /m/chat 200 in 1157ms
+ GET /api/notifications?unread=true 200 in 1011ms
+ POST /m/chat 200 in 748ms
+ POST /m/chat 200 in 1998ms
+ GET /api/notifications?unread=true 200 in 891ms
+ POST /m/chat 200 in 533ms
+ POST /m/chat 200 in 1408ms
+ GET /api/notifications?unread=true 200 in 1193ms
+ POST /m/chat 200 in 655ms
+ GET /signin?callbackUrl=%2Fm%2Fchat 200 in 1165ms
+ POST /m/chat 200 in 1086ms
+ GET /api/notifications?unread=true 200 in 856ms
+ POST /m/chat 200 in 648ms
+ POST /m/chat 200 in 1067ms
+ GET /api/notifications?unread=true 200 in 834ms
+ POST /m/chat 200 in 746ms
+ POST /m/chat 200 in 1127ms
+ GET /api/notifications?unread=true 200 in 947ms
+ POST /m/chat 200 in 561ms
+ POST /m/chat 200 in 1396ms
+ GET /api/notifications?unread=true 200 in 1196ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 349700ms
+ ✓ Compiled in 4.8s (3315 modules)
+ GET /m/chat 200 in 712ms
+ GET /signin?callbackUrl=%2Fm%2Fchat 200 in 121ms
+ GET /signin?callbackUrl=%2Fm%2Fchat 200 in 140ms
+ GET /m/chat 200 in 339ms
+ ○ Compiling /api/notifications ...
+ ✓ Compiled /api/notifications in 3.4s (3075 modules)
+ ✓ Compiled (3079 modules)
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 5479ms
+ GET /api/notifications?unread=true 200 in 5472ms
+ GET /api/chat/adaptive/state 200 in 5493ms
+ POST /m/chat 200 in 5411ms
+ GET /api/chat/adaptive/state 200 in 128ms
+ POST /m/chat 200 in 101ms
+ POST /m/chat 200 in 97ms
+ GET /m/chat 200 in 267ms
+ GET /m/chat 200 in 213ms
+ POST /m/chat 200 in 60ms
+ GET /api/notifications?unread=true 200 in 131ms
+ ○ Compiling /api/chat/stream ...
+ ✓ Compiled /api/chat/stream in 1127ms (3081 modules)
+ POST /m/chat 200 in 2075ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 2114ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 264ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 266ms
+ GET /m/chat 200 in 287ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 179ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 99ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 197ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 119ms
+ POST /m/chat 200 in 144ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 111ms
+ POST /m/chat 200 in 112ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 77ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 81ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 100ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 90ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 89ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 89ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 80ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 80ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 80ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 72ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 80ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 70ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 87ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 95ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 88ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 63ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 67ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 81ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 72ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 84ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 73ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 105ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 99ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 95ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 96ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 72ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 85ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 85ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 83ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 90ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 97ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 90ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 87ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 84ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 63ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 73ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 83ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 84ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 81ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 87ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 89ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 93ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 89ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 83ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 80ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 73ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 98ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 93ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 107ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 72ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 83ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 73ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 74ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 60ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 90ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 86ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 88ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 72ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 68ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 84ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 122ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 67ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 107ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 122ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 384ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 86ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 81ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 80ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 77ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 88ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 90ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 93ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 88ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 80ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 70ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 71ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 77ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 72ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 77ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 102ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 98ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 98ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 86ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 80ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 79ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 83ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 74ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 71ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 99ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 90ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 89ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 65ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 71ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 74ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 71ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 90ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 97ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 87ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 81ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 72ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 72ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 79ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 82ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 89ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 108ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 98ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 91ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 84ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 73ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 83ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 81ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 66ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 78ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 69ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 91ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 89ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 69ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 77ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 73ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 73ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 79ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 99ms
+ POST /m/chat 200 in 118ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 83ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 86ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 90ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 92ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 88ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 84ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 83ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 75ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 97ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 81ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 88ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 95ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 94ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 87ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 181ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 568ms
+ ✓ Compiled in 3s (3326 modules)
+ POST /m/chat 200 in 2811ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 3058ms
+ GET /api/notifications?unread=true 200 in 3055ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 15355ms
+ GET /m/chat 200 in 776ms
+ GET /api/chat/adaptive/state 200 in 211ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 215ms
+ GET /api/notifications?unread=true 200 in 203ms
+ POST /m/chat 200 in 145ms
+ GET /api/chat/adaptive/state 200 in 79ms
+ POST /m/chat 200 in 89ms
+ POST /m/chat 200 in 72ms
+ GET /m/chat 200 in 162ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 97ms
+ POST /m/chat 200 in 78ms
+ POST /m/chat 200 in 80ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 69ms
+ POST /m/chat 200 in 74ms
+ GET /api/notifications?unread=true 200 in 94ms
+ POST /m/chat 200 in 76ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 42706ms
+ GET /m/chat 200 in 342ms
+ GET /api/chat/adaptive/state 200 in 178ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 187ms
+ GET /api/notifications?unread=true 200 in 182ms
+ POST /m/chat 200 in 143ms
+ GET /api/chat/adaptive/state 200 in 77ms
+ POST /m/chat 200 in 99ms
+ POST /m/chat 200 in 76ms
+ GET /m/chat 200 in 150ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 91ms
+ POST /m/chat 200 in 84ms
+ POST /m/chat 200 in 132ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 59ms
+ POST /m/chat 200 in 79ms
+ GET /api/notifications?unread=true 200 in 68ms
+ POST /m/chat 200 in 75ms
+ POST /m/chat 200 in 69ms
+ GET /api/notifications?unread=true 200 in 70ms
+ POST /m/chat 200 in 79ms
+ POST /m/chat 200 in 76ms
+ GET /api/notifications?unread=true 200 in 59ms
+ POST /m/chat 200 in 63ms
+ POST /m/chat 200 in 77ms
+ GET /api/notifications?unread=true 200 in 79ms
+ POST /m/chat 200 in 71ms
+ POST /m/chat 200 in 61ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 145730ms
+ GET /m/chat 200 in 313ms
+ GET /api/chat/adaptive/state 200 in 188ms
+ GET /api/notifications?unread=true 200 in 195ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 216ms
+ POST /m/chat 200 in 136ms
+ GET /api/chat/adaptive/state 200 in 86ms
+ POST /m/chat 200 in 95ms
+ POST /m/chat 200 in 93ms
+ GET /m/chat 200 in 175ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 125ms
+ POST /m/chat 200 in 89ms
+ POST /m/chat 200 in 76ms
+ POST /m/chat 200 in 75ms
+ GET /api/notifications?unread=true 200 in 62ms
+ POST /m/chat 200 in 75ms
+ POST /m/chat 200 in 74ms
+ GET /api/notifications?unread=true 200 in 53ms
+ POST /m/chat 200 in 67ms
+ POST /m/chat 200 in 59ms
+ GET /api/notifications?unread=true 200 in 60ms
+ POST /m/chat 200 in 70ms
+ POST /m/chat 200 in 81ms
+ GET /api/notifications?unread=true 200 in 61ms
+ POST /m/chat 200 in 69ms
+ POST /m/chat 200 in 68ms
+ GET /api/notifications?unread=true 200 in 91ms
+ POST /m/chat 200 in 82ms
+ POST /m/chat 200 in 89ms
+ GET /api/notifications?unread=true 200 in 78ms
+ POST /m/chat 200 in 59ms
+ POST /m/chat 200 in 85ms
+ ○ Compiling /api/chat/token ...
+ ✓ Compiled /api/chat/token in 3.1s (3322 modules)
+ GET /api/chat/token 400 in 3411ms
+ GET /m/chat 200 in 531ms
+ ○ Compiling /api/chat/suggestions ...
+ ✓ Compiled /api/chat/suggestions in 580ms (3079 modules)
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 1383ms
+ POST /m/chat 200 in 1344ms
+ POST /m/chat 200 in 76ms
+ ○ Compiling /api/chat/stream ...
+ ✓ Compiled /api/chat/stream in 1604ms (3081 modules)
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 128ms
+ GET /m/chat 200 in 296ms
+ GET /api/chat/suggestions?messageId=14ba72a0-234e-4a34-9c49-b9fd6b5d7c0c 200 in 108ms
+ POST /m/chat 200 in 85ms
+ POST /m/chat 200 in 93ms
+ GET /api/notifications?unread=true 200 in 73ms
+ POST /m/chat 200 in 87ms
+ POST /m/chat 200 in 67ms
+ GET /api/notifications?unread=true 200 in 53ms
+ POST /m/chat 200 in 67ms
+ GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 50886ms
