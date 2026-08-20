@@ -68,10 +68,17 @@ pub async fn handle_ws(
     // Create a channel for sending messages to this client
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
 
+    // Resolve the user's display name so typing indicators and presence
+    // events carry a human-readable name instead of the user id.
+    let author_name = fetch_author_name(&state.db, &user_id, &workspace_id)
+        .await
+        .unwrap_or_else(|_| user_id.clone());
+
     // Register connection
     let conn = crate::state::Connection {
         user_id: user_id.clone(),
         workspace_id: workspace_id.clone(),
+        author_name,
         sender: tx,
     };
     state.connections.insert(user_id.clone(), conn);
@@ -129,6 +136,7 @@ pub async fn handle_ws(
 
     // Main message processing loop
     let ws_user_id = user_id.clone();
+    let ws_workspace_id = workspace_id.clone();
     let ws_state = state.clone();
     actix_rt::spawn(async move {
         while let Some(result) = msg_stream.next().await {
@@ -188,6 +196,7 @@ pub async fn handle_ws(
             "type": "presence",
             "user_id": ws_user_id,
             "status": "offline",
+            "workspace_id": ws_workspace_id,
         });
         let _ = publish_event(&ws_state, &offline_event).await;
     });
@@ -246,14 +255,13 @@ async fn handle_client_message(
             }
         }
         ClientMessage::Typing { channel_id } => {
-            // Look up author name and broadcast typing indicator
+            // Broadcast typing indicator with the user's display name
             if let Some(conn) = state.connections.get(user_id) {
-                let author_name = conn.user_id.clone(); // We'll fetch actual name in a full impl
                 let event = serde_json::json!({
                     "type": "typing",
                     "channel_id": channel_id,
                     "user_id": user_id,
-                    "author_name": author_name,
+                    "author_name": conn.author_name,
                 });
                 let _ = publish_event(state, &event).await;
                 // Deliver locally immediately
@@ -267,6 +275,30 @@ async fn handle_client_message(
             let _ = session.text(ServerMessage::Pong.to_json()).await;
         }
     }
+}
+
+/// Resolve a user's display name from the workspace membership.
+async fn fetch_author_name(
+    db: &sqlx::PgPool,
+    user_id: &str,
+    workspace_id: &str,
+) -> anyhow::Result<String> {
+    let row = sqlx::query(
+        r#"
+        SELECT u.name
+        FROM "WorkspaceMember" wm
+        JOIN "User" u ON u.id = wm."userId"
+        WHERE wm."userId" = $1 AND wm."workspaceId" = $2
+        "#,
+    )
+    .bind(user_id)
+    .bind(workspace_id)
+    .fetch_optional(db)
+    .await?;
+
+    Ok(row
+        .and_then(|r| r.get::<Option<String>, _>("name"))
+        .unwrap_or_else(|| "Unknown".to_string()))
 }
 
 /// Persist a chat message to PostgreSQL
@@ -302,8 +334,6 @@ async fn persist_message(
         .fetch_one(&state.db)
         .await?;
     let workspace_id: String = channel_row.get("workspaceId");
-
-    // Create the message
     let row = sqlx::query(
         r#"
         INSERT INTO "ChatMessage" (id, "channelId", "workspaceId", "createdById", "authorName", body, "createdAt", "updatedAt", reactions, "parentId")

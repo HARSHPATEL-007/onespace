@@ -391,6 +391,7 @@ export function ChatPanel({
   const [liveMessages, setLiveMessages] = useState<LiveMsg[]>([]);
   const [presence, setPresence] = useState<Record<string, string>>(initialPresence);
   const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
+  const [typingNames, setTypingNames] = useState<Record<string, string>>({});
   const [connStatus, setConnStatus] = useState<string>("connecting");
   const [showNew, setShowNew] = useState(false);
   const [showDm, setShowDm] = useState(false);
@@ -496,7 +497,7 @@ export function ChatPanel({
     onPresence: (uid, st) => {
       setPresence((prev) => ({ ...prev, [uid]: st }));
     },
-    onTyping: (cid, uid) => {
+    onTyping: (cid, uid, authorName) => {
       setTypingUsers((prev) => {
         const current = prev[cid] || [];
         if (!current.includes(uid)) {
@@ -504,6 +505,9 @@ export function ChatPanel({
         }
         return prev;
       });
+      if (authorName) {
+        setTypingNames((prev) => ({ ...prev, [uid]: authorName }));
+      }
       setTimeout(() => {
         setTypingUsers((prev) => {
           const current = prev[cid] || [];
@@ -1076,6 +1080,8 @@ export function ChatPanel({
     const names = typing
       .filter((uid) => uid !== userId)
       .map((uid) => {
+        const known = typingNames[uid];
+        if (known) return known;
         const member = members.find((m) => m.user.id === uid);
         return member ? member.user.name ?? member.user.email : "Someone";
       })

@@ -34,6 +34,7 @@ interface TypingEvent {
   type: "typing";
   channel_id: string;
   user_id: string;
+  author_name?: string;
 }
 
 type ChatEvent = ChatMessage | PresenceEvent | TypingEvent;
@@ -44,7 +45,7 @@ interface UseChatSocketOptions<T = ChatMessage> {
   channelId: string;
   onMessage: (msg: T) => void;
   onPresence: (userId: string, status: string) => void;
-  onTyping: (channelId: string, userId: string) => void;
+  onTyping: (channelId: string, userId: string, authorName?: string) => void;
   onStatusChange: (status: ConnectionStatus) => void;
 }
 
@@ -136,7 +137,7 @@ export function useChatSocket<T = ChatMessage>({
         } else if (payload.type === "notif" && payload.userId) {
           onMessage(payload as T);
         } else if (payload.type === "typing" && payload.channel_id && payload.user_id) {
-          onTyping(payload.channel_id, payload.user_id);
+          onTyping(payload.channel_id, payload.user_id, payload.author_name);
         } else if (payload.type === "presence" && payload.user_id && payload.status) {
           onPresence(payload.user_id, payload.status);
         }
@@ -198,7 +199,7 @@ export function useChatSocket<T = ChatMessage>({
               onPresence(msg.user_id, msg.status);
               break;
             case "typing":
-              onTyping(msg.channel_id, msg.user_id);
+              onTyping(msg.channel_id, msg.user_id, msg.author_name);
               break;
             case "pong":
               // Heartbeat response — ignore
