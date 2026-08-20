@@ -6,6 +6,8 @@ use std::sync::Arc;
 pub struct Connection {
     pub user_id: String,
     pub workspace_id: String,
+    /// Display name of the user, resolved at connect time
+    pub author_name: String,
     pub sender: tokio::sync::mpsc::UnboundedSender<String>,
 }
 
@@ -82,7 +84,7 @@ impl GatewayState {
 
     /// Unsubscribe a user from a channel
     pub fn unsubscribe_from_channel(&self, channel_id: &str, user_id: &str) {
-        if let mut subs = self.channel_subscriptions.get_mut(channel_id) {
+        if let Some(mut subs) = self.channel_subscriptions.get_mut(channel_id) {
             subs.retain(|id| id != user_id);
         }
     }
