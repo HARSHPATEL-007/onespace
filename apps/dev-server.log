@@ -885,3 +885,11 @@
  GET /api/notifications?unread=true 200 in 53ms
  POST /m/chat 200 in 67ms
  GET /api/chat/stream?workspaceId=a31eace9-d47b-49c2-be54-380b1a33c03f&channelId=b643c8db-085b-4c54-8cbc-2c80d1351533 200 in 50886ms
+ ✓ Compiled in 3.4s (3315 modules)
+ ✓ Compiled in 2s (3315 modules)
+ ✓ Compiled in 1716ms (3315 modules)
+ ✓ Compiled in 1586ms (3315 modules)
+ ✓ Compiled in 2.1s (3315 modules)
+ ✓ Compiled in 1792ms (3315 modules)
+ ✓ Compiled in 2.1s (3315 modules)
+ ✓ Compiled in 2.4s (3315 modules)
