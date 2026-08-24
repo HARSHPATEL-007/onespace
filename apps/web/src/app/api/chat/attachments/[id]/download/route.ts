@@ -13,8 +13,12 @@ export async function GET(
 
   const { id } = await params;
 
+  const ctx = await prisma.workspaceMember.findFirst({
+    where: { userId: session.user.id, status: "ACTIVE" },
+    select: { workspaceId: true },
+  });
   const attachment = await prisma.chatAttachment.findFirst({
-    where: { id },
+    where: { id, ...(ctx ? { workspaceId: ctx.workspaceId } : {}) },
   });
 
   if (!attachment) return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -51,9 +51,12 @@ services:
       retries: 5
 
   gateway:
+    # Optional: requires services/chat-gateway source (not in repo for dev SSE mode).
+    # infra/docker-compose.yml + SSE fallback works without this. Enable only if you provide Rust gateway.
     build:
       context: ./services/chat-gateway
       dockerfile: Dockerfile
+    profiles: ["gateway"]
     ports:
       - "8080:8080"
     environment:

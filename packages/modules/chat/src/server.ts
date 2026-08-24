@@ -926,6 +926,8 @@ export class ChatService {
       where: { id: messageId, workspaceId: this.workspaceId, deletedAt: null },
     });
     if (!message) throw new Error("Message not found");
+    const pinnedCount = await prisma.chatPin.count({ where: { channelId: message.channelId } });
+    if (pinnedCount >= 100) throw new Error("Channel pin limit reached (100)");
     await prisma.chatPin.upsert({
       where: { messageId },
       create: { messageId, channelId: message.channelId, pinnedById: this.userId },
