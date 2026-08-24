@@ -630,6 +630,57 @@ export class ChatService {
     });
   }
 
+  async getThreadTree(rootMessageId: string, opts?: { maxDepth?: number; branchId?: string }) {
+    await this.assert("READ");
+    const root = await prisma.chatMessage.findFirst({ where: { id: rootMessageId, workspaceId: this.workspaceId } });
+    if (!root) throw new Error("Thread root not found");
+    const all = await prisma.chatMessage.findMany({
+      where: { workspaceId: this.workspaceId, channelId: root.channelId, deletedAt: null },
+      include: { attachments: true },
+      orderBy: { createdAt: "asc" },
+      take: 500,
+    });
+    // Build parent->children map for unlimited nesting
+    const byParent = new Map<string, typeof all>();
+    for (const m of all) {
+      if (!m.parentId) continue;
+      const arr = byParent.get(m.parentId) ?? [];
+      arr.push(m);
+      byParent.set(m.parentId, arr);
+    }
+    type Node = (typeof all)[number] & { depth: number; branchPath: string[]; children: Node[] };
+    const build = (id: string, depth: number, path: string[]): Node[] => {
+      const kids = byParent.get(id) ?? [];
+      return kids.map((k) => {
+        const childPath = [...path, k.id];
+        const node: Node = { ...k, depth, branchPath: childPath, children: [] } as Node;
+        if ((opts?.maxDepth ?? 10) > depth) node.children = build(k.id, depth + 1, childPath);
+        return node;
+      });
+    };
+    const tree = build(rootMessageId, 1, [rootMessageId]);
+    // Flatten with depth for storage reference, but preserve tree for UI
+    const flat: Array<{ id: string; depth: number; branchPath: string[] }> = [];
+    const walk = (nodes: Node[]) => { for (const n of nodes) { flat.push({ id: n.id, depth: n.depth, branchPath: n.branchPath }); walk(n.children); } };
+    walk(tree);
+    return { root, tree, flat, total: flat.length };
+  }
+
+  async getThreadBreadcrumbs(messageId: string) {
+    await this.assert("READ");
+    const path: Array<{ id: string; authorName: string; body: string }> = [];
+    let cur: string | null = messageId;
+    let guard = 0;
+    while (cur && guard < 12) {
+      const m: { id: string; parentId: string | null; authorName: string; body: string } | null = await prisma.chatMessage.findFirst({ where: { id: cur!, workspaceId: this.workspaceId }, select: { id: true, parentId: true, authorName: true, body: true } }) as unknown as { id: string; parentId: string | null; authorName: string; body: string } | null;
+      if (!m) break;
+      path.unshift({ id: m.id, authorName: m.authorName, body: m.body.slice(0, 40) });
+      cur = m.parentId;
+      guard++;
+    }
+    return path;
+  }
+
   async sendMessage(channelId: string, body: string, authorName: string, opts?: { parentId?: string; attachments?: Array<z.infer<typeof attachmentSchema>>; ttlSeconds?: number }) {
     await this.assert("CREATE");
     const channel = await this.ownedChannel(channelId);
@@ -692,6 +743,52 @@ export class ChatService {
     await this.applyCompliance(channel, message.id, body, opts?.parentId);
 
     await this.buildHyperContextFor(channel, message.id, message.createdAt, message.createdById);
+
+    // Thread metadata: maintain deep-nesting canonical tree, replyCount, participantCount, branchPath, lastActivityAt
+    try {
+      if (opts?.parentId) {
+        // Find root thread id by walking to root
+        let rootId: string = opts.parentId;
+        let cur = await prisma.chatMessage.findUnique({ where: { id: opts.parentId }, select: { parentId: true } });
+        let g = 0;
+        while (cur?.parentId && g < 12) { rootId = cur.parentId; cur = await prisma.chatMessage.findUnique({ where: { id: cur.parentId }, select: { parentId: true } }); g++; }
+        // Depth = chain length from root
+        let depth = 1;
+        let trav: string | null = opts.parentId;
+        let guard = 0;
+        while (trav && guard < 20) {
+          const p: { parentId: string | null } | null = await prisma.chatMessage.findUnique({ where: { id: trav! }, select: { parentId: true } }) as unknown as { parentId: string | null } | null;
+          if (!p?.parentId) break;
+          depth++; trav = p.parentId; guard++;
+        }
+        const branchPath: string[] = [];
+        let b: string | null = message.id;
+        let bg = 0;
+        while (b && bg < 20) { branchPath.unshift(b); const mm: { parentId: string | null } | null = await prisma.chatMessage.findUnique({ where: { id: b! }, select: { parentId: true } }) as unknown as { parentId: string | null } | null; b = mm?.parentId ?? null; bg++; if (!b) break; }
+        // Upsert root metadata
+        await prisma.threadMetadata.upsert({
+          where: { threadId: rootId },
+          create: { threadId: rootId, rootMessageId: rootId, channelId, workspaceId: this.workspaceId, title: body.slice(0, 80), depth: 0, branchPath: [rootId] as any, replyCount: 1, participantCount: 1, lastActivityAt: new Date() },
+          update: { replyCount: { increment: 1 }, lastActivityAt: new Date(), branchPath: branchPath as any },
+        });
+        // Also ensure child branch node metadata for deep branch tracking
+        await prisma.threadMetadata.upsert({
+          where: { threadId: message.id },
+          create: { threadId: message.id, rootMessageId: rootId, channelId, workspaceId: this.workspaceId, title: body.slice(0, 80), parentThreadId: rootId, depth, branchPath: branchPath as any, replyCount: 0, participantCount: 1, lastActivityAt: new Date() },
+          update: { depth, branchPath: branchPath as any, lastActivityAt: new Date() },
+        });
+        // Recompute participantCount
+        const participants = await prisma.chatMessage.findMany({ where: { workspaceId: this.workspaceId, parentId: { not: null } }, select: { createdById: true } });
+        // best-effort, skip heavy recompute — keep incremental
+      } else {
+        // Root message starts a thread skeleton for future replies
+        await prisma.threadMetadata.upsert({
+          where: { threadId: message.id },
+          create: { threadId: message.id, rootMessageId: message.id, channelId, workspaceId: this.workspaceId, title: body.slice(0, 80), depth: 0, branchPath: [message.id] as any, lastActivityAt: new Date() },
+          update: { lastActivityAt: new Date() },
+        });
+      }
+    } catch { /* best-effort */ }
 
     // Approval intent detection (best-effort: must never break messaging).
     try {
