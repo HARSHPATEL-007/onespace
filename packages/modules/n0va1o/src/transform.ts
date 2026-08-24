@@ -17,9 +17,9 @@ export interface TransformConfig {
   /** vendorField -> canonicalField */
   fieldMap: Record<string, string>;
   /** canonicalField -> coercion kind */
-  coerce: Partial<Record<string, CoerceKind>>;
+  coerce?: Partial<Record<string, CoerceKind>>;
   /** canonicalField -> vendor enum value -> canonical enum value */
-  enumMap: Partial<Record<string, Record<string, string>>>;
+  enumMap?: Partial<Record<string, Record<string, string>>>;
   /** canonicalField -> dotted path to flatten, e.g. "address" -> "location.city" */
   flatten?: Record<string, string>;
   /** canonicalField -> source fields to nest into an object */
@@ -111,14 +111,14 @@ export function normalizeRecord(plugin: TransformPlugin, raw: Record<string, unk
   for (const [vendorKey, canonicalKey] of Object.entries(config.fieldMap)) {
     let value = raw[vendorKey];
     if (value === undefined) continue;
-    const kind = config.coerce[canonicalKey];
+    const kind = config.coerce?.[canonicalKey];
     if (kind) {
       const coerced = coerceValue(value, kind);
       value = coerced.value;
       if (coerced.warning) warnings.push(coerced.warning);
       if (value === undefined) continue;
     }
-    const enumMap = config.enumMap[canonicalKey];
+    const enumMap = config.enumMap?.[canonicalKey];
     if (enumMap && typeof value === "string" && enumMap[value] !== undefined) {
       value = enumMap[value];
     }

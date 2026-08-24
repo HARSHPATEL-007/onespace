@@ -684,6 +684,9 @@ importers:
       '@n0va/modules-events':
         specifier: workspace:*
         version: link:../events
+      '@n0va/modules-n0va1o':
+        specifier: workspace:*
+        version: link:../n0va1o
       '@n0va/modules-notification-engine':
         specifier: workspace:*
         version: link:../notification-engine

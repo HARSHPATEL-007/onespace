@@ -71,7 +71,13 @@
     "./compliance": "./src/compliance.ts",
     "./threat-intel": "./src/threat-intel.ts",
     "./cognitive-load": "./src/cognitive-load.ts",
-    "./knowledge-graph": "./src/knowledge-graph.ts"
+    "./knowledge-graph": "./src/knowledge-graph.ts",
+    "./reliability": "./src/reliability.ts",
+    "./rotation": "./src/rotation.ts",
+    "./sync": "./src/sync.ts",
+    "./events": "./src/events.ts",
+    "./transform": "./src/transform.ts",
+    "./crypto": "./src/crypto.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

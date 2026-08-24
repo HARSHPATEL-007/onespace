@@ -182,7 +182,7 @@ const adapters: Adapter[] = [
       return rec;
     },
   },
-  // GitHub (pattern match, fetch via OG unfurl — no token, best-effort)
+  // GitHub — via N0VA1O gateway (policy + rate-limit + transform), not direct fetch
   {
     kind: "github",
     match: (url) => {
@@ -190,14 +190,49 @@ const adapters: Adapter[] = [
       return { matched: !!m, objectId: m?.[0]?.slice(0, 120), extra: { owner: m?.groups?.owner ?? "", repo: m?.groups?.repo ?? "" } };
     },
     fetch: async (ctx) => {
-      // Delegate to OG unfurl but tag kind as github for compact preview
       const policy = await canUnfurl({ workspaceId: ctx.workspaceId, userId: ctx.userId, role: ctx.role, url: ctx.url, kind: "github" });
-      if (!policy.allowed) return null;
-      // Return null to let external unfurl handle; adapter signals match only for icon/routing
+      if (!policy.allowed) { await logPreviewAccess({ workspaceId: ctx.workspaceId, actorId: ctx.userId, actorName: ctx.actorName, url: ctx.url, kind: "github", channelId: ctx.channelId, messageId: ctx.messageId, allowed: false, reason: policy.reason }); return null; }
+      // Try N0VA1O gateway for authenticated fetch (per-connector token, rate-limit, transform)
+      try {
+        const connector = await prisma.integration.findFirst({ where: { workspaceId: ctx.workspaceId, provider: "github" } });
+        if (connector) {
+          const { chatGatewayCall } = await import("../n0va1o/bridge");
+          const res = await chatGatewayCall({
+            workspaceId: ctx.workspaceId,
+            userId: ctx.userId,
+            connectorId: connector.id,
+            provider: "github",
+            action: "fetch_issue",
+            input: { url: ctx.url, mode: "preview" },
+            messageId: ctx.messageId,
+            channelId: ctx.channelId,
+          });
+          if (res.ok && res.data) {
+            const data = res.data as Record<string, unknown>;
+            const structured = {
+              objectId: String(data.externalId ?? ctx.url),
+              objectType: "github_issue",
+              title: String(data.title ?? "GitHub issue"),
+              status: String(data.status ?? "OPEN"),
+              url: ctx.url,
+            };
+            const rec = makePreviewRecord(ctx.workspaceId, ctx.url, "github", {
+              title: String(data.title ?? `GitHub ${structured.status}`),
+              description: String(data.description ?? `${data.status ?? "issue"} • via N0VA1O gateway`),
+              siteName: "GitHub",
+              structured,
+            });
+            await setCachedPreview(rec);
+            await logPreviewAccess({ workspaceId: ctx.workspaceId, actorId: ctx.userId, actorName: ctx.actorName, url: ctx.url, kind: "github", channelId: ctx.channelId, messageId: ctx.messageId, allowed: true });
+            return rec;
+          }
+        }
+      } catch {}
+      // Fallback: signal match for icon, let OG unfurl handle (still via gateway for generic web)
       return null;
     },
   },
-  // Jira
+  // Jira — via N0VA1O gateway
   {
     kind: "jira",
     match: (url) => {
@@ -206,7 +241,43 @@ const adapters: Adapter[] = [
     },
     fetch: async (ctx) => {
       const policy = await canUnfurl({ workspaceId: ctx.workspaceId, userId: ctx.userId, role: ctx.role, url: ctx.url, kind: "jira" });
-      if (!policy.allowed) return null;
+      if (!policy.allowed) { await logPreviewAccess({ workspaceId: ctx.workspaceId, actorId: ctx.userId, actorName: ctx.actorName, url: ctx.url, kind: "jira", channelId: ctx.channelId, messageId: ctx.messageId, allowed: false, reason: policy.reason }); return null; }
+      try {
+        const connector = await prisma.integration.findFirst({ where: { workspaceId: ctx.workspaceId, provider: "jira" } });
+        if (connector) {
+          const { chatGatewayCall } = await import("../n0va1o/bridge");
+          const res = await chatGatewayCall({
+            workspaceId: ctx.workspaceId,
+            userId: ctx.userId,
+            connectorId: connector.id,
+            provider: "jira",
+            action: "fetch_ticket",
+            input: { url: ctx.url, key: ctx.url.match(/[A-Z]+-\d+/)?.[0] ?? ctx.url },
+            messageId: ctx.messageId,
+            channelId: ctx.channelId,
+          });
+          if (res.ok && res.data) {
+            const data = res.data as Record<string, unknown>;
+            const structured = {
+              objectId: String(data.externalId ?? ctx.url),
+              objectType: "jira_ticket",
+              key: String(data.key ?? ctx.url),
+              status: String(data.status ?? "OPEN"),
+              priority: String(data.priority ?? "P2"),
+              assignee: String(data.assignee ?? "unassigned"),
+            };
+            const rec = makePreviewRecord(ctx.workspaceId, ctx.url, "jira", {
+              title: String(data.title ?? `Jira ${structured.key}`),
+              description: `${structured.status} • ${structured.priority} • ${structured.assignee} • via N0VA1O`,
+              siteName: "Jira",
+              structured,
+            });
+            await setCachedPreview(rec);
+            await logPreviewAccess({ workspaceId: ctx.workspaceId, actorId: ctx.userId, actorName: ctx.actorName, url: ctx.url, kind: "jira", channelId: ctx.channelId, messageId: ctx.messageId, allowed: true });
+            return rec;
+          }
+        }
+      } catch {}
       return null;
     },
   },

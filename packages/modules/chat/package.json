@@ -20,6 +20,7 @@
     "@n0va/modules-ai-monitoring": "workspace:*",
     "@n0va/modules-events": "workspace:*",
     "@n0va/modules-notification-engine": "workspace:*",
+    "@n0va/modules-n0va1o": "workspace:*",
     "next": "^15.3.0",
     "redis": "^4.7.0",
     "zod": "^3.24.0"

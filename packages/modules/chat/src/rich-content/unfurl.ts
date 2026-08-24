@@ -5,6 +5,7 @@
 
 import { getCachedPreview, setCachedPreview, makePreviewRecord, type PreviewCacheRecord } from "./cache";
 import { canUnfurl, logPreviewAccess } from "./security";
+import { prisma } from "@n0va/db";
 
 const FETCH_TIMEOUT_MS = 3500;
 const MAX_HTML_BYTES = 400 * 1024; // 400KB
@@ -112,7 +113,33 @@ export async function unfurlUrl(url: string, opts: UnfurlOptions): Promise<Unfur
     }
   }
 
-  const fetched = await fetchHtml(url);
+  // Try N0VA1O gateway for external fetch first (rate-limit mediation, audit, token control)
+  // For generic web, look for a workspace connector that can proxy web fetches; fallback to direct fetch with gateway audit
+  let fetched: { html: string; etag: string | null; status: number } | null = null;
+  try {
+    const domain = new URL(url).hostname;
+    const connector = await prisma.integration.findFirst({
+      where: { workspaceId: opts.workspaceId, provider: { in: ["web", "generic", "jigsawstack", "exa"] } },
+    });
+    if (connector) {
+      const { chatGatewayCall } = await import("../n0va1o/bridge");
+      const gw = await chatGatewayCall({
+        workspaceId: opts.workspaceId,
+        userId: opts.userId,
+        connectorId: connector.id,
+        provider: connector.provider,
+        action: "unfurl",
+        input: { url },
+        messageId: opts.messageId,
+        channelId: opts.channelId,
+      });
+      if (gw.ok && (gw.data as Record<string, unknown>)?.html) {
+        const d = gw.data as Record<string, unknown>;
+        fetched = { html: String(d.html).slice(0, 80_000), etag: (d.etag as string | null) ?? null, status: (d.status as number) ?? 200 };
+      }
+    }
+  } catch {}
+  if (!fetched) fetched = await fetchHtml(url);
   if (!fetched) return null;
 
   const meta = extractMeta(fetched.html, url);
@@ -123,7 +150,7 @@ export async function unfurlUrl(url: string, opts: UnfurlOptions): Promise<Unfur
     description: meta.description,
     imageUrl: meta.imageUrl,
     siteName: meta.siteName,
-    structured: { fetchedStatus: fetched.status },
+    structured: { fetchedStatus: fetched.status, via: "n0va1o" },
     etag: fetched.etag,
   });
   await setCachedPreview(rec);
