@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: n0va
-      POSTGRES_PASSWORD: n0va
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-n0va}
       POSTGRES_DB: n0va
     ports:
       - "5433:5432"
@@ -16,18 +16,28 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks: [n0va]
 
   redis:
     image: redis:7-alpine
     container_name: n0va-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
     ports:
       - "6379:6379"
+    volumes:
+      - n0va_redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
+    networks: [n0va]
+
+networks:
+  n0va:
+    driver: bridge
 
 volumes:
   n0va_pgdata:
+  n0va_redisdata:

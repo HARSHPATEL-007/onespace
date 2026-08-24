@@ -1,33 +1,35 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: n0va
-      POSTGRES_PASSWORD: n0va_secret
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-n0va_secret}
       POSTGRES_DB: n0va
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U n0va"]
+      test: ["CMD-SHELL", "pg_isready -U n0va -d n0va"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    networks: [n0va]
 
   web:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://n0va:n0va_secret@postgres:5432/n0va
+      DATABASE_URL: postgresql://n0va:${POSTGRES_PASSWORD:-n0va_secret}@postgres:5432/n0va
       REDIS_URL: redis://redis:6379
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set for production}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:-${NEXTAUTH_SECRET}}
       AUTH_TRUST_HOST: "true"
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -35,13 +37,24 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       SMTP_SECURE: ${SMTP_SECURE:-false}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      NODE_ENV: production
     depends_on:
       postgres:
         condition: service_healthy
-    command: sh -c "cd /app/packages/db && npx prisma db push --skip-generate && cd /app && pnpm dev"
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    networks: [n0va]
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
     ports:
       - "6379:6379"
     volumes:
@@ -50,23 +63,25 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+    networks: [n0va]
 
   gateway:
     # Optional: requires services/chat-gateway source (not in repo for dev SSE mode).
-    # infra/docker-compose.yml + SSE fallback works without this. Enable only if you provide Rust gateway.
+    # SSE fallback `stream/route.ts:64` works without this. Enable: `docker compose --profile gateway up`
     build:
       context: ./services/chat-gateway
       dockerfile: Dockerfile
     profiles: ["gateway"]
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
       GATEWAY_HOST: 0.0.0.0
       GATEWAY_PORT: 8080
-      DATABASE_URL: postgresql://n0va:n0va_secret@postgres:5432/n0va
+      DATABASE_URL: postgresql://n0va:${POSTGRES_PASSWORD:-n0va_secret}@postgres:5432/n0va
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+      JWT_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET must be set}
       NEXTJS_API_URL: http://web:3000
       RUST_LOG: info,chat_gateway=debug
     depends_on:
@@ -74,12 +89,19 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks: [n0va]
 
   smtp:
     image: mailhog/mailhog:latest
+    restart: unless-stopped
     ports:
       - "1025:1025"  # SMTP
       - "8025:8025"  # Web UI
+    networks: [n0va]
+
+networks:
+  n0va:
+    driver: bridge
 
 volumes:
   pgdata:
