@@ -6,11 +6,12 @@ let pass = 0, fail = 0;
 const assert = (c: boolean, m: string) => { if (c) pass++; else { fail++; console.log("FAIL:", m); } };
 
 // Schema Modifiers
-const schema = { type: "object", properties: { name: { type: "string" }, delete_account: { type: "boolean" }, amount: { type: "number" } } };
+const schema = { type: "object", properties: { name: { type: "string" }, delete_account: { type: "boolean" }, amount: { type: "number" } } } as Record<string, unknown>;
 const result = applySchemaModifiers(schema, { role: "MEMBER", workspaceId: "ws1", provider: "stripe", tool: "create_charge", isDestructive: false });
-assert(!("delete_account" in result.inputSchema.properties), "dangerous field redacted");
+const props = (result.inputSchema.properties ?? {}) as Record<string, unknown>;
+assert(!("delete_account" in props), "dangerous field redacted");
 assert(result.redactedFields.includes("delete_account"), "redacted field tracked");
-assert((result.inputSchema.properties.amount as any).maximum === 500000, "amount capped for non-owner");
+assert((props.amount as Record<string, unknown> | undefined)?.maximum === 500000, "amount capped for non-owner");
 
 // PII masking
 const masked = maskPiiInResponse({ email: "john@example.com", name: "John", phone: "555-1234" });

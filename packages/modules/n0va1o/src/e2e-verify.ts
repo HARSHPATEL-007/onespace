@@ -75,7 +75,7 @@ async function main() {
     provider: "github", eventType: "push", payload: { ref: "main" }, timestamp: new Date(),
   });
   assert(results.length === 1, "trigger fired");
-  assert(results[0].fired === true, "trigger result fired");
+  assert(results[0]!.fired === true, "trigger result fired");
 
   // 12. Triggers: webhook signature verification
   const { createHmac } = await import("node:crypto");

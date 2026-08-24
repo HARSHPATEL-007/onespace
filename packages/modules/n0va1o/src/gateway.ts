@@ -243,10 +243,22 @@ export class N0va1oGateway {
     const path = typeof payload.path === "string" ? payload.path : "";
     const config = (integration.config as Record<string, unknown> | null) ?? {};
     const provider = findProvider(integration.provider);
-    const isReal = provider?.auth === "rest" || (config && typeof config.baseUrl === "string");
+    // Universal adapter: any provider with a known baseUrl in provider-db is live even without explicit ADAPTER
+    let providerDbBase: string | null = null;
+    try {
+      const { getProviderConfig } = await import("./provider-db");
+      providerDbBase = getProviderConfig(integration.provider)?.baseUrl ?? null;
+    } catch { /* provider-db not available in tests */ }
+    const isReal = provider?.auth === "rest" || (config && typeof config.baseUrl === "string") || Boolean(providerDbBase);
     // Adapter keys are `${provider}:${tool}`; MCP exposes bare tool names, so look up
-    // both forms (namespaced then bare) to match real connectors.
-    const adapter = ADAPTERS[`${integration.provider}:${tool}`] ?? ADAPTERS[tool as `${string}:${string}`];
+    // both forms (namespaced then bare) to match real connectors. Fallback to universal adapter.
+    let adapter = ADAPTERS[`${integration.provider}:${tool}`] ?? ADAPTERS[tool as `${string}:${string}`];
+    if (!adapter && providerDbBase) {
+      try {
+        const { executeTool } = await import("./universal-adapter");
+        adapter = (ctx) => executeTool(ctx.integration, tool, ctx.input).then((r) => ({ statusCode: r.statusCode, ok: r.ok, message: r.message }));
+      } catch { /* fallback to 501 */ }
+    }
 
     // JIT authentication: reuse the credential envelope resolved earlier for
     // policy evaluation. Tokens are stored AES-256-GCM encrypted per-tenant;

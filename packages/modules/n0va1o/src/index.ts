@@ -7,7 +7,7 @@ export { EXTRA_ADAPTERS } from "./adapters-extra";
 export { encryptToken, decryptToken, generatePKCE, signState, verifyState } from "./crypto";
 export { compileRecipe, executeRecipe, validateRecipe, recipeIdFor, type RecipeDefinition, type RecipeStep, type RecipeExecutionResult, type CapturedCall } from "./recipe-compiler";
 export { evaluatePolicy, type PolicyDecision, type PolicyContext } from "./policy";
-export { discoverTools, findProvider, getToolDefinition, isDestructiveTool } from "./catalog";
+export { discoverTools, findProvider, isDestructiveTool, categoryLabel, PROVIDERS, CATEGORIES } from "./catalog";
 export { runStdioTransport } from "./stdio-transport";
 export { applySchemaModifiers, maskPiiInResponse, contentHash, type SchemaModifierContext, type ModifierResult } from "./schema-modifiers";
 export { N0va1oClient, N0va1oError, type N0va1oClientOptions, type CallResult, type DiscoverResult } from "./sdk";

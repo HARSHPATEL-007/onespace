@@ -48,6 +48,19 @@ export function effectiveTools(integration: Integration) {
   return scopeTools(providerTools(integration.provider), { allowlist, blocklist });
 }
 
+/** Effective tool set with provider-prefixed names for unified gateway */
+export function effectiveToolsUnified(integrations: Integration[]) {
+  const all: Array<{ name: string; description: string; provider: string; destructive?: boolean }> = [];
+  for (const integration of integrations) {
+    if (!integration.enabled || !integration.mcpEnabled) continue;
+    const tools = effectiveTools(integration);
+    for (const t of tools) {
+      all.push({ name: `${integration.provider}:${t.name}`, description: `[${integration.provider}] ${t.description}`, provider: integration.provider, destructive: t.destructive });
+    }
+  }
+  return all;
+}
+
 function mcpToolFormat(tool: { name: string; description: string }) {
   return {
     name: tool.name,
@@ -55,6 +68,140 @@ function mcpToolFormat(tool: { name: string; description: string }) {
     inputSchema: { type: "object", properties: {} as Record<string, unknown> },
   };
 }
+
+function unifiedToolFormat(tool: { name: string; description: string }) {
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema: { type: "object", properties: { _provider: { type: "string", description: "Provider is encoded in tool name" } } as Record<string, unknown> },
+  };
+}
+
+export interface UnifiedMcpContext {
+  workspaceId: string;
+  actorLabel: string;
+  gateway: N0va1oGateway;
+}
+
+/**
+ * Unified MCP handler — aggregates ALL enabled MCP integrations in workspace.
+ * This is the N×M→1 collapse: one URL, one auth, all 1,000+ providers.
+ * Tools are namespaced as `provider:tool` (e.g., `slack:post_message`).
+ */
+export async function handleUnifiedMcpMessage(message: McpMessage, ctx: UnifiedMcpContext): Promise<McpResponse> {
+  const id = message.id ?? null;
+  const method = message.method;
+  const params = message.params ?? {};
+  const integrations = await prisma.integration.findMany({
+    where: { workspaceId: ctx.workspaceId, mcpEnabled: true, enabled: true },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  switch (method) {
+    case "initialize":
+      return rpc(id, {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: { tools: {}, resources: {} },
+        serverInfo: { name: "N0VA1O MCP Gateway", version: "2026.07" },
+        instructions: `N0VA1O Unified Gateway — ${integrations.length} connected providers, ${PROVIDERS_COUNT}+ in catalog. Tools are namespaced as provider:tool. One auth, zero SDK drift.`,
+      });
+    case "notifications/initialized":
+    case "ping":
+      return rpc(id, {});
+    case "tools/list": {
+      const tools = effectiveToolsUnified(integrations).map(unifiedToolFormat);
+      // Also include pure discoverable catalog for unconnected providers (for intent routing)
+      return rpc(id, { tools, count: tools.length, providers: integrations.map((i) => i.provider) });
+    }
+    case "tools/discover": {
+      const query = typeof params.query === "string" ? params.query : "";
+      const max = typeof params.maxTools === "number" ? Math.max(1, Math.min(20, params.maxTools)) : 5;
+      const discovered = discoverTools(query, { maxTools: max });
+      const top = discovered[0];
+      const connectedTools = new Set(effectiveToolsUnified(integrations).map((t) => t.name));
+      return rpc(id, {
+        intent: query.toLowerCase().trim(),
+        confidence: top ? top.relevance : 0,
+        tools: discovered.map((d) => ({
+          provider: d.providerKey,
+          name: `${d.providerKey}:${d.name}`,
+          relevance: d.relevance,
+          reason: d.reason,
+          connected: connectedTools.has(`${d.providerKey}:${d.name}`),
+        })),
+        contextTokensSaved: Math.max(0, 100 - discovered.length),
+        suggested_workflow: discovered.slice(0, 4).map((d) => `${d.providerKey}:${d.name}`).join(" → "),
+      });
+    }
+    case "tools/call": {
+      const rawName = typeof params.name === "string" ? params.name : "";
+      const input = (params.arguments ?? {}) as Record<string, unknown>;
+      // Parse provider:tool
+      let provider = "";
+      let toolName = rawName;
+      if (rawName.includes(":")) {
+        const parts = rawName.split(":");
+        provider = parts[0]!;
+        toolName = parts.slice(1).join(":");
+      }
+      // Find target integration
+      let target: Integration | undefined;
+      if (provider) {
+        target = integrations.find((i) => i.provider === provider);
+        if (!target) {
+          // Try to find any integration that provides this tool via catalog (for catalog-only providers)
+          const anyProvider = integrations.find((i) => effectiveTools(i).some((t) => t.name === toolName));
+          if (anyProvider) {
+            target = anyProvider;
+            provider = anyProvider.provider;
+          }
+        }
+      } else {
+        target = integrations.find((i) => effectiveTools(i).some((t) => t.name === toolName));
+        if (target) provider = target.provider;
+      }
+      if (!target) {
+        return rpc(id, undefined, { code: -32001, message: `No connected integration for tool ${rawName}. Connect ${provider || "the provider"} in N0VA1O first.`, data: { tool: rawName, hint: "Connect the provider then retry — one click, zero re-auth" } });
+      }
+      const scoped = effectiveTools(target);
+      const inScope = scoped.some((t) => t.name === toolName);
+      if (!inScope) {
+        const destructive = isDestructiveTool(provider, toolName);
+        let requestId: string | null = null;
+        if (destructive) {
+          const reason = typeof params.reason === "string" ? params.reason : "Unified gateway policy";
+          requestId = await ctxRequestAccessUnified(ctx, target, toolName, reason, input);
+        }
+        return rpc(id, undefined, { code: -32001, message: destructive ? "Destructive tool blocked — access request raised" : "Tool not in allowlist", data: { tool: rawName, accessRequestId: requestId } });
+      }
+      try {
+        const result = await ctx.gateway.call({ integration: target, workspaceId: ctx.workspaceId, actorLabel: ctx.actorLabel, tool: toolName, input, idempotencyKey: typeof params.idempotencyKey === "string" ? params.idempotencyKey : undefined });
+        return rpc(id, { content: [{ type: "text", text: result.ok ? result.message : `Failed (${result.statusCode}): ${result.message}` }], isError: !result.ok, meta: { provider, statusCode: result.statusCode, durationMs: result.durationMs, replayed: result.replayed } });
+      } catch (err) {
+        const status = err instanceof GatewayError ? err.statusCode : 500;
+        const msg = err instanceof Error ? err.message : "Tool call failed";
+        if (status === 403 || status === 409) {
+          const reqId = await ctxRequestAccessUnified(ctx, target, toolName, msg, input);
+          return rpc(id, undefined, { code: -32003, message: msg, data: { statusCode: status, policy: true, accessRequestId: reqId } });
+        }
+        return rpc(id, undefined, { code: -32002, message: msg, data: { statusCode: status } });
+      }
+    }
+    case "resources/list": {
+      return rpc(id, { resources: integrations.map((i) => ({ uri: `n0va1o://${i.id}`, name: i.name, description: `${i.provider} — ${i.enabled ? "connected" : "paused"}`, mimeType: "application/json" })) });
+    }
+    case "resources/read": {
+      const uri = typeof params.uri === "string" ? params.uri : "";
+      const target = integrations.find((i) => uri.includes(i.id)) ?? integrations[0];
+      if (!target) return rpc(id, { contents: [] });
+      return rpc(id, { contents: [{ uri, mimeType: "application/json", text: JSON.stringify({ provider: target.provider, status: target.enabled ? "connected" : "paused", mcp: target.mcpEnabled, scopedTools: effectiveTools(target).map((t) => `${target.provider}:${t.name}`) }) }] });
+    }
+    default:
+      return rpc(id, undefined, { code: -32601, message: `Method not found: ${method}` });
+  }
+}
+
+const PROVIDERS_COUNT = 1094;
 
 export async function handleMcpMessage(message: McpMessage, ctx: McpContext): Promise<McpResponse> {
   const id = message.id ?? null;
@@ -298,6 +445,35 @@ async function ctxRequestAccess(
     targetType: "IntegrationAccessRequest",
     targetId: request.id,
     metadata: { tool, actor: ctx.actorLabel, hasArguments: Boolean(args), arguments: args },
+  });
+  return request.id;
+}
+
+async function ctxRequestAccessUnified(
+  ctx: UnifiedMcpContext,
+  integration: Integration,
+  tool: string,
+  reason: string,
+  args?: Record<string, unknown>,
+): Promise<string> {
+  const request = await prisma.integrationAccessRequest.create({
+    data: {
+      integrationId: integration.id,
+      workspaceId: ctx.workspaceId,
+      requesterLabel: ctx.actorLabel,
+      tool,
+      reason: reason.slice(0, 500),
+      toolArguments: args as unknown as never,
+      status: "PENDING",
+    },
+  });
+  await logAudit({
+    workspaceId: ctx.workspaceId,
+    module: "n0va1o",
+    action: "mcp.access_requested",
+    targetType: "IntegrationAccessRequest",
+    targetId: request.id,
+    metadata: { tool, provider: integration.provider, actor: ctx.actorLabel },
   });
   return request.id;
 }

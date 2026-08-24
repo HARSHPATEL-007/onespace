@@ -78,16 +78,16 @@ export class N0va1oClient {
       throw new N0va1oError(data.error.message, data.error.code);
     }
 
-    const result = data.result;
+    const result = data.result as (CallResult & { isError?: boolean; meta?: { statusCode?: number; durationMs?: number; replayed?: boolean }; content?: Array<{ text: string }> }) | undefined;
     if (!result) throw new N0va1oError("Empty response", -32603);
 
     return {
-      ok: !result.isError,
-      statusCode: result.meta?.statusCode ?? (result.isError ? 500 : 200),
+      ok: result.isError === true ? false : result.ok,
+      statusCode: result.meta?.statusCode ?? (result.isError ? 500 : result.statusCode ?? 200),
       message: result.content?.[0]?.text ?? result.message,
-      durationMs: result.meta?.durationMs ?? 0,
-      retries: 0,
-      replayed: result.meta?.replayed ?? false,
+      durationMs: result.meta?.durationMs ?? result.durationMs ?? 0,
+      retries: result.retries ?? 0,
+      replayed: result.meta?.replayed ?? result.replayed ?? false,
     };
   }
 

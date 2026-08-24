@@ -97,7 +97,7 @@ export async function executeRecipe(
   let allOk = true;
 
   for (let i = 0; i < recipe.steps.length; i++) {
-    const step = recipe.steps[i];
+    const step = recipe.steps[i]!;
     const adapter = ADAPTERS[`${step.provider}:${step.tool}`];
 
     if (!adapter) {
