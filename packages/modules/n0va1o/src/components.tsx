@@ -481,11 +481,28 @@ function ConnectDialog({
   onConnect: (fd: FormData) => void;
   onConnectOAuth: (provider: string) => void;
 }) {
+  const [oneClick, setOneClick] = useState<string | null>(null);
+  const handleOneClick = (p: typeof PROVIDERS[number]) => {
+    setOneClick(p.key);
+    if (p.auth === "oauth2") {
+      onConnectOAuth(p.key);
+    } else {
+      const fd = new FormData();
+      fd.set("provider", p.key);
+      fd.set("name", p.name);
+      fd.set("token", "");
+      fd.set("baseUrl", "");
+      fd.set("mcpEnabled", "1");
+      onConnect(fd);
+    }
+    setTimeout(() => setOneClick(null), 800);
+  };
+  const visible = options.slice(0, 120);
   return (
     <Dialog
       open
       onClose={onClose}
-      title="Connect an app"
+      title="Connect an app — 1 click"
       actions={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -499,12 +516,11 @@ function ConnectDialog({
               if (p?.auth === "oauth2") {
                 onConnectOAuth(provider);
               } else {
-                // API-key based providers use the manual form
                 onClose();
               }
             }}
           >
-            {findProvider(provider)?.auth === "oauth2" ? "Connect with OAuth" : "Connect (API key)"}
+            {findProvider(provider)?.auth === "oauth2" ? "1-Click OAuth" : "Advanced →"}
           </Button>
           <Button type="submit" form="connect-integration-form">
             Connect
@@ -512,11 +528,10 @@ function ConnectDialog({
         </>
       }
     >
-      <form
-        id="connect-integration-form"
-        action={onConnect}
-        style={{ minWidth: 400, display: "flex", flexDirection: "column", gap: 10 }}
-      >
+      <div style={{ minWidth: 560, display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ padding: "8px 10px", borderRadius: 8, background: "color-mix(in srgb, var(--nv-color-primary) 8%, transparent)", border: "1px solid var(--nv-color-border)", fontSize: 12 }}>
+          <span style={{ fontWeight: 700 }}>1-Click Connect:</span> Click any provider card — OAuth redirects instantly, API-key creates connection instantly (MCP enabled). Add token later in Settings. One gateway, 1094 providers via <code>/api/n0va1o/mcp/&lt;workspaceSlug&gt;</code>
+        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           <button
             type="button"
@@ -538,29 +553,55 @@ function ConnectDialog({
             </button>
           ))}
         </div>
-        <Input placeholder="Search providers…" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <Select name="provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
-          {options.length === 0 && <option value="">No providers match</option>}
-          {options.map((p) => (
-            <option key={p.key} value={p.key}>
-              {p.name} — {CATEGORIES.find((c) => c.key === p.category)?.label}
-            </option>
+        <Input placeholder="Search 1094 providers… (e.g. Slack, Stripe, Notion)" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div style={{ maxHeight: 280, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8, padding: 2 }}>
+          {visible.map((p) => (
+            <div key={p.key} style={{ border: "1px solid var(--nv-color-border)", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6, background: oneClick === p.key ? "color-mix(in srgb, var(--nv-color-primary) 10%, transparent)" : "var(--nv-color-surface)" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                <span className="nv-badge" style={{ fontSize: 10 }}>{CATEGORIES.find((c) => c.key === p.category)?.label ?? p.category}</span>
+                <span className={p.auth === "oauth2" ? "nv-badge nv-badge-green" : "nv-badge"} style={{ fontSize: 10 }}>{p.auth}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.tools.slice(0, 2).map((x) => t(x.name)).join(", ")}{p.tools.length > 2 ? " +" + (p.tools.length - 2) : ""}</div>
+              <Button size="sm" variant={p.auth === "oauth2" ? "secondary" : "ghost"} style={{ fontSize: 11, padding: "4px 8px", marginTop: 4 }} onClick={() => handleOneClick(p)} disabled={oneClick === p.key}>
+                {oneClick === p.key ? "✓ Connecting…" : p.auth === "oauth2" ? "1-Click OAuth" : "1-Click Connect"}
+              </Button>
+            </div>
           ))}
-        </Select>
-        {provider && (
-          <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
-            {findProvider(provider)?.description} Tools:{" "}
-            {findProvider(provider)?.tools.map((x) => t(x.name)).join(", ") ?? "ping"}
-          </div>
-        )}
-        <Input name="name" placeholder="Display name (e.g. Design channel)" required />
-        <Input name="token" placeholder="API token / secret (optional)" />
-        <Input name="baseUrl" placeholder="Base URL (only for REST/self-hosted providers)" />
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-          <input type="checkbox" name="mcpEnabled" value="1" />
-          Expose to MCP gateway (agent-scoped tools)
-        </label>
-      </form>
+          {visible.length === 0 && <div style={{ gridColumn: "1/-1", textAlign: "center", padding: 20, color: "var(--nv-color-text-faint)", fontSize: 13 }}>No providers match — try another category or search</div>}
+          {options.length > 120 && <div style={{ gridColumn: "1/-1", textAlign: "center", fontSize: 11, color: "var(--nv-color-text-faint)" }}>Showing 120 of {options.length} — refine search to see more</div>}
+        </div>
+        <div style={{ borderTop: "1px solid var(--nv-color-border)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-color-text-faint)" }}>Advanced (optional — prefilled from 1-Click)</div>
+          <form
+            id="connect-integration-form"
+            action={onConnect}
+            style={{ display: "flex", flexDirection: "column", gap: 8 }}
+          >
+            <Select name="provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
+              {options.length === 0 && <option value="">No providers match</option>}
+              {options.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.name} — {CATEGORIES.find((c) => c.key === p.category)?.label}
+                </option>
+              ))}
+            </Select>
+            {provider && (
+              <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+                {findProvider(provider)?.description} Tools:{" "}
+                {findProvider(provider)?.tools.map((x) => t(x.name)).join(", ") ?? "ping"}
+              </div>
+            )}
+            <Input name="name" placeholder="Display name (auto-filled on 1-Click)" />
+            <Input name="token" placeholder="API token / secret (add later in Settings if empty)" />
+            <Input name="baseUrl" placeholder="Base URL (only for REST/self-hosted)" />
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <input type="checkbox" name="mcpEnabled" value="1" defaultChecked />
+              Expose to MCP gateway (instant via /api/n0va1o/mcp/&lt;slug&gt;)
+            </label>
+          </form>
+        </div>
+      </div>
     </Dialog>
   );
 }
