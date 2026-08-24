@@ -17,6 +17,8 @@ import {
   getHyperConfig,
   processOutbox,
 } from "./hypertext";
+import { runPreviewPipeline } from "./rich-content/pipeline";
+import { indexAttachments } from "./rich-content/attachment-index";
 import {
   auditAppend,
   assertGovernanceRole,
@@ -798,6 +800,38 @@ export class ChatService {
       // best-effort
     }
 
+    // Rich-content pipeline: preview cards + attachment indexing (event-driven, permission-aware, never breaks messaging)
+    try {
+      await runPreviewPipeline({
+        workspaceId: this.workspaceId,
+        userId: this.userId,
+        role: this.role,
+        channelId,
+        messageId: message.id,
+        body,
+        attachments: message.attachments.map((a) => ({ filename: a.filename, mimeType: a.mimeType ?? "application/octet-stream", sizeBytes: a.sizeBytes })),
+        createdAt: message.createdAt,
+        actorName: authorName,
+      });
+    } catch {
+      // best-effort
+    }
+    try {
+      if (message.attachments.length > 0) {
+        await indexAttachments({
+          workspaceId: this.workspaceId,
+          channelId,
+          messageId: message.id,
+          uploaderId: this.userId,
+          uploaderName: authorName,
+          attachments: message.attachments.map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType ?? "application/octet-stream", sizeBytes: a.sizeBytes, storageKey: a.storageKey })),
+          threadId: opts?.parentId ?? null,
+        });
+      }
+    } catch {
+      // best-effort
+    }
+
     // Populate search index
     try {
       await prisma.chatSearchIndex.create({
@@ -856,6 +890,21 @@ export class ChatService {
     });
     const channel = await this.ownedChannel(message.channelId);
     await this.buildHyperContextFor(channel, messageId, message.createdAt, message.createdById);
+    // Refresh rich-content previews for edited body (best-effort)
+    try {
+      const { runPreviewPipeline } = await import("./rich-content/pipeline");
+      await runPreviewPipeline({
+        workspaceId: this.workspaceId,
+        userId: this.userId,
+        role: this.role,
+        channelId: message.channelId,
+        messageId,
+        body: newBody,
+        attachments: updated.attachments.map((a) => ({ filename: a.filename, mimeType: a.mimeType ?? "application/octet-stream", sizeBytes: a.sizeBytes })),
+        createdAt: message.createdAt,
+        actorName: updated.authorName,
+      });
+    } catch {}
     publish(this.workspaceId, {
       type: "message.updated",
       channel_id: message.channelId,
@@ -2137,6 +2186,78 @@ if (parsed.hasLink) where.body = { contains: "http", mode: "insensitive" as Pris
         },
       },
     ];
+  }
+
+  // ── Rich Content — Message Interaction System (server-side parser, unfurl, adapters, cache, cards) ──
+
+  async previewUnfurl(url: string, channelId?: string) {
+    await this.assert("READ");
+    const { unfurlUrl } = await import("./rich-content/unfurl");
+    return unfurlUrl(url, {
+      workspaceId: this.workspaceId,
+      userId: this.userId,
+      role: this.role,
+      channelId,
+      actorName: this.userId,
+    });
+  }
+
+  async getMessageRichCards(messageId: string) {
+    await this.assert("READ");
+    const rec = await prisma.chatHyperContext.findUnique({ where: { messageId } });
+    if (!rec || rec.workspaceId !== this.workspaceId) return { cards: [] as unknown[], analysis: null };
+    const actions = rec.actions as unknown as Array<{ type: string; cards?: unknown[] }>;
+    const rich = actions.find((a) => a.type === "rich_cards");
+    const interactive = actions.find((a) => a.type === "interactive");
+    const widget = actions.find((a) => a.type === "widget");
+    return {
+      cards: (rich?.cards as unknown[]) ?? [],
+      interactive: (interactive as unknown) ?? null,
+      widget: (widget as unknown) ?? null,
+      links: rec.links,
+      causalChain: rec.causalChain,
+    };
+  }
+
+  async createInteractive(input: { channelId: string; messageId?: string; kind: "approval" | "task" | "poll" | "generic"; title: string; summaryLine: string; fields?: Array<{ label: string; value: string }> }) {
+    await this.assert("CREATE");
+    const { createInteractiveMessage, approvalSpec, taskSpec } = await import("./rich-content/interactive");
+    const spec =
+      input.kind === "approval"
+        ? approvalSpec({ title: input.title, summaryLine: input.summaryLine, fields: input.fields })
+        : input.kind === "task"
+          ? taskSpec({ title: input.title, summaryLine: input.summaryLine })
+          : { kind: input.kind as "generic", title: input.title, summaryLine: input.summaryLine, fields: input.fields, actions: [{ id: "open", label: "Open", style: "primary" as const }] };
+    return createInteractiveMessage({
+      workspaceId: this.workspaceId,
+      channelId: input.channelId,
+      messageId: input.messageId,
+      createdById: this.userId,
+      createdByName: this.userId,
+      role: this.role,
+      spec,
+    });
+  }
+
+  async handleRichAction(input: { messageId: string; channelId: string; actionId: string; value?: string; confirm?: boolean }) {
+    const { handleInteractiveAction } = await import("./rich-content/interactive");
+    return handleInteractiveAction({
+      workspaceId: this.workspaceId,
+      channelId: input.channelId,
+      messageId: input.messageId,
+      actionId: input.actionId,
+      userId: this.userId,
+      userName: this.userId,
+      role: this.role,
+      value: input.value,
+      confirm: input.confirm,
+    });
+  }
+
+  async refreshRichPreviews(messageId: string) {
+    await this.assert("UPDATE");
+    const { refreshMessagePreviews } = await import("./rich-content/pipeline");
+    return refreshMessagePreviews(messageId, { workspaceId: this.workspaceId, userId: this.userId, role: this.role });
   }
 
   // ── Helpers ────────────────────────────────────────────────────────

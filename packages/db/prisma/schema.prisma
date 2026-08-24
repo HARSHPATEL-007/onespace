@@ -193,6 +193,7 @@ integrations    Integration[]
       approvalConfig        WorkspaceApprovalConfig?
       purchaseOrders        PurchaseOrder[]
       paymentSchedules      PaymentSchedule[]
+      chatUnfurlCaches      ChatUnfurlCache[]
       chatDeliveryPolicies  ChatDeliveryPolicy[]
       chatMessageDeliveries ChatMessageDelivery[]
       chatDeliveryAttempts  ChatDeliveryAttempt[]
@@ -1668,6 +1669,28 @@ model ChatCompensationLog {
   compensatedAt  DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+/// Rich-content preview cache (server-side OG + adapter metadata, TTL-aware)
+model ChatUnfurlCache {
+  id          String   @id @default(uuid())
+  workspaceId String
+  url         String
+  kind        String   // og | n0va_doc | n0va_sheet | n0va_task | n0va_meeting | n0va_crm | n0va_file | github | jira
+  title       String?
+  description String?
+  imageUrl    String?
+  siteName    String?
+  structured  Json?    @default("{}")
+  fetchedAt   DateTime @default(now())
+  expiresAt   DateTime
+  etag        String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, url])
+  @@index([workspaceId, kind])
+  @@index([expiresAt])
 }
 
 /// Hyper-context automation policy.

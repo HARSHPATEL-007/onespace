@@ -13,6 +13,8 @@ import { AISlashCommandMenu, NATIVE_COMMANDS, AI_COMMANDS } from "./AISlashComma
 import "./chat-adaptive.css";
 import { GovernancePanel } from "./GovernancePanel";
 import { HypercontextPanel } from "./HypercontextPanel";
+import { RichCards } from "./RichCard";
+import { CodePreview } from "./CodePreview";
 import type { GovernanceInput, HyperInput, ApprovalInput, DeliveryInput } from "@/app/(app)/m/chat/actions";
 import { ApprovalCard, type ApprovalView } from "@n0va/modules-approvals/components";
 
@@ -991,10 +993,11 @@ export function ChatPanel({
     inputRef.current?.focus();
   };
 
+  const [composePreview, setComposePreview] = useState<{ title: string; description: string | null; url: string } | null>(null);
   const handleInputChange = (v: string) => {
     setInputValue(v);
     setShowAICommand(v.startsWith("/"));
-    if (v.startsWith("/")) { setMentionOpen(false); return; }
+    if (v.startsWith("/")) { setMentionOpen(false); setComposePreview(null); return; }
     const m = v.match(/(?:^|\s)@([\w.'\-]*)$/);
     if (m) {
       setMentionQuery(m[1] ?? "");
@@ -1002,6 +1005,25 @@ export function ChatPanel({
       setMentionOpen(true);
     } else {
       setMentionOpen(false);
+    }
+    // Compose preview: detect URL and fetch unfurl server-side (permission-aware, cached)
+    const urlMatch = v.match(/\bhttps?:\/\/[^\s]+/);
+    if (urlMatch && activeChannelId) {
+      const url = urlMatch[0].replace(/[.,;!?]+$/, "");
+      // debounce via timeout 400ms
+      const key = url;
+      setTimeout(() => {
+        if (inputValue.includes(key) || v.includes(key)) {
+          void fetch("/api/chat/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url, channelId: activeChannelId }) })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.preview?.title) setComposePreview({ title: d.preview.title, description: d.preview.description, url });
+            })
+            .catch(() => {});
+        }
+      }, 400);
+    } else {
+      setComposePreview(null);
     }
   };
 
@@ -1334,6 +1356,18 @@ export function ChatPanel({
                         )}
                         {renderAttachments(m)}
                         {(m as any).pollId && <PollCard messageId={m.id} />}
+                        <RichCards messageId={m.id} channelId={activeChannelId ?? ""} />
+                        {(m as any).bodyHtml?.includes("nv-code-block") ? null : (() => {
+                          const blocks = (m.body.match(/```(\w*)\n?([\s\S]*?)```/g) ?? []);
+                          if (blocks.length === 0) return null;
+                          return <>{blocks.slice(0,2).map((b, i) => {
+                            const mm = /```(\w*)\n?([\s\S]*?)```/.exec(b);
+                            const lang = mm?.[1] ?? null;
+                            const code = mm?.[2] ?? "";
+                            const hasSecret = /\b(sk-|gsk_|AKIA|ghp_)/.test(code);
+                            return <CodePreview key={i} code={code.trim().slice(0,8000)} language={lang} truncated={code.length > 8000 || code.split("\n").length > 40} hasSecrets={hasSecret} secretTypes={hasSecret ? ["possible secret"] : []} />;
+                          })}</>;
+                        })()}
                         {approval && (
                           <ApprovalCard approval={approval} currentUserId={userId} onAction={approvalActions} />
                         )}
@@ -1368,6 +1402,7 @@ export function ChatPanel({
                       )}
                       {renderAttachments(m)}
                       {(m as any).pollId && <PollCard messageId={m.id} />}
+                      <RichCards messageId={m.id} channelId={activeChannelId ?? ""} />
                       {renderReactions(m)}
                     </div>
                     <MessageMenu m={m} />
@@ -1463,6 +1498,16 @@ export function ChatPanel({
                 onResult={(text) => { setInputValue(text); }}
                 onClose={() => setShowAICommand(false)}
               />
+            )}
+            {composePreview && (
+              <div style={{ position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: 4, border: "1px solid var(--nv-color-border)", borderRadius: "var(--nv-radius-md)", background: "var(--nv-color-surface-2)", padding: "6px 8px", display: "flex", gap: 8, alignItems: "center", fontSize: 11, maxWidth: 420 }}>
+                <span>🔗</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 600, display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{composePreview.title}</span>
+                  <span style={{ color: "var(--nv-color-text-faint)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{composePreview.description ?? composePreview.url}</span>
+                </span>
+                <button type="button" onClick={() => setComposePreview(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--nv-color-text-faint)" }}>✕</button>
+              </div>
             )}
           </div>
           <input ref={fileInputRef} type="file" multiple style={{ display: "none" }} onChange={handleFileUpload} />
