@@ -426,6 +426,7 @@ export {
   RetrievalOrchestrator,
   MemoryFormationPipeline,
   MemoryEventBus,
+  TenantGovernance,
 } from "./memory-fabric";
 export type {
   CanonicalMemoryObject,
@@ -438,4 +439,12 @@ export type {
   FreshnessState,
   ConflictObject,
   RankingWeights,
+  GovernanceLevel,
+  GovernancePolicy,
 } from "./memory-fabric";
+export { AgentLeaseManager, createAgentLeaseManager } from "./agent-lease";
+export type { AgentLease } from "./agent-lease";
+export { ProvenanceGraphBuilder, createProvenanceBuilder } from "./provenance-graph";
+export type { ProvenanceNode, ProvenanceEdge, AnswerProvenanceGraph } from "./provenance-graph";
+export { QualityMetricsStore, globalQualityMetrics } from "./quality-metrics";
+export type { RetrievalMetrics, GovernanceMetrics, MemoryQualityMetrics, OperationalSLO } from "./quality-metrics";

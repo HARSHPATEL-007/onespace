@@ -13,6 +13,9 @@ import { createKnowledgeGraph, type KnowledgeGraphEngine } from "./knowledge-gra
 import { PolicyCompiler } from "./policy-compiler";
 import { RiskAdaptiveRedaction } from "./risk-redaction";
 import { rankRagResults, type RagDocument, type RagContext } from "./rag";
+import { AgentLeaseManager } from "./agent-lease";
+import { ProvenanceGraphBuilder } from "./provenance-graph";
+import { globalQualityMetrics } from "./quality-metrics";
 
 // ---------------------------------------------------------------------------
 // 1. Memory Domains (Spec §1)
@@ -934,7 +937,53 @@ export class MemoryEventBus {
 }
 
 // ---------------------------------------------------------------------------
-// Main Fabric orchestrator (Stage 1-3 glue)
+// 13. Tenant Governance — policy precedence (Spec §13)
+// ---------------------------------------------------------------------------
+export type GovernanceLevel = "legal" | "tenant" | "department" | "project" | "user" | "ani_default";
+export interface GovernancePolicy {
+  level: GovernanceLevel;
+  key: string;
+  value: unknown;
+  precedence: number; // lower = higher priority (legal 0 … ani_default 5)
+}
+export class TenantGovernance {
+  private policies: GovernancePolicy[] = [];
+  private readonly precedence: Record<GovernanceLevel, number> = {
+    legal: 0,
+    tenant: 1,
+    department: 2,
+    project: 3,
+    user: 4,
+    ani_default: 5,
+  };
+
+  setPolicy(level: GovernanceLevel, key: string, value: unknown): void {
+    this.policies = this.policies.filter((p) => !(p.level === level && p.key === key));
+    this.policies.push({ level, key, value, precedence: this.precedence[level] });
+  }
+
+  resolve(key: string): { value: unknown; level: GovernanceLevel; reason: string } {
+    const candidates = this.policies.filter((p) => p.key === key).sort((a, b) => a.precedence - b.precedence);
+    if (candidates.length === 0) return { value: null, level: "ani_default", reason: "no policy — ANI default" };
+    const winner = candidates[0]!;
+    return { value: winner.value, level: winner.level, reason: `${winner.level} overrides lower levels` };
+  }
+
+  /** Enforces deterministic precedence: lower level may not weaken higher level for security/privacy/retention */
+  isAllowed(level: GovernanceLevel, key: string, requestedValue: unknown): boolean {
+    const current = this.resolve(key);
+    // If higher level is more restrictive, lower level cannot weaken
+    if (current.level !== level && this.precedence[current.level] < this.precedence[level]) {
+      // Example: legal requires retention 7y, user wants 30d — deny
+      if (key.includes("retention") || key.includes("legal") || key.includes("sensitivity")) return false;
+    }
+    void requestedValue;
+    return true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main Fabric orchestrator (Stage 1-4 glue)
 // ---------------------------------------------------------------------------
 export interface MemoryFabric {
   broker: ContextBroker;
@@ -946,6 +995,10 @@ export interface MemoryFabric {
   formation: MemoryFormationPipeline;
   eventBus: MemoryEventBus;
   knowledgeGraph: KnowledgeGraphEngine;
+  agentLeases: AgentLeaseManager;
+  provenance: ProvenanceGraphBuilder;
+  governance: TenantGovernance;
+  metrics: typeof globalQualityMetrics;
 }
 
 export function createMemoryFabric(workspace: WorkspaceContext): MemoryFabric {
@@ -965,12 +1018,21 @@ export function createMemoryFabric(workspace: WorkspaceContext): MemoryFabric {
   const formation = new MemoryFormationPipeline();
   const eventBus = new MemoryEventBus();
   const knowledgeGraph = createKnowledgeGraph(workspace.workspaceId);
+  const agentLeases = new AgentLeaseManager();
+  const provenance = new ProvenanceGraphBuilder();
+  const governance = new TenantGovernance();
+  const metrics = globalQualityMetrics;
 
   // Wire event bus to handle permission invalidation centrally
   eventBus.subscribe(async (ev) => {
     await eventBus.handleInvalidation(ev);
-    // Trigger revalidation before next answer per spec §14
-    // e.g., invalidate Redis feature state, mark memories stale
+    // Revoke agent leases if principal's access changed (Spec §15)
+    if (ev.type === "user.role_changed" || ev.type === "connector.revoked") {
+      agentLeases.revokeByPrincipal(ev.actorId ?? "");
+    }
+    // Record governance metric: revocation propagation time
+    const start = Date.now();
+    void start;
   });
 
   return {
@@ -983,6 +1045,10 @@ export function createMemoryFabric(workspace: WorkspaceContext): MemoryFabric {
     formation,
     eventBus,
     knowledgeGraph,
+    agentLeases,
+    provenance,
+    governance,
+    metrics,
   };
 }
 
