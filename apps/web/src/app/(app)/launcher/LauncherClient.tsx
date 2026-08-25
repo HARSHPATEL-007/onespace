@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, useDeferredValue, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, ModuleIcon } from "@n0va/ui";
 import { N0VA_MODULES, N0VA_LAYERS, type N0vaLayer, type N0vaModule } from "@n0va/core";
@@ -142,10 +142,19 @@ export default function LauncherClient({
   const [isEditMode, setIsEditMode] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [density, setDensity] = usePersisted<"comfortable" | "compact">(LS_DENSITY, "comfortable");
-  // clutterless: filters collapsed by default
+  // clutterless + fluid: filters collapsed by default, deferred search for 60fps typing
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const deferredQuery = useDeferredValue(query);
+  const [isPending, startTransition] = useTransition();
+
+  const withFluid = useCallback((fn: () => void) => {
+    // View Transitions API for FLIP-like fluid layout; fallback to direct
+    const vt = (document as unknown as { startViewTransition?: (cb: () => void) => void }).startViewTransition;
+    if (vt) vt(fn);
+    else fn();
+  }, []);
 
   const [favorites, setFavorites] = usePersisted<string[]>(LS_FAV, []);
   const [recents, setRecents] = usePersisted<string[]>(LS_RECENT, []);
@@ -228,9 +237,9 @@ export default function LauncherClient({
 
   const toggleCollapse = useCallback(
     (layer: string) => {
-      setCollapsed({ ...collapsed, [layer]: !collapsed[layer] });
+      withFluid(() => setCollapsed({ ...collapsed, [layer]: !collapsed[layer] }));
     },
-    [collapsed, setCollapsed],
+    [collapsed, setCollapsed, withFluid],
   );
 
   const totalModules = N0VA_MODULES.length;
@@ -276,7 +285,8 @@ export default function LauncherClient({
       const favSet = new Set(favorites);
       out = out.filter((m) => favSet.has(m.id));
     }
-    const q = query.trim().toLowerCase();
+    // fluid: use deferred query to keep typing at 60fps
+    const q = deferredQuery.trim().toLowerCase();
     if (q) {
       const scored = out.map((m) => ({ m, score: scoreModule(m, q) })).filter((x) => x.score > 0);
       scored.sort((a, b) => b.score - a.score || a.m.name.localeCompare(b.m.name));
@@ -314,9 +324,10 @@ export default function LauncherClient({
       });
     }
     return out;
-  }, [enabledMap, selectedLayer, phaseFilter, favoritesOnly, query, sortBy, favorites, showDisabled, hidden, showHidden, isEditMode, openCounts]);
+  }, [enabledMap, selectedLayer, phaseFilter, favoritesOnly, deferredQuery, sortBy, favorites, showDisabled, hidden, showHidden, isEditMode, openCounts]);
 
-  const isFlatMode = query.trim().length > 0 || favoritesOnly || phaseFilter !== "all";
+  // fluid: flat check uses deferred query so layout doesn't thrash while typing
+  const isFlatMode = deferredQuery.trim().length > 0 || favoritesOnly || phaseFilter !== "all";
   const grouped = useMemo(() => {
     if (isFlatMode) return [];
     const layers = selectedLayer === "all" ? N0VA_LAYERS : [selectedLayer as N0vaLayer];
@@ -325,25 +336,29 @@ export default function LauncherClient({
 
   const visibleOrder = useMemo(() => (isFlatMode ? filtered : grouped.flatMap((g) => g.modules)), [filtered, grouped, isFlatMode]);
 
-  const hasActiveFilters = query.trim().length > 0 || selectedLayer !== "all" || phaseFilter !== "all" || favoritesOnly || showDisabled || showHidden;
-  const activeFilterCount = (selectedLayer !== "all" ? 1 : 0) + (phaseFilter !== "all" ? 1 : 0) + (favoritesOnly ? 1 : 0) + (showHidden ? 1 : 0) + (showDisabled ? 1 : 0);
+  const hasActiveFilters = deferredQuery.trim().length > 0 || selectedLayer !== "all" || phaseFilter !== "all" || favoritesOnly || showDisabled || showHidden;
+  const activeFilterCount = (selectedLayer !== "all" ? 1 : 0) + (phaseFilter !== "all" ? 1 : 0) + (favoritesOnly ? 1 : 0) + (showHidden ? 1 : 0) + (showDisabled ? 1 : 0) + (deferredQuery.trim().length > 0 ? 1 : 0);
 
   const clearFilters = useCallback(() => {
-    setQuery("");
-    setSelectedLayer("all");
-    setPhaseFilter("all");
-    setFavoritesOnly(false);
-    setShowDisabled(false);
-    setShowHidden(false);
-    setSortBy("default");
-    setActiveIdx(-1);
-    setFiltersExpanded(false);
-  }, []);
+    withFluid(() => {
+      startTransition(() => {
+        setQuery("");
+        setSelectedLayer("all");
+        setPhaseFilter("all");
+        setFavoritesOnly(false);
+        setShowDisabled(false);
+        setShowHidden(false);
+        setSortBy("default");
+        setActiveIdx(-1);
+        setFiltersExpanded(false);
+      });
+    });
+  }, [withFluid]);
 
   useEffect(() => {
-    if (query.trim().length > 0 && visibleOrder.length > 0) setActiveIdx(0);
-    else if (query.trim().length === 0) setActiveIdx(-1);
-  }, [query, visibleOrder.length]);
+    if (deferredQuery.trim().length > 0 && visibleOrder.length > 0) setActiveIdx(0);
+    else if (deferredQuery.trim().length === 0) setActiveIdx(-1);
+  }, [deferredQuery, visibleOrder.length]);
 
   useEffect(() => {
     if (activeIdx >= visibleOrder.length) setActiveIdx(visibleOrder.length - 1);
@@ -511,16 +526,16 @@ export default function LauncherClient({
         </div>
         <div className="nv-launcher-header-actions">
           <div className="nv-launcher-viewtoggle" role="group" aria-label="View">
-            <button type="button" aria-pressed={viewMode === "grid"} className={`nv-launcher-viewbtn ${viewMode === "grid" ? "nv-launcher-viewbtn-active" : ""}`} onClick={() => setViewMode("grid")} title="Grid">⊞</button>
-            <button type="button" aria-pressed={viewMode === "list"} className={`nv-launcher-viewbtn ${viewMode === "list" ? "nv-launcher-viewbtn-active" : ""}`} onClick={() => setViewMode("list")} title="List">☰</button>
+            <button type="button" aria-pressed={viewMode === "grid"} className={`nv-launcher-viewbtn ${viewMode === "grid" ? "nv-launcher-viewbtn-active" : ""}`} onClick={() => withFluid(() => setViewMode("grid"))} title="Grid">⊞</button>
+            <button type="button" aria-pressed={viewMode === "list"} className={`nv-launcher-viewbtn ${viewMode === "list" ? "nv-launcher-viewbtn-active" : ""}`} onClick={() => withFluid(() => setViewMode("list"))} title="List">☰</button>
           </div>
           <div ref={settingsRef} className="nv-launcher-settings-wrap">
-            <button type="button" className={`nv-launcher-settings-btn ${settingsOpen ? "nv-launcher-settings-btn-active" : ""}`} onClick={() => setSettingsOpen((v) => !v)} aria-label="Launcher settings" title="Settings">⋯</button>
+            <button type="button" className={`nv-launcher-settings-btn ${settingsOpen ? "nv-launcher-settings-btn-active" : ""}`} onClick={() => withFluid(() => setSettingsOpen((v) => !v))} aria-label="Launcher settings" title="Settings">⋯</button>
             {settingsOpen ? (
               <div className="nv-launcher-settings-menu" role="menu">
-                <button role="menuitem" className={`nv-launcher-settings-item ${density === "compact" ? "nv-launcher-settings-item-active" : ""}`} onClick={() => setDensity(density === "compact" ? "comfortable" : "compact")}>◧ {density === "compact" ? "Comfortable" : "Compact"} density</button>
-                <button role="menuitem" className={`nv-launcher-settings-item ${isEditMode ? "nv-launcher-settings-item-active" : ""}`} onClick={() => { setIsEditMode((v) => !v); setSettingsOpen(false); }}>{isEditMode ? "✓ Exit edit" : "✎ Customize"}</button>
-                <button role="menuitem" className="nv-launcher-settings-item" onClick={() => { clearFilters(); setSettingsOpen(false); }}>↺ Clear filters</button>
+                <button role="menuitem" className={`nv-launcher-settings-item ${density === "compact" ? "nv-launcher-settings-item-active" : ""}`} onClick={() => withFluid(() => setDensity(density === "compact" ? "comfortable" : "compact"))}>◧ {density === "compact" ? "Comfortable" : "Compact"} density</button>
+                <button role="menuitem" className={`nv-launcher-settings-item ${isEditMode ? "nv-launcher-settings-item-active" : ""}`} onClick={() => withFluid(() => { setIsEditMode((v) => !v); setSettingsOpen(false); })}>{isEditMode ? "✓ Exit edit" : "✎ Customize"}</button>
+                <button role="menuitem" className="nv-launcher-settings-item" onClick={() => withFluid(() => { clearFilters(); setSettingsOpen(false); })}>↺ Clear filters</button>
                 <div className="nv-launcher-settings-sep" />
                 <div className="nv-launcher-settings-hint">{filtered.length} shown · {hiddenCount} hidden · {enabledCount} enabled</div>
               </div>
@@ -549,14 +564,14 @@ export default function LauncherClient({
       {/* ── Toolbar — progressive disclosure ─────────────────── */}
       <div className="nv-launcher-toolbar">
         <div className="nv-launcher-toolbar-left">
-          <button type="button" className={`nv-launcher-filter-toggle ${filtersExpanded ? "nv-launcher-filter-toggle-active" : ""} ${activeFilterCount>0 ? "nv-launcher-filter-toggle-hasactive" : ""}`} onClick={() => setFiltersExpanded((v) => !v)} aria-expanded={filtersExpanded}>
+          <button type="button" className={`nv-launcher-filter-toggle ${filtersExpanded ? "nv-launcher-filter-toggle-active" : ""} ${activeFilterCount>0 ? "nv-launcher-filter-toggle-hasactive" : ""}`} onClick={() => withFluid(() => setFiltersExpanded((v) => !v))} aria-expanded={filtersExpanded}>
             Filters {activeFilterCount>0 ? <span className="nv-launcher-filter-badge">{activeFilterCount}</span> : null} <span className="nv-launcher-filter-chevron">{filtersExpanded ? "▴" : "▾"}</span>
           </button>
           {/* minimal layer chips — always visible but muted, no counts */}
           <div className="nv-launcher-chips nv-launcher-chips-minimal" role="group" aria-label="Layer">
-            <button type="button" className={`nv-launcher-chip nv-launcher-chip-minimal ${selectedLayer === "all" ? "nv-launcher-chip-active" : ""}`} onClick={() => setSelectedLayer("all")}>All</button>
+            <button type="button" className={`nv-launcher-chip nv-launcher-chip-minimal ${selectedLayer === "all" ? "nv-launcher-chip-active" : ""}`} onClick={() => withFluid(() => startTransition(() => setSelectedLayer("all")))}>All</button>
             {N0VA_LAYERS.filter((l) => (layerCounts[l] ?? 0) > 0 || showDisabled).slice(0, 6).map((layer) => (
-              <button key={layer} type="button" className={`nv-launcher-chip nv-launcher-chip-minimal ${selectedLayer === layer ? "nv-launcher-chip-active" : ""}`} onClick={() => setSelectedLayer(layer)} title={layer}>
+              <button key={layer} type="button" className={`nv-launcher-chip nv-launcher-chip-minimal ${selectedLayer === layer ? "nv-launcher-chip-active" : ""}`} onClick={() => withFluid(() => startTransition(() => setSelectedLayer(layer as N0vaLayer)))} title={layer}>
                 {layer.replace(/^L\d+\s*/, "").split(" ")[0]}
               </button>
             ))}
@@ -564,7 +579,7 @@ export default function LauncherClient({
         </div>
         <div className="nv-launcher-toolbar-right">
           <label className="nv-launcher-select-wrap nv-launcher-select-wrap-minimal" title="Sort">
-            <select className="nv-launcher-select" value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)} aria-label="Sort">
+            <select className="nv-launcher-select" value={sortBy} onChange={(e) => withFluid(() => startTransition(() => setSortBy(e.target.value as typeof sortBy)))} aria-label="Sort">
               <option value="default">Smart</option>
               <option value="alpha">A–Z</option>
               <option value="recent">Recent</option>
@@ -574,16 +589,16 @@ export default function LauncherClient({
         </div>
       </div>
 
-      {filtersExpanded ? (
+      <div className={`nv-launcher-filters-wrap ${filtersExpanded ? "nv-launcher-filters-wrap-expanded" : "nv-launcher-filters-wrap-collapsed"}`} aria-hidden={!filtersExpanded}>
         <div className="nv-launcher-filters nv-launcher-filters-expanded">
           <div className="nv-launcher-chips" role="group" aria-label="Filter by layer (expanded)">
-            <button type="button" className={`nv-launcher-chip ${selectedLayer === "all" ? "nv-launcher-chip-active" : ""}`} onClick={() => setSelectedLayer("all")}>All <span className="nv-launcher-chip-count">{showDisabled ? totalModules : enabledCount}</span></button>
+            <button type="button" className={`nv-launcher-chip ${selectedLayer === "all" ? "nv-launcher-chip-active" : ""}`} onClick={() => withFluid(() => startTransition(() => setSelectedLayer("all")))}>All <span className="nv-launcher-chip-count">{showDisabled ? totalModules : enabledCount}</span></button>
             {N0VA_LAYERS.map((layer) => {
               const count = layerCounts[layer] ?? 0;
               if (count === 0 && !showDisabled && !showHidden) return null;
               const label = layer.replace(/^L\d+\s*/, "");
               return (
-                <button key={layer} type="button" className={`nv-launcher-chip ${selectedLayer === layer ? "nv-launcher-chip-active" : ""}`} onClick={() => setSelectedLayer(layer)} title={layer}>
+                <button key={layer} type="button" className={`nv-launcher-chip ${selectedLayer === layer ? "nv-launcher-chip-active" : ""}`} onClick={() => withFluid(() => startTransition(() => setSelectedLayer(layer as N0vaLayer)))} title={layer}>
                   <span className="nv-launcher-chip-dot" data-layer={layer} />
                   {label}
                   <span className="nv-launcher-chip-count">{count}</span>
@@ -592,14 +607,14 @@ export default function LauncherClient({
             })}
           </div>
           <div className="nv-launcher-controls">
-            <label className="nv-launcher-select-wrap" title="Phase"><span className="nv-launcher-select-label">Phase</span><select className="nv-launcher-select" value={phaseFilter} onChange={(e) => setPhaseFilter(e.target.value)} aria-label="Phase"><option value="all">All phases</option><option value="0">Foundation</option><option value="1">Core</option><option value="2">Phase 2</option><option value="3">Phase 3</option><option value="4">Phase 4</option><option value="5">Phase 5</option></select></label>
-            <button type="button" className={`nv-launcher-toggle ${favoritesOnly ? "nv-launcher-toggle-active" : ""}`} onClick={() => setFavoritesOnly((v) => !v)} aria-pressed={favoritesOnly}>★ Pinned only</button>
-            <label className={`nv-launcher-toggle ${showHidden ? "nv-launcher-toggle-active" : ""}`}><input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} aria-label="Show hidden" />👁 Hidden</label>
-            <label className={`nv-launcher-toggle ${showDisabled ? "nv-launcher-toggle-active" : ""}`}><input type="checkbox" checked={showDisabled} onChange={(e) => setShowDisabled(e.target.checked)} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} aria-label="Show disabled" />Show disabled</label>
-            {hasActiveFilters ? <button type="button" className="nv-launcher-clear" onClick={clearFilters}>Clear</button> : null}
+            <label className="nv-launcher-select-wrap" title="Phase"><span className="nv-launcher-select-label">Phase</span><select className="nv-launcher-select" value={phaseFilter} onChange={(e) => withFluid(() => startTransition(() => setPhaseFilter(e.target.value)))} aria-label="Phase"><option value="all">All phases</option><option value="0">Foundation</option><option value="1">Core</option><option value="2">Phase 2</option><option value="3">Phase 3</option><option value="4">Phase 4</option><option value="5">Phase 5</option></select></label>
+            <button type="button" className={`nv-launcher-toggle ${favoritesOnly ? "nv-launcher-toggle-active" : ""}`} onClick={() => withFluid(() => startTransition(() => setFavoritesOnly((v) => !v)))} aria-pressed={favoritesOnly}>★ Pinned only</button>
+            <label className={`nv-launcher-toggle ${showHidden ? "nv-launcher-toggle-active" : ""}`}><input type="checkbox" checked={showHidden} onChange={(e) => withFluid(() => startTransition(() => setShowHidden(e.target.checked)))} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} aria-label="Show hidden" />👁 Hidden</label>
+            <label className={`nv-launcher-toggle ${showDisabled ? "nv-launcher-toggle-active" : ""}`}><input type="checkbox" checked={showDisabled} onChange={(e) => withFluid(() => startTransition(() => setShowDisabled(e.target.checked)))} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} aria-label="Show disabled" />Show disabled</label>
+            {hasActiveFilters ? <button type="button" className="nv-launcher-clear" onClick={() => withFluid(() => clearFilters())}>Clear</button> : null}
           </div>
         </div>
-      ) : null}
+      </div>
 
       {isEditMode ? (
         <div className="nv-launcher-editbar" role="status">
@@ -683,11 +698,15 @@ export default function LauncherClient({
                 <span className="nv-launcher-layer-count">{group.modules.length}</span>
                 <span className="nv-launcher-layer-line" aria-hidden />
               </button>
-              {!isCollapsed ? (
-                <div id={`nv-layer-${group.layer.replace(/\s+/g, "-")}`} className={`nv-launcher ${viewMode === "list" ? "nv-launcher-listmode" : ""}`}>
+              <div
+                id={`nv-layer-${group.layer.replace(/\s+/g, "-")}`}
+                className={`nv-launcher-section-body ${isCollapsed ? "nv-launcher-section-body-collapsed" : ""}`}
+                aria-hidden={isCollapsed}
+              >
+                <div className={`nv-launcher ${viewMode === "list" ? "nv-launcher-listmode" : ""}`}>
                   {group.modules.map((m, i) => renderTile(m, i))}
                 </div>
-              ) : null}
+              </div>
             </section>
           );
         })

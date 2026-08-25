@@ -2078,3 +2078,126 @@
   box-shadow: 0 0 0 2px var(--nv-color-primary-alpha) !important;
   transform: none !important;
 }
+
+/* ── Launcher fluidity — spring, FLIP, view transitions ─ */
+:root {
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-fluid: cubic-bezier(0.22, 1, 0.02, 1);
+}
+/* fluid typography */
+.nv-launcher-clutterless .nv-launcher-title {
+  font-size: clamp(20px, 2.2vw, 24px) !important;
+}
+.nv-launcher-clutterless .nv-launcher-subtitle {
+  font-size: clamp(12px, 1.2vw, 13px) !important;
+}
+/* fluid grid — responsive without breakpoints */
+.nv-launcher-clutterless .nv-launcher {
+  grid-template-columns: repeat(auto-fill, minmax(clamp(164px, 18vw, 214px), 1fr)) !important;
+  transition: gap 0.28s var(--ease-spring);
+  content-visibility: auto;
+  contain-intrinsic-size: 800px;
+}
+.nv-launcher-clutterless .nv-launcher-tile {
+  will-change: transform, opacity;
+  transition: transform 0.32s var(--ease-spring), opacity 0.28s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  view-transition-name: var(--vt-name, none);
+}
+.nv-launcher-clutterless .nv-launcher-tile:hover {
+  transform: translateY(-2px) scale(1.01);
+  transition: transform 0.28s var(--ease-spring), box-shadow 0.2s ease;
+}
+/* search pending — fluid loading shimmer */
+.nv-launcher-search input:placeholder-shown ~ .nv-launcher-search-icon {
+  transition: color 0.2s ease, transform 0.2s var(--ease-spring);
+}
+.nv-launcher-search:has(input:focus) .nv-launcher-search-icon {
+  color: var(--nv-color-primary);
+  transform: scale(1.08);
+}
+/* filters wrap — 0fr→1fr height fluid */
+.nv-launcher-filters-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: grid-template-rows 0.38s var(--ease-spring), opacity 0.28s ease, transform 0.3s var(--ease-spring);
+  overflow: hidden;
+}
+.nv-launcher-filters-wrap-expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+.nv-launcher-filters-wrap-collapsed {
+  pointer-events: none;
+}
+.nv-launcher-filters-wrap > .nv-launcher-filters {
+  overflow: hidden;
+  min-height: 0;
+}
+/* section body — 0fr→1fr fluid collapse */
+.nv-launcher-section-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 0.36s var(--ease-spring), opacity 0.24s ease;
+}
+.nv-launcher-section-body-collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.nv-launcher-section-body > .nv-launcher {
+  overflow: hidden;
+  min-height: 0;
+}
+/* view transitions — FLIP for grid */
+@supports (view-transition-name: launcher) {
+  .nv-launcher-clutterless { view-transition-name: launcher-grid; }
+}
+::view-transition-group(launcher-grid) {
+  animation-duration: 0.34s;
+  animation-timing-function: var(--ease-spring);
+}
+::view-transition-old(launcher-grid),
+::view-transition-new(launcher-grid) {
+  animation-duration: 0.34s;
+  animation-timing-function: var(--ease-spring);
+}
+/* stagger polish — fluid entrance with spring */
+@keyframes nv-tile-in-fluid {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); filter: blur(2px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.nv-launcher-clutterless .nv-launcher-tile {
+  animation: nv-tile-in-fluid 0.42s var(--ease-spring) both;
+}
+/* further declutter — soften, whitespace, hide noise */
+.nv-launcher-clutterless .nv-launcher-search-minimal {
+  background: color-mix(in srgb, var(--nv-color-surface) 92%, var(--nv-color-bg)) !important;
+  border-color: color-mix(in srgb, var(--nv-color-border) 70%, transparent) !important;
+}
+.nv-launcher-clutterless .nv-launcher-toolbar {
+  opacity: 0.96;
+}
+.nv-launcher-clutterless .nv-launcher-section {
+  gap: 16px !important;
+}
+.nv-launcher-clutterless .nv-launcher-layer-head {
+  padding: 6px 2px !important;
+  opacity: 0.92;
+  transition: opacity 0.16s ease, background 0.16s ease;
+}
+.nv-launcher-clutterless .nv-launcher-layer-head:hover { opacity: 1; }
+.nv-launcher-clutterless .nv-launcher-layer-count {
+  background: transparent !important;
+  border: 1px solid color-mix(in srgb, var(--nv-color-border) 80%, transparent) !important;
+  font-weight: 500 !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nv-launcher-tile, .nv-launcher, .nv-launcher-filters-wrap, .nv-launcher-section-body, .nv-launcher-search {
+    transition: none !important;
+    animation: none !important;
+  }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
