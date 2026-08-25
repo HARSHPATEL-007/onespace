@@ -448,3 +448,17 @@ export { ProvenanceGraphBuilder, createProvenanceBuilder } from "./provenance-gr
 export type { ProvenanceNode, ProvenanceEdge, AnswerProvenanceGraph } from "./provenance-graph";
 export { QualityMetricsStore, globalQualityMetrics } from "./quality-metrics";
 export type { RetrievalMetrics, GovernanceMetrics, MemoryQualityMetrics, OperationalSLO } from "./quality-metrics";
+export { ResearchOrchestrator, globalResearchOrchestrator, DOMAIN_MODE_CONFIG } from "./research-orchestrator";
+export type {
+  ResearchPlan,
+  ResearchMode,
+  Subquestion,
+  SourcePolicy,
+  SourceRegistryEntry,
+  EvidenceNormalized,
+  ClaimLedgerEntry,
+  ClaimType,
+  ClaimStatus,
+  ResearchSnapshot,
+  ResearchJob,
+} from "./research-orchestrator";

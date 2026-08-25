@@ -409,6 +409,8 @@ export function AniChat({
   const [showMeetingPanel, setShowMeetingPanel] = useState(false);
   const [meetingState, setMeetingState] =
     useState<MeetingIntelligenceState | null>(null);
+  const [showResearchPanel, setShowResearchPanel] = useState(false);
+  const [researchJobs, setResearchJobs] = useState<Array<{ research_id: string; question: string; status: string; mode: string }>>([]);
   const [graphLayout, setGraphLayout] = useState<GraphLayout3D | null>(null);
   const [convSearch, setConvSearch] = useState("");
   const [modelTier, setModelTier] = useState<null | { tier: string; modelName: string }>(null);
@@ -768,6 +770,17 @@ export function AniChat({
       );
     }
   }, [showMeetingPanel, meetingState]);
+
+  useEffect(() => {
+    if (showResearchPanel) {
+      fetch("/api/research")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.jobs) setResearchJobs(d.jobs);
+        })
+        .catch(() => {});
+    }
+  }, [showResearchPanel]);
 
   // ---- Enhanced Voice Recognition Wiring ----
   const voiceRecognition = useVoiceRecognition(
@@ -1486,10 +1499,25 @@ export function AniChat({
                 setShowProgressPanel(false);
                 setShowOutcomePanel(false);
                 setShowGraphPanel(false);
+                setShowResearchPanel(false);
               }}
               title="Meeting intelligence"
             >
               👥
+            </button>
+            <button
+              className={`ani-cap-btn ${showResearchPanel ? "ani-cap-btn-active" : ""}`}
+              onClick={() => {
+                setShowResearchPanel(!showResearchPanel);
+                setShowLearning(false);
+                setShowProgressPanel(false);
+                setShowOutcomePanel(false);
+                setShowGraphPanel(false);
+                setShowMeetingPanel(false);
+              }}
+              title="Research OS — verifiable research"
+            >
+              🔬
             </button>
             {ttsState.supported && active && active.messages.length > 0 && (
               <button
@@ -1833,6 +1861,68 @@ export function AniChat({
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {showResearchPanel && (
+          <div className="ani-capability-panel">
+            <div className="ani-panel-header">
+              <span>🔬 Research Studio — Verifiable</span>
+              <button className="ani-panel-close" onClick={() => setShowResearchPanel(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="ani-research-content">
+              <div className="ani-research-actions">
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    const q = draft.trim() || active?.messages.slice(-1)[0]?.content || "Evaluate Q4 launch impact";
+                    const r = await fetch("/api/research", {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ question: q, mode: reasoningDepth === "research" ? "deep_research" : "quick_answer", scope: { geography: ["IN", "US"] } }),
+                    });
+                    const j = await r.json();
+                    if (j.research_id) {
+                      setResearchJobs((prev) => [{ research_id: j.research_id, question: q, status: j.status, mode: j.plan?.mode ?? "deep_research" }, ...prev]);
+                      setSafetyWarnings((p) => [...p, `Research ${j.research_id} ${j.status} — plan ${j.plan?.subquestions?.length ?? 0} subquestions`]);
+                    }
+                  }}
+                >
+                  Start research from draft
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    fetch("/api/research")
+                      .then((r) => r.json())
+                      .then((d) => d?.jobs && setResearchJobs(d.jobs))
+                      .catch(() => {});
+                  }}
+                >
+                  Refresh
+                </Button>
+              </div>
+              {researchJobs.length === 0 ? (
+                <div className="ani-research-empty">No research jobs yet. Draft a question and use deep-research mode.</div>
+              ) : (
+                <div className="ani-research-list">
+                  {researchJobs.map((j) => (
+                    <div key={j.research_id} className="ani-research-item">
+                      <div className="ani-research-q">{j.question.slice(0, 80)}</div>
+                      <div className="ani-research-meta">
+                        <Badge tone={j.status === "completed" ? "success" : j.status === "awaiting_approval" ? "warning" : "neutral"}>{j.status}</Badge>
+                        <span className="ani-research-mode">{j.mode}</span>
+                        <span className="ani-research-id">{j.research_id.slice(0, 12)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="ani-research-help">Evidence panels separate facts / calculations / inferences / assumptions / contradictions. Snapshots are immutable and reproducible.</div>
             </div>
           </div>
         )}

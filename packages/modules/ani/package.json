@@ -65,6 +65,11 @@
     "./tool-sentinel": "./src/tool-sentinel.ts",
     "./cognition-ledger": "./src/cognition-ledger.ts",
     "./deception-self-model": "./src/deception-self-model.ts",
+    "./memory-fabric": "./src/memory-fabric.ts",
+    "./agent-lease": "./src/agent-lease.ts",
+    "./provenance-graph": "./src/provenance-graph.ts",
+    "./quality-metrics": "./src/quality-metrics.ts",
+    "./research-orchestrator": "./src/research-orchestrator.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },
