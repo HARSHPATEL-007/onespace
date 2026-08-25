@@ -1780,3 +1780,301 @@
   text-transform: uppercase;
   color: var(--nv-color-text-faint);
 }
+
+/* ── Launcher clutterless — whitespace, progressive disclosure, minimal ─ */
+.nv-launcher-clutterless {
+  gap: 28px !important;
+}
+.nv-launcher-header-minimal {
+  align-items: center;
+  gap: 16px;
+}
+.nv-launcher-header-minimal .nv-launcher-title {
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+.nv-launcher-header-minimal .nv-launcher-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--nv-color-text-faint);
+}
+.nv-launcher-header-minimal .nv-launcher-viewtoggle {
+  background: transparent;
+  border: none;
+  padding: 0;
+  gap: 6px;
+}
+.nv-launcher-header-minimal .nv-launcher-viewbtn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+}
+.nv-launcher-header-minimal .nv-launcher-viewbtn:hover {
+  background: var(--nv-color-surface-2);
+  border-color: var(--nv-color-border);
+}
+.nv-launcher-header-minimal .nv-launcher-viewbtn-active {
+  background: var(--nv-color-surface);
+  border-color: var(--nv-color-border);
+  box-shadow: var(--nv-shadow-sm);
+}
+.nv-launcher-settings-wrap {
+  position: relative;
+}
+.nv-launcher-settings-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nv-color-border);
+  background: var(--nv-color-surface);
+  color: var(--nv-color-text-muted);
+  border-radius: var(--nv-radius-md);
+  cursor: pointer;
+  font-size: 16px;
+  letter-spacing: 1px;
+  transition: all 0.12s;
+}
+.nv-launcher-settings-btn:hover {
+  background: var(--nv-color-surface-2);
+  color: var(--nv-color-text);
+}
+.nv-launcher-settings-btn-active {
+  background: var(--nv-color-surface-2);
+  border-color: var(--nv-color-primary);
+  color: var(--nv-color-primary);
+}
+.nv-launcher-settings-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: var(--nv-color-surface);
+  border: 1px solid var(--nv-color-border);
+  border-radius: var(--nv-radius-lg);
+  box-shadow: var(--nv-shadow-lg);
+  padding: 6px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nv-launcher-settings-item {
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--nv-color-text);
+  border-radius: var(--nv-radius-md);
+  cursor: pointer;
+}
+.nv-launcher-settings-item:hover {
+  background: var(--nv-color-surface-2);
+}
+.nv-launcher-settings-item-active {
+  background: var(--nv-color-primary-alpha);
+  color: var(--nv-color-primary);
+  font-weight: 600;
+}
+.nv-launcher-settings-sep {
+  height: 1px;
+  background: var(--nv-color-border);
+  margin: 4px 0;
+}
+.nv-launcher-settings-hint {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--nv-color-text-faint);
+}
+.nv-launcher-search-minimal {
+  height: 46px !important;
+  background: var(--nv-color-surface) !important;
+  border-color: var(--nv-color-border) !important;
+  box-shadow: none !important;
+}
+.nv-launcher-search-minimal:focus-within {
+  border-color: var(--nv-color-border) !important;
+  box-shadow: 0 0 0 3px var(--nv-color-primary-alpha) !important;
+}
+.nv-launcher-search-meta-minimal {
+  justify-content: space-between;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.nv-launcher-search-kbd-hint {
+  opacity: 0.6;
+}
+.nv-launcher-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.nv-launcher-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.nv-launcher-toolbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.nv-launcher-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--nv-color-text-muted);
+  background: var(--nv-color-surface);
+  border: 1px solid var(--nv-color-border);
+  border-radius: var(--nv-radius-full);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nv-launcher-filter-toggle:hover {
+  background: var(--nv-color-surface-2);
+  color: var(--nv-color-text);
+}
+.nv-launcher-filter-toggle-active {
+  background: var(--nv-color-surface-2);
+  border-color: var(--nv-color-text-faint);
+  color: var(--nv-color-text);
+}
+.nv-launcher-filter-toggle-hasactive {
+  border-color: var(--nv-color-primary);
+  color: var(--nv-color-primary);
+  background: var(--nv-color-primary-alpha);
+}
+.nv-launcher-filter-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--nv-color-primary);
+  border-radius: var(--nv-radius-full);
+}
+.nv-launcher-filter-chevron {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.nv-launcher-chips-minimal {
+  gap: 6px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.nv-launcher-chips-minimal::-webkit-scrollbar { display: none; }
+.nv-launcher-chip-minimal {
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  border-color: transparent !important;
+  background: var(--nv-color-surface-2) !important;
+  color: var(--nv-color-text-muted) !important;
+  flex-shrink: 0;
+}
+.nv-launcher-chip-minimal:hover {
+  background: var(--nv-color-surface) !important;
+  border-color: var(--nv-color-border) !important;
+  color: var(--nv-color-text) !important;
+}
+.nv-launcher-chip-minimal.nv-launcher-chip-active {
+  background: var(--nv-color-text) !important;
+  color: var(--nv-color-surface) !important;
+  border-color: var(--nv-color-text) !important;
+}
+.nv-launcher-select-wrap-minimal {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  gap: 6px !important;
+}
+.nv-launcher-select-wrap-minimal .nv-launcher-select {
+  padding: 6px 8px;
+  background: var(--nv-color-surface-2);
+  border: 1px solid var(--nv-color-border);
+  border-radius: var(--nv-radius-full);
+}
+.nv-launcher-filters-expanded {
+  background: var(--nv-color-surface);
+  border: 1px solid var(--nv-color-border);
+  border-radius: var(--nv-radius-lg);
+  padding: 12px;
+  gap: 12px !important;
+  animation: nv-filters-in 0.16s ease;
+}
+@keyframes nv-filters-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.nv-launcher-section-minimal {
+  gap: 14px !important;
+}
+.nv-launcher-section-head-minimal {
+  gap: 8px !important;
+}
+.nv-launcher-section-head-minimal .nv-launcher-section-title {
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.07em !important;
+  color: var(--nv-color-text-faint) !important;
+}
+.nv-launcher-section-head-minimal .nv-launcher-section-count {
+  background: transparent !important;
+  border: 1px solid var(--nv-color-border);
+  color: var(--nv-color-text-faint) !important;
+  font-weight: 600 !important;
+}
+.nv-launcher-tile-foot-minimal {
+  border-top: none !important;
+  padding-top: 8px !important;
+  margin-top: 4px !important;
+  opacity: 0.75;
+}
+.nv-launcher-empty-minimal {
+  border: none !important;
+  background: transparent !important;
+  padding: 40px 16px !important;
+}
+.nv-launcher-footer-minimal {
+  border-top: none !important;
+  padding-top: 8px !important;
+  opacity: 0.7;
+  font-size: 11px !important;
+}
+.nv-launcher-clutterless .nv-launcher-tile {
+  border-color: color-mix(in srgb, var(--nv-color-border) 85%, transparent);
+  box-shadow: none;
+}
+.nv-launcher-clutterless .nv-launcher-tile:hover {
+  border-color: var(--nv-color-border);
+  box-shadow: var(--nv-shadow-sm);
+  transform: none;
+}
+.nv-launcher-clutterless .nv-launcher-tile-focused {
+  border-color: var(--nv-color-primary) !important;
+  box-shadow: 0 0 0 2px var(--nv-color-primary-alpha) !important;
+  transform: none !important;
+}
