@@ -377,14 +377,29 @@ const TILE_COLORS = [
   ["#ec4899", "#f472b6"],
   ["#14b8a6", "#2dd4bf"],
   ["#0f766e", "#14b8a6"],
+  ["#7c3aed", "#a78bfa"],
+  ["#db2777", "#f472b6"],
+  ["#059669", "#10b981"],
 ];
+
+const LAYER_BADGE: Record<string, string> = {
+  "L1 Communication": "M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z",
+  "L2 Content & Creation": "M12 20h9 M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z",
+  "L3 Storage & Intelligence": "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.27 6.96L12 12.01l8.73-5.05 M12 22.08V12",
+  "L4 Business Ops": "M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16 M2 10h20 M12 14v.01",
+  "L5 Leadership": "M3 3v18h18 M7 16l3-3 3 3 5-8 4 4",
+  "L6 Platform / Admin": "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16z M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 15a1.65 1.65 0 0 0-1-1.51V13a1.65 1.65 0 0 0 1-1.51 1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 11.44 6.8l.06.06A1.65 1.65 0 0 0 13.32 7.27a1.65 1.65 0 0 0 1-1.51V5a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51c.5.28 1.07.39 1.82.33l.06-.06A2 2 0 1 1 22 9.6l-.06.06A1.65 1.65 0 0 0 21.6 11.48a1.65 1.65 0 0 0 1 1.51V13a1.65 1.65 0 0 0-1 1.51 1.65 1.65 0 0 0 .8 1.49z",
+  "L0 Core": "M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z",
+};
 
 export function ModuleIcon({
   module,
   size = 40,
+  showLayerBadge = true,
 }: {
   module: N0vaModule;
   size?: number;
+  showLayerBadge?: boolean;
 }) {
   let hash = 0;
   for (const ch of module.id) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
@@ -396,6 +411,8 @@ export function ModuleIcon({
     .map((p) => p[0])
     .join("")
     .toUpperCase();
+  const badgePath = LAYER_BADGE[module.layer];
+  const badgeSize = Math.max(14, Math.round(size * 0.42));
   return (
     <span
       aria-hidden
@@ -406,9 +423,55 @@ export function ModuleIcon({
         borderRadius: Math.max(10, Math.round(size / 3.3)),
         fontSize: Math.round(size / 2.6),
         background: `linear-gradient(135deg, ${from}, ${to})`,
+        position: "relative",
+        overflow: "visible",
+        boxShadow: `inset 0 1px 0 rgba(255,255,255,0.22), 0 2px 8px color-mix(in srgb, ${from} 28%, transparent)`,
       }}
     >
-      {initials}
+      <span style={{ position: "relative", zIndex: 1, fontWeight: 800, letterSpacing: "0.02em" }}>{initials}</span>
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "inherit",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.18), transparent 55%)",
+          pointerEvents: "none",
+        }}
+      />
+      {showLayerBadge && badgePath && size >= 36 && (
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            right: -4,
+            bottom: -4,
+            width: badgeSize,
+            height: badgeSize,
+            borderRadius: 999,
+            background: "var(--nv-color-surface)",
+            border: "1.5px solid var(--nv-color-border)",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "var(--nv-shadow-sm)",
+            color: from,
+          }}
+        >
+          <svg
+            width={badgeSize * 0.62}
+            height={badgeSize * 0.62}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.9}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d={badgePath} />
+          </svg>
+        </span>
+      )}
     </span>
   );
 }
