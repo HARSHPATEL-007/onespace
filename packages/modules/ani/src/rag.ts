@@ -153,49 +153,232 @@ export async function retrieveRagContext(
     /* */
   }
 
-  // Cross-module context: also try to include mail-like docs if searchTerms hint
-  if (
-    searchTerms.some((t) =>
-      ["mail", "email", "inbox", "message"].includes(t),
-    )
-  ) {
-    try {
-      // Fallback: if prisma has no mail model, this will no-op; keep for future
-      const prismaAny = prisma as unknown as Record<
-        string,
-        { findMany: (a: unknown) => Promise<unknown[]> }
-      >;
-      if (prismaAny["mailMessage"]) {
-        const mails = (await prismaAny["mailMessage"].findMany({
-          where: {
-            workspaceId: workspace.workspaceId,
-            OR: searchTerms.map((term) => ({
-              subject: { contains: term, mode: "insensitive" as const },
-            })),
-          },
-          orderBy: { updatedAt: "desc" },
-          take: Math.ceil(fetchLimit / 2),
-        })) as Array<{ id: string; subject: string; body?: string; updatedAt: Date }>;
-        for (const m of mails) {
-          documents.push({
-            id: m.id,
-            title: m.subject,
-            content: m.body ?? "",
-            source: `mail:${m.id}`,
-            module: "mail",
-            score: _initialScore(
-              "mail",
-              m.updatedAt,
-              query,
-              m.subject,
-              m.body ?? "",
-            ),
-          });
-        }
+  // Cross-module: Mail — subject/body hybrid search (always attempt, not just mail hint)
+  try {
+    const prismaAny = prisma as unknown as Record<
+      string,
+      { findMany: (a: unknown) => Promise<unknown[]> }
+    >;
+    if (prismaAny["mailMessage"]) {
+      // Prefer subject OR body match to improve recall
+      const mails = (await prismaAny["mailMessage"].findMany({
+        where: {
+          workspaceId: workspace.workspaceId,
+          OR: searchTerms.flatMap((term) => [
+            { subject: { contains: term, mode: "insensitive" as const } },
+            { body: { contains: term, mode: "insensitive" as const } },
+          ]),
+        },
+        orderBy: { updatedAt: "desc" },
+        take: Math.ceil(fetchLimit / 2),
+      })) as Array<{ id: string; subject: string; body?: string; updatedAt: Date }>;
+      for (const m of mails) {
+        documents.push({
+          id: m.id,
+          title: m.subject || "(no subject)",
+          content: (m.body ?? "").slice(0, 600),
+          source: `mail:${m.id}`,
+          module: "mail",
+          score: _initialScore(
+            "mail",
+            m.updatedAt,
+            query,
+            m.subject,
+            m.body ?? "",
+          ),
+        });
       }
-    } catch {
-      /* optional */
     }
+  } catch {
+    /* optional */
+  }
+
+  // Cross-module: Chat — recent messages containing query terms (ChatMessage.body)
+  try {
+    const chatMessages = await prisma.chatMessage.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        OR: searchTerms.map((term) => ({
+          body: { contains: term, mode: "insensitive" as const },
+        })),
+      },
+      orderBy: { createdAt: "desc" },
+      take: Math.ceil(fetchLimit / 2),
+    });
+    for (const cm of chatMessages) {
+      documents.push({
+        id: cm.id,
+        title: `Chat: ${cm.authorName} in ${cm.channelId.slice(0, 8)}`,
+        content: cm.body.slice(0, 500),
+        source: `chat:${cm.id}`,
+        module: "chat",
+        score: _initialScore(
+          "chat",
+          cm.createdAt,
+          query,
+          cm.body.slice(0, 60),
+          cm.body,
+        ),
+      });
+    }
+  } catch {
+    /* chat may be empty */
+  }
+
+  // Cross-module: Contacts
+  try {
+    const contacts = await prisma.contact.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        OR: searchTerms.flatMap((term) => [
+          { firstName: { contains: term, mode: "insensitive" as const } },
+          { lastName: { contains: term, mode: "insensitive" as const } },
+          { company: { contains: term, mode: "insensitive" as const } },
+          { email: { contains: term, mode: "insensitive" as const } },
+        ]),
+      },
+      orderBy: { updatedAt: "desc" },
+      take: Math.ceil(fetchLimit / 2),
+    });
+    for (const c of contacts) {
+      const name = `${c.firstName} ${c.lastName ?? ""}`.trim();
+      documents.push({
+        id: c.id,
+        title: name + (c.company ? ` @ ${c.company}` : ""),
+        content: `${c.email ?? ""} ${c.notes ?? ""}`.trim().slice(0, 400),
+        source: `contact:${c.id}`,
+        module: "contacts",
+        score: _initialScore("contacts", c.updatedAt, query, name, c.email ?? ""),
+      });
+    }
+  } catch {
+    /* */
+  }
+
+  // Cross-module: CRM Deals
+  try {
+    const deals = await prisma.deal.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        OR: searchTerms.flatMap((term) => [
+          { title: { contains: term, mode: "insensitive" as const } },
+          { company: { contains: term, mode: "insensitive" as const } },
+        ]),
+      },
+      orderBy: { updatedAt: "desc" },
+      take: Math.ceil(fetchLimit / 2),
+    });
+    for (const d of deals) {
+      const valueStr = (d as unknown as { valueCents?: number }).valueCents
+        ? `$${(((d as unknown as { valueCents: number }).valueCents) / 100).toLocaleString()}`
+        : "";
+      documents.push({
+        id: d.id,
+        title: `Deal: ${d.title} (${d.stage ?? ""})`,
+        content: `${d.company ?? ""} — ${valueStr}`.trim().slice(0, 400),
+        source: `deal:${d.id}`,
+        module: "crm",
+        score: _initialScore("crm", d.updatedAt, query, d.title, d.company ?? ""),
+      });
+    }
+  } catch {
+    /* */
+  }
+
+  // Cross-module: Storage / Files (FileIndex extractedText)
+  try {
+    const prismaAny2 = prisma as unknown as Record<
+      string,
+      { findMany: (a: unknown) => Promise<unknown[]> }
+    >;
+    if (prismaAny2["fileIndex"]) {
+      const files = (await prismaAny2["fileIndex"].findMany({
+        where: {
+          workspaceId: workspace.workspaceId,
+          OR: searchTerms.flatMap((term) => [
+            { filename: { contains: term, mode: "insensitive" as const } },
+            { extractedText: { contains: term, mode: "insensitive" as const } },
+          ]),
+        },
+        orderBy: { updatedAt: "desc" },
+        take: Math.ceil(fetchLimit / 2),
+      })) as Array<{
+        objectId: string;
+        filename: string;
+        extractedText?: string | null;
+        updatedAt: Date;
+      }>;
+      for (const f of files) {
+        documents.push({
+          id: f.objectId,
+          title: f.filename,
+          content: (f.extractedText ?? "").slice(0, 600),
+          source: `file:${f.objectId}`,
+          module: "drive",
+          score: _initialScore(
+            "drive",
+            f.updatedAt,
+            query,
+            f.filename,
+            f.extractedText ?? "",
+          ),
+        });
+      }
+    } else {
+      // Fallback: StorageItem name search
+      const items = await prisma.storageItem.findMany({
+        where: {
+          workspaceId: workspace.workspaceId,
+          name: { contains: searchTerms[0] ?? "", mode: "insensitive" as const },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 3,
+      });
+      for (const it of items) {
+        documents.push({
+          id: it.id,
+          title: it.name,
+          content: `${it.mimeType} ${it.sizeBytes} bytes`,
+          source: `storage:${it.id}`,
+          module: "drive",
+          score: _initialScore("drive", it.updatedAt, query, it.name, ""),
+        });
+      }
+    }
+  } catch {
+    /* */
+  }
+
+  // Cross-module: Approvals
+  try {
+    const approvals = await prisma.approvalRequest.findMany({
+      where: {
+        workspaceId: workspace.workspaceId,
+        OR: searchTerms.map((term) => ({
+          rationale: { contains: term, mode: "insensitive" as const },
+        })),
+      },
+      orderBy: { createdAt: "desc" },
+      take: Math.ceil(fetchLimit / 2),
+    });
+    for (const a of approvals) {
+      documents.push({
+        id: a.id,
+        title: `Approval: ${a.requestType} — ${a.status}`,
+        content: (a.rationale ?? "").slice(0, 500),
+        source: `approval:${a.id}`,
+        module: "approvals",
+        score: _initialScore(
+          "approvals",
+          a.createdAt,
+          query,
+          a.requestType,
+          a.rationale ?? "",
+        ),
+      });
+    }
+  } catch {
+    /* */
   }
 
   if (documents.length === 0) {
@@ -293,6 +476,11 @@ function _initialScore(
     keep: 0.75,
     calendar: 0.72,
     mail: 0.78,
+    chat: 0.74,
+    contacts: 0.73,
+    crm: 0.77,
+    drive: 0.81,
+    approvals: 0.70,
   };
   let score = baseByModule[module] ?? 0.7;
   // Recency boost: <24h +0.08, <7d +0.04
@@ -315,6 +503,11 @@ function _expandQuery(query: string): string {
     doc: ["document", "file", "content", "draft", "proposal"],
     task: ["todo", "assignment", "work item", "action", "deliverable"],
     mail: ["email", "message", "inbox", "send", "thread"],
+    chat: ["channel", "message", "thread", "reply"],
+    contact: ["people", "attendee", "participant", "stakeholder"],
+    deal: ["crm", "opportunity", "pipeline", "quote", "sales"],
+    approval: ["workflow", "request", "signoff", "policy"],
+    file: ["drive", "storage", "attachment", "folder"],
     strategy: ["plan", "roadmap", "initiative", "objective", "okr"],
     revenue: ["sales", "income", "forecast", "pipeline", "arr"],
     product: ["feature", "release", "roadmap", "backlog", "spec"],

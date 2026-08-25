@@ -26,7 +26,7 @@ import { PersistentMemorySystem, createMemorySystem } from "./memory";
 import { ConsciousnessStack } from "./consciousness";
 import { XAIFramework, createXAI } from "./xai";
 import { AdaptiveLearningEngine, createAdaptiveEngine } from "./adaptive";
-import { CircuitBreaker, GracefulDegradation } from "./resilience";
+import { CircuitBreaker, GracefulDegradation, withRetry } from "./resilience";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import {
   DEFAULT_ANI_SETTINGS,
@@ -752,7 +752,34 @@ export class AniService {
       `sess_${Date.now()}`,
       { activeModule: "ani" },
     );
-    const ragContext = await retrieveRagContext(userContent, ctx);
+    // RAG with graceful degradation + retry
+    let ragContext: Awaited<ReturnType<typeof retrieveRagContext>>;
+    try {
+      const ragRes = await withRetry(() => retrieveRagContext(userContent, ctx), {
+        maxAttempts: 2,
+        baseDelayMs: 200,
+      });
+      if (ragRes.result) ragContext = ragRes.result;
+      else {
+        // fallback to degraded empty context
+        ragContext = {
+          query: userContent,
+          expandedQuery: userContent,
+          documents: [],
+          citations: [],
+          assembledPrompt: `Query: ${userContent}`,
+        };
+        await this.audit("ani.rag.degraded", conversation.id);
+      }
+    } catch {
+      ragContext = {
+        query: userContent,
+        expandedQuery: userContent,
+        documents: [],
+        citations: [],
+        assembledPrompt: `Query: ${userContent}`,
+      };
+    }
 
     if (!integration || !integration.config) {
       if (ragContext.documents.length > 0) {
@@ -787,6 +814,30 @@ export class AniService {
         ? "\n\n[USER PREFERENCES]\n" + adaptiveMods.join("\n")
         : "");
 
+    // Conversation compression for long threads (spec 5.3: Summary Compression 10:1)
+    let historyForPrompt = recentMessages;
+    let compressionNote: string | null = null;
+    if (recentMessages.length > 14) {
+      const keepLast = 10;
+      const older = recentMessages.slice(0, -keepLast);
+      const recent = recentMessages.slice(-keepLast);
+      // Lightweight compression: extract key facts/decisions/actions from older msgs
+      const olderSummary = this._compressOlderMessages(older);
+      compressionNote = `Compressed ${older.length} earlier messages into summary (${olderSummary.length} chars)`;
+      historyForPrompt = [
+        {
+          id: "compressed_summary",
+          conversationId: conversation.id,
+          workspaceId: conversation.workspaceId,
+          role: "system",
+          content: `[COMPRESSED HISTORY — ${older.length} messages summarized]\n${olderSummary}\n[End compressed — following are recent messages]`,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as unknown as AniMessage,
+        ...recent,
+      ];
+    }
+
     const messages: Array<{
       role: string;
       content: string;
@@ -794,7 +845,12 @@ export class AniService {
       tool_call_id?: string;
     }> = [{ role: "system", content: systemPrompt }];
 
-    for (const m of recentMessages) {
+    // Optional compression note as system reminder
+    if (compressionNote) {
+      messages.push({ role: "system", content: compressionNote });
+    }
+
+    for (const m of historyForPrompt) {
       messages.push({ role: m.role, content: m.content });
     }
 
@@ -818,13 +874,31 @@ export class AniService {
     let blockedByHITL = false;
 
     for (let turn = 0; turn < MAX_AGENTIC_TURNS; turn++) {
-      const llmResult = await callLlm(
-        provider,
-        model,
-        cfg,
-        messages,
-        availableTools,
-      );
+      let llmResult: Awaited<ReturnType<typeof callLlm>>;
+      try {
+        // Circuit breaker + retry for LLM (spec 5.2 latency target resilience)
+        llmResult = await this.circuitBreaker.execute(
+          async () => {
+            const res = await withRetry(
+              () => callLlm(provider, model, cfg, messages, availableTools),
+              { maxAttempts: 2, baseDelayMs: 400 },
+            );
+            if (res.result) return res.result;
+            // if retry returned null but not thrown, use fallback
+            return {
+              content: composeFallbackReply(userContent, conversation.title),
+            };
+          },
+          async () => ({
+            content: composeFallbackReply(userContent, conversation.title),
+          }),
+        );
+      } catch {
+        llmResult = {
+          content: composeFallbackReply(userContent, conversation.title),
+        };
+        await this.audit("ani.llm.circuit_open", conversation.id);
+      }
 
       if (llmResult.toolCalls && llmResult.toolCalls.length > 0) {
         // HITL gate: if requires human and tools include high-risk, defer instead of auto-executing
@@ -1029,6 +1103,23 @@ export class AniService {
             : 500,
       };
     }
+  }
+
+  private _compressOlderMessages(messages: AniMessage[]): string {
+    // Cheap 10:1 summary using heuristics: keep decisions, questions, actions
+    const lines: string[] = [];
+    for (const m of messages) {
+      const snippet = m.content.slice(0, 180).replace(/\n+/g, " ");
+      const isDecision = /(decided|chosen|agreed|approved|blocked|risk|deadline|todo|action item|next step)/i.test(m.content);
+      const prefix = m.role === "user" ? "User" : "ANI";
+      const marker = isDecision ? "★" : "·";
+      lines.push(`${marker} ${prefix}: ${snippet}${m.content.length > 180 ? "…" : ""}`);
+      if (lines.length >= 12) break;
+    }
+    if (messages.length > lines.length) {
+      lines.push(`… +${messages.length - lines.length} more messages omitted`);
+    }
+    return lines.join("\n");
   }
 
   private async _persistToolCalls(

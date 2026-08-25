@@ -324,6 +324,7 @@ export function AniChat({
   >([]);
   const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
   const [showOutcomePanel, setShowOutcomePanel] = useState(false);
+  const [feedbackVotes, setFeedbackVotes] = useState<Record<string, "up" | "down">>({});
   const [contextGraph, setContextGraph] = useState<ContextGraph3D | null>(null);
   const [showGraphPanel, setShowGraphPanel] = useState(false);
   const [showMeetingPanel, setShowMeetingPanel] = useState(false);
@@ -904,6 +905,73 @@ export function AniChat({
                 </div>
                 <div className="ani-msg-body">
                   <div className="ani-msg-content">{m.content}</div>
+                  {m.role === "assistant" && (
+                    <div className="ani-msg-feedback">
+                      <button
+                        className={`ani-feedback-btn ${feedbackVotes[m.id] === "up" ? "ani-feedback-active" : ""}`}
+                        onClick={() => {
+                          const next = feedbackVotes[m.id] === "up" ? null : "up";
+                          setFeedbackVotes((prev) => {
+                            const copy = { ...prev };
+                            if (next) copy[m.id] = next;
+                            else delete copy[m.id];
+                            return copy;
+                          });
+                          // adaptive signal — best-effort fire-and-forget
+                          void fetch("/api/ani/feedback", {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({
+                              messageId: m.id,
+                              conversationId: active.id,
+                              rating: next ? 1 : 0,
+                              content: m.content.slice(0, 200),
+                            }),
+                          }).catch(() => {});
+                        }}
+                        title="Helpful"
+                        aria-label="Mark helpful"
+                      >
+                        👍
+                      </button>
+                      <button
+                        className={`ani-feedback-btn ${feedbackVotes[m.id] === "down" ? "ani-feedback-active" : ""}`}
+                        onClick={() => {
+                          const next = feedbackVotes[m.id] === "down" ? null : "down";
+                          setFeedbackVotes((prev) => {
+                            const copy = { ...prev };
+                            if (next) copy[m.id] = next;
+                            else delete copy[m.id];
+                            return copy;
+                          });
+                          void fetch("/api/ani/feedback", {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({
+                              messageId: m.id,
+                              conversationId: active.id,
+                              rating: next ? -1 : 0,
+                              content: m.content.slice(0, 200),
+                            }),
+                          }).catch(() => {});
+                        }}
+                        title="Not helpful"
+                        aria-label="Mark not helpful"
+                      >
+                        👎
+                      </button>
+                      <button
+                        className="ani-feedback-btn"
+                        onClick={() => {
+                          navigator.clipboard?.writeText(m.content).catch(() => {});
+                        }}
+                        title="Copy response"
+                        aria-label="Copy"
+                      >
+                        ⧉
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

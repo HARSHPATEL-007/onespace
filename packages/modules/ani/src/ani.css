@@ -1610,3 +1610,41 @@
   font-size: 11px;
   margin-top: 6px;
 }
+
+/* ===== MESSAGE FEEDBACK (thumbs + copy) ===== */
+.ani-msg-feedback {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+.ani-msg:hover .ani-msg-feedback { opacity: 1; }
+.ani-feedback-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nv-color-border);
+  background: var(--nv-color-surface);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.12s ease;
+}
+.ani-feedback-btn:hover { background: var(--nv-color-surface-2); border-color: var(--nv-color-primary); transform: translateY(-1px); }
+.ani-feedback-active { background: var(--nv-color-primary-alpha) !important; border-color: var(--nv-color-primary) !important; color: var(--nv-color-primary); }
+.ani-feedback-btn:active { transform: scale(0.95); }
+
+/* ===== COMPRESSION NOTICE ===== */
+.ani-compression-note {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--nv-color-surface-2);
+  border: 1px dashed var(--nv-color-border);
+  font-size: 11px;
+  color: var(--nv-color-text-faint);
+  text-align: center;
+  margin-bottom: 8px;
+}
