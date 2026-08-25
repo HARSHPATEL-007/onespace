@@ -416,3 +416,26 @@ export type {
   DeceptionIndicator,
   SelfModelState,
 } from "./deception-self-model";
+export {
+  createMemoryFabric,
+  ContextBroker,
+  MemoryPolicyEngine,
+  FreshnessEngine,
+  ConflictResolver,
+  ContextCompiler,
+  RetrievalOrchestrator,
+  MemoryFormationPipeline,
+  MemoryEventBus,
+} from "./memory-fabric";
+export type {
+  CanonicalMemoryObject,
+  MemoryDomain,
+  MemoryType,
+  ContextManifest,
+  BrokerRequest,
+  MemoryEvent,
+  MemoryEventType,
+  FreshnessState,
+  ConflictObject,
+  RankingWeights,
+} from "./memory-fabric";

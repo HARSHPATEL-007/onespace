@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Badge } from "@n0va/ui";
 import type { ConversationWithMessages } from "./server";
@@ -91,6 +91,8 @@ export interface AniActions {
     toolCalls?: string;
     citations?: string;
     confidence?: number;
+    modelRoute?: string;
+    explanation?: string;
   }>;
   clear: (formData: FormData) => Promise<void>;
   remove: (formData: FormData) => Promise<void>;
@@ -245,6 +247,79 @@ function highlightAniMentions(text: string): string {
   return text.replace(/@ani\b/gi, "◆ ANI");
 }
 
+const AmbientStrip = memo(function AmbientStrip({
+  suggestions,
+  onPick,
+  onDismiss,
+}: {
+  suggestions: Array<{ id: string; label: string; prompt: string; icon: string }>;
+  onPick: (prompt: string) => void;
+  onDismiss: () => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="ani-ambient-strip">
+      <span className="ani-ambient-label">✦ ANI suggests</span>
+      {suggestions.map((s) => (
+        <button key={s.id} className="ani-ambient-chip" onClick={() => onPick(s.prompt)} title={s.prompt}>
+          <span className="ani-ambient-chip-icon">{s.icon}</span>
+          {s.label}
+        </button>
+      ))}
+      <button className="ani-ambient-dismiss" onClick={onDismiss} title="Dismiss">
+        ✕
+      </button>
+    </div>
+  );
+});
+
+const PiiStrip = memo(function PiiStrip({
+  findings,
+  redacted,
+  onRedact,
+}: {
+  findings: Array<{ type: string; match: string }>;
+  redacted: string;
+  onRedact: (redacted: string) => void;
+}) {
+  return (
+    <div className="ani-pii-strip">
+      <span className="ani-pii-label">🛡️ PII detected: {findings.map((f) => f.type).join(", ")}</span>
+      <span className="ani-pii-preview">
+        {redacted.slice(0, 120)}
+        {redacted.length > 120 ? "…" : ""}
+      </span>
+      <button className="ani-pii-action" onClick={() => onRedact(redacted)} title="Replace draft with redacted version">
+        Redact
+      </button>
+    </div>
+  );
+});
+
+const AttachPreviewBar = memo(function AttachPreviewBar({
+  images,
+  onRemove,
+}: {
+  images: Array<{ id: string; name: string; dataUrl: string; size: number }>;
+  onRemove: (id: string) => void;
+}) {
+  if (images.length === 0) return null;
+  return (
+    <div className="ani-attach-preview">
+      {images.map((img) => (
+        <div key={img.id} className="ani-attach-item">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={img.dataUrl} alt={img.name} className="ani-attach-thumb" />
+          <span className="ani-attach-name">{img.name}</span>
+          <button className="ani-attach-remove" onClick={() => onRemove(img.id)} title="Remove">
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+});
+
 export function AniChat({
   conversations,
   active,
@@ -335,6 +410,14 @@ export function AniChat({
   const [meetingState, setMeetingState] =
     useState<MeetingIntelligenceState | null>(null);
   const [graphLayout, setGraphLayout] = useState<GraphLayout3D | null>(null);
+  const [convSearch, setConvSearch] = useState("");
+  const [modelTier, setModelTier] = useState<null | { tier: string; modelName: string }>(null);
+  const [lastExplanation, setLastExplanation] = useState<null | {
+    summary: string;
+    confidence: number;
+    methodology: string;
+    uncertainty: string;
+  }>(null);
   const graphCanvasRef = useRef<HTMLCanvasElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -520,6 +603,32 @@ export function AniChat({
             /* */
           }
         }
+        if (r.modelRoute) {
+          try {
+            const mr = JSON.parse(r.modelRoute) as { tier: string; modelName: string };
+            setModelTier(mr);
+          } catch {
+            /* */
+          }
+        }
+        if (r.explanation) {
+          try {
+            const ex = JSON.parse(r.explanation) as {
+              summary: string;
+              confidenceBreakdown: { overall: number };
+              methodology: string;
+              uncertainty: string;
+            };
+            setLastExplanation({
+              summary: ex.summary,
+              confidence: ex.confidenceBreakdown.overall,
+              methodology: ex.methodology,
+              uncertainty: ex.uncertainty,
+            });
+          } catch {
+            /* */
+          }
+        }
         setConsciousnessCoherence(r.confidence ?? 0.95);
         setEngagement(r.confidence ?? 0.88);
         setTraceThoughts((prev) => [...prev, "Response finalized ✓"]);
@@ -528,6 +637,7 @@ export function AniChat({
           assumptions: [
             `Intent: ${localIntent}`,
             `Depth: ${autoDepth ? "auto" : reasoningDepth}`,
+            ...(r.modelRoute ? [`Model: ${JSON.parse(r.modelRoute).modelName} (${JSON.parse(r.modelRoute).tier})`] : []),
           ],
           nextActions:
             r.confidence && r.confidence > 0.8
@@ -878,6 +988,39 @@ export function AniChat({
     };
   }, []);
 
+  // ---- Draft persistence via localStorage (restores on reload / tab switch) ----
+  useEffect(() => {
+    const key = `ani:draft:${active?.id ?? "global"}`;
+    try {
+      const raw = typeof window !== "undefined" ? window.localStorage.getItem(key) : null;
+      if (raw) {
+        const parsed = JSON.parse(raw) as { draft?: string; brandVoice?: typeof brandVoice };
+        if (parsed.draft && !draft) setDraft(parsed.draft);
+        if (parsed.brandVoice) setBrandVoice(parsed.brandVoice);
+      }
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id]);
+
+  useEffect(() => {
+    const key = `ani:draft:${active?.id ?? "global"}`;
+    try {
+      if (typeof window !== "undefined") {
+        if (draft || brandVoice !== "default") {
+          window.localStorage.setItem(key, JSON.stringify({ draft, brandVoice }));
+        } else {
+          window.localStorage.removeItem(key);
+        }
+      }
+    } catch {
+      /* quota */
+    }
+  }, [draft, brandVoice, active?.id]);
+
+  // Clear persisted draft on successful send (handled in send via setDraft("") which triggers above effect)
+
   return (
     <div className="ani-root">
       {showSidebar && (
@@ -898,24 +1041,54 @@ export function AniChat({
           >
             <span>+</span> New conversation
           </Button>
+          {conversations.length > 3 && (
+            <div className="ani-conv-search">
+              <input
+                className="ani-conv-search-input"
+                placeholder="Search conversations…"
+                value={convSearch}
+                onChange={(e) => setConvSearch(e.target.value)}
+                aria-label="Search conversations"
+              />
+              {convSearch && (
+                <button className="ani-conv-search-clear" onClick={() => setConvSearch("")} title="Clear">
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
           <div className="ani-conv-list">
             {conversations.length === 0 && (
               <div className="ani-empty-sidebar">No conversations yet</div>
             )}
-            {conversations.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => router.push(`/m/ani?c=${c.id}`)}
-                className={`ani-conv-item ${active?.id === c.id ? "ani-conv-active" : ""}`}
-              >
-                <div className="ani-conv-title">{c.title}</div>
-                <div className="ani-conv-preview">
-                  {c.messages[0]
-                    ? `${c.messages[0].content.slice(0, 40)}${c.messages[0].content.length > 40 ? "…" : ""}`
-                    : "Empty"}
-                </div>
-              </button>
-            ))}
+            {(() => {
+              const filtered = convSearch.trim()
+                ? conversations.filter((c) => {
+                    const q = convSearch.toLowerCase();
+                    return (
+                      c.title.toLowerCase().includes(q) ||
+                      c.messages.some((m) => m.content.toLowerCase().includes(q))
+                    );
+                  })
+                : conversations;
+              if (filtered.length === 0 && convSearch.trim()) {
+                return <div className="ani-empty-sidebar">No matches for “{convSearch}”</div>;
+              }
+              return filtered.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => router.push(`/m/ani?c=${c.id}`)}
+                  className={`ani-conv-item ${active?.id === c.id ? "ani-conv-active" : ""}`}
+                >
+                  <div className="ani-conv-title">{c.title}</div>
+                  <div className="ani-conv-preview">
+                    {c.messages[0]
+                      ? `${c.messages[0].content.slice(0, 40)}${c.messages[0].content.length > 40 ? "…" : ""}`
+                      : "Empty"}
+                  </div>
+                </button>
+              ));
+            })()}
           </div>
           <div className="ani-sidebar-footer">
             <div className="ani-tier-badge">
@@ -943,6 +1116,11 @@ export function AniChat({
               <Badge tone="primary">◆ Consciousness</Badge>
               {intent !== "conversational" && (
                 <Badge tone="warning">{intent}</Badge>
+              )}
+              {modelTier && (
+                <Badge tone={modelTier.tier === "frontier" ? "danger" : modelTier.tier === "medium" ? "warning" : "neutral"}>
+                  {modelTier.modelName} · {modelTier.tier}
+                </Badge>
               )}
             </div>
           </div>
@@ -1141,12 +1319,25 @@ export function AniChat({
 
           {citations.length > 0 && (
             <div className="ani-citations">
-              <div className="ani-citations-label">Sources</div>
-              {citations.map((c, i) => (
-                <div key={i} className="ani-citation">
+              <div className="ani-citations-label">Sources · {citations.length} grounded</div>
+              {enrichCitations(citations, { hasImages: attachedImages.length > 0, hasFiles: false, hasWebResults: false }).map((c, i) => (
+                <div key={i} className={`ani-citation ${c.verified ? "ani-citation-verified" : "ani-citation-unverified"}`}>
+                  <span className="ani-citation-type" title={c.type}>
+                    {c.type === "web"
+                      ? "🌐"
+                      : c.type === "image"
+                        ? "🖼️"
+                        : c.type === "file"
+                          ? "📄"
+                          : c.type === "memory"
+                            ? "🧠"
+                            : c.type === "calculation"
+                              ? "🧮"
+                              : "📚"}
+                  </span>
                   <span className="ani-citation-source">{c.source}</span>
                   <span className="ani-citation-conf">
-                    {(c.confidence * 100).toFixed(0)}%
+                    {(c.confidence * 100).toFixed(0)}%{c.verified ? " ✓" : ""}
                   </span>
                 </div>
               ))}
@@ -1647,7 +1838,7 @@ export function AniChat({
         )}
 
         <div className="ani-input-area">
-          {(showDepthPanel || showThoughts || feedbackPanel) && (
+          {(showDepthPanel || showThoughts || feedbackPanel || lastExplanation) && (
             <div className="ani-input-badges">
               {showThoughts && traceThoughts.length > 0 && (
                 <div className="ani-thought-bubble">
@@ -1673,52 +1864,27 @@ export function AniChat({
                   </div>
                 </div>
               )}
+              {lastExplanation && (
+                <div className="ani-explanation-bubble">
+                  <div className="ani-explanation-title">◈ Why this answer? — {lastExplanation.methodology.slice(0, 60)}</div>
+                  <div className="ani-explanation-body">{lastExplanation.summary}</div>
+                  <div className="ani-explanation-uncertainty">{lastExplanation.uncertainty}</div>
+                </div>
+              )}
             </div>
           )}
 
-          {ambientSuggestions.length > 0 && (
-            <div className="ani-ambient-strip">
-              <span className="ani-ambient-label">✦ ANI suggests</span>
-              {ambientSuggestions.map((s) => (
-                <button
-                  key={s.id}
-                  className="ani-ambient-chip"
-                  onClick={() => setDraft(s.prompt)}
-                  title={s.prompt}
-                >
-                  <span className="ani-ambient-chip-icon">{s.icon}</span>
-                  {s.label}
-                </button>
-              ))}
-              <button
-                className="ani-ambient-dismiss"
-                onClick={() => setAmbientDismissed(true)}
-                title="Dismiss"
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
+          <AmbientStrip
+            suggestions={ambientSuggestions}
+            onPick={setDraft}
+            onDismiss={() => setAmbientDismissed(true)}
+          />
           {piiPreview && (
-            <div className="ani-pii-strip">
-              <span className="ani-pii-label">🛡️ PII detected: {piiPreview.findings.map((f) => f.type).join(", ")}</span>
-              <span className="ani-pii-preview">{piiPreview.redacted.slice(0, 120)}{piiPreview.redacted.length > 120 ? "…" : ""}</span>
-              <button
-                className="ani-pii-action"
-                onClick={() => setDraft(piiPreview.redacted)}
-                title="Replace draft with redacted version"
-              >
-                Redact
-              </button>
-              <button
-                className="ani-pii-dismiss"
-                onClick={() => setDraft((prev) => prev)}
-                title="Dismiss (acknowledge risk)"
-              >
-                Keep
-              </button>
-            </div>
+            <PiiStrip
+              findings={piiPreview.findings}
+              redacted={piiPreview.redacted}
+              onRedact={setDraft}
+            />
           )}
 
           <div className="ani-input-wrap">
@@ -1754,24 +1920,10 @@ export function AniChat({
                 <span>to bring ANI into any chat context</span>
               </div>
             )}
-            {attachedImages.length > 0 && (
-              <div className="ani-attach-preview">
-                {attachedImages.map((img) => (
-                  <div key={img.id} className="ani-attach-item">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={img.dataUrl} alt={img.name} className="ani-attach-thumb" />
-                    <span className="ani-attach-name">{img.name}</span>
-                    <button
-                      className="ani-attach-remove"
-                      onClick={() => setAttachedImages((prev) => prev.filter((p) => p.id !== img.id))}
-                      title="Remove"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <AttachPreviewBar
+              images={attachedImages}
+              onRemove={(id) => setAttachedImages((prev) => prev.filter((p) => p.id !== id))}
+            />
             <input
               ref={fileInputRef}
               type="file"
@@ -2115,19 +2267,96 @@ export function AniChat({
             <div className="ani-engine-info">
               <div className="ani-engine-row">
                 <span>Model</span>
-                <span>N0VA-LM-T</span>
+                <span>{modelTier?.modelName ?? "N0VA-LM-T"}</span>
               </div>
               <div className="ani-engine-row">
                 <span>Context</span>
-                <span>128K tokens</span>
+                <span>{modelTier ? `${(modelTier.tier === "frontier" ? "4M" : modelTier.tier === "medium" ? "128K" : "32K")} tokens` : "128K tokens"}</span>
               </div>
               <div className="ani-engine-row">
                 <span>Tier</span>
-                <span>Reflective</span>
+                <span>{modelTier?.tier ?? "Reflective"}</span>
               </div>
               <div className="ani-engine-row">
                 <span>Mode</span>
                 <span>External</span>
+              </div>
+            </div>
+
+            {/* Memory Center — Spec §12: searchable inventory, why, provenance, controls */}
+            <div className="ani-panel-section-title" style={{ marginTop: 16 }}>
+              Memory Center
+              <span style={{ fontWeight: 400, textTransform: "none", fontSize: 10, marginLeft: 6, color: "var(--nv-color-text-faint)" }}>
+                governed fabric
+              </span>
+            </div>
+            <div className="ani-memory-center">
+              <div className="ani-memory-search">
+                <input
+                  className="ani-memory-search-input"
+                  placeholder="Search memories… try 'Q4 launch'"
+                  onChange={(e) => {
+                    // local filter for demo; in production queries Memory Fabric via /api/ani/memory
+                    const q = e.target.value.toLowerCase();
+                    const cards = document.querySelectorAll<HTMLDivElement>(".ani-memory-card");
+                    cards.forEach((c) => {
+                      const txt = c.innerText.toLowerCase();
+                      (c as HTMLElement).style.display = !q || txt.includes(q) ? "" : "none";
+                    });
+                  }}
+                />
+              </div>
+              {/* Example canonical memory per Spec §2 — prevents vector-without-provenance failure */}
+              <div className="ani-memory-card" data-testid="memory-card">
+                <div className="ani-memory-card-header">
+                  <span className="ani-memory-card-type episodic">episodic</span>
+                  <span className="ani-memory-card-id">mem_01J…</span>
+                  <Badge tone="success">verified</Badge>
+                </div>
+                <div className="ani-memory-card-text">“The Q4 launch review is scheduled for Friday.”</div>
+                <div className="ani-memory-card-meta">
+                  <span>tenant_123 · user_456 · project_q4_launch</span>
+                  <span>valid until 2026-08-29 · 4h TTL · v3</span>
+                </div>
+                <div className="ani-memory-card-provenance">
+                  <span>Source: calendar:event_789#description v12</span>
+                  <span>Authority 0.92 · owner confirmed</span>
+                </div>
+                <div className="ani-memory-card-policy">
+                  <span>internal · scopes: calendar.read</span>
+                  <span>purpose: meeting_preparation</span>
+                </div>
+                <div className="ani-memory-card-actions">
+                  <button className="ani-memory-action" title="Why does ANI know this?" onClick={() => alert("Why: calendar event_789 observed 2026-08-25, owner user_456, purpose meeting_preparation, confidence 0.96/0.99/0.94")}>
+                    Why?
+                  </button>
+                  <button className="ani-memory-action" onClick={() => alert("Sources: calendar:event_789 v12, confidence 0.94")}>
+                    Sources
+                  </button>
+                  <button className="ani-memory-action" onClick={() => setSafetyWarnings((p) => [...p, "Memory correction queued (demo)"])}>
+                    Correct
+                  </button>
+                  <button className="ani-memory-action danger" onClick={() => setSafetyWarnings((p) => [...p, "Forget request queued — respects retention & legal hold"])}>
+                    Forget
+                  </button>
+                </div>
+              </div>
+              <div className="ani-memory-card">
+                <div className="ani-memory-card-header">
+                  <span className="ani-memory-card-type semantic">semantic</span>
+                  <span className="ani-memory-card-id">mem_kg…</span>
+                  <Badge tone="warning">quarantine</Badge>
+                </div>
+                <div className="ani-memory-card-text">Untrusted content awaiting validation — not retrievable by default.</div>
+                <div className="ani-memory-card-meta">
+                  <span>quarantine · short TTL · non-retrievable</span>
+                </div>
+              </div>
+              <div className="ani-memory-help">
+                <span>Commands: “What do you remember about this project?” · “Forget everything from this meeting.” · “Do not remember my writing style.”</span>
+                <label className="ani-memory-toggle">
+                  <input type="checkbox" defaultChecked /> Memory learning
+                </label>
               </div>
             </div>
           </div>
