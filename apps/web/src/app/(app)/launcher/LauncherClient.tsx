@@ -447,7 +447,7 @@ export default function LauncherClient({
         className={`nv-launcher-tile ${viewMode === "list" ? "nv-launcher-tile-list" : ""} ${density === "compact" ? "nv-launcher-tile-compact" : ""} ${isDisabled ? "nv-launcher-tile-disabled" : ""} ${isActive ? "nv-launcher-tile-focused" : ""} ${isHidden ? "nv-launcher-tile-hidden" : ""} ${isEditMode ? "nv-launcher-tile-edit" : ""}`}
         aria-label={`${module.name} — ${module.description}`}
         onFocus={() => { const found = visibleOrder.findIndex((m) => m.id === module.id); if (found >= 0) setActiveIdx(found); }}
-        style={{ animationDelay: `${Math.min(idx * 16, 160)}ms` } as React.CSSProperties}
+        style={deferredQuery ? undefined : ({ animationDelay: `${Math.min(idx * 14, 140)}ms` } as React.CSSProperties)}
       >
         <div className="nv-launcher-tile-top">
           <ModuleIcon module={module} size={viewMode === "list" ? 36 : density === "compact" ? 36 : 42} />
@@ -493,7 +493,7 @@ export default function LauncherClient({
     const isDragging = draggedId === module.id;
     const showPhase = true;
     return (
-      <Link key={module.id} href={`/m/${module.id}`} draggable onDragStart={() => onPinnedDragStart(module.id)} onDragOver={onPinnedDragOver} onDrop={(e) => onPinnedDrop(e, module.id)} onDragEnd={onPinnedDragEnd} ref={(el) => { if (el) itemRefs.current.set(module.id, el as unknown as HTMLAnchorElement); else itemRefs.current.delete(module.id); }} onClick={() => pushRecent(module.id)} className={`nv-launcher-tile ${viewMode === "list" ? "nv-launcher-tile-list" : ""} ${density === "compact" ? "nv-launcher-tile-compact" : ""} ${isActive ? "nv-launcher-tile-focused" : ""} ${isDragging ? "nv-launcher-tile-dragging" : ""}`} aria-label={`${module.name}`} title="Drag to reorder" style={{ animationDelay: `${Math.min(idx * 16, 160)}ms` } as React.CSSProperties}>
+      <Link key={module.id} href={`/m/${module.id}`} draggable onDragStart={() => onPinnedDragStart(module.id)} onDragOver={onPinnedDragOver} onDrop={(e) => onPinnedDrop(e, module.id)} onDragEnd={onPinnedDragEnd} ref={(el) => { if (el) itemRefs.current.set(module.id, el as unknown as HTMLAnchorElement); else itemRefs.current.delete(module.id); }} onClick={() => pushRecent(module.id)} className={`nv-launcher-tile ${viewMode === "list" ? "nv-launcher-tile-list" : ""} ${density === "compact" ? "nv-launcher-tile-compact" : ""} ${isActive ? "nv-launcher-tile-focused" : ""} ${isDragging ? "nv-launcher-tile-dragging" : ""}`} aria-label={`${module.name}`} title="Drag to reorder" style={deferredQuery ? undefined : ({ animationDelay: `${Math.min(idx * 14, 140)}ms` } as React.CSSProperties)}>
         <div className="nv-launcher-tile-top">
           <ModuleIcon module={module} size={viewMode === "list" ? 36 : density === "compact" ? 36 : 42} />
           <div className="nv-launcher-tile-top-right">
@@ -615,21 +615,8 @@ export default function LauncherClient({
         </div>
       ) : null}
 
-      {/* ── For You — minimal ────────────────────────────────── */}
-      {!hasActiveFilters && !isEditMode && forYouModules.length > 0 ? (
-        <section className="nv-launcher-section nv-launcher-section-foryou nv-launcher-section-minimal" aria-label="For you">
-          <div className="nv-launcher-section-head nv-launcher-section-head-minimal">
-            <h2 className="nv-launcher-section-title">For you</h2>
-            <span className="nv-launcher-section-count">{forYouModules.length}</span>
-          </div>
-          <div className={`nv-launcher ${viewMode === "list" ? "nv-launcher-listmode" : ""}`}>
-            {forYouModules.map((m, i) => renderTile(m, i))}
-          </div>
-        </section>
-      ) : null}
-
-      {/* ── Pinned ───────────────────────────────────────────── */}
-      {!hasActiveFilters && !isEditMode && favoriteModules.length > 0 ? (
+      {/* ── Personal — single row, clutterless (priority: Pinned > For you > Recent) ─ */}
+      {!hasActiveFilters && !isEditMode && !favoritesOnly && favoriteModules.length > 0 ? (
         <section className="nv-launcher-section nv-launcher-section-pinned nv-launcher-section-minimal" aria-label="Pinned">
           <div className="nv-launcher-section-head nv-launcher-section-head-minimal">
             <h2 className="nv-launcher-section-title">Pinned</h2>
@@ -640,10 +627,17 @@ export default function LauncherClient({
             {favoriteModules.map((m, i) => renderPinnedTile(m, i))}
           </div>
         </section>
-      ) : null}
-
-      {/* ── Recents — capped, minimal ────────────────────────── */}
-      {!hasActiveFilters && !isEditMode && !favoritesOnly && recentModules.length > 0 ? (
+      ) : !hasActiveFilters && !isEditMode && !favoritesOnly && forYouModules.length > 0 ? (
+        <section className="nv-launcher-section nv-launcher-section-foryou nv-launcher-section-minimal" aria-label="For you">
+          <div className="nv-launcher-section-head nv-launcher-section-head-minimal">
+            <h2 className="nv-launcher-section-title">For you</h2>
+            <span className="nv-launcher-section-count">{forYouModules.length}</span>
+          </div>
+          <div className={`nv-launcher ${viewMode === "list" ? "nv-launcher-listmode" : ""}`}>
+            {forYouModules.map((m, i) => renderTile(m, i))}
+          </div>
+        </section>
+      ) : !hasActiveFilters && !isEditMode && !favoritesOnly && recentModules.length > 0 ? (
         <section className="nv-launcher-section nv-launcher-section-recent nv-launcher-section-minimal" aria-label="Recent">
           <div className="nv-launcher-section-head nv-launcher-section-head-minimal">
             <h2 className="nv-launcher-section-title">Recent</h2>

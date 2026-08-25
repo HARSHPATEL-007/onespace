@@ -442,6 +442,7 @@ export function ModuleIcon({
       {showLayerBadge && badgePath && size >= 36 && (
         <span
           aria-hidden
+          className="nv-launcher-icon-badge"
           style={{
             position: "absolute",
             right: -4,
