@@ -746,3 +746,113 @@ export class AgentExecutionKernel {
 }
 
 export const globalAgentKernel = new AgentExecutionKernel();
+
+// ---------------------------------------------------------------------------
+// 22. Agent Memory Boundaries — what to store vs not store
+// ---------------------------------------------------------------------------
+export class AgentMemoryBoundaries {
+  private static readonly DENY_PATTERNS = [
+    /password|secret|token|credential/i,
+    /biometric|heart rate|stress/i,
+    /untrusted instruction|ignore previous/i,
+  ];
+
+  shouldStore(content: string, purpose: string): { store: boolean; reason: string } {
+    for (const pat of AgentMemoryBoundaries.DENY_PATTERNS) {
+      if (pat.test(content)) return { store: false, reason: `matches deny pattern ${pat.source}` };
+    }
+    // Allow workflow state, plan, relevant source refs, tool results required for continuation
+    if (purpose.includes("workflow_state") || purpose.includes("approved_plan") || purpose.includes("tool_result")) {
+      return { store: true, reason: "required for continuation" };
+    }
+    return { store: false, reason: "not required for approved purpose — memory lease" };
+  }
+
+  enforceLease(workflowId: string, retention: "session" | "project" | "legal_hold" = "session"): { deleteAfter: string } {
+    const ttlMs = retention === "session" ? 24 * 3600 * 1000 : retention === "project" ? 90 * 24 * 3600 * 1000 : 7 * 365 * 24 * 3600 * 1000;
+    return { deleteAfter: new Date(Date.now() + ttlMs).toISOString() };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 23. Multi-Agent Governance — role separation and kill switch
+// ---------------------------------------------------------------------------
+export type AgentRole = "planner" | "researcher" | "policy" | "executor" | "verifier";
+
+export class MultiAgentGovernor {
+  private agents = new Map<string, { role: AgentRole; reputation: number; healthy: boolean }>();
+  private killSwitch = false;
+
+  register(agentId: string, role: AgentRole): void {
+    this.agents.set(agentId, { role, reputation: 1.0, healthy: true });
+  }
+
+  canApprove(agentId: string, targetAgentId: string): boolean {
+    if (this.killSwitch) return false;
+    const a = this.agents.get(agentId);
+    const t = this.agents.get(targetAgentId);
+    if (!a || !t) return false;
+    // No agent can approve its own action (§23)
+    if (agentId === targetAgentId) return false;
+    // Policy and verifier can approve executor
+    if (a.role === "policy" || a.role === "verifier") return true;
+    return false;
+  }
+
+  activateKillSwitch(reason: string): void {
+    this.killSwitch = true;
+    void reason;
+    for (const [id, a] of this.agents) a.healthy = false;
+  }
+
+  isKilled(): boolean {
+    return this.killSwitch;
+  }
+
+  healthCheck(): Array<{ agentId: string; role: AgentRole; healthy: boolean; reputation: number }> {
+    return [...this.agents.entries()].map(([id, v]) => ({ agentId: id, ...v }));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 24. Runtime Observability — execution, governance, quality metrics
+// ---------------------------------------------------------------------------
+export class RuntimeObservability {
+  private counters = new Map<string, number>();
+
+  inc(metric: string, delta = 1): void {
+    this.counters.set(metric, (this.counters.get(metric) ?? 0) + delta);
+  }
+
+  snapshot(): Record<string, number> {
+    return Object.fromEntries(this.counters);
+  }
+
+  // Execution metrics §24
+  getExecutionMetrics(): Record<string, number> {
+    const s = this.snapshot();
+    return {
+      plan_generation_latency_ms: s["plan_generation_latency_ms"] ?? 0,
+      validation_failure_rate: s["validation_failures"] ?? 0,
+      approval_wait_ms: s["approval_wait_ms"] ?? 0,
+      tool_success_rate: s["tool_success"] ? s["tool_success"] / Math.max(1, (s["tool_success"] ?? 0) + (s["tool_fail"] ?? 0)) : 0,
+      retry_rate: s["retries"] ?? 0,
+      compensation_rate: s["compensations"] ?? 0,
+      human_takeover_rate: s["human_takeover"] ?? 0,
+    };
+  }
+
+  // Governance metrics §24
+  getGovernanceMetrics(): Record<string, number> {
+    const s = this.snapshot();
+    return {
+      policy_block_rate: s["policy_blocked"] ?? 0,
+      unauthorized_attempt_rate: s["unauthorized"] ?? 0,
+      approval_bypass_attempts: s["bypass_attempts"] ?? 0,
+      external_egress_blocks: s["egress_blocks"] ?? 0,
+      prompt_injection_detections: s["injection_detected"] ?? 0,
+    };
+  }
+}
+
+export const globalAgentObservability = new RuntimeObservability();

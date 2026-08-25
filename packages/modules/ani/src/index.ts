@@ -448,6 +448,7 @@ export { ProvenanceGraphBuilder, createProvenanceBuilder } from "./provenance-gr
 export type { ProvenanceNode, ProvenanceEdge, AnswerProvenanceGraph } from "./provenance-graph";
 export { QualityMetricsStore, globalQualityMetrics } from "./quality-metrics";
 export type { RetrievalMetrics, GovernanceMetrics, MemoryQualityMetrics, OperationalSLO } from "./quality-metrics";
+export * from "./authorization-retrieval";
 export { ResearchOrchestrator, globalResearchOrchestrator, DOMAIN_MODE_CONFIG } from "./research-orchestrator";
 export type {
   ResearchPlan,
@@ -462,7 +463,7 @@ export type {
   ResearchSnapshot,
   ResearchJob,
 } from "./research-orchestrator";
-export { AgentExecutionKernel, globalAgentKernel, ToolRegistry, RiskEngine, ApprovalPolicyEngine, CredentialBroker, CapabilityFirewall, Verifier } from "./agent-runtime";
+export { AgentExecutionKernel, globalAgentKernel, ToolRegistry, RiskEngine, ApprovalPolicyEngine, CredentialBroker, CapabilityFirewall, Verifier, AgentMemoryBoundaries, MultiAgentGovernor, RuntimeObservability, globalAgentObservability } from "./agent-runtime";
 export type {
   ToolContract,
   AgentPlan,
