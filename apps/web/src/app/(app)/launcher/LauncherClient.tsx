@@ -525,15 +525,16 @@ export default function LauncherClient({
           <p className="nv-launcher-subtitle">One system. Every module. <span className="nv-kbd">⌘K</span> to jump.</p>
         </div>
         <div className="nv-launcher-header-actions">
-          <div className="nv-launcher-viewtoggle" role="group" aria-label="View">
-            <button type="button" aria-pressed={viewMode === "grid"} className={`nv-launcher-viewbtn ${viewMode === "grid" ? "nv-launcher-viewbtn-active" : ""}`} onClick={() => withFluid(() => setViewMode("grid"))} title="Grid">⊞</button>
-            <button type="button" aria-pressed={viewMode === "list"} className={`nv-launcher-viewbtn ${viewMode === "list" ? "nv-launcher-viewbtn-active" : ""}`} onClick={() => withFluid(() => setViewMode("list"))} title="List">☰</button>
-          </div>
           <div ref={settingsRef} className="nv-launcher-settings-wrap">
             <button type="button" className={`nv-launcher-settings-btn ${settingsOpen ? "nv-launcher-settings-btn-active" : ""}`} onClick={() => withFluid(() => setSettingsOpen((v) => !v))} aria-label="Launcher settings" title="Settings">⋯</button>
             {settingsOpen ? (
               <div className="nv-launcher-settings-menu" role="menu">
-                <button role="menuitem" className={`nv-launcher-settings-item ${density === "compact" ? "nv-launcher-settings-item-active" : ""}`} onClick={() => withFluid(() => setDensity(density === "compact" ? "comfortable" : "compact"))}>◧ {density === "compact" ? "Comfortable" : "Compact"} density</button>
+                <div className="nv-launcher-settings-group">
+                  <button role="menuitem" className={`nv-launcher-settings-item ${viewMode === "grid" ? "nv-launcher-settings-item-active" : ""}`} onClick={() => withFluid(() => setViewMode("grid"))}>⊞ Grid view</button>
+                  <button role="menuitem" className={`nv-launcher-settings-item ${viewMode === "list" ? "nv-launcher-settings-item-active" : ""}`} onClick={() => withFluid(() => setViewMode("list"))}>☰ List view</button>
+                </div>
+                <div className="nv-launcher-settings-sep" />
+                <button role="menuitem" className={`nv-launcher-settings-item ${density === "compact" ? "nv-launcher-settings-item-active" : ""}`} onClick={() => withFluid(() => setDensity(density === "compact" ? "comfortable" : "compact"))}>◧ {density === "compact" ? "Comfortable" : "Compact"}</button>
                 <button role="menuitem" className={`nv-launcher-settings-item ${isEditMode ? "nv-launcher-settings-item-active" : ""}`} onClick={() => withFluid(() => { setIsEditMode((v) => !v); setSettingsOpen(false); })}>{isEditMode ? "✓ Exit edit" : "✎ Customize"}</button>
                 <button role="menuitem" className="nv-launcher-settings-item" onClick={() => withFluid(() => { clearFilters(); setSettingsOpen(false); })}>↺ Clear filters</button>
                 <div className="nv-launcher-settings-sep" />
@@ -546,9 +547,9 @@ export default function LauncherClient({
 
       {/* ── Search — hero, minimal meta ─────────────────────── */}
       <div className="nv-launcher-search-wrap">
-        <div className={`nv-launcher-search nv-launcher-search-minimal ${activeIdx >= 0 ? "nv-launcher-search-active" : ""}`}>
-          <span className="nv-launcher-search-icon" aria-hidden>⌕</span>
-          <input ref={searchRef} className="nv-launcher-search-input" placeholder="Search modules…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search modules" autoComplete="off" spellCheck={false} />
+        <div className={`nv-launcher-search nv-launcher-search-minimal ${activeIdx >= 0 ? "nv-launcher-search-active" : ""} ${isPending ? "nv-launcher-search-pending" : ""}`}>
+          <span className="nv-launcher-search-icon" aria-hidden>{isPending ? "⋯" : "⌕"}</span>
+          <input ref={searchRef} className="nv-launcher-search-input" placeholder="Search modules…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search modules" autoComplete="off" spellCheck={false} aria-busy={isPending} />
           {query ? (
             <button type="button" className="nv-launcher-search-clear" onClick={() => { setQuery(""); setActiveIdx(-1); searchRef.current?.focus(); }} aria-label="Clear">×</button>
           ) : (
@@ -561,31 +562,17 @@ export default function LauncherClient({
         </div>
       </div>
 
-      {/* ── Toolbar — progressive disclosure ─────────────────── */}
-      <div className="nv-launcher-toolbar">
+      {/* ── Toolbar — ultra-minimal, progressive disclosure ─── */}
+      <div className="nv-launcher-toolbar nv-launcher-toolbar-clutterless">
         <div className="nv-launcher-toolbar-left">
           <button type="button" className={`nv-launcher-filter-toggle ${filtersExpanded ? "nv-launcher-filter-toggle-active" : ""} ${activeFilterCount>0 ? "nv-launcher-filter-toggle-hasactive" : ""}`} onClick={() => withFluid(() => setFiltersExpanded((v) => !v))} aria-expanded={filtersExpanded}>
             Filters {activeFilterCount>0 ? <span className="nv-launcher-filter-badge">{activeFilterCount}</span> : null} <span className="nv-launcher-filter-chevron">{filtersExpanded ? "▴" : "▾"}</span>
           </button>
-          {/* minimal layer chips — always visible but muted, no counts */}
-          <div className="nv-launcher-chips nv-launcher-chips-minimal" role="group" aria-label="Layer">
-            <button type="button" className={`nv-launcher-chip nv-launcher-chip-minimal ${selectedLayer === "all" ? "nv-launcher-chip-active" : ""}`} onClick={() => withFluid(() => startTransition(() => setSelectedLayer("all")))}>All</button>
-            {N0VA_LAYERS.filter((l) => (layerCounts[l] ?? 0) > 0 || showDisabled).slice(0, 6).map((layer) => (
-              <button key={layer} type="button" className={`nv-launcher-chip nv-launcher-chip-minimal ${selectedLayer === layer ? "nv-launcher-chip-active" : ""}`} onClick={() => withFluid(() => startTransition(() => setSelectedLayer(layer as N0vaLayer)))} title={layer}>
-                {layer.replace(/^L\d+\s*/, "").split(" ")[0]}
-              </button>
-            ))}
-          </div>
+          {filtersExpanded ? null : <span className="nv-launcher-toolbar-hint">{activeFilterCount>0 ? `${filtered.length} matches` : "All layers · Smart sort"}</span>}
         </div>
         <div className="nv-launcher-toolbar-right">
-          <label className="nv-launcher-select-wrap nv-launcher-select-wrap-minimal" title="Sort">
-            <select className="nv-launcher-select" value={sortBy} onChange={(e) => withFluid(() => startTransition(() => setSortBy(e.target.value as typeof sortBy)))} aria-label="Sort">
-              <option value="default">Smart</option>
-              <option value="alpha">A–Z</option>
-              <option value="recent">Recent</option>
-              <option value="frequent">Frequent</option>
-            </select>
-          </label>
+          {/* clutterless: sort now lives inside expanded filters; minimal hint only */}
+          <span className="nv-launcher-toolbar-right-hint">{isPending ? "Updating…" : ""}</span>
         </div>
       </div>
 
@@ -608,6 +595,7 @@ export default function LauncherClient({
           </div>
           <div className="nv-launcher-controls">
             <label className="nv-launcher-select-wrap" title="Phase"><span className="nv-launcher-select-label">Phase</span><select className="nv-launcher-select" value={phaseFilter} onChange={(e) => withFluid(() => startTransition(() => setPhaseFilter(e.target.value)))} aria-label="Phase"><option value="all">All phases</option><option value="0">Foundation</option><option value="1">Core</option><option value="2">Phase 2</option><option value="3">Phase 3</option><option value="4">Phase 4</option><option value="5">Phase 5</option></select></label>
+            <label className="nv-launcher-select-wrap" title="Sort"><span className="nv-launcher-select-label">Sort</span><select className="nv-launcher-select" value={sortBy} onChange={(e) => withFluid(() => startTransition(() => setSortBy(e.target.value as typeof sortBy)))} aria-label="Sort"><option value="default">Smart</option><option value="alpha">A–Z</option><option value="recent">Recent</option><option value="frequent">Frequent</option></select></label>
             <button type="button" className={`nv-launcher-toggle ${favoritesOnly ? "nv-launcher-toggle-active" : ""}`} onClick={() => withFluid(() => startTransition(() => setFavoritesOnly((v) => !v)))} aria-pressed={favoritesOnly}>★ Pinned only</button>
             <label className={`nv-launcher-toggle ${showHidden ? "nv-launcher-toggle-active" : ""}`}><input type="checkbox" checked={showHidden} onChange={(e) => withFluid(() => startTransition(() => setShowHidden(e.target.checked)))} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} aria-label="Show hidden" />👁 Hidden</label>
             <label className={`nv-launcher-toggle ${showDisabled ? "nv-launcher-toggle-active" : ""}`}><input type="checkbox" checked={showDisabled} onChange={(e) => withFluid(() => startTransition(() => setShowDisabled(e.target.checked)))} style={{ position: "absolute", opacity: 0, pointerEvents: "none" }} aria-label="Show disabled" />Show disabled</label>
