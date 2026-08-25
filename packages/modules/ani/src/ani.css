@@ -1648,3 +1648,97 @@
   text-align: center;
   margin-bottom: 8px;
 }
+
+/* ===== AMBIENT SUGGESTIONS (spec 6.1 Ambient Interface) ===== */
+.ani-ambient-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 auto 8px;
+  max-width: 800px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--nv-color-primary-alpha), rgba(139,92,246,0.06));
+  border: 1px solid var(--nv-color-primary);
+  font-size: 11px;
+  animation: ani-msg-in 0.2s ease;
+}
+.ani-ambient-label { font-weight: 700; color: var(--nv-color-primary); white-space: nowrap; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+.ani-ambient-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--nv-color-border);
+  background: var(--nv-color-bg);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+.ani-ambient-chip:hover { border-color: var(--nv-color-primary); background: var(--nv-color-primary-alpha); transform: translateY(-1px); }
+.ani-ambient-chip-icon { font-size: 10px; }
+.ani-ambient-dismiss { background: none; border: none; color: var(--nv-color-text-faint); cursor: pointer; padding: 4px; margin-left: auto; }
+
+/* ===== ATTACH PREVIEW (multi-modal) ===== */
+.ani-attach-preview {
+  display: flex;
+  gap: 8px;
+  margin: 0 auto 8px;
+  max-width: 800px;
+  flex-wrap: wrap;
+}
+.ani-attach-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--nv-color-surface);
+  border: 1px solid var(--nv-color-border);
+}
+.ani-attach-thumb { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; border: 1px solid var(--nv-color-border); }
+.ani-attach-name { font-size: 11px; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ani-attach-remove { background: none; border: none; color: var(--nv-color-text-faint); cursor: pointer; padding: 2px 4px; }
+.ani-attach-remove:hover { color: var(--nv-color-danger); }
+.ani-attach-btn {
+  width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--nv-color-border); background: transparent;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.12s ease;
+}
+.ani-attach-btn:hover:not(:disabled) { background: var(--nv-color-surface-2); border-color: var(--nv-color-primary); }
+.ani-attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ===== PII STRIP (spec 4.2 Sanitization) ===== */
+.ani-pii-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 8px;
+  max-width: 800px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--nv-color-danger-alpha);
+  border: 1px solid var(--nv-color-danger);
+  font-size: 11px;
+  animation: ani-msg-in 0.2s ease;
+}
+.ani-pii-label { font-weight: 700; color: var(--nv-color-danger); white-space: nowrap; }
+.ani-pii-preview { flex: 1; color: var(--nv-color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--nv-font-mono); font-size: 10px; }
+.ani-pii-action {
+  padding: 4px 10px; border-radius: 6px; border: none; background: var(--nv-color-danger); color: #fff; cursor: pointer; font-weight: 600; font-size: 11px;
+}
+.ani-pii-action:hover { background: #dc2626; }
+.ani-pii-dismiss { background: none; border: 1px solid var(--nv-color-border); padding: 4px 8px; border-radius: 6px; cursor: pointer; font-size: 11px; }
+
+/* ===== BRAND VOICE SELECT ===== */
+.ani-brand-select {
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--nv-color-border);
+  background: var(--nv-color-surface);
+  font-size: 11px;
+  cursor: pointer;
+}
+.ani-brand-select:focus { outline: none; border-color: var(--nv-color-primary); }

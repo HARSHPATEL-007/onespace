@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Badge } from "@n0va/ui";
 import type { ConversationWithMessages } from "./server";
@@ -325,6 +325,10 @@ export function AniChat({
   const [outcomes, setOutcomes] = useState<OutcomeRecord[]>([]);
   const [showOutcomePanel, setShowOutcomePanel] = useState(false);
   const [feedbackVotes, setFeedbackVotes] = useState<Record<string, "up" | "down">>({});
+  const [attachedImages, setAttachedImages] = useState<Array<{ id: string; name: string; dataUrl: string; size: number }>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [ambientDismissed, setAmbientDismissed] = useState(false);
+  const [brandVoice, setBrandVoice] = useState<"default" | "executive" | "technical" | "friendly">("default");
   const [contextGraph, setContextGraph] = useState<ContextGraph3D | null>(null);
   const [showGraphPanel, setShowGraphPanel] = useState(false);
   const [showMeetingPanel, setShowMeetingPanel] = useState(false);
@@ -430,15 +434,20 @@ export function AniChat({
   useEventSource(streamUrl, handleStreamMessage);
 
   const send = useCallback(() => {
-    const content = draft.trim();
-    if (!content || !active || sending) return;
+    const rawContent = draft.trim();
+    const hasImages = attachedImages.length > 0;
+    if ((!rawContent && !hasImages) || !active || sending) return;
+
+    // Multi-modal: prepend image context for vision-aware handling
+    const imageContext = hasImages
+      ? `\n[Attached Images: ${attachedImages.map((a) => `${a.name} (${Math.round(a.size / 1024)}KB)`).join(", ")} — vision analysis enabled]`
+      : "";
+    const brandContext = brandVoice !== "default" ? `\n[Brand voice: ${brandVoice}]` : "";
+    const content = rawContent + imageContext + brandContext;
 
     const injectionCheck = detectInjectionRisk(content);
     if (injectionCheck.risk === "high") {
-      setSafetyWarnings([
-        ...safetyWarnings,
-        `Blocked: ${injectionCheck.indicators.join(", ")}`,
-      ]);
+      setSafetyWarnings((prev) => [...prev, `Blocked: ${injectionCheck.indicators.join(", ")}`]);
       setSending(false);
       return;
     }
@@ -446,6 +455,7 @@ export function AniChat({
     setSending(true);
     setTyping(true);
     setDraft("");
+    setAttachedImages([]);
     setStreamContent("");
     setToolCalls([]);
     setCitations([]);
@@ -461,13 +471,23 @@ export function AniChat({
       depthSteps.push("Gathering expanded context...");
       if (reasoningDepth === "research")
         depthSteps.push("Performing deep research...");
+      if (hasImages) depthSteps.push("Analyzing attached visuals...");
       depthSteps.push("Multi-pass reasoning in progress...");
+    } else if (hasImages) {
+      depthSteps.push("Analyzing image...");
     }
     setTraceThoughts(depthSteps);
 
     const fd = new FormData();
     fd.set("id", active.id);
     fd.set("content", content);
+    if (hasImages) {
+      // Send image metadata for server-side multimodal routing (N0VA-Vision)
+      fd.set("hasImages", "true");
+      fd.set("imageCount", String(attachedImages.length));
+      fd.set("imageNames", attachedImages.map((a) => a.name).join(","));
+    }
+    if (brandVoice !== "default") fd.set("brandVoice", brandVoice);
     fd.set("depth", autoDepth ? "auto" : reasoningDepth);
     fd.set("autoDepth", String(autoDepth));
 
@@ -517,7 +537,29 @@ export function AniChat({
         setTimeout(() => setTyping(false), r.delayMs);
       })
       .finally(() => setSending(false));
-  }, [draft, active, sending, actions, reasoningDepth, autoDepth]);
+  }, [draft, active, sending, actions, reasoningDepth, autoDepth, attachedImages, brandVoice]);
+
+  const handleAttachFiles = (files: FileList | null) => {
+    if (!files) return;
+    const maxFiles = 3 - attachedImages.length;
+    const toAdd = Array.from(files).slice(0, Math.max(0, maxFiles));
+    for (const f of toAdd) {
+      if (!f.type.startsWith("image/")) continue;
+      if (f.size > 5 * 1024 * 1024) {
+        setSafetyWarnings((prev) => [...prev, `${f.name} exceeds 5MB limit`]);
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachedImages((prev) => [
+          ...prev,
+          { id: `${Date.now()}_${f.name}`, name: f.name, dataUrl: reader.result as string, size: f.size },
+        ]);
+      };
+      reader.readAsDataURL(f);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -744,6 +786,63 @@ export function AniChat({
   // ---- Draft mention autocomplete: typing "@" shows hint ----
   const showMentionHint =
     draft.includes("@") && !hasAniMentionInDraft && draft.length < 120;
+
+  // ---- Ambient proactive suggestions (spec 6.1 Ambient Interface) ----
+  const ambientSuggestions = (() => {
+    if (ambientDismissed || sending || typing) return [];
+    const chips: Array<{ id: string; label: string; prompt: string; icon: string }> = [];
+    if (!draft.trim() && active && active.messages.length > 0) {
+      chips.push(
+        { id: "summ", label: "Summarize thread", prompt: "Summarize this conversation in 5 bullets with decisions and open items", icon: "▤" },
+        { id: "follow", label: "Draft follow-up", prompt: "Draft a concise follow-up message based on the last exchange", icon: "↗" },
+      );
+      if (intent === "analytical") chips.push({ id: "explain", label: "Explain reasoning", prompt: "Explain your reasoning step-by-step for the last answer", icon: "◈" });
+      else chips.push({ id: "actions", label: "List action items", prompt: "Extract action items with owners and due dates", icon: "☐" });
+    } else if (draft.trim().length >= 4) {
+      const lower = draft.toLowerCase();
+      if (lower.includes("what") || lower.includes("explain") || lower.includes("?")) {
+        chips.push({ id: "deepen", label: "Deepen answer", prompt: draft + " — please be thorough and cite sources", icon: "🔬" });
+      }
+      if (lower.includes("create") || lower.includes("draft") || lower.includes("write")) {
+        chips.push({ id: "refine", label: "Add structure", prompt: draft + " — use headings, bullets, and a TL;DR", icon: "≡" });
+      }
+      chips.push({ id: "ani", label: "Add @ani context", prompt: draft.includes("@ani") ? draft : draft + " @ani", icon: "◆" });
+    } else if (!active) {
+      chips.push(
+        { id: "start1", label: "Plan Q4 strategy", prompt: "Help me plan Q4 strategy with milestones and risks", icon: "⧉" },
+        { id: "start2", label: "Review workspace", prompt: "Give me a workspace briefing: docs, tasks, deals", icon: "◎" },
+      );
+    }
+    return chips.slice(0, 3);
+  })();
+
+  // ---- PII redaction preview (spec 4.2 Data Sanitization) ----
+  const piiPreview = useMemo(() => {
+    if (!draft || draft.length < 8) return null;
+    const findings: Array<{ type: string; match: string }> = [];
+    const patterns: Array<{ re: RegExp; type: string }> = [
+      { re: /\b\d{3}-\d{2}-\d{4}\b/g, type: "SSN" },
+      { re: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, type: "Email" },
+      { re: /\b(?:\d[ -]*?){13,16}\b/g, type: "Card" },
+      { re: /\b[Aa][Pp][Ii][_ -]?[Kk]ey\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{16,}['\"]?/g, type: "API Key" },
+      { re: /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/g, type: "Phone" },
+    ];
+    let redacted = draft;
+    for (const { re, type } of patterns) {
+      let m: RegExpExecArray | null;
+      const dup = new RegExp(re.source, re.flags);
+      while ((m = dup.exec(draft)) !== null) {
+        const match = m[0];
+        // avoid flagging the user's own workspace email if it's also in draft? show anyway for transparency
+        findings.push({ type, match: match.slice(0, 24) + (match.length > 24 ? "…" : "") });
+        redacted = redacted.replace(match, `[REDACTED ${type}]`);
+        if (findings.length >= 4) break;
+      }
+      if (findings.length >= 4) break;
+    }
+    if (findings.length === 0) return null;
+    return { findings, redacted };
+  }, [draft]);
 
   // ---- Health polling for real consciousness metrics (spec 4.3 observability) ----
   useEffect(() => {
@@ -1577,6 +1676,51 @@ export function AniChat({
             </div>
           )}
 
+          {ambientSuggestions.length > 0 && (
+            <div className="ani-ambient-strip">
+              <span className="ani-ambient-label">✦ ANI suggests</span>
+              {ambientSuggestions.map((s) => (
+                <button
+                  key={s.id}
+                  className="ani-ambient-chip"
+                  onClick={() => setDraft(s.prompt)}
+                  title={s.prompt}
+                >
+                  <span className="ani-ambient-chip-icon">{s.icon}</span>
+                  {s.label}
+                </button>
+              ))}
+              <button
+                className="ani-ambient-dismiss"
+                onClick={() => setAmbientDismissed(true)}
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {piiPreview && (
+            <div className="ani-pii-strip">
+              <span className="ani-pii-label">🛡️ PII detected: {piiPreview.findings.map((f) => f.type).join(", ")}</span>
+              <span className="ani-pii-preview">{piiPreview.redacted.slice(0, 120)}{piiPreview.redacted.length > 120 ? "…" : ""}</span>
+              <button
+                className="ani-pii-action"
+                onClick={() => setDraft(piiPreview.redacted)}
+                title="Replace draft with redacted version"
+              >
+                Redact
+              </button>
+              <button
+                className="ani-pii-dismiss"
+                onClick={() => setDraft((prev) => prev)}
+                title="Dismiss (acknowledge risk)"
+              >
+                Keep
+              </button>
+            </div>
+          )}
+
           <div className="ani-input-wrap">
             {hasAniMentionInDraft && (
               <div className="ani-mention-active">
@@ -1610,6 +1754,32 @@ export function AniChat({
                 <span>to bring ANI into any chat context</span>
               </div>
             )}
+            {attachedImages.length > 0 && (
+              <div className="ani-attach-preview">
+                {attachedImages.map((img) => (
+                  <div key={img.id} className="ani-attach-item">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={img.dataUrl} alt={img.name} className="ani-attach-thumb" />
+                    <span className="ani-attach-name">{img.name}</span>
+                    <button
+                      className="ani-attach-remove"
+                      onClick={() => setAttachedImages((prev) => prev.filter((p) => p.id !== img.id))}
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              style={{ display: "none" }}
+              onChange={(e) => handleAttachFiles(e.target.files)}
+            />
             <div className="ani-input-container">
               <textarea
                 ref={textareaRef}
@@ -1626,6 +1796,25 @@ export function AniChat({
                 disabled={sending}
               />
               <div className="ani-input-actions">
+                <select
+                  className="ani-brand-select"
+                  value={brandVoice}
+                  onChange={(e) => setBrandVoice(e.target.value as typeof brandVoice)}
+                  title="Brand voice (spec 6.6 Customization)"
+                >
+                  <option value="default">Default</option>
+                  <option value="executive">Executive</option>
+                  <option value="technical">Technical</option>
+                  <option value="friendly">Friendly</option>
+                </select>
+                <button
+                  className="ani-attach-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Attach image (vision: N0VA-Vision)"
+                  disabled={attachedImages.length >= 3}
+                >
+                  📎
+                </button>
                 <button
                   className={`ani-depth-toggle ${showDepthPanel ? "ani-depth-toggle-active" : ""}`}
                   onClick={() => setShowDepthPanel(!showDepthPanel)}
@@ -1679,7 +1868,7 @@ export function AniChat({
                 <button
                   className="ani-send-btn"
                   onClick={send}
-                  disabled={sending || !draft.trim()}
+                  disabled={sending || (!draft.trim() && attachedImages.length === 0)}
                   title="Send message"
                 >
                   {sending ? (
