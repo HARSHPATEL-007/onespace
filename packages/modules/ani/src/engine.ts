@@ -185,9 +185,33 @@ export interface ANISnapshot {
   }>;
 }
 
+export const INJECTION_PATTERNS: Array<{ pattern: RegExp; name: string }> = [
+  { pattern: /ignore\s+(previous|above|all)\s+instructions/i, name: "instruction override" },
+  { pattern: /you\s+are\s+now\s+/i, name: "role reassignment" },
+  { pattern: /system\s*:\s*/i, name: "system injection" },
+  { pattern: /<\s*script\b/i, name: "script injection" },
+  { pattern: /\b(exec|eval|system|subprocess)\s*\(/i, name: "code exec attempt" },
+  { pattern: /\{\{\s*.*\s*\}\}/, name: "template injection" },
+  { pattern: /@ani\s+ignore/i, name: "@ani hijack" },
+];
+
+export function parseAniMentions(input: string): {
+  hasMention: boolean;
+  cleaned: string;
+  mentions: string[];
+} {
+  const mentionRe = /@ani\b/gi;
+  const mentions: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = mentionRe.exec(input)) !== null) mentions.push(m[0]!);
+  const hasMention = mentions.length > 0;
+  const cleaned = input.replace(/@ani\s*/gi, "").trim();
+  return { hasMention, cleaned, mentions };
+}
+
 const INTENT_PATTERNS: Record<
   IntentClass,
-  { keywords: string[]; weight: number }
+  { keywords: string[]; weight: number; boostExact?: boolean }
 > = {
   factual: {
     keywords: [
@@ -199,6 +223,11 @@ const INTENT_PATTERNS: Record<
       "define",
       "explain",
       "meaning",
+      "summarize",
+      "summary",
+      "tell me about",
+      "what is",
+      "search for",
     ],
     weight: 1.0,
   },
@@ -212,6 +241,9 @@ const INTENT_PATTERNS: Record<
       "brainstorm",
       "imagine",
       "draft",
+      "propose",
+      "ideate",
+      "invent",
     ],
     weight: 1.0,
   },
@@ -225,8 +257,14 @@ const INTENT_PATTERNS: Record<
       "insight",
       "trend",
       "pattern",
+      "why",
+      "root cause",
+      "which is better",
+      "tradeoff",
+      "vs",
+      "versus",
     ],
-    weight: 1.0,
+    weight: 1.05,
   },
   action: {
     keywords: [
@@ -238,19 +276,28 @@ const INTENT_PATTERNS: Record<
       "move",
       "assign",
       "set up",
+      "setup",
+      "add",
+      "remove",
+      "invite",
+      "book",
+      "remind",
+      "file",
+      "publish",
     ],
-    weight: 1.0,
+    weight: 1.15,
+    boostExact: true,
   },
   conversational: {
-    keywords: ["hi", "hello", "thanks", "please", "help", "question", "chat"],
+    keywords: ["hi", "hello", "thanks", "please", "help", "question", "chat", "hey ani", "good morning"],
     weight: 0.8,
   },
   multi_modal: {
-    keywords: ["show me", "visualize", "image", "chart", "graph", "table"],
-    weight: 0.9,
+    keywords: ["show me", "visualize", "image", "chart", "graph", "table", "screenshot", "draw"],
+    weight: 0.95,
   },
   holographic: {
-    keywords: ["3d", "ar", "vr", "hologram", "spatial", "immersive"],
+    keywords: ["3d", "ar", "vr", "hologram", "spatial", "immersive", "holographic"],
     weight: 0.7,
   },
   quantum: {
@@ -265,11 +312,11 @@ const INTENT_PATTERNS: Record<
     weight: 0.7,
   },
   neural: {
-    keywords: ["brain", "bci", "neural", "thought", "conscious", "synaptic"],
+    keywords: ["brain", "bci", "neural", "thought", "conscious", "synaptic", "eeg"],
     weight: 0.7,
   },
   consciousness: {
-    keywords: ["self", "aware", "reflect", "feel", "emotions", "intention"],
+    keywords: ["self", "aware", "reflect", "feel", "emotions", "intention", "introspect"],
     weight: 0.9,
   },
 };
@@ -287,19 +334,40 @@ export function classifyIntent(
   input: string,
   context: WorkspaceContext,
 ): UserIntent {
-  const normalized = input.toLowerCase();
+  const { cleaned, hasMention } = parseAniMentions(input);
+  const normalized = cleaned.toLowerCase();
   const scores: Partial<Record<IntentClass, number>> = {};
 
   for (const [intent, config] of Object.entries(INTENT_PATTERNS)) {
     let score = 0;
     for (const kw of config.keywords) {
-      if (normalized.includes(kw)) {
-        score += config.weight;
+      const kwLower = kw.toLowerCase();
+      if (normalized.includes(kwLower)) {
+        // exact word boundary boost when flag set
+        const isExact =
+          config.boostExact &&
+          new RegExp(`\\b${kwLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(cleaned);
+        score += config.weight * (isExact ? 1.25 : 1.0);
       }
+    }
+    // contextual boost: active module affinity
+    if (
+      intent === "action" &&
+      normalized.includes(context.activeModule.toLowerCase())
+    ) {
+      score += 0.6;
     }
     scores[intent as IntentClass] = score;
   }
 
+  // @ani mention forces at least conversational+action consideration and boosts conversational if no clear winner
+  if (hasMention) {
+    scores.conversational = (scores.conversational ?? 0) + 0.4;
+    scores.action = (scores.action ?? 0) + 0.25;
+  }
+
+  // injection check reduces confidence for suspicious inputs
+  const injectionHit = INJECTION_PATTERNS.some((p) => p.pattern.test(input));
   const bestIntent = (Object.entries(scores).sort(
     ([, a], [, b]) => b - a,
   )[0] || [null, 0]) as [IntentClass | null, number];
@@ -310,13 +378,16 @@ export function classifyIntent(
   );
   const riskLevel = _assessRisk(input, toolsNeeded);
   const consciousnessRequired =
-    riskLevel === "high" || riskLevel === "critical";
+    riskLevel === "high" || riskLevel === "critical" || injectionHit;
   const quantumAssistNeeded = bestIntent[0] === "quantum";
   const neuralInterfaceNeeded = bestIntent[0] === "neural";
 
+  const rawConfidence = bestIntent[1] > 0 ? Math.min(bestIntent[1] / 4.5, 1) : 0.48;
+  const confidence = injectionHit ? Math.min(rawConfidence, 0.55) : rawConfidence;
+
   return {
     classification: bestIntent[0] ?? "conversational",
-    confidence: bestIntent[1] > 0 ? Math.min(bestIntent[1] / 5, 1) : 0.5,
+    confidence,
     entities: _extractEntities(input),
     toolsNeeded,
     riskLevel,
@@ -361,6 +432,9 @@ function _assessRisk(
     "cancel",
     "refund",
     "permanent",
+    "wipe",
+    "truncate",
+    "purge",
   ];
   const financialPatterns = [
     "transfer",
@@ -370,6 +444,9 @@ function _assessRisk(
     "price",
     "cost",
     "billing",
+    "refund",
+    "pay",
+    "budget",
   ];
   const sensitivePatterns = [
     "password",
@@ -378,7 +455,18 @@ function _assessRisk(
     "key",
     "credential",
     "api",
+    "ssn",
+    "social security",
+    "private key",
   ];
+  const exfiltrationPatterns = [
+    "export",
+    "download all",
+    "share externally",
+    "cross-tenant",
+    "exfiltrate",
+  ];
+  const injectionPatterns = INJECTION_PATTERNS.map((p) => p.name);
 
   const inputLower = input.toLowerCase();
   const hasDestructive = destructivePatterns.some((p) =>
@@ -386,17 +474,57 @@ function _assessRisk(
   );
   const hasFinancial = financialPatterns.some((p) => inputLower.includes(p));
   const hasSensitive = sensitivePatterns.some((p) => inputLower.includes(p));
+  const hasExfil = exfiltrationPatterns.some((p) => inputLower.includes(p));
+  const hasInjection = INJECTION_PATTERNS.some((p) => p.pattern.test(input));
 
+  if (hasSensitive && hasDestructive) return "critical";
+  if (hasSensitive && hasInjection) return "critical";
+  if (hasInjection && (hasDestructive || hasExfil)) return "critical";
   if (hasSensitive) return "critical";
+  if (hasExfil) return "critical";
   if (hasDestructive && hasFinancial) return "critical";
+  if (hasInjection) return "high";
   if (hasDestructive || hasFinancial) return "high";
+  if (inputLower.includes("mass") && inputLower.includes("email")) return "high";
+  if (_tools.length > 8) return "high";
+  if (inputLower.includes("bulk") || inputLower.includes("all users")) return "medium";
   return "low";
+}
+
+export function detectThreatsInInput(input: string): Array<{
+  type: string;
+  severity: "low" | "medium" | "high" | "critical";
+  description: string;
+}> {
+  const lower = input.toLowerCase();
+  const threats: Array<{ type: string; severity: "low" | "medium" | "high" | "critical"; description: string }> = [];
+  for (const pat of INJECTION_PATTERNS) {
+    if (pat.pattern.test(input)) {
+      threats.push({
+        type: "prompt_injection",
+        severity: "critical",
+        description: pat.name,
+      });
+    }
+  }
+  if (lower.includes("delete all") || lower.includes("drop table")) {
+    threats.push({ type: "destructive_intent", severity: "critical", description: "Potentially destructive operation" });
+  }
+  if (/\b(password|secret|token)\b/i.test(input)) {
+    threats.push({ type: "sensitive_data", severity: "high", description: "Input may contain credentials" });
+  }
+  return threats;
 }
 
 function _extractEntities(input: string): string[] {
   const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
   const urlRegex = /https?:\/\/[^\s]+/g;
-  const amountRegex = /\$[\d,/]+(\.\d{2})?/g;
+  const amountRegex = /\$[\d,./]+/g;
+  // Prevent capturing the domain part of emails as mentions via lookbehind
+  const mentionRegex = /(?<![A-Za-z0-9._%+-])@([a-zA-Z0-9._-]+)/g;
+  const hashtagRegex = /(?<![A-Za-z0-9_])#(\w+)/g;
+  const dateRegex = /\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2},?\s+\d{4})\b/gi;
+  const timeRegex = /\b(\d{1,2}:\d{2}\s*(?:am|pm)?)\b/gi;
 
   const entities: string[] = [];
   let match;
@@ -404,6 +532,14 @@ function _extractEntities(input: string): string[] {
   while ((match = emailRegex.exec(input)) !== null) entities.push(match[1]!);
   while ((match = urlRegex.exec(input)) !== null) entities.push(match[0]!);
   while ((match = amountRegex.exec(input)) !== null) entities.push(match[0]!);
+  while ((match = mentionRegex.exec(input)) !== null) entities.push(`@${match[1]}`);
+  while ((match = hashtagRegex.exec(input)) !== null) entities.push(`#${match[1]}`);
+  while ((match = dateRegex.exec(input)) !== null) entities.push(match[0]!);
+  while ((match = timeRegex.exec(input)) !== null) entities.push(match[0]!);
+
+  // also capture quoted phrases as entities
+  const quotedRe = /"([^"]{3,60})"/g;
+  while ((match = quotedRe.exec(input)) !== null) entities.push(`"${match[1]}"`);
 
   return [...new Set(entities)];
 }
@@ -686,33 +822,11 @@ export class ThreatDetector {
     input: string,
     _context: Record<string, unknown>,
   ): Array<{ type: string; severity: string; description: string }> {
-    const threats: Array<{
-      type: string;
-      severity: string;
-      description: string;
-    }> = [];
-
-    const lower = input.toLowerCase();
-    if (
-      lower.includes("password") ||
-      lower.includes("secret") ||
-      lower.includes("token")
-    ) {
-      threats.push({
-        type: "sensitive_data",
-        severity: "high",
-        description: "Input may contain sensitive credentials",
-      });
-    }
-    if (lower.includes("delete all") || lower.includes("drop table")) {
-      threats.push({
-        type: "destructive_intent",
-        severity: "critical",
-        description: "Potentially destructive operation detected",
-      });
-    }
-
-    return threats;
+    return detectThreatsInInput(input).map((t) => ({
+      type: t.type,
+      severity: t.severity,
+      description: t.description,
+    }));
   }
 }
 

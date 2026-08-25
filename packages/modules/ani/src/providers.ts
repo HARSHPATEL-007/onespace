@@ -130,6 +130,20 @@ export async function callLlm(
   };
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = 12000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 export async function callOpenaiLike(
   provider: string,
   model: string,
@@ -158,7 +172,7 @@ export async function callOpenaiLike(
           ? "https://generativelanguage.googleapis.com/v1beta"
           : `https://api.${provider}.com/v1`;
 
-  const r = await fetch(`${baseUrl}/chat/completions`, {
+  const r = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -284,7 +298,7 @@ export async function callAnthropic(
   }
 
   const systemMsg = messages.find((m) => m.role === "system")?.content ?? "";
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+  const r = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -397,7 +411,7 @@ export async function callGemini(
     }
   }
 
-  const r = await fetch(
+  const r = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${token}`,
     {
       method: "POST",

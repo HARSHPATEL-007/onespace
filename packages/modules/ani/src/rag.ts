@@ -24,32 +24,41 @@ export async function retrieveRagContext(
   limit = 5,
 ): Promise<RagContext> {
   const expandedQuery = _expandQuery(query);
-  const searchTerms = expandedQuery
+  const rawTerms = expandedQuery
     .toLowerCase()
     .split(/\s+/)
     .filter((w) => w.length > 2);
+  // dedupe + cap terms for query efficiency
+  const searchTerms = [...new Set(rawTerms)].slice(0, 12);
 
   const documents: RagDocument[] = [];
+  const fetchLimit = Math.max(limit * 2, 8);
+
+  // Helper: build hybrid OR clause (title OR content)
+  const buildOr = (titleField: string, contentField: string) =>
+    searchTerms.flatMap((term) => [
+      { [titleField]: { contains: term, mode: "insensitive" as const } },
+      { [contentField]: { contains: term, mode: "insensitive" as const } },
+    ]);
 
   try {
     const docs = await prisma.doc.findMany({
       where: {
         workspaceId: workspace.workspaceId,
-        OR: searchTerms.map((term) => ({
-          title: { contains: term, mode: "insensitive" as const },
-        })),
+        OR: buildOr("title", "content"),
       },
       orderBy: { updatedAt: "desc" },
-      take: limit,
+      take: fetchLimit,
     });
     for (const d of docs) {
+      const rawContent = (d.content ?? "") as string;
       documents.push({
         id: d.id,
         title: d.title,
-        content: d.content ?? "",
+        content: rawContent,
         source: `doc:${d.id}`,
         module: "docs",
-        score: 0.85,
+        score: _initialScore("docs", d.updatedAt, query, d.title, rawContent),
       });
     }
   } catch {
@@ -60,21 +69,20 @@ export async function retrieveRagContext(
     const tasks = await prisma.task.findMany({
       where: {
         workspaceId: workspace.workspaceId,
-        OR: searchTerms.map((term) => ({
-          title: { contains: term, mode: "insensitive" as const },
-        })),
+        OR: buildOr("title", "notes"),
       },
       orderBy: { updatedAt: "desc" },
-      take: limit,
+      take: fetchLimit,
     });
     for (const t of tasks) {
+      const rawNotes = (t.notes ?? "") as string;
       documents.push({
         id: t.id,
         title: t.title,
-        content: t.notes ?? "",
+        content: rawNotes,
         source: `task:${t.id}`,
         module: "tasks",
-        score: 0.8,
+        score: _initialScore("tasks", t.updatedAt, query, t.title, rawNotes),
       });
     }
   } catch {
@@ -85,21 +93,20 @@ export async function retrieveRagContext(
     const notes = await prisma.note.findMany({
       where: {
         workspaceId: workspace.workspaceId,
-        OR: searchTerms.map((term) => ({
-          title: { contains: term, mode: "insensitive" as const },
-        })),
+        OR: buildOr("title", "body"),
       },
       orderBy: { updatedAt: "desc" },
-      take: limit,
+      take: fetchLimit,
     });
     for (const n of notes) {
+      const rawBody = (n.body ?? "") as string;
       documents.push({
         id: n.id,
         title: n.title,
-        content: n.body ?? "",
+        content: rawBody,
         source: `note:${n.id}`,
         module: "keep",
-        score: 0.75,
+        score: _initialScore("keep", n.updatedAt, query, n.title, rawBody),
       });
     }
   } catch {
@@ -107,26 +114,88 @@ export async function retrieveRagContext(
   }
 
   try {
+    // Calendar: hybrid recency + term boost; recent events get higher base
     const events = await prisma.calendarEvent.findMany({
       where: {
         workspaceId: workspace.workspaceId,
-        startAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        startAt: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
       },
       orderBy: { startAt: "desc" },
-      take: limit,
+      take: fetchLimit,
     });
     for (const e of events) {
+      const rawDesc = (e.description ?? "") as string;
+      const titleMatch = searchTerms.some((t) =>
+        e.title.toLowerCase().includes(t),
+      );
+      const descMatch = searchTerms.some((t) =>
+        rawDesc.toLowerCase().includes(t),
+      );
+      // Only include if matches or very recent (within 48h)
+      const isRecent = e.startAt.getTime() > Date.now() - 2 * 24 * 60 * 60 * 1000;
+      if (!titleMatch && !descMatch && !isRecent) continue;
       documents.push({
         id: e.id,
         title: e.title,
-        content: e.description ?? "",
+        content: rawDesc,
         source: `calendar:${e.id}`,
         module: "calendar",
-        score: 0.7,
+        score: _initialScore(
+          "calendar",
+          e.updatedAt ?? e.startAt,
+          query,
+          e.title,
+          rawDesc,
+        ),
       });
     }
   } catch {
     /* */
+  }
+
+  // Cross-module context: also try to include mail-like docs if searchTerms hint
+  if (
+    searchTerms.some((t) =>
+      ["mail", "email", "inbox", "message"].includes(t),
+    )
+  ) {
+    try {
+      // Fallback: if prisma has no mail model, this will no-op; keep for future
+      const prismaAny = prisma as unknown as Record<
+        string,
+        { findMany: (a: unknown) => Promise<unknown[]> }
+      >;
+      if (prismaAny["mailMessage"]) {
+        const mails = (await prismaAny["mailMessage"].findMany({
+          where: {
+            workspaceId: workspace.workspaceId,
+            OR: searchTerms.map((term) => ({
+              subject: { contains: term, mode: "insensitive" as const },
+            })),
+          },
+          orderBy: { updatedAt: "desc" },
+          take: Math.ceil(fetchLimit / 2),
+        })) as Array<{ id: string; subject: string; body?: string; updatedAt: Date }>;
+        for (const m of mails) {
+          documents.push({
+            id: m.id,
+            title: m.subject,
+            content: m.body ?? "",
+            source: `mail:${m.id}`,
+            module: "mail",
+            score: _initialScore(
+              "mail",
+              m.updatedAt,
+              query,
+              m.subject,
+              m.body ?? "",
+            ),
+          });
+        }
+      }
+    } catch {
+      /* optional */
+    }
   }
 
   if (documents.length === 0) {
@@ -139,15 +208,25 @@ export async function retrieveRagContext(
       documents.push({
         id: d.id,
         title: d.title,
-        content: d.content?.slice(0, 500) ?? "",
+        content: (d.content?.slice(0, 500) ?? "") as string,
         source: `doc:${d.id}`,
         module: "docs",
-        score: 0.5,
+        score: 0.45,
       });
     }
   }
 
-  const sorted = documents.sort((a, b) => b.score - a.score).slice(0, limit);
+  // Hybrid re-ranking: relevance + recency + module boost
+  const ranked = rankRagResults(documents, query);
+  // Deduplicate by id
+  const seen = new Set<string>();
+  const deduped: RagDocument[] = [];
+  for (const d of ranked) {
+    if (seen.has(d.id)) continue;
+    seen.add(d.id);
+    deduped.push(d);
+  }
+  const sorted = deduped.slice(0, limit);
 
   return {
     query,
@@ -156,7 +235,7 @@ export async function retrieveRagContext(
     citations: sorted.map((d) => ({
       source: d.source,
       confidence: d.score,
-      snippet: d.content.slice(0, 200),
+      snippet: d.content.slice(0, 220),
     })),
     assembledPrompt: _assemblePrompt(query, sorted),
   };
@@ -201,12 +280,47 @@ export function rankRagResults(
     .sort((a, b) => b.score - a.score);
 }
 
+function _initialScore(
+  module: string,
+  updatedAt: Date | string,
+  query: string,
+  title: string,
+  content: string,
+): number {
+  const baseByModule: Record<string, number> = {
+    docs: 0.86,
+    tasks: 0.8,
+    keep: 0.75,
+    calendar: 0.72,
+    mail: 0.78,
+  };
+  let score = baseByModule[module] ?? 0.7;
+  // Recency boost: <24h +0.08, <7d +0.04
+  const ageMs = Date.now() - new Date(updatedAt).getTime();
+  const ageDays = ageMs / (24 * 60 * 60 * 1000);
+  if (ageDays < 1) score += 0.08;
+  else if (ageDays < 7) score += 0.04;
+  else if (ageDays > 90) score -= 0.06;
+  // Title exact phrase boost
+  const qLower = query.toLowerCase();
+  if (title.toLowerCase().includes(qLower.slice(0, 30))) score += 0.06;
+  // Content existence boost (non-empty better than empty)
+  if (content.length > 100) score += 0.02;
+  return Math.min(0.97, Math.max(0.35, score));
+}
+
 function _expandQuery(query: string): string {
   const expansions: Record<string, string[]> = {
-    meeting: ["calendar", "schedule", "event", "invite"],
-    doc: ["document", "file", "content", "draft"],
-    task: ["todo", "assignment", "work item", "action"],
-    mail: ["email", "message", "inbox", "send"],
+    meeting: ["calendar", "schedule", "event", "invite", "agenda"],
+    doc: ["document", "file", "content", "draft", "proposal"],
+    task: ["todo", "assignment", "work item", "action", "deliverable"],
+    mail: ["email", "message", "inbox", "send", "thread"],
+    strategy: ["plan", "roadmap", "initiative", "objective", "okr"],
+    revenue: ["sales", "income", "forecast", "pipeline", "arr"],
+    product: ["feature", "release", "roadmap", "backlog", "spec"],
+    customer: ["account", "client", "contact", "lead", "opportunity"],
+    analysis: ["insight", "report", "metric", "dashboard", "trend"],
+    architecture: ["design", "system", "pattern", "infrastructure", "scale"],
   };
 
   const lower = query.toLowerCase();
@@ -227,13 +341,75 @@ function _assemblePrompt(query: string, documents: RagDocument[]): string {
 }
 
 function _computeRelevance(doc: RagDocument, query: string): number {
-  const queryTerms = query.toLowerCase().split(/\s+/);
-  const docText = (doc.title + " " + doc.content).toLowerCase();
+  const queryTerms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+  if (queryTerms.length === 0) return doc.score;
+  const titleLower = doc.title.toLowerCase();
+  const contentLower = doc.content.toLowerCase();
+  const docText = `${titleLower} ${contentLower}`;
 
-  let matches = 0;
+  let titleMatches = 0;
+  let contentMatches = 0;
+  let phraseBonus = 0;
+  const queryLower = query.toLowerCase();
+  if (
+    titleLower.includes(queryLower.slice(0, Math.min(20, queryLower.length))) &&
+    queryLower.length > 6
+  )
+    phraseBonus += 0.12;
+  if (
+    contentLower.includes(queryLower.slice(0, Math.min(24, queryLower.length))) &&
+    queryLower.length > 8
+  )
+    phraseBonus += 0.08;
+
   for (const term of queryTerms) {
-    if (docText.includes(term)) matches++;
+    if (titleLower.includes(term)) titleMatches++;
+    else if (docText.includes(term)) contentMatches++;
   }
 
-  return Math.min(1, (matches / queryTerms.length) * 0.7 + doc.score * 0.3);
+  const titleRecall = titleMatches / queryTerms.length;
+  const contentRecall = contentMatches / queryTerms.length;
+  const lexical = titleRecall * 0.65 + contentRecall * 0.35;
+
+  // BM25-ish length normalization: prefer concise content for short queries
+  const lengthNorm = Math.min(1, 300 / Math.max(80, doc.content.length)) * 0.02;
+
+  // Semantic hash similarity as cheap embedding fallback (Jaccard on bigrams)
+  const sem = _jaccardBigram(docText, queryLower) * 0.15;
+
+  // Blend with original prior score (module + recency)
+  const priorWeight = 0.28;
+  const lexicalWeight = 0.52;
+
+  return Math.min(
+    0.98,
+    lexical * lexicalWeight +
+      doc.score * priorWeight +
+      phraseBonus +
+      sem +
+      lengthNorm,
+  );
+}
+
+function _jaccardBigram(a: string, b: string): number {
+  const bigrams = (s: string) =>
+    new Set(
+      s
+        .split(/\s+/)
+        .flatMap((w) => {
+          if (w.length < 2) return [] as string[];
+          const out: string[] = [];
+          for (let i = 0; i < w.length - 1; i++) out.push(w.slice(i, i + 2));
+          return out;
+        }),
+    );
+  const setA = bigrams(a);
+  const setB = bigrams(b);
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let inter = 0;
+  for (const x of setA) if (setB.has(x)) inter++;
+  return inter / (setA.size + setB.size - inter);
 }

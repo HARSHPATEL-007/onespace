@@ -144,6 +144,28 @@ export class AniService {
     confidence?: number;
   }> {
     await this.assert("CREATE");
+    // Server-side injection / threat gate (defense in depth — client already checks)
+    const { detectInjectionRisk } = await import("./remaining-features");
+    const { detectThreatsInInput, parseAniMentions } = await import("./engine");
+    const injection = detectInjectionRisk(content);
+    if (injection.risk === "high") {
+      await this.audit("ani.message.blocked_injection", conversationId);
+      throw new Error(
+        `Blocked: potential prompt injection detected (${injection.indicators.join(", ")})`,
+      );
+    }
+    const threats = detectThreatsInInput(content);
+    const hasCriticalThreat = threats.some((t) => t.severity === "critical");
+    if (hasCriticalThreat) {
+      // still allow but we will flag downstream and require HITL
+      // log for audit trail
+      await this.audit("ani.message.flagged_threat", conversationId);
+    }
+
+    // Normalize @ani mentions server-side as well
+    const mentionParsed = parseAniMentions(content);
+    const normalizedContent = mentionParsed.hasMention ? mentionParsed.cleaned : content;
+
     const conversation = await prisma.aniConversation.findFirst({
       where: { id: conversationId, workspaceId: this.workspaceId },
     });
@@ -158,6 +180,27 @@ export class AniService {
       },
     });
 
+    // Update consciousness stack with this input (affects coherence/load for next response)
+    try {
+      await this.consciousness.processInput(normalizedContent, [
+        {
+          source: "user_input",
+          metric: "engagement",
+          value: 0.85,
+          timestamp: new Date().toISOString(),
+        },
+        {
+          source: "risk",
+          metric: "stress",
+          value:
+            hasCriticalThreat || injection.risk !== "none" ? 0.7 : 0.2,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } catch {
+      /* consciousness best-effort */
+    }
+
     const recentMessages = await prisma.aniMessage.findMany({
       where: { conversationId, workspaceId: this.workspaceId },
       orderBy: { createdAt: "asc" },
@@ -168,7 +211,7 @@ export class AniService {
     const result = await this._runAgenticLoop(
       conversation,
       recentMessages,
-      content,
+      normalizedContent,
       settings,
     );
 
@@ -221,6 +264,48 @@ export class AniService {
       context: { conversationId },
       weight: 0.3,
     });
+
+    // Immutable audit trail per spec 4.3 — persist detailed interaction record
+    try {
+      const metrics = this.consciousness.getMetrics();
+      await logAudit({
+        workspaceId: this.workspaceId,
+        actorId: this.userId,
+        module: MODULE,
+        action: "ani.interaction",
+        targetType: "AniMessage",
+        targetId: assistantMsg.id,
+        // Extended context stored as JSON string via audit metadata if supported:
+        // (prisma auditLog already captures workspace/module/action — we enrich with metrics in separate table when available)
+      } as never);
+      // Also attempt to write to AniAuditTrail if schema exists (future-proof)
+      const auditAny = prisma as unknown as Record<
+        string,
+        { create: (a: { data: Record<string, unknown> }) => Promise<unknown> }
+      >;
+      if (auditAny["aniAuditRecord"]) {
+        await auditAny["aniAuditRecord"].create({
+          data: {
+            workspaceId: this.workspaceId,
+            conversationId,
+            userId: this.userId,
+            inputTokens: Math.ceil((content.length + result.content.length) / 4),
+            outputTokens: Math.ceil(result.content.length / 4),
+            citations: result.citations ? JSON.stringify(result.citations) : null,
+            toolCalls: result.toolCalls ? JSON.stringify(result.toolCalls) : null,
+            confidence: result.confidence,
+            coherence: metrics?.coherence ?? null,
+            safetyFlags:
+              hasCriticalThreat || injection.risk !== "none"
+                ? JSON.stringify([injection.risk, ...threats.map((t) => t.type)])
+                : null,
+            createdAt: new Date(),
+          },
+        });
+      }
+    } catch {
+      /* audit is best-effort */
+    }
 
     try {
       const prismaAny = prisma as unknown as Record<
@@ -715,7 +800,22 @@ export class AniService {
 
     messages.push({ role: "user", content: ragPrompt });
 
+    // HITL pre-check via intent risk + tool risk labeling
+    const { classifyIntent } = await import("./engine");
+    const { evaluateHITL } = await import("./hitl");
+    const intent = classifyIntent(userContent, ctx);
+    const hitlDecision = evaluateHITL(userContent, {
+      financialImpactUsd: intent.entities.some((e) => e.startsWith("$")) ? 10000 : 0,
+      recipientCount: 0,
+      isDestructive: intent.riskLevel === "high" || intent.riskLevel === "critical",
+      isCrossTenant: false,
+      isPrivilegeEscalation: userContent.toLowerCase().includes("admin") && userContent.toLowerCase().includes("grant"),
+      isPHI: userContent.toLowerCase().includes("health") || userContent.toLowerCase().includes("phi"),
+      tier: ctx.tenantTier,
+    });
+
     let finalContent = "";
+    let blockedByHITL = false;
 
     for (let turn = 0; turn < MAX_AGENTIC_TURNS; turn++) {
       const llmResult = await callLlm(
@@ -727,6 +827,24 @@ export class AniService {
       );
 
       if (llmResult.toolCalls && llmResult.toolCalls.length > 0) {
+        // HITL gate: if requires human and tools include high-risk, defer instead of auto-executing
+        if (
+          hitlDecision.requiresHuman &&
+          llmResult.toolCalls.some((tc) =>
+            availableTools.find((at) => at.name === tc.name)?.riskLabel === "high",
+          )
+        ) {
+          blockedByHITL = true;
+          messages.push({
+            role: "assistant",
+            content: `HITL required (${hitlDecision.level}): ${hitlDecision.reason}. Awaiting human approval before executing: ${llmResult.toolCalls.map((tc) => tc.name).join(", ")}`,
+          });
+          finalContent =
+            `This action requires approval (${hitlDecision.level}): ${hitlDecision.reason}. Tools requested: ${llmResult.toolCalls.map((tc) => tc.name).join(", ")}. Confirm in HITL queue to proceed.`;
+          await this.audit("ani.hitl.blocked", conversation.id);
+          break;
+        }
+
         messages.push({
           role: "assistant",
           content: llmResult.content,
@@ -763,10 +881,20 @@ export class AniService {
       break;
     }
 
+    // If HITL blocked, prepend safety notice
+    if (blockedByHITL) {
+      finalContent = `⚠️ Human approval required — action paused.\n\n${finalContent}`;
+    }
+
+    // Enrich with @ani contextual follow-up hint when mention was present
+    if (userContent.includes("@ani") || intent.confidence < 0.6) {
+      finalContent += `\n\n_Tip: Use @ani in any workspace chat to bring ANI into context — or press Ctrl+Space to invoke ANI globally._`;
+    }
+
     return {
       content: finalContent,
       citations: ragContext.citations,
-      confidence: 0.85,
+      confidence: blockedByHITL ? 0.62 : 0.85,
     };
   }
 

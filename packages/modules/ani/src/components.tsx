@@ -160,6 +160,91 @@ function useEventSource(
   }, [url]);
 }
 
+function useVoiceRecognition(
+  onResult: (transcript: string, isFinal: boolean, interim: string) => void,
+  onCommand?: (cmd: string) => void,
+) {
+  const recognitionRef = useRef<unknown>(null);
+  const callbackRef = useRef(onResult);
+  callbackRef.current = onResult;
+  const commandRef = useRef(onCommand);
+  commandRef.current = onCommand;
+
+  const start = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    const w = window as unknown as Record<string, unknown>;
+    const SR =
+      (w["SpeechRecognition"] as unknown) ??
+      (w["webkitSpeechRecognition"] as unknown);
+    if (!SR || typeof SR !== "function") return null;
+    const rec = new (SR as new () => unknown)() as Record<string, unknown>;
+    try {
+      (rec["continuous"] as boolean) = true;
+      (rec["interimResults"] as boolean) = true;
+      (rec["lang"] as string) = "en-US";
+      rec["onresult"] = (event: unknown) => {
+        const e = event as {
+          results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }>;
+          resultIndex: number;
+        };
+        let interim = "";
+        let finalText = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const res = e.results[i];
+          if (!res) continue;
+          const transcript = res[0]?.transcript ?? "";
+          if (res.isFinal) finalText += transcript + " ";
+          else interim += transcript + " ";
+        }
+        if (finalText.trim()) {
+          const normalized = finalText.trim();
+          // check voice commands like "hey ani", "clear conversation"
+          const cmdMatch = matchVoiceCommand(normalized);
+          if (cmdMatch && commandRef.current) {
+            commandRef.current(cmdMatch.action);
+          }
+          callbackRef.current(normalized, true, interim.trim());
+        } else if (interim.trim()) {
+          callbackRef.current("", false, interim.trim());
+        }
+      };
+      rec["onerror"] = () => {
+        /* keep listening unless fatal */
+      };
+      rec["onend"] = () => {
+        // auto-restart if still intended to listen — caller controls lifecycle via stop()
+      };
+      (rec["start"] as () => void)();
+      recognitionRef.current = rec;
+      return rec;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const stop = useCallback(() => {
+    const rec = recognitionRef.current as Record<string, unknown> | null;
+    if (rec && typeof rec["stop"] === "function") {
+      try {
+        (rec["stop"] as () => void)();
+      } catch {
+        /* ignore */
+      }
+    }
+    recognitionRef.current = null;
+  }, []);
+
+  return { start, stop, ref: recognitionRef };
+}
+
+function hasAniMention(text: string): boolean {
+  return /@ani\b/i.test(text);
+}
+
+function highlightAniMentions(text: string): string {
+  return text.replace(/@ani\b/gi, "◆ ANI");
+}
+
 export function AniChat({
   conversations,
   active,
@@ -530,6 +615,168 @@ export function AniChat({
       );
     }
   }, [showMeetingPanel, meetingState]);
+
+  // ---- Enhanced Voice Recognition Wiring ----
+  const voiceRecognition = useVoiceRecognition(
+    (transcript, isFinal, interim) => {
+      if (isFinal && transcript) {
+        setDraft((prev) => (prev ? prev + " " + transcript : transcript));
+        setVoiceState((prev) => ({
+          ...prev,
+          transcript,
+          interimTranscript: interim,
+        }));
+        // auto-focus input after voice fill
+        textareaRef.current?.focus();
+      } else {
+        setVoiceState((prev) => ({
+          ...prev,
+          interimTranscript: interim,
+        }));
+      }
+    },
+    (cmd) => {
+      // Voice commands handling
+      if (cmd === "clear") {
+        if (active) {
+          const fd = new FormData();
+          fd.set("id", active.id);
+          void actions.clear(fd).then(() => router.refresh());
+        }
+      } else if (cmd === "wake") {
+        textareaRef.current?.focus();
+      } else if (cmd.startsWith("depth_")) {
+        const depth = cmd.replace("depth_", "") as typeof reasoningDepth;
+        if (["fast", "balanced", "deep", "research"].includes(depth)) {
+          setReasoningDepth(depth as typeof reasoningDepth);
+          setAutoDepth(false);
+        }
+      } else if (cmd === "thoughts_on") setShowThoughts(true);
+      else if (cmd === "thoughts_off") setShowThoughts(false);
+    },
+  );
+
+  // Sync voice supported flag on mount (handles SSR mismatch)
+  useEffect(() => {
+    setVoiceState((prev) => ({
+      ...prev,
+      supported:
+        typeof window !== "undefined" &&
+        ("SpeechRecognition" in window ||
+          "webkitSpeechRecognition" in window),
+    }));
+    // preload TTS voices when available
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          setTtsState((prev) => ({
+            ...prev,
+            voices,
+            voice: prev.voice ?? voices[0] ?? null,
+            supported: true,
+          }));
+        }
+      };
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
+  // Manage lifecycle of recognition based on isListening
+  useEffect(() => {
+    if (voiceState.isListening) {
+      const rec = voiceRecognition.start();
+      if (!rec) {
+        // fallback: no native support -> show hint but keep toggle active as demo
+        setVoiceState((prev) => ({
+          ...prev,
+          error: "SpeechRecognition not supported in this browser",
+        }));
+      }
+      return () => {
+        voiceRecognition.stop();
+      };
+    } else {
+      voiceRecognition.stop();
+    }
+  }, [voiceState.isListening, voiceRecognition]);
+
+  // ---- Keyboard Shortcuts: Ctrl+Space / Ctrl+K -> focus ANI ----
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.ctrlKey || e.metaKey;
+      if (isMod && (e.code === "Space" || e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        textareaRef.current?.focus();
+        // also show depth hint briefly on shortcut
+        if (e.key.toLowerCase() === "k") setShowDepthPanel((prev) => !prev);
+      }
+      // Slash to focus when not typing in an input
+      if (
+        e.key === "/" &&
+        !(e.target instanceof HTMLInputElement) &&
+        !(e.target instanceof HTMLTextAreaElement)
+      ) {
+        const activeEl = document.activeElement;
+        if (
+          !(activeEl instanceof HTMLInputElement) &&
+          !(activeEl instanceof HTMLTextAreaElement)
+        ) {
+          e.preventDefault();
+          textareaRef.current?.focus();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // ---- @ani mention detection -> visual hint + intent boost ----
+  const hasAniMentionInDraft = hasAniMention(draft);
+  useEffect(() => {
+    if (hasAniMentionInDraft && intent !== "conversational") {
+      // already set elsewhere; keep but ensure hint shown in proactive area
+    }
+  }, [hasAniMentionInDraft, intent]);
+
+  // ---- Draft mention autocomplete: typing "@" shows hint ----
+  const showMentionHint =
+    draft.includes("@") && !hasAniMentionInDraft && draft.length < 120;
+
+  // ---- Health polling for real consciousness metrics (spec 4.3 observability) ----
+  useEffect(() => {
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const fetchHealth = async () => {
+      try {
+        const r = await fetch("/api/ani/health");
+        if (!r.ok) return;
+        const d = (await r.json()) as {
+          metrics?: {
+            coherence: number;
+            cognitiveLoad: number;
+            flowState: number;
+            engagement: number;
+          };
+        };
+        if (!cancelled && d.metrics) {
+          setConsciousnessCoherence(d.metrics.coherence);
+          setCognitiveLoad(d.metrics.cognitiveLoad);
+          setFlowState(d.metrics.flowState);
+          setEngagement(d.metrics.engagement);
+        }
+      } catch {
+        /* health best-effort */
+      }
+    };
+    fetchHealth();
+    interval = setInterval(fetchHealth, 15000);
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
+  }, []);
 
   return (
     <div className="ani-root">
@@ -1263,6 +1510,38 @@ export function AniChat({
           )}
 
           <div className="ani-input-wrap">
+            {hasAniMentionInDraft && (
+              <div className="ani-mention-active">
+                <span className="ani-mention-badge">◆ @ani</span>
+                <span className="ani-mention-hint">
+                  ANI will respond with workspace context
+                </span>
+                <button
+                  className="ani-mention-clear"
+                  onClick={() =>
+                    setDraft((prev) => prev.replace(/@ani\s*/gi, "").trim())
+                  }
+                  title="Remove @ani"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            {showMentionHint && (
+              <div className="ani-mention-suggest">
+                <span>Tip: type</span>
+                <button
+                  className="ani-mention-suggest-btn"
+                  onClick={() => {
+                    setDraft((prev) => (prev ? prev + " @ani" : "@ani "));
+                    textareaRef.current?.focus();
+                  }}
+                >
+                  @ani
+                </button>
+                <span>to bring ANI into any chat context</span>
+              </div>
+            )}
             <div className="ani-input-container">
               <textarea
                 ref={textareaRef}
@@ -1270,7 +1549,11 @@ export function AniChat({
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask ANI anything… (Enter to send, Shift+Enter for newline)"
+                placeholder={
+                  hasAniMentionInDraft
+                    ? "Ask @ani with workspace context…"
+                    : "Ask ANI anything… (Enter to send, Shift+Enter for newline) • Ctrl+Space to focus • @ani for context"
+                }
                 rows={1}
                 disabled={sending}
               />
@@ -1470,12 +1753,17 @@ export function AniChat({
             {voiceState.isListening && (
               <div className="ani-voice-status">
                 <span className="ani-voice-dot" />
-                <span>Listening…</span>
+                <span>Listening… say “hey ani” commands</span>
                 {voiceState.interimTranscript && (
                   <span className="ani-voice-interim">
                     {voiceState.interimTranscript}
                   </span>
                 )}
+              </div>
+            )}
+            {voiceState.error && !voiceState.isListening && (
+              <div className="ani-voice-error">
+                🎤 {voiceState.error} — voice demo requires Chrome/Edge with mic permission
               </div>
             )}
 
@@ -1652,6 +1940,27 @@ export function AniChat({
           />
         </form>
       </Dialog>
+
+      {/* Floating Action Button — spec 6.1: Contextual FAB with gesture support */}
+      <button
+        className="ani-fab"
+        onClick={() => {
+          textareaRef.current?.focus();
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        title="Focus ANI (Ctrl+Space) — Long-press for voice"
+        aria-label="Focus ANI"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setVoiceState((prev) => ({
+            ...prev,
+            isListening: !prev.isListening,
+          }));
+        }}
+      >
+        <span className="ani-fab-icon">◆</span>
+        <span className="ani-fab-label">ANI</span>
+      </button>
     </div>
   );
 }

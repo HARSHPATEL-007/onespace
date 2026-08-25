@@ -7,6 +7,9 @@ export {
   classifyIntent,
   createWorkspaceContext,
   buildWorkspaceContext,
+  parseAniMentions,
+  detectThreatsInInput,
+  INJECTION_PATTERNS,
 } from "./engine";
 export type {
   ANIConfig,

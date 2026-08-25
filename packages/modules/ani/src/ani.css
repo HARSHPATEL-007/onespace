@@ -1514,3 +1514,99 @@
 .ani-action-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; border-radius: 6px; background: var(--nv-color-surface-2); border-left: 3px solid var(--nv-color-accent); font-size: 11px; }
 .ani-action-desc { flex: 1; }
 .ani-action-assignee { font-family: var(--nv-font-mono); color: var(--nv-color-primary); font-size: 10px; }
+
+/* ===== @ani MENTIONS (spec 6.1) ===== */
+.ani-mention-active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 auto 8px;
+  max-width: 800px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--nv-color-primary-alpha), rgba(139, 92, 246, 0.12));
+  border: 1px solid var(--nv-color-primary);
+  font-size: 11px;
+  animation: ani-msg-in 0.2s ease-out;
+}
+.ani-mention-badge {
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--nv-color-primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+}
+.ani-mention-hint { color: var(--nv-color-text-muted); flex: 1; }
+.ani-mention-clear {
+  background: none;
+  border: none;
+  color: var(--nv-color-text-faint);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.ani-mention-clear:hover { background: var(--nv-color-surface-2); color: var(--nv-color-text); }
+.ani-mention-suggest {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 auto 6px;
+  max-width: 800px;
+  font-size: 11px;
+  color: var(--nv-color-text-faint);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--nv-color-surface);
+  border: 1px dashed var(--nv-color-border);
+}
+.ani-mention-suggest-btn {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--nv-color-primary);
+  background: var(--nv-color-primary-alpha);
+  color: var(--nv-color-primary);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 11px;
+}
+.ani-mention-suggest-btn:hover { background: var(--nv-color-primary); color: #fff; }
+
+/* ===== FLOATING ACTION BUTTON (spec 6.1) ===== */
+.ani-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, var(--nv-color-primary), #8b5cf6);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.35), 0 2px 8px rgba(0,0,0,0.12);
+  z-index: 40;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.ani-fab:hover { transform: translateY(-1px) scale(1.02); box-shadow: 0 12px 32px rgba(79, 70, 229, 0.45); }
+.ani-fab:active { transform: scale(0.98); }
+.ani-fab-icon { font-size: 14px; }
+.ani-fab-label { letter-spacing: 0.3px; }
+@media (min-width: 1100px) { .ani-fab { display: none; } }
+@media (max-width: 768px) { .ani-fab { bottom: 16px; right: 16px; padding: 10px 14px; } }
+
+/* ===== VOICE ERROR ===== */
+.ani-voice-error {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--nv-color-danger-alpha);
+  border: 1px solid var(--nv-color-danger);
+  color: var(--nv-color-danger);
+  font-size: 11px;
+  margin-top: 6px;
+}
