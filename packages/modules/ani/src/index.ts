@@ -462,3 +462,18 @@ export type {
   ResearchSnapshot,
   ResearchJob,
 } from "./research-orchestrator";
+export { AgentExecutionKernel, globalAgentKernel, ToolRegistry, RiskEngine, ApprovalPolicyEngine, CredentialBroker, CapabilityFirewall, Verifier } from "./agent-runtime";
+export type {
+  ToolContract,
+  AgentPlan,
+  PlanStep,
+  PlanAssumption,
+  WorkflowExecution,
+  WorkflowState,
+  SimulationResult as AgentSimulationResult,
+  RiskDimensions,
+  ApprovalPolicy,
+  CredentialLease,
+  Postcondition,
+  ErrorCode,
+} from "./agent-runtime";
