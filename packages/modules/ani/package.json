@@ -72,7 +72,8 @@
     "./research-orchestrator": "./src/research-orchestrator.ts",
     "./agent-runtime": "./src/agent-runtime.ts",
     "./memory-consolidator": "./src/memory-consolidator.ts",
-    "./risk-approval": "./src/risk-approval.ts",
+    "./security-fabric": "./src/security-fabric.ts",
+    "./model-gateway": "./src/model-gateway.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },

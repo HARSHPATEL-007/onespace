@@ -449,6 +449,37 @@ export type { ProvenanceNode, ProvenanceEdge, AnswerProvenanceGraph } from "./pr
 export { QualityMetricsStore, globalQualityMetrics } from "./quality-metrics";
 export type { RetrievalMetrics, GovernanceMetrics, MemoryQualityMetrics, OperationalSLO } from "./quality-metrics";
 export * from "./authorization-retrieval";
+export * from "./security-fabric";
+export {
+  ModelRegistry,
+  ModelSelector,
+  FallbackController,
+  verifyQuality,
+  DEFAULT_PROMOTION_POLICY,
+  getCacheScope,
+  BudgetGovernor,
+  PersonalizationStore,
+  resolvePrecedence,
+  ModelGateway,
+  createModelGateway,
+  globalModelGateway,
+  buildCacheKey as buildGatewayCacheKey,
+} from "./model-gateway";
+export type {
+  ModelRegistryEntry,
+  SelectionWeights,
+  CandidateScore,
+  RouterDecision,
+  QualityGateResult,
+  PromotionPolicy,
+  CompressionManifest,
+  BudgetPolicy,
+  PersonalizationProfile,
+  PrecedenceLevel,
+  DriftRule,
+  GatewayRequest,
+  GatewayResponse,
+} from "./model-gateway";
 export { ResearchOrchestrator, globalResearchOrchestrator, DOMAIN_MODE_CONFIG } from "./research-orchestrator";
 export { MemoryConsolidator, globalMemoryConsolidator, normalizeEvent, groupCandidates } from "./memory-consolidator";
 export type { NormalizedEvent, ClaimCluster, CanonicalClaim, EpisodeSummary, ConsolidationJob, ReviewItem, DriftSignal as ConsolidatorDriftSignal } from "./memory-consolidator";
