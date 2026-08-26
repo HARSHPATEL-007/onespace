@@ -25,21 +25,37 @@ export interface ToolContract {
     properties: Record<string, unknown>;
   };
   effects: string[]; // e.g., ["crm.opportunity.write"]
-  risk_class: "low" | "medium" | "high" | "critical";
+  risk_class: "low" | "medium" | "high" | "critical" | "external_communication" | "restricted_data";
   supports_dry_run: boolean;
   supports_compensation: boolean;
+  supports?: {
+    dry_run: boolean;
+    idempotency: boolean;
+    compensation: boolean;
+    verification: boolean;
+  };
   approval_policy?: string;
   required_scopes: string[];
   data_classification: "public" | "internal" | "confidential" | "restricted";
   rate_limit?: { max_per_minute: number };
   timeout_ms: number;
   audit_required: boolean;
+  version_compatibility?: string;
 }
 
 export class ToolRegistry {
   private tools = new Map<string, ToolContract>();
 
   register(contract: ToolContract): void {
+    // Backfill supports object from legacy flags for backward compat
+    if (!contract.supports) {
+      (contract as { supports: ToolContract["supports"] }).supports = {
+        dry_run: contract.supports_dry_run,
+        idempotency: true,
+        compensation: contract.supports_compensation,
+        verification: true,
+      };
+    }
     if (!contract.supports_dry_run && contract.risk_class !== "low") {
       // Spec §2: untrusted restricted to isolated execution
       contract.risk_class = "critical";

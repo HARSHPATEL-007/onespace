@@ -72,6 +72,7 @@
     "./research-orchestrator": "./src/research-orchestrator.ts",
     "./agent-runtime": "./src/agent-runtime.ts",
     "./memory-consolidator": "./src/memory-consolidator.ts",
+    "./risk-approval": "./src/risk-approval.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },

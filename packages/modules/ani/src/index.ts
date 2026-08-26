@@ -465,7 +465,7 @@ export type {
   ResearchSnapshot,
   ResearchJob,
 } from "./research-orchestrator";
-export { AgentExecutionKernel, globalAgentKernel, ToolRegistry, RiskEngine, ApprovalPolicyEngine, CredentialBroker, CapabilityFirewall, Verifier, AgentMemoryBoundaries, MultiAgentGovernor, RuntimeObservability, globalAgentObservability } from "./agent-runtime";
+export { AgentExecutionKernel, globalAgentKernel, ToolRegistry, RiskEngine as AgentRiskEngine, ApprovalPolicyEngine, CredentialBroker, CapabilityFirewall, Verifier, AgentMemoryBoundaries, MultiAgentGovernor, RuntimeObservability, globalAgentObservability } from "./agent-runtime";
 export type {
   ToolContract,
   AgentPlan,
@@ -480,3 +480,21 @@ export type {
   Postcondition,
   ErrorCode,
 } from "./agent-runtime";
+export {
+  globalRiskEngine,
+  globalRiskPolicyEngine,
+  globalApprovalService,
+  globalDelegationService,
+  globalFourEyesService,
+  globalEmergencyStop,
+  RiskEngine,
+  RiskPolicyEngine,
+  ApprovalService,
+  DelegationService,
+  FourEyesService,
+  EmergencyStopService,
+  createActionHash,
+  needsRevalidation,
+  hashEvent,
+} from "./risk-approval";
+export type { RiskAssessment, RiskInputs, RiskPolicyRule, ApprovalRequest, Delegation, RiskAuditEvent } from "./risk-approval";
