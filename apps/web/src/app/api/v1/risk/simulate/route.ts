@@ -1,5 +1,5 @@
 import { actionContext, UnauthorizedError } from "@/lib/action-context";
-import { globalRiskPolicyEngine } from "@n0va/modules-ani/risk-approval";
+import { globalRiskPolicyEngine } from "@n0va/modules-ani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,3 +24,4 @@ export async function POST(req: Request) {
   );
   return Response.json({ simulation: result });
 }
+

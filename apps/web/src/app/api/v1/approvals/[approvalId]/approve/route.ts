@@ -1,5 +1,5 @@
 import { actionContext, UnauthorizedError } from "@/lib/action-context";
-import { globalApprovalService } from "@n0va/modules-ani/risk-approval";
+import { globalApprovalService } from "@n0va/modules-ani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,3 +22,4 @@ export async function POST(req: Request, { params }: { params: Promise<{ approva
   if (!approval) return Response.json({ error: "Not found" }, { status: 404 });
   return Response.json(approval);
 }
+

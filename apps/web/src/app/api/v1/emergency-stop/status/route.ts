@@ -1,5 +1,5 @@
 import { actionContext, UnauthorizedError } from "@/lib/action-context";
-import { globalEmergencyStop } from "@n0va/modules-ani/risk-approval";
+import { globalEmergencyStop } from "@n0va/modules-ani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,3 +13,4 @@ export async function GET() {
   }
   return Response.json({ status: globalEmergencyStop.status() });
 }
+

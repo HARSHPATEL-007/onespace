@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { actionContext, UnauthorizedError } from "@/lib/action-context";
-import { globalEmergencyStop } from "@n0va/modules-ani/risk-approval";
+import { globalEmergencyStop } from "@n0va/modules-ani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,3 +16,4 @@ export async function POST(_req: Request, { params }: { params: Promise<{ scope:
   globalEmergencyStop.release(scope as never);
   return Response.json({ ok: true, scope, status: "released" });
 }
+

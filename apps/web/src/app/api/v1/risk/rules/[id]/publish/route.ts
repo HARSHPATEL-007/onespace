@@ -16,3 +16,4 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   // For now, just acknowledge
   return Response.json({ ok: true, id, status: "published", version: "risk-policy-2026.08" });
 }
+

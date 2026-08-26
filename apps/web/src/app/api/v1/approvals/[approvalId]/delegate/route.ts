@@ -1,5 +1,5 @@
 import { actionContext, UnauthorizedError } from "@/lib/action-context";
-import { globalDelegationService } from "@n0va/modules-ani/risk-approval";
+import { globalDelegationService } from "@n0va/modules-ani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,3 +33,4 @@ export async function POST(req: Request, { params }: { params: Promise<{ approva
   if (!result.ok) return Response.json({ error: result.reason }, { status: 400 });
   return Response.json({ ok: true, delegation: result });
 }
+

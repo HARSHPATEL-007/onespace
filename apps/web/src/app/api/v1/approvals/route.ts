@@ -1,5 +1,5 @@
 import { actionContext, UnauthorizedError } from "@/lib/action-context";
-import { globalApprovalService, globalRiskEngine } from "@n0va/modules-ani/risk-approval";
+import { globalApprovalService, globalRiskEngine } from "@n0va/modules-ani";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,3 +44,4 @@ export async function GET() {
   }
   return Response.json({ approvals: globalApprovalService.list() });
 }
+
