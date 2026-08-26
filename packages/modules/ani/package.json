@@ -71,6 +71,7 @@
     "./quality-metrics": "./src/quality-metrics.ts",
     "./research-orchestrator": "./src/research-orchestrator.ts",
     "./agent-runtime": "./src/agent-runtime.ts",
+    "./memory-consolidator": "./src/memory-consolidator.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },

@@ -450,6 +450,8 @@ export { QualityMetricsStore, globalQualityMetrics } from "./quality-metrics";
 export type { RetrievalMetrics, GovernanceMetrics, MemoryQualityMetrics, OperationalSLO } from "./quality-metrics";
 export * from "./authorization-retrieval";
 export { ResearchOrchestrator, globalResearchOrchestrator, DOMAIN_MODE_CONFIG } from "./research-orchestrator";
+export { MemoryConsolidator, globalMemoryConsolidator, normalizeEvent, groupCandidates } from "./memory-consolidator";
+export type { NormalizedEvent, ClaimCluster, CanonicalClaim, EpisodeSummary, ConsolidationJob, ReviewItem, DriftSignal as ConsolidatorDriftSignal } from "./memory-consolidator";
 export type {
   ResearchPlan,
   ResearchMode,
