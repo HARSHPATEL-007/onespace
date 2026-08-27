@@ -47,6 +47,7 @@ import { evaluationForWorkspace, type EvaluationPlatform } from "./evaluation-pl
 import { observabilityForWorkspace, type ObservabilityPlane } from "./observability-plane";
 import { shellForWorkspace, type UniversalShell } from "./unified-interaction";
 import { a11yCoreForWorkspace, type AccessibilityLocalizationCore } from "./accessibility-localization";
+import { deploymentForWorkspace, type DeploymentResiliencePlane } from "./deployment-resilience";
 import { apiPlatformForWorkspace, type ApiPlatform } from "./api-platform";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
@@ -109,6 +110,7 @@ export class AniService {
   private observability: ObservabilityPlane;
   private shell: UniversalShell;
   private a11yCore: AccessibilityLocalizationCore;
+  private deployment: DeploymentResiliencePlane;
   private apiPlatform: ApiPlatform;
 
   constructor(
@@ -143,6 +145,7 @@ export class AniService {
     this.observability = observabilityForWorkspace(workspaceId);
     this.shell = shellForWorkspace(workspaceId);
     this.a11yCore = a11yCoreForWorkspace(workspaceId);
+    this.deployment = deploymentForWorkspace(workspaceId);
     this.apiPlatform = apiPlatformForWorkspace(workspaceId);
   }
 
@@ -181,6 +184,10 @@ export class AniService {
 
   getA11yCore(): AccessibilityLocalizationCore {
     return this.a11yCore;
+  }
+
+  getDeployment(): DeploymentResiliencePlane {
+    return this.deployment;
   }
 
   getApiPlatform(): ApiPlatform {
