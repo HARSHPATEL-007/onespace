@@ -48,6 +48,7 @@ import { observabilityForWorkspace, type ObservabilityPlane } from "./observabil
 import { shellForWorkspace, type UniversalShell } from "./unified-interaction";
 import { a11yCoreForWorkspace, type AccessibilityLocalizationCore } from "./accessibility-localization";
 import { deploymentForWorkspace, type DeploymentResiliencePlane } from "./deployment-resilience";
+import { researchForWorkspace, type ResearchGovernance } from "./research-governance";
 import { apiPlatformForWorkspace, type ApiPlatform } from "./api-platform";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
@@ -111,6 +112,7 @@ export class AniService {
   private shell: UniversalShell;
   private a11yCore: AccessibilityLocalizationCore;
   private deployment: DeploymentResiliencePlane;
+  private research: ResearchGovernance;
   private apiPlatform: ApiPlatform;
 
   constructor(
@@ -147,6 +149,7 @@ export class AniService {
     this.a11yCore = a11yCoreForWorkspace(workspaceId);
     this.deployment = deploymentForWorkspace(workspaceId);
     this.apiPlatform = apiPlatformForWorkspace(workspaceId);
+    this.research = researchForWorkspace(workspaceId);
   }
 
   /** Expose governance bundle for API routes / tests — tenant-scoped */
@@ -188,6 +191,10 @@ export class AniService {
 
   getDeployment(): DeploymentResiliencePlane {
     return this.deployment;
+  }
+
+  getResearch(): ResearchGovernance {
+    return this.research;
   }
 
   getApiPlatform(): ApiPlatform {

@@ -85,6 +85,7 @@
     "./accessibility-localization": "./src/accessibility-localization.ts",
     "./api-platform": "./src/api-platform.ts",
     "./deployment-resilience": "./src/deployment-resilience.ts",
+    "./research-governance": "./src/research-governance.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },

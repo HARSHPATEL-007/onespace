@@ -721,3 +721,4 @@ export * from "./unified-interaction";
 export * from "./accessibility-localization";
 export * from "./api-platform";
 export * from "./deployment-resilience";
+export * from "./research-governance";
