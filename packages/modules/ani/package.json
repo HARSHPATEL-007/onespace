@@ -82,6 +82,7 @@
     "./evaluation-platform": "./src/evaluation-platform.ts",
     "./observability-plane": "./src/observability-plane.ts",
     "./unified-interaction": "./src/unified-interaction.ts",
+    "./accessibility-localization": "./src/accessibility-localization.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },

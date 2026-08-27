@@ -46,6 +46,7 @@ import { assuranceForWorkspace, type UncertaintyAssuranceEngine, type AssuranceD
 import { evaluationForWorkspace, type EvaluationPlatform } from "./evaluation-platform";
 import { observabilityForWorkspace, type ObservabilityPlane } from "./observability-plane";
 import { shellForWorkspace, type UniversalShell } from "./unified-interaction";
+import { a11yCoreForWorkspace, type AccessibilityLocalizationCore } from "./accessibility-localization";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
 import { CognitionLedger } from "./cognition-ledger";
@@ -106,6 +107,7 @@ export class AniService {
   private evaluation: EvaluationPlatform;
   private observability: ObservabilityPlane;
   private shell: UniversalShell;
+  private a11yCore: AccessibilityLocalizationCore;
 
   constructor(
     private readonly workspaceId: string,
@@ -138,6 +140,7 @@ export class AniService {
     this.evaluation = evaluationForWorkspace(workspaceId);
     this.observability = observabilityForWorkspace(workspaceId);
     this.shell = shellForWorkspace(workspaceId);
+    this.a11yCore = a11yCoreForWorkspace(workspaceId);
   }
 
   /** Expose governance bundle for API routes / tests — tenant-scoped */
@@ -171,6 +174,10 @@ export class AniService {
 
   getShell(): UniversalShell {
     return this.shell;
+  }
+
+  getA11yCore(): AccessibilityLocalizationCore {
+    return this.a11yCore;
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {

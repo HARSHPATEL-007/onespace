@@ -718,3 +718,4 @@ export type {
   SloDefinition,
 } from "./observability-plane";
 export * from "./unified-interaction";
+export * from "./accessibility-localization";
