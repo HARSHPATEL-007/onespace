@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Dialog, Dropdown, MenuItem, Tabs } from "@n0va/ui";
 import type { Video, VideoPlaylist } from "@n0va/db";
 import { embedFor, EXPORT_PRESETS } from "./server";
+import { VideoCopilotPanel } from "./copilot-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -56,6 +57,9 @@ interface ClipLike {
   timelineOutMs: number;
   effects?: unknown[];
   speed?: number;
+}
+function projectTitleFallback(projects: VideoProjectLike[]): string {
+  return projects[0]?.title ?? "Untitled Project";
 }
 
 // ── Legacy: Detail & Library (kept) ────────────────────────────────────────
@@ -189,6 +193,7 @@ export function VideoLibrary({
 // ── Transcendent Studio ──────────────────────────────────────────────────────
 const STUDIO_TABS = [
   { id: "studio", label: "Studio" },
+  { id: "copilot", label: "Copilot" },
   { id: "assets", label: "Assets" },
   { id: "ai", label: "AI Aperture" },
   { id: "color", label: "Color" },
@@ -216,7 +221,7 @@ export function VideoStudioTranscendent({
   actions: TranscendentActions;
 }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<(typeof STUDIO_TABS)[number]["id"]>("studio");
+  const [activeTab, setActiveTab] = useState<(typeof STUDIO_TABS)[number]["id"]>("copilot");
   const [selectedProject, setSelectedProject] = useState<string | null>(projects[0]?.id ?? null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playheadMs, setPlayheadMs] = useState(0);
@@ -410,6 +415,15 @@ export function VideoStudioTranscendent({
         </div>
 
         <div style={{ padding: "var(--nv-space-4)" }}>
+          {/* COPILOT — plan–simulate–approve–commit (primary) */}
+          {activeTab === "copilot" && (
+            <VideoCopilotPanel
+              projectId={selectedProj?.id ?? projects[0]?.id ?? "proj_demo"}
+              timelineId={(selectedProj?.timeline as unknown as { tracks?: unknown[] }) ? `tl_${(selectedProj?.id ?? "demo").slice(0,6)}` : undefined}
+              projectTitle={selectedProj?.title ?? projectTitleFallback(projects)}
+            />
+          )}
+
           {/* STUDIO */}
           {activeTab === "studio" && (
             <StudioPanel

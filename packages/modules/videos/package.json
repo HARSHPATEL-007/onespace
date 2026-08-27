@@ -6,7 +6,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./components": "./src/components.tsx"
+    "./components": "./src/components.tsx",
+    "./copilot": "./src/copilot-engine.ts",
+    "./copilot-types": "./src/copilot-types.ts",
+    "./copilot-components": "./src/copilot-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
