@@ -39,6 +39,7 @@ import {
   type BrandValidationResult,
   type PersonaLintResult,
 } from "./personalization-governance";
+import { fabricForWorkspace, type MultimodalEvidenceFabric, type EvidenceObject, type Claim, type ExtractedAction } from "./multimodal-evidence";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
 import { CognitionLedger } from "./cognition-ledger";
@@ -92,6 +93,7 @@ export class AniService {
   private failures: FailureTaxonomy;
   private kg: KnowledgeGraphEngine;
   private governance: GovernanceBundle;
+  private evidenceFabric: MultimodalEvidenceFabric;
 
   constructor(
     private readonly workspaceId: string,
@@ -117,11 +119,16 @@ export class AniService {
     this.failures = new FailureTaxonomy();
     this.kg = createKnowledgeGraph(workspaceId);
     this.governance = governanceForWorkspace(workspaceId);
+    this.evidenceFabric = fabricForWorkspace(workspaceId);
   }
 
   /** Expose governance bundle for API routes / tests — tenant-scoped */
   getGovernance(): GovernanceBundle {
     return this.governance;
+  }
+
+  getEvidenceFabric(): MultimodalEvidenceFabric {
+    return this.evidenceFabric;
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
@@ -572,6 +579,100 @@ export class AniService {
       version: 1,
     });
     this.governance.store.put(profile, this.userId);
+  }
+
+  // ========================================================================
+  // Multimodal Evidence Fabric — API surface
+  // ========================================================================
+
+  async createMultimodalEvidence(input: Omit<EvidenceObject, "evidence_id" | "hash" | "prev_hash"> & Partial<Pick<EvidenceObject, "evidence_id">>): Promise<EvidenceObject> {
+    await this.assert("CREATE");
+    const { createEvidence } = await import("./multimodal-evidence");
+    const ev = createEvidence({
+      session_id: input.session_id,
+      asset_id: input.asset_id,
+      type: input.type,
+      modality: input.modality,
+      time: input.time,
+      location: input.location,
+      content: input.content,
+      confidence: input.confidence,
+      permissions: { ...input.permissions, tenant_id: this.workspaceId },
+      derived_from: input.derived_from,
+      derived_assets: input.derived_assets,
+      provenance: input.provenance,
+    });
+    // tenant isolation enforced
+    if (ev.permissions.tenant_id !== this.workspaceId) throw new Error("tenant mismatch");
+    this.evidenceFabric.ingest(ev);
+    await this.audit("ani.evidence.created", ev.evidence_id);
+    return ev;
+  }
+
+  async listMultimodalEvidence(session_id?: string): Promise<EvidenceObject[]> {
+    await this.assert("READ");
+    return this.evidenceFabric.list(session_id);
+  }
+
+  async getMultimodalEvidence(evidence_id: string): Promise<EvidenceObject | null> {
+    await this.assert("READ");
+    return this.evidenceFabric.get(evidence_id) ?? null;
+  }
+
+  async updateMultimodalEvidence(evidence_id: string, patch: Partial<EvidenceObject>): Promise<EvidenceObject | null> {
+    await this.assert("UPDATE");
+    // forbid cross-tenant
+    const existing = this.evidenceFabric.get(evidence_id);
+    if (existing && existing.permissions.tenant_id !== this.workspaceId) throw new Error("cross-tenant denied");
+    return this.evidenceFabric.update(evidence_id, patch);
+  }
+
+  async deleteMultimodalEvidence(evidence_id: string): Promise<boolean> {
+    await this.assert("DELETE");
+    const existing = this.evidenceFabric.get(evidence_id);
+    if (existing && existing.permissions.tenant_id !== this.workspaceId) throw new Error("cross-tenant denied");
+    return this.evidenceFabric.delete(evidence_id);
+  }
+
+  async searchMultimodalEvidence(query: import("./multimodal-evidence").SearchQuery): Promise<EvidenceObject[]> {
+    await this.assert("READ");
+    return this.evidenceFabric.search(query);
+  }
+
+  async getMultimodalTimeline(session_id: string): Promise<import("./multimodal-evidence").TimelineEvent[]> {
+    await this.assert("READ");
+    return this.evidenceFabric.timeline.list().filter(e => e.sources.some(s=> s.includes(session_id)) || true);
+  }
+
+  async extractMultimodalActions(session_id: string): Promise<ExtractedAction[]> {
+    await this.assert("READ");
+    const evs = this.evidenceFabric.list(session_id).filter(e=> e.type==="transcript_sentence");
+    const transcript = evs.map(e=> ({ text: e.content.text, start_ms: e.time.start_ms, end_ms: e.time.end_ms, speaker_id: e.content.speaker_id ?? undefined }));
+    const { extractActions } = await import("./multimodal-evidence");
+    return extractActions(transcript);
+  }
+
+  async confirmMultimodalAction(action_id: string, decision: "confirmed" | "rejected"): Promise<void> {
+    await this.assert("UPDATE");
+    void action_id; void decision;
+    await this.audit(`ani.action.${decision}`, action_id);
+  }
+
+  async getMultimodalConsent(session_id: string): Promise<import("./multimodal-evidence").ConsentState | null> {
+    await this.assert("READ");
+    return this.evidenceFabric.getConsent(session_id) ?? null;
+  }
+
+  async setMultimodalConsent(consent: import("./multimodal-evidence").ConsentState): Promise<void> {
+    await this.assert("CREATE");
+    if (consent.session_id && (consent as unknown as { tenant_id?: string }).tenant_id && (consent as unknown as { tenant_id: string }).tenant_id !== this.workspaceId) throw new Error("tenant mismatch");
+    this.evidenceFabric.setConsent(consent);
+  }
+
+  async buildMultimodalResponse(answer: string, claims: Claim[], session_id: string): Promise<import("./multimodal-evidence").UnifiedResponse> {
+    await this.assert("READ");
+    const actions = await this.extractMultimodalActions(session_id);
+    return this.evidenceFabric.buildResponse(answer, claims, actions);
   }
 
   async persistMemoryMark(

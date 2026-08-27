@@ -530,3 +530,4 @@ export {
 } from "./risk-approval";
 export type { RiskAssessment, RiskInputs, RiskPolicyRule, ApprovalRequest, Delegation, RiskAuditEvent } from "./risk-approval";
 export * from "./personalization-governance";
+export * from "./multimodal-evidence";
