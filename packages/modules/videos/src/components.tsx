@@ -6,6 +6,7 @@ import { Badge, Button, Card, Dialog, Dropdown, MenuItem, Tabs } from "@n0va/ui"
 import type { Video, VideoPlaylist } from "@n0va/db";
 import { embedFor, EXPORT_PRESETS } from "./server";
 import { VideoCopilotPanel } from "./copilot-components";
+import { GovernanceControlCenter } from "./governance-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -194,6 +195,7 @@ export function VideoLibrary({
 const STUDIO_TABS = [
   { id: "studio", label: "Studio" },
   { id: "copilot", label: "Copilot" },
+  { id: "governance", label: "Governance" },
   { id: "assets", label: "Assets" },
   { id: "ai", label: "AI Aperture" },
   { id: "color", label: "Color" },
@@ -422,6 +424,11 @@ export function VideoStudioTranscendent({
               timelineId={(selectedProj?.timeline as unknown as { tracks?: unknown[] }) ? `tl_${(selectedProj?.id ?? "demo").slice(0,6)}` : undefined}
               projectTitle={selectedProj?.title ?? projectTitleFallback(projects)}
             />
+          )}
+
+          {/* GOVERNANCE — agent operating system */}
+          {activeTab === "governance" && (
+            <GovernanceControlCenter projectId={selectedProj?.id ?? projects[0]?.id ?? "proj_q3_launch"} />
           )}
 
           {/* STUDIO */}

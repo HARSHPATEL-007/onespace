@@ -3,3 +3,6 @@ export { VideoLibrary, VideoDetail, VideoStudioTranscendent } from "./components
 export * from "./copilot-types";
 export * from "./copilot-engine";
 export { VideoCopilotPanel } from "./copilot-components";
+export * from "./governance-types";
+export * from "./governance-engine";
+export { GovernanceControlCenter } from "./governance-components";

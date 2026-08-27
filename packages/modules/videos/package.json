@@ -9,7 +9,10 @@
     "./components": "./src/components.tsx",
     "./copilot": "./src/copilot-engine.ts",
     "./copilot-types": "./src/copilot-types.ts",
-    "./copilot-components": "./src/copilot-components.tsx"
+    "./copilot-components": "./src/copilot-components.tsx",
+    "./governance": "./src/governance-engine.ts",
+    "./governance-types": "./src/governance-types.ts",
+    "./governance-components": "./src/governance-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
