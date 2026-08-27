@@ -16,6 +16,7 @@ import {
 } from "@n0va/ui";
 import { N0VA_MODULES, WORKSPACE_COOKIE, type N0vaModule } from "@n0va/core";
 import { setActiveWorkspace, signOutAction } from "@/app/actions";
+import { FloatingAniButton } from "@/components/FloatingAniButton";
 import type { Workspace, Role } from "@prisma/client";
 
 interface ShellProps {
@@ -209,6 +210,9 @@ export function AppShell({ user, workspaces, activeWorkspace, children, enabledM
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onSelect={onSelectModule} />
+
+      {/* Floating +ANI — universal shell, every module + launcher */}
+      <FloatingAniButton />
 
       {launcherOpen && (
         <div

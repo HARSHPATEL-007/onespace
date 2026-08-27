@@ -81,6 +81,7 @@
     "./confidence-engine": "./src/confidence-engine.ts",
     "./evaluation-platform": "./src/evaluation-platform.ts",
     "./observability-plane": "./src/observability-plane.ts",
+    "./unified-interaction": "./src/unified-interaction.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },

@@ -717,3 +717,4 @@ export type {
   IncidentEvaluation,
   SloDefinition,
 } from "./observability-plane";
+export * from "./unified-interaction";

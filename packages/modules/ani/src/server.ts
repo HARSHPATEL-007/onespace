@@ -45,6 +45,7 @@ import { teamLayerForWorkspace, type TeamIntelligenceLayer } from "./team-intell
 import { assuranceForWorkspace, type UncertaintyAssuranceEngine, type AssuranceDimensions } from "./confidence-engine";
 import { evaluationForWorkspace, type EvaluationPlatform } from "./evaluation-platform";
 import { observabilityForWorkspace, type ObservabilityPlane } from "./observability-plane";
+import { shellForWorkspace, type UniversalShell } from "./unified-interaction";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
 import { CognitionLedger } from "./cognition-ledger";
@@ -104,6 +105,7 @@ export class AniService {
   private assurance: UncertaintyAssuranceEngine;
   private evaluation: EvaluationPlatform;
   private observability: ObservabilityPlane;
+  private shell: UniversalShell;
 
   constructor(
     private readonly workspaceId: string,
@@ -135,6 +137,7 @@ export class AniService {
     this.assurance = assuranceForWorkspace(workspaceId);
     this.evaluation = evaluationForWorkspace(workspaceId);
     this.observability = observabilityForWorkspace(workspaceId);
+    this.shell = shellForWorkspace(workspaceId);
   }
 
   /** Expose governance bundle for API routes / tests — tenant-scoped */
@@ -164,6 +167,10 @@ export class AniService {
 
   getObservability(): ObservabilityPlane {
     return this.observability;
+  }
+
+  getShell(): UniversalShell {
+    return this.shell;
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
@@ -953,6 +960,36 @@ export class AniService {
   async createIncident(incident: Omit<import("./observability-plane").IncidentRecord,"incident_id"|"created_at"|"status">): Promise<import("./observability-plane").IncidentRecord> {
     await this.assert("CREATE");
     return this.observability.incidents.create(incident as never);
+  }
+
+  // ========================================================================
+  // Unified Interaction Surface — Universal Shell
+  // ========================================================================
+
+  async createInteraction(input: Omit<import("./unified-interaction").Interaction,"id"|"state"|"actions"|"undo"> & Partial<Pick<import("./unified-interaction").Interaction,"state"|"actions"|"undo"|"id">>): Promise<import("./unified-interaction").Interaction> {
+    await this.assert("CREATE");
+    const { createInteraction } = await import("./unified-interaction");
+    const inter=createInteraction(input as never);
+    this.shell.suggestions.create(inter.reason, inter.context.module, inter.confidence as never);
+    this.shell.history.add({ timestamp:new Date().toISOString(), module: inter.context.module, user_request: inter.reason, context_used: JSON.stringify(inter.context), model_or_workflow: inter.capability, tools_called:[], status: inter.state, undo_available: inter.undo.available, source: inter.surface, privacy_classification:"internal" });
+    return inter;
+  }
+
+  async listInteractions(): Promise<import("./unified-interaction").Interaction[]> {
+    await this.assert("READ");
+    // synthesize from history + suggestions
+    return this.shell.suggestions.list().map(s=> ({ id:s.id, surface:"inline" as const, capability:"suggest", context:{ module:"docs", selection:s.context }, state: s.state as unknown as import("./unified-interaction").InteractionState, reason:s.why ?? s.text, confidence: s.confidence as never, risk:"low" as const, actions:["accept","edit","dismiss"] as never, undo:{ available:!!s.undo_available } }));
+  }
+
+  async getInteractionContext(): Promise<import("./unified-interaction").ContextState> {
+    await this.assert("READ");
+    return this.shell.context.get();
+  }
+
+  async updateInteractionContext(patch: Partial<import("./unified-interaction").ContextState>): Promise<import("./unified-interaction").ContextState> {
+    await this.assert("UPDATE");
+    if(patch.sources) for(const [k,v] of Object.entries(patch.sources)) this.shell.context.toggle(k as never, v as boolean);
+    return this.shell.context.get();
   }
 
   async persistMemoryMark(
