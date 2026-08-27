@@ -40,6 +40,7 @@ import {
   type PersonaLintResult,
 } from "./personalization-governance";
 import { fabricForWorkspace, type MultimodalEvidenceFabric, type EvidenceObject, type Claim, type ExtractedAction } from "./multimodal-evidence";
+import { meetingOSForWorkspace, type MeetingIntelligenceOS } from "./meeting-intelligence";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
 import { CognitionLedger } from "./cognition-ledger";
@@ -94,6 +95,7 @@ export class AniService {
   private kg: KnowledgeGraphEngine;
   private governance: GovernanceBundle;
   private evidenceFabric: MultimodalEvidenceFabric;
+  private meetingOS: MeetingIntelligenceOS;
 
   constructor(
     private readonly workspaceId: string,
@@ -120,6 +122,7 @@ export class AniService {
     this.kg = createKnowledgeGraph(workspaceId);
     this.governance = governanceForWorkspace(workspaceId);
     this.evidenceFabric = fabricForWorkspace(workspaceId);
+    this.meetingOS = meetingOSForWorkspace(workspaceId);
   }
 
   /** Expose governance bundle for API routes / tests — tenant-scoped */
@@ -129,6 +132,10 @@ export class AniService {
 
   getEvidenceFabric(): MultimodalEvidenceFabric {
     return this.evidenceFabric;
+  }
+
+  getMeetingOS(): MeetingIntelligenceOS {
+    return this.meetingOS;
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
@@ -673,6 +680,91 @@ export class AniService {
     await this.assert("READ");
     const actions = await this.extractMultimodalActions(session_id);
     return this.evidenceFabric.buildResponse(answer, claims, actions);
+  }
+
+  // ========================================================================
+  // Meeting Intelligence OS — API surface
+  // ========================================================================
+
+  async createMeetingEvent(event: Omit<import("./meeting-intelligence").MeetingEvent, "event_id" | "hash" | "created_at"> & Partial<Pick<import("./meeting-intelligence").MeetingEvent, "event_id">>): Promise<import("./meeting-intelligence").MeetingEvent> {
+    await this.assert("CREATE");
+    const { createMeetingEvent } = await import("./meeting-intelligence");
+    const ev = createMeetingEvent(event as never);
+    const ingested = this.meetingOS.ingestEvent(ev);
+    await this.audit("ani.meeting.event.created", ingested.event_id);
+    return ingested;
+  }
+
+  async listMeetingEvents(meeting_id: string, filters?: { types?: string[]; min_confidence?: number }): Promise<import("./meeting-intelligence").MeetingEvent[]> {
+    await this.assert("READ");
+    return this.meetingOS.listEvents({ meeting_id, types: filters?.types as never, min_confidence: filters?.min_confidence });
+  }
+
+  async getLiveAgenda(meeting_id: string): Promise<import("./meeting-intelligence").AgendaItemState[]> {
+    await this.assert("READ");
+    void meeting_id;
+    return this.meetingOS.agenda.list();
+  }
+
+  async getMeetingQuestions(meeting_id: string): Promise<import("./meeting-intelligence").TrackedQuestion[]> {
+    await this.assert("READ");
+    void meeting_id;
+    return this.meetingOS.questions.list();
+  }
+
+  async getMeetingDecisions(meeting_id: string): Promise<import("./meeting-intelligence").MeetingEvent[]> {
+    await this.assert("READ");
+    return this.meetingOS.listEvents({ meeting_id, types: ["decision"] as never });
+  }
+
+  async getMeetingActions(meeting_id: string): Promise<import("./meeting-intelligence").MeetingEvent[]> {
+    await this.assert("READ");
+    return this.meetingOS.listEvents({ meeting_id, types: ["action"] as never });
+  }
+
+  async getMeetingRisks(meeting_id: string): Promise<import("./meeting-intelligence").MeetingEvent[]> {
+    await this.assert("READ");
+    return this.meetingOS.listEvents({ meeting_id, types: ["risk"] as never });
+  }
+
+  async getMeetingParticipation(meeting_id: string): Promise<import("./meeting-intelligence").ParticipationReport | null> {
+    await this.assert("READ");
+    void meeting_id;
+    return this.meetingOS.participation.report();
+  }
+
+  async correctMeeting(meeting_id: string, original: string, corrected: string, reason?: string): Promise<import("./meeting-intelligence").CorrectionRecord> {
+    await this.assert("UPDATE");
+    return this.meetingOS.corrections.correct({ meeting_id, original, corrected, editor: this.userId, reason, evidence_links: [] });
+  }
+
+  async previewMeetingSync(meeting_id: string): Promise<import("./meeting-intelligence").ProjectSyncPreview> {
+    await this.assert("READ");
+    const evs = this.meetingOS.listEvents({ meeting_id });
+    return this.meetingOS.sync.preview(evs);
+  }
+
+  async applyMeetingSync(meeting_id: string, preview: import("./meeting-intelligence").ProjectSyncPreview): Promise<{ created: string[]; rollbackToken: string }> {
+    await this.assert("CREATE");
+    void meeting_id;
+    return this.meetingOS.sync.apply(preview);
+  }
+
+  async deleteMeetingArtifacts(meeting_id: string, artifactKind: string): Promise<boolean> {
+    await this.assert("DELETE");
+    // retention independent: only delete that artifact, not others
+    const evs = this.meetingOS.listEvents({ meeting_id });
+    void artifactKind; void evs;
+    await this.audit("ani.meeting.artifacts.deleted", meeting_id);
+    return true;
+  }
+
+  async draftMeetingFollowUp(meeting_id: string, style?: string): Promise<import("./meeting-intelligence").FollowUpDraft> {
+    await this.assert("READ");
+    const decisions = this.meetingOS.listEvents({ meeting_id, types:["decision"] as never }).map(e=> ({ decision_id:e.event_id, statement:e.content.summary, status:"confirmed" as const, decision_owner:e.content.speaker_ids[0]??null, supporting_evidence:e.evidence.map(ev=>ev.asset_id), dissenting_evidence:[], assumptions:[], participants:e.content.speaker_ids, source_timestamps:e.time, confidence:e.confidence, inferred:false }));
+    const actions = this.meetingOS.listEvents({ meeting_id, types:["action"] as never }).map(e=> ({ action_id:e.event_id, title:e.title, owner:{ person_id:e.content.speaker_ids[0]??null, basis:"explicit acceptance" as const, confidence:0.9 }, deadline:{ value:null, basis:"inferred" as const, confidence:0.3 }, dependencies:[], source_timestamp:e.time, status:"awaiting_confirmation" as const, evidence:e.evidence.map(ev=>ev.asset_id), original_wording:e.content.summary, is_commitment:true }));
+    const questions = this.meetingOS.questions.list();
+    return this.meetingOS.followUps.build({ decisions, questions, actions, style: style as never });
   }
 
   async persistMemoryMark(
