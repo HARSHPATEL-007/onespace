@@ -44,6 +44,7 @@ import { meetingOSForWorkspace, type MeetingIntelligenceOS } from "./meeting-int
 import { teamLayerForWorkspace, type TeamIntelligenceLayer } from "./team-intelligence";
 import { assuranceForWorkspace, type UncertaintyAssuranceEngine, type AssuranceDimensions } from "./confidence-engine";
 import { evaluationForWorkspace, type EvaluationPlatform } from "./evaluation-platform";
+import { observabilityForWorkspace, type ObservabilityPlane } from "./observability-plane";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
 import { CognitionLedger } from "./cognition-ledger";
@@ -102,6 +103,7 @@ export class AniService {
   private teamLayer: TeamIntelligenceLayer;
   private assurance: UncertaintyAssuranceEngine;
   private evaluation: EvaluationPlatform;
+  private observability: ObservabilityPlane;
 
   constructor(
     private readonly workspaceId: string,
@@ -132,6 +134,7 @@ export class AniService {
     this.teamLayer = teamLayerForWorkspace(workspaceId);
     this.assurance = assuranceForWorkspace(workspaceId);
     this.evaluation = evaluationForWorkspace(workspaceId);
+    this.observability = observabilityForWorkspace(workspaceId);
   }
 
   /** Expose governance bundle for API routes / tests — tenant-scoped */
@@ -157,6 +160,10 @@ export class AniService {
 
   getEvaluation(): EvaluationPlatform {
     return this.evaluation;
+  }
+
+  getObservability(): ObservabilityPlane {
+    return this.observability;
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
@@ -922,6 +929,30 @@ export class AniService {
   async rollbackEvaluation(trigger: string): Promise<{ restored:string; previous:string; incident:string }> {
     await this.assert("UPDATE");
     return this.evaluation.rollback.rollback();
+  }
+
+  // ========================================================================
+  // Observability and Incident Response — Plane
+  // ========================================================================
+
+  async ingestTrace(trace: import("./observability-plane").TraceRecord): Promise<void> {
+    await this.assert("CREATE");
+    this.observability.ingestTrace(trace);
+  }
+
+  async getTrace(trace_id:string): Promise<import("./observability-plane").TraceRecord|undefined> {
+    await this.assert("READ");
+    return this.observability.getTrace(trace_id);
+  }
+
+  async activateKillSwitch(sw: import("./observability-plane").KillSwitch): Promise<void> {
+    await this.assert("UPDATE");
+    this.observability.kills.activate(sw);
+  }
+
+  async createIncident(incident: Omit<import("./observability-plane").IncidentRecord,"incident_id"|"created_at"|"status">): Promise<import("./observability-plane").IncidentRecord> {
+    await this.assert("CREATE");
+    return this.observability.incidents.create(incident as never);
   }
 
   async persistMemoryMark(
