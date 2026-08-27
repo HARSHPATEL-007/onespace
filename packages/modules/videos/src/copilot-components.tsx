@@ -279,6 +279,31 @@ function CommandView({
             <Badge tone="neutral">evidence retrieval</Badge><Badge tone="neutral">purpose-bound scopes</Badge><Badge tone="primary">shows sources</Badge>
           </div>
         </Card>
+        <Card padded>
+          <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>Available permissions <Badge tone={autonomy==="observe" ? "success" : autonomy==="locked_production" ? "warning" : "primary"}>{autonomy}</Badge></div>
+          <div style={{ fontSize: 11, color: "var(--nv-color-text-muted)", marginTop: 4 }}>
+            {autonomy==="observe" && "project.read, transcript.read, scene.read, review.read — no writes"}
+            {autonomy==="suggest" && "project.read, transcript.read + proposal branch create (staging) — no master writes"}
+            {autonomy==="assisted" && "project.read + timeline.branch.write (staging) + proxy render — master untouched until merge"}
+            {autonomy==="governed_autonomous" && "branch.write for approved op classes + proxy render; high-risk (publish/purge/identity) still gated"}
+            {autonomy==="locked_production" && "read only approved assets/references — no generative/destructive, no branch writes"}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: "var(--nv-color-text-faint)" }}>Inherited from project policy • change requires elevated approval • listed here so user never infers commit behavior</div>
+        </Card>
+        <Card padded>
+          <div style={{ fontWeight: 800 }}>Suggested clarifying questions (only if material)</div>
+          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+            {envelope.unknowns.length ? envelope.unknowns.map(u => (
+              <div key={u} style={{ fontSize: 11, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)", padding: 6, borderRadius: 6 }}>❓ {u} → <em style={{ color: "var(--nv-color-text-muted)" }}>Proceeds with visible assumption; ask only if this changes result materially.</em></div>
+            )) : (
+              <div style={{ fontSize: 11, color: "var(--nv-color-text-muted)" }}>No material ambiguity — will proceed with visible assumptions: {envelope.assumptions.length ? envelope.assumptions.join(" • ") : "none"}</div>
+            )}
+            {envelope.inferred && Object.keys(envelope.inferred).length > 0 && (
+              <details style={{ fontSize: 11 }}><summary style={{ cursor: "pointer", fontWeight: 700 }}>Inferred preferences ({Object.keys(envelope.inferred).length})</summary><div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 4 }}>{Object.entries(envelope.inferred).map(([k,v]) => <div key={k} style={{ background: "var(--nv-color-surface-2)", padding: 6, borderRadius: 6, border: "1px solid var(--nv-color-border)" }}><strong>{k}</strong>: {String((v as { value: unknown }).value)} <span style={{ color: "var(--nv-color-text-faint)" }}>(c {(v as { confidence: number }).confidence}, {(v as { reason: string }).reason})</span></div>)}</div></details>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: "var(--nv-color-text-faint)", marginTop: 6 }}>Ask only when ambiguity materially changes result — otherwise proceed with visible assumption (prevents interruptions, keeps choices inspectable).</div>
+        </Card>
       </div>
     </div>
   );
@@ -300,6 +325,13 @@ function PlanView({ proposal, selectedOps, onSelectOps }: { proposal: Proposal; 
           <Badge tone="neutral">base {proposal.base_snapshot.slice(0, 12)} → branch {proposal.target_branch}</Badge>
           <Badge tone={proposal.risk.level==="low" ? "success" : proposal.risk.level==="medium" ? "warning" : "warning"}>risk {proposal.risk.level} • {proposal.risk.reversibility}</Badge>
         </div>
+        {(proposal.intent.assumptions.length > 0 || proposal.intent.unknowns.length > 0) && (
+          <div style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)", borderRadius: 8, padding: 8, fontSize: 11 }}>
+            {proposal.intent.assumptions.length > 0 && <div><strong>Assumptions (visible):</strong> {proposal.intent.assumptions.join(" • ")}</div>}
+            {proposal.intent.unknowns.length > 0 && <div style={{ marginTop: 4, color: "#b45309" }}><strong>Unknowns:</strong> {proposal.intent.unknowns.join(" • ")}</div>}
+            <div style={{ marginTop: 4, color: "var(--nv-color-text-faint)" }}>Policy: {proposal.risk.policy_flags.length ? proposal.risk.policy_flags.join(", ") : "no flags"} • estimate ${proposal.risk.estimated_render_cost_usd} • rollback: {proposal.risk.rollback_info}</div>
+          </div>
+        )}
         <div style={{ border: "1px solid var(--nv-color-border)", borderRadius: 10, overflow: "hidden" }}>
           <div style={{ display: "grid", gridTemplateColumns: "28px 90px 1fr 70px 56px", gap: 0, background: "var(--nv-color-surface-2)", padding: "8px 10px", fontSize: 11, fontWeight: 800, color: "var(--nv-color-text-faint)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
             <span>✓</span><span>Type</span><span>Operation / Reason</span><span>Range</span><span>Conf</span>
