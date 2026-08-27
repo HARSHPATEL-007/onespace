@@ -576,3 +576,6 @@ export type {
   ArtifactKind,
   RetentionPolicy as MeetingRetentionPolicy,
 } from "./meeting-intelligence";
+export * from "./team-intelligence";
+export * from "./confidence-engine";
+export * from "./evaluation-platform";

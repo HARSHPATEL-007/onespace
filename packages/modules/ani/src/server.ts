@@ -41,6 +41,9 @@ import {
 } from "./personalization-governance";
 import { fabricForWorkspace, type MultimodalEvidenceFabric, type EvidenceObject, type Claim, type ExtractedAction } from "./multimodal-evidence";
 import { meetingOSForWorkspace, type MeetingIntelligenceOS } from "./meeting-intelligence";
+import { teamLayerForWorkspace, type TeamIntelligenceLayer } from "./team-intelligence";
+import { assuranceForWorkspace, type UncertaintyAssuranceEngine, type AssuranceDimensions } from "./confidence-engine";
+import { evaluationForWorkspace, type EvaluationPlatform } from "./evaluation-platform";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
 import { CognitionLedger } from "./cognition-ledger";
@@ -96,6 +99,9 @@ export class AniService {
   private governance: GovernanceBundle;
   private evidenceFabric: MultimodalEvidenceFabric;
   private meetingOS: MeetingIntelligenceOS;
+  private teamLayer: TeamIntelligenceLayer;
+  private assurance: UncertaintyAssuranceEngine;
+  private evaluation: EvaluationPlatform;
 
   constructor(
     private readonly workspaceId: string,
@@ -123,6 +129,9 @@ export class AniService {
     this.governance = governanceForWorkspace(workspaceId);
     this.evidenceFabric = fabricForWorkspace(workspaceId);
     this.meetingOS = meetingOSForWorkspace(workspaceId);
+    this.teamLayer = teamLayerForWorkspace(workspaceId);
+    this.assurance = assuranceForWorkspace(workspaceId);
+    this.evaluation = evaluationForWorkspace(workspaceId);
   }
 
   /** Expose governance bundle for API routes / tests — tenant-scoped */
@@ -136,6 +145,18 @@ export class AniService {
 
   getMeetingOS(): MeetingIntelligenceOS {
     return this.meetingOS;
+  }
+
+  getTeamLayer(): TeamIntelligenceLayer {
+    return this.teamLayer;
+  }
+
+  getAssurance(): UncertaintyAssuranceEngine {
+    return this.assurance;
+  }
+
+  getEvaluation(): EvaluationPlatform {
+    return this.evaluation;
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {
@@ -765,6 +786,142 @@ export class AniService {
     const actions = this.meetingOS.listEvents({ meeting_id, types:["action"] as never }).map(e=> ({ action_id:e.event_id, title:e.title, owner:{ person_id:e.content.speaker_ids[0]??null, basis:"explicit acceptance" as const, confidence:0.9 }, deadline:{ value:null, basis:"inferred" as const, confidence:0.3 }, dependencies:[], source_timestamp:e.time, status:"awaiting_confirmation" as const, evidence:e.evidence.map(ev=>ev.asset_id), original_wording:e.content.summary, is_commitment:true }));
     const questions = this.meetingOS.questions.list();
     return this.meetingOS.followUps.build({ decisions, questions, actions, style: style as never });
+  }
+
+  // ========================================================================
+  // Team Intelligence Layer — API surface
+  // ========================================================================
+
+  async createTeamMemory(input: Omit<import("./team-intelligence").TeamMemoryObject,"memory_id"|"hash"|"created_at"|"updated_at"|"version"|"status"> & Partial<Pick<import("./team-intelligence").TeamMemoryObject,"status">>): Promise<import("./team-intelligence").TeamMemoryObject> {
+    await this.assert("CREATE");
+    const { createTeamMemory } = await import("./team-intelligence");
+    const m=createTeamMemory(input as never);
+    this.teamLayer.memory.put(m);
+    await this.audit("ani.team.memory.created", m.memory_id);
+    return m;
+  }
+
+  async listTeamMemory(team_id?: string): Promise<import("./team-intelligence").TeamMemoryObject[]> {
+    await this.assert("READ");
+    return this.teamLayer.memory.list(team_id);
+  }
+
+  async searchTeamMemory(team_id:string, q:string): Promise<import("./team-intelligence").TeamMemoryObject[]> {
+    await this.assert("READ");
+    return this.teamLayer.memory.search(team_id,q);
+  }
+
+  async publishTeamMemory(memory_id:string): Promise<import("./team-intelligence").TeamMemoryObject | null> {
+    await this.assert("UPDATE");
+    return this.teamLayer.memory.publish(memory_id, this.userId, (m,actor)=> m.owner.user_id===actor || this.role==="ADMIN" || this.role==="OWNER");
+  }
+
+  async createTeamDecision(input: Omit<import("./team-intelligence").DecisionRecord,"decision_id"|"created_at">): Promise<import("./team-intelligence").DecisionRecord> {
+    await this.assert("CREATE");
+    const { createDecisionRecord } = await import("./team-intelligence");
+    const d=createDecisionRecord(input as never);
+    this.teamLayer.decisions.put(d);
+    return d;
+  }
+
+  async listTeamDecisions(scope?:string): Promise<import("./team-intelligence").DecisionRecord[]> {
+    await this.assert("READ");
+    return this.teamLayer.decisions.list(scope);
+  }
+
+  async createTeamHandoff(input: Omit<import("./team-intelligence").HandoffPackage,"handoff_id"|"acceptance"|"created_at">): Promise<import("./team-intelligence").HandoffPackage> {
+    await this.assert("CREATE");
+    return this.teamLayer.handoffs.create(input as never);
+  }
+
+  async getTeamOntology(): Promise<import("./team-intelligence").OntologyTerm[]> {
+    await this.assert("READ");
+    return this.teamLayer.ontology.listTerms();
+  }
+
+  async getTeamDashboard(team_id:string): Promise<any> {
+    await this.assert("READ");
+    const { buildDashboard } = await import("./team-intelligence");
+    return buildDashboard(this.teamLayer.gateway, team_id);
+  }
+
+  // ========================================================================
+  // Confidence and Uncertainty Layer — Assurance Engine
+  // ========================================================================
+
+  async analyzeAssurance(input: Parameters<UncertaintyAssuranceEngine["analyze"]>[0]): Promise<ReturnType<UncertaintyAssuranceEngine["analyze"]>> {
+    await this.assert("READ");
+    return this.assurance.analyze(input);
+  }
+
+  async extractClaims(text: string): Promise<import("./confidence-engine").ClaimRecord[]> {
+    await this.assert("READ");
+    // naive claim extractor: split sentences as claims
+    const { createClaim } = await import("./confidence-engine");
+    return text.split(/[.!?]\s+/).filter(s=>s.trim().length>20).slice(0,5).map(t=> createClaim({ text: t.slice(0,80), claim_type:"factual", sources:[{ source_id:"user", support:"indirect", source_confidence:0.6, freshness:"unknown"}], verification:{ recomputed:false, independent_check:false, contradictions:[] }, impact:"medium"}));
+  }
+
+  async scoreSources(evidence: import("./confidence-engine").EvidenceRecord[]): Promise<number[]> {
+    await this.assert("READ");
+    const { scoreSource } = await import("./confidence-engine");
+    return evidence.map(scoreSource);
+  }
+
+  async checkAmbiguity(text:string, impact?: string): Promise<import("./confidence-engine").AmbiguityAnalysis> {
+    await this.assert("READ");
+    const { analyzeAmbiguity } = await import("./confidence-engine");
+    return analyzeAmbiguity(text, (impact ?? "medium") as never);
+  }
+
+  async createForecast(metric:string, estimate:number, unit:string, horizon:string): Promise<import("./confidence-engine").ForecastRecord> {
+    await this.assert("CREATE");
+    const { createForecast } = await import("./confidence-engine");
+    return createForecast(metric, estimate, unit, horizon, "baseline", ["Conversion rate remains within recent range"], ["sheets://sales/q3"]);
+  }
+
+  async getCalibrationReports(): Promise<import("./confidence-engine").CalibrationRecord[]> {
+    await this.assert("READ");
+    return this.assurance.getCalibration().listRecords();
+  }
+
+  // ========================================================================
+  // Continuous Evaluation Platform — Control Plane
+  // ========================================================================
+
+  async createEvaluationContract(contract: import("./evaluation-platform").EvaluationContract): Promise<void> {
+    await this.assert("CREATE");
+    this.evaluation.registry.putContract(contract);
+  }
+
+  async createEvaluationDataset(ds: import("./evaluation-platform").GoldenDataset): Promise<void> {
+    await this.assert("CREATE");
+    this.evaluation.registry.putDataset(ds);
+  }
+
+  async runEvaluation(dataset_id:string, model_version:string, prompt_version:string): Promise<import("./evaluation-platform").EvaluationRunRef> {
+    await this.assert("CREATE");
+    return this.evaluation.createRun({ dataset_version: dataset_id, model_version, prompt_version, retrieval_config:"default", tool_versions:{}, safety_policies:"v1", evaluator_versions:{}, runtime_env:"prod", random_seed:42 });
+  }
+
+  async getEvaluationTrace(trace_id:string): Promise<import("./evaluation-platform").TraceRecord | undefined> {
+    await this.assert("READ");
+    return this.evaluation.traces.get(trace_id);
+  }
+
+  async submitFeedback(feedback: Omit<import("./evaluation-platform").FeedbackRecord,"feedback_id"|"review_status">): Promise<import("./evaluation-platform").FeedbackRecord> {
+    await this.assert("CREATE");
+    return this.evaluation.feedback.add(feedback as never);
+  }
+
+  async evaluateReleaseGate(gate: import("./evaluation-platform").ReleaseGate, metrics: Record<string,number>, baseline: Record<string,number>): Promise<{ pass:boolean; reasons:string[] }> {
+    await this.assert("READ");
+    const { evaluateGate } = await import("./evaluation-platform");
+    return evaluateGate(gate, metrics, baseline);
+  }
+
+  async rollbackEvaluation(trigger: string): Promise<{ restored:string; previous:string; incident:string }> {
+    await this.assert("UPDATE");
+    return this.evaluation.rollback.rollback();
   }
 
   async persistMemoryMark(

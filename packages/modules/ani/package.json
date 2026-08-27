@@ -77,6 +77,9 @@
     "./personalization-governance": "./src/personalization-governance.ts",
     "./multimodal-evidence": "./src/multimodal-evidence.ts",
     "./meeting-intelligence": "./src/meeting-intelligence.ts",
+    "./team-intelligence": "./src/team-intelligence.ts",
+    "./confidence-engine": "./src/confidence-engine.ts",
+    "./evaluation-platform": "./src/evaluation-platform.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },
