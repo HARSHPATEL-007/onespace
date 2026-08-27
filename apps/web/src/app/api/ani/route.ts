@@ -21,11 +21,21 @@ export async function GET() {
 export async function POST(req: Request) {
   let body: {
     content?: string;
+    prompt?: string;
     conversationId?: string;
     stream?: boolean;
     intent?: string;
     depth?: string;
     autoDepth?: string | boolean;
+    personalization?: {
+      mode?: "task_only" | "use_saved" | "use_team" | "use_default" | "preview";
+      profile_ids?: string[];
+      team_persona_id?: string;
+      brand_voice_id?: string;
+      learn_from_edits?: boolean;
+      explain_adaptation?: boolean;
+      surface?: "private" | "shared" | "public";
+    };
   };
   try {
     body = await req.json();
@@ -33,9 +43,9 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const content = body.content;
+  const content = body.content ?? body.prompt;
   if (!content || typeof content !== "string") {
-    return Response.json({ error: "Missing 'content' field" }, { status: 400 });
+    return Response.json({ error: "Missing 'content'/'prompt' field" }, { status: 400 });
   }
 
   let ctx;
@@ -53,12 +63,18 @@ export async function POST(req: Request) {
 
   if (body.conversationId) {
     try {
-      const result = await svc.send(body.conversationId, content);
+      const result = await svc.send(body.conversationId, content, body.personalization as never);
       return Response.json({
         content: result.assistantMessage.content,
         toolCalls: result.toolCalls ? JSON.parse(result.toolCalls) : [],
         citations: result.citations ? JSON.parse(result.citations) : [],
         confidence: result.confidence ?? null,
+        adaptationReceipt: result.adaptationReceipt ? JSON.parse(result.adaptationReceipt) : null,
+        instructionLedger: result.instructionLedger ? JSON.parse(result.instructionLedger) : [],
+        governanceAudit: result.governanceAudit ? JSON.parse(result.governanceAudit) : null,
+        brandValidation: result.brandValidation ? JSON.parse(result.brandValidation) : null,
+        personaLint: result.personaLint ? JSON.parse(result.personaLint) : null,
+        responseId: result.responseId ?? null,
       });
     } catch (err) {
       return Response.json(

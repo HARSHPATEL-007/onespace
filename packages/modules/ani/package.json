@@ -74,6 +74,7 @@
     "./memory-consolidator": "./src/memory-consolidator.ts",
     "./security-fabric": "./src/security-fabric.ts",
     "./model-gateway": "./src/model-gateway.ts",
+    "./personalization-governance": "./src/personalization-governance.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },

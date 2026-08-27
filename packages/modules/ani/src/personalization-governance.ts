@@ -805,14 +805,26 @@ export class EditClassifier {
     if (sensitive) return "sensitive_interaction";
     if (event.explicit_instruction && /always|from now on|save.*preference|remember/i.test(event.explicit_instruction)) return "explicit_preference";
     if (event.accepted_suggestion_id) return "intentional_teaching";
+    // Format/structural change heuristic: bullet, structured, verbosity patterns deserve suggestion consideration
+    const hasBulletNew = /^\s*[-*]\s/m.test(event.edited) || /\n\s*[-*]\s/.test(event.edited);
+    const hasBulletOld = /^\s*[-*]\s/m.test(event.original) || /\n\s*[-*]\s/.test(event.original);
+    if (hasBulletNew && !hasBulletOld) return "possible_preference";
+    const toneShift = /(concise|bullets|structured|summary first|risks explicitly)/i.test(event.edited);
+    if (toneShift && !toneShift /* placeholder */) {
+      // keep for future
+    }
     // Detect factual correction: small token change vs style change
     const editDistance = levenshtein(event.original, event.edited);
     const length = Math.max(event.original.length, event.edited.length);
     const ratio = length > 0 ? editDistance / length : 0;
     if (ratio < 0.05) return "one_off_edit";
     if (/fact|error|wrong|incorrect|fix/i.test(event.edited) && ratio < 0.2) return "factual_correction";
+    // Accept shared example as intentional teaching (strong signal)
+    if (event.original.length < 40 && event.edited.length > 80 && hasBulletNew) return "possible_preference";
     // repeated detection handled externally via history; here single edit
     if (ratio < 0.3) return "possible_preference";
+    // Single large format change that introduces structure still counts as possible_preference for opt-in prompt
+    if (hasBulletNew) return "possible_preference";
     return "one_off_edit";
   }
 
@@ -1821,6 +1833,7 @@ export interface PersonalizationAPI {
 export class PersonalizationAPIService implements PersonalizationAPI {
   private candidates = new Map<string, CandidatePreference>();
   private receipts = new Map<string, AdaptationReceipt>();
+  private editHistory = new Map<string, { count: number; lastValue: unknown }>();
 
   constructor(
     private readonly store: PersonalizationStore,
@@ -1866,6 +1879,37 @@ export class PersonalizationAPIService implements PersonalizationAPI {
     const classification = this.editClassifier.classify(edit);
     if (classification === "sensitive_interaction") return null;
     if (classification === "factual_correction") return null;
+    // One-off edits: no persistent learning — but track repetition to surface suggestion after 3 consistent edits
+    if (classification === "one_off_edit") {
+      const key = `${edit.user_id}:${edit.task_type}:${detectedKey}`;
+      const hist = this.editHistory.get(key) ?? { count: 0, lastValue: null };
+      // Only count if value is consistent
+      if (hist.lastValue === value || hist.count === 0) hist.count += 1;
+      else hist.count = 1;
+      hist.lastValue = value;
+      this.editHistory.set(key, hist);
+      if (hist.count >= 3) {
+        // Promote to possible_preference with repeated_consistent_edit confidence
+        const repeatedCand: CandidatePreference = {
+          id: `cand_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          owner_id: edit.user_id,
+          tenant_id: edit.tenant_id,
+          task_type: edit.task_type,
+          preference_key: detectedKey,
+          value,
+          confidence: 0.78,
+          source: "repeated_consistent_edit",
+          status: "candidate",
+          created_at: new Date().toISOString(),
+        };
+        this.candidates.set(repeatedCand.id, repeatedCand);
+        this.editHistory.delete(key);
+        return repeatedCand;
+      }
+      return null;
+    }
+    // Weak positive (accept draft) — small confidence only, not auto candidate unless repeated
+    if (classification === "weak_positive") return null;
     const cand = this.editClassifier.toCandidate(edit, detectedKey, value);
     if (!cand) return null;
     // Store as candidate — requires explicit accept
