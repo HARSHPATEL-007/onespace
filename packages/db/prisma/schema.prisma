@@ -41,6 +41,13 @@ model Workspace {
   albums         Album[]
   photos         Photo[]
   videos         Video[]
+  videoProjects  VideoProject[]
+  videoAssets    VideoAsset[]
+  videoExports   VideoExport[]
+  videoReviewComments VideoReviewComment[]
+  videoCaptions  VideoCaption[]
+  videoAnalytics VideoAnalyticsEvent[]
+  videoTranscodes VideoTranscode[]
   meetRooms      MeetRoom[]
   meetMessages   MeetMessage[]
   sites          Site[]
@@ -261,6 +268,8 @@ createdCalendarEvents CalendarEvent[]
   createdCampaigns     Campaign[]
   healthCheckins       HealthCheckin[]
   createdVideoPlaylists VideoPlaylist[] @relation("createdVideoPlaylists")
+  createdVideoProjects VideoProject[] @relation("createdVideoProjects")
+  createdVideoAssets VideoAsset[] @relation("createdVideoAssets")
   createdLegalDocRevisions LegalDocRevision[] @relation("createdLegalDocRevisions")
   createdDealNotes      DealNote[] @relation("createdDealNotes")
   createdIncidentUpdates IncidentUpdate[] @relation("createdIncidentUpdates")
@@ -3016,6 +3025,256 @@ model VideoPlaylist {
   videos    Video[]
 
   @@index([workspaceId, updatedAt(sort: Desc)])
+}
+
+/// N0VA VIDEOS TRANSCENDENT - Project Nexus (Workspace ↔ N0VA10 convergence)
+model VideoProject {
+  id            String            @id @default(uuid())
+  workspaceId   String
+  createdById   String?
+  title         String
+  description   String            @default("")
+  status        VideoProjectStatus @default(DRAFT)
+  priority      String            @default("medium")
+  category      String            @default("general")
+  tags          String[]          @default([])
+  thumbnailUrl  String?
+  durationSec   Int?
+  resolution    String?           @default("1080p")
+  timeline      Json              @default("{\"tracks\":[],\"markers\":[],\"chapters\":[]}")
+  hyperContext  Json              @default("{}")
+  neuralEmbedding Json?           // 4096-dim vector mock
+  workspaceNexus Json             @default("{}")
+  n0va10State   Json              @default("{}")
+  metadata      Json              @default("{}")
+  publishedAt   DateTime?
+  archivedAt    DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("createdVideoProjects", fields: [createdById], references: [id], onDelete: SetNull)
+  assets    VideoAsset[]
+  exports   VideoExport[]
+  reviewComments VideoReviewComment[]
+  captions  VideoCaption[]
+  analytics VideoAnalyticsEvent[]
+  transcodes VideoTranscode[]
+
+  @@index([workspaceId, status, updatedAt(sort: Desc)])
+  @@index([workspaceId, createdById])
+}
+
+/// N0VA VIDEOS TRANSCENDENT - Asset Constellation (Galactic Media Pipeline)
+model VideoAsset {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  projectId        String?
+  createdById      String?
+  filename         String
+  originalFilename String          @default("")
+  mimeType         String          @default("video/mp4")
+  sizeBytes        Int             @default(0)
+  durationMs       Int?
+  width            Int?
+  height           Int?
+  frameRate        Float?
+  bitDepth         Int?            @default(8)
+  codec            String?         @default("h264")
+  container        String?         @default("mp4")
+  storageKey       String          @default("")
+  storageTier      VideoStorageTier @default(HOT)
+  thumbnailKey     String?
+  proxyKey         String?
+  waveformKey      String?
+  checksumSha3     String?
+  perceptualHash   String?
+  neuralMetadata   Json            @default("{}")
+  technicalSpecs   Json            @default("{}")
+  uploadStatus     String          @default("ready")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation("createdVideoAssets", fields: [createdById], references: [id], onDelete: SetNull)
+  project   VideoProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, projectId, createdAt(sort: Desc)])
+  @@index([workspaceId, storageTier])
+}
+
+/// N0VA VIDEOS TRANSCENDENT - Export & Delivery Pipeline
+model VideoExport {
+  id              String           @id @default(uuid())
+  workspaceId     String
+  projectId       String?
+  videoId         String?
+  preset          String           @default("youtube_4k")
+  format          Json             @default("{\"container\":\"mp4\",\"codec\":\"h264\"}")
+  status          VideoExportStatus @default(QUEUED)
+  progress        Int              @default(0)
+  outputUrl       String?
+  cdnUrl          String?
+  thumbnailUrl    String?
+  fileSizeBytes   Int?
+  renderNode      String?
+  neuralOptimization Json          @default("{}")
+  drm             Json             @default("{}")
+  delivery        Json             @default("[]")
+  error           String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   VideoProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status, createdAt(sort: Desc)])
+  @@index([projectId])
+}
+
+/// N0VA VIDEOS TRANSCENDENT - Frame-Accurate Review & Approval (Collective Consciousness)
+model VideoReviewComment {
+  id          String   @id @default(uuid())
+  workspaceId String
+  projectId   String?
+  videoId     String?
+  authorId    String?
+  authorName  String   @default("")
+  body        String
+  timecodeMs  Int?
+  frameNumber Int?
+  type        String   @default("general")
+  drawingData String?
+  resolved    Boolean  @default(false)
+  parentId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   VideoProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, projectId, createdAt(sort: Desc)])
+  @@index([projectId, timecodeMs])
+}
+
+/// N0VA VIDEOS TRANSCENDENT - Captions & Accessibility (200+ languages)
+model VideoCaption {
+  id          String   @id @default(uuid())
+  workspaceId String
+  projectId   String?
+  assetId     String?
+  videoId     String?
+  language    String   @default("en")
+  kind        String   @default("captions")
+  status      String   @default("ready")
+  vttContent  String   @default("")
+  srtContent  String?
+  confidence  Float    @default(0.98)
+  speakerLabels Json  @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   VideoProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, projectId, language])
+}
+
+/// N0VA VIDEOS TRANSCENDENT - Analytics & Perception Consciousness (Time-Series)
+model VideoAnalyticsEvent {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  projectId     String?
+  videoId       String?
+  exportId      String?
+  granularity   String   @default("hour")
+  timestamp     DateTime @default(now())
+  viewsTotal    Int      @default(0)
+  viewsUnique   Int      @default(0)
+  watchTimeSec  Int      @default(0)
+  avgWatchSec   Float    @default(0)
+  engagementRate Float   @default(0)
+  retentionCurve Json    @default("[]")
+  demographics  Json     @default("{}")
+  devices       Json     @default("{}")
+  platforms     Json     @default("{}")
+  trafficSources Json    @default("{}")
+  neuralAnalytics Json   @default("{}")
+  heatmapData   Json     @default("{}")
+  createdAt     DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   VideoProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, projectId, timestamp(sort: Desc)])
+  @@index([videoId, granularity, timestamp])
+}
+
+/// N0VA VIDEOS TRANSCENDENT - Transcoding Constellation (GPU/TPU)
+model VideoTranscode {
+  id            String            @id @default(uuid())
+  workspaceId   String
+  projectId     String?
+  assetId       String?
+  sourceKey     String
+  targetCodec   String            @default("h264")
+  targetResolution String         @default("1080p")
+  targetBitrate Int?
+  status        VideoTranscodeStatus @default(QUEUED)
+  progress      Int               @default(0)
+  inputSpecs    Json              @default("{}")
+  outputSpecs   Json              @default("{}")
+  gpuNode       String?
+  error         String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   VideoProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([assetId])
+}
+
+enum VideoProjectStatus {
+  DRAFT
+  IN_PRODUCTION
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+  DELETED
+}
+
+enum VideoStorageTier {
+  HOT
+  WARM
+  COOL
+  COLD
+  FROZEN
+  CRYOGENIC
+  DELETED
+  PURGED
+}
+
+enum VideoExportStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum VideoTranscodeStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
 }
 
 /// N0VA MEET - meeting rooms.
