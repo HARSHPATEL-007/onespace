@@ -83,6 +83,7 @@
     "./observability-plane": "./src/observability-plane.ts",
     "./unified-interaction": "./src/unified-interaction.ts",
     "./accessibility-localization": "./src/accessibility-localization.ts",
+    "./api-platform": "./src/api-platform.ts",
     "./types": "./src/types.ts",
     "./ani.css": "./src/ani.css"
   },

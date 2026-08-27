@@ -47,6 +47,7 @@ import { evaluationForWorkspace, type EvaluationPlatform } from "./evaluation-pl
 import { observabilityForWorkspace, type ObservabilityPlane } from "./observability-plane";
 import { shellForWorkspace, type UniversalShell } from "./unified-interaction";
 import { a11yCoreForWorkspace, type AccessibilityLocalizationCore } from "./accessibility-localization";
+import { apiPlatformForWorkspace, type ApiPlatform } from "./api-platform";
 import { KnowledgeGraphEngine, createKnowledgeGraph } from "./knowledge-graph";
 import { ModelPortfolioStrategy } from "./model-portfolio";
 import { CognitionLedger } from "./cognition-ledger";
@@ -108,6 +109,7 @@ export class AniService {
   private observability: ObservabilityPlane;
   private shell: UniversalShell;
   private a11yCore: AccessibilityLocalizationCore;
+  private apiPlatform: ApiPlatform;
 
   constructor(
     private readonly workspaceId: string,
@@ -141,6 +143,7 @@ export class AniService {
     this.observability = observabilityForWorkspace(workspaceId);
     this.shell = shellForWorkspace(workspaceId);
     this.a11yCore = a11yCoreForWorkspace(workspaceId);
+    this.apiPlatform = apiPlatformForWorkspace(workspaceId);
   }
 
   /** Expose governance bundle for API routes / tests — tenant-scoped */
@@ -178,6 +181,10 @@ export class AniService {
 
   getA11yCore(): AccessibilityLocalizationCore {
     return this.a11yCore;
+  }
+
+  getApiPlatform(): ApiPlatform {
+    return this.apiPlatform;
   }
 
   private async assert(action: "READ" | "CREATE" | "UPDATE" | "DELETE") {

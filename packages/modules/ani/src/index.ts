@@ -719,3 +719,4 @@ export type {
 } from "./observability-plane";
 export * from "./unified-interaction";
 export * from "./accessibility-localization";
+export * from "./api-platform";
