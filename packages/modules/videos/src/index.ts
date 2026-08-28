@@ -6,3 +6,6 @@ export { VideoCopilotPanel } from "./copilot-components";
 export * from "./governance-types";
 export * from "./governance-engine";
 export { GovernanceControlCenter } from "./governance-components";
+export * from "./provenance-types";
+export * from "./provenance-engine";
+export { ProvenanceExplorer } from "./provenance-components";

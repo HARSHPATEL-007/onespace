@@ -12,7 +12,10 @@
     "./copilot-components": "./src/copilot-components.tsx",
     "./governance": "./src/governance-engine.ts",
     "./governance-types": "./src/governance-types.ts",
-    "./governance-components": "./src/governance-components.tsx"
+    "./governance-components": "./src/governance-components.tsx",
+    "./provenance": "./src/provenance-engine.ts",
+    "./provenance-types": "./src/provenance-types.ts",
+    "./provenance-components": "./src/provenance-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

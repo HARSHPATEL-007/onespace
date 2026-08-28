@@ -7,6 +7,7 @@ import type { Video, VideoPlaylist } from "@n0va/db";
 import { embedFor, EXPORT_PRESETS } from "./server";
 import { VideoCopilotPanel } from "./copilot-components";
 import { GovernanceControlCenter } from "./governance-components";
+import { ProvenanceExplorer } from "./provenance-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -196,6 +197,7 @@ const STUDIO_TABS = [
   { id: "studio", label: "Studio" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
+  { id: "provenance", label: "Provenance" },
   { id: "assets", label: "Assets" },
   { id: "ai", label: "AI Aperture" },
   { id: "color", label: "Color" },
@@ -429,6 +431,11 @@ export function VideoStudioTranscendent({
           {/* GOVERNANCE — agent operating system */}
           {activeTab === "governance" && (
             <GovernanceControlCenter projectId={selectedProj?.id ?? projects[0]?.id ?? "proj_q3_launch"} />
+          )}
+
+          {/* PROVENANCE — cryptographically verifiable fabric */}
+          {activeTab === "provenance" && (
+            <ProvenanceExplorer projectId={selectedProj?.id ?? projects[0]?.id ?? "proj_q3_launch"} />
           )}
 
           {/* STUDIO */}
