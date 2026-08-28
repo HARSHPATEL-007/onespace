@@ -18,3 +18,6 @@ export { GraphPanel } from "./graph-components";
 export * from "./quality-types";
 export * from "./quality-engine";
 export { QualityPanel } from "./quality-components";
+export * from "./interchange-types";
+export * from "./interchange-engine";
+export { InterchangePanel } from "./interchange-components";

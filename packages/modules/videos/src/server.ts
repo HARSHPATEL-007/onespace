@@ -22,6 +22,9 @@ import {
 import {
   runQualityAnalysis, getWarnings, getFindings, generateProposalsForFinding, getProposal, applyProposal, resolveFinding, getDashboard, evaluateGate, recordFeedback, listFeedback, clearQualityStores, getWarning, getFinding,
 } from "./quality-engine";
+import {
+  createCanonicalTimeline, createInterchangePackage, getPackage, listPackages, generateRelinkMap, simulateRelink, validateBroadcast, roundtripValidate, lossReportForPackage, interchangeProfileExample,
+} from "./interchange-engine";
 
 const MODULE = "videos";
 
@@ -896,6 +899,29 @@ export class VideosService {
     return fb;
   }
   async qualityListFeedback() { await this.assert("READ"); return listFeedback(); }
+
+  // ── Interchange (Canonical → Compilers → Package) ──
+  async interchangeCreatePackage(input: { timelineId: string; graphVersion: string; profile: string; mediaMode?: string; handleFrames?: number; validateRoundtrip?: boolean }) {
+    await this.assert("CREATE");
+    const pkg = createInterchangePackage({ timelineId: input.timelineId, graphVersion: input.graphVersion, profile: input.profile as unknown as import("./interchange-types").ExportProfileId, mediaMode: (input.mediaMode as unknown as "proxy_with_relink_map") ?? "proxy_with_relink_map", handleFrames: input.handleFrames ?? 48, validateRoundtrip: input.validateRoundtrip ?? true });
+    await this.audit("interchange.package.created", pkg.package_id, "InterchangePackage", { profile: pkg.profile, format: pkg.format });
+    return pkg;
+  }
+  async interchangeGetPackage(packageId: string) { await this.assert("READ"); return getPackage(packageId); }
+  async interchangeListPackages() { await this.assert("READ"); return listPackages(); }
+  async interchangeValidate(packageId: string, targetProfile: string) {
+    await this.assert("READ");
+    const report = roundtripValidate(packageId, targetProfile);
+    await this.audit("interchange.validated", packageId, "InterchangePackage", { target: targetProfile, result: report.result });
+    return report;
+  }
+  async interchangeRelinkMap(timelineId?: string, sourceMode?: string, targetMode?: string) {
+    await this.assert("READ");
+    const map = generateRelinkMap(timelineId ?? "tl001", (sourceMode as unknown as "proxy") ?? "proxy", (targetMode as unknown as "camera_original") ?? "camera_original");
+    await this.audit("interchange.relink.generated", timelineId ?? "tl001", "RelinkMap", { entries: map.entries.length });
+    return map;
+  }
+  async interchangeLossReport(packageId: string) { await this.assert("READ"); return lossReportForPackage(packageId); }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────
   // In-memory fallback store when VideoCopilotProposal table not yet migrated
