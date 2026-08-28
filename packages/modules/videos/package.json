@@ -15,7 +15,13 @@
     "./governance-components": "./src/governance-components.tsx",
     "./provenance": "./src/provenance-engine.ts",
     "./provenance-types": "./src/provenance-types.ts",
-    "./provenance-components": "./src/provenance-components.tsx"
+    "./provenance-components": "./src/provenance-components.tsx",
+    "./semantic": "./src/semantic-engine.ts",
+    "./semantic-types": "./src/semantic-types.ts",
+    "./semantic-components": "./src/semantic-components.tsx",
+    "./graph": "./src/graph-engine.ts",
+    "./graph-types": "./src/graph-types.ts",
+    "./graph-components": "./src/graph-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

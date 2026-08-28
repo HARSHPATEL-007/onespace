@@ -4,6 +4,21 @@ import { can, type Role } from "@n0va/authz";
 import fs from "node:fs";
 import path from "node:path";
 import type { IntentEnvelope, Proposal, AutonomyMode } from "./copilot-types";
+import {
+  semanticSearchAdvanced, previewTranscriptEdit, compileSemanticCut, getNarrativeArc,
+  diagnoseNarrativeArc, getEmotionSpans, getContinuityIssues, getReviewCommentsSemantic,
+  getSemanticDiff, explainVersionDifference, getSemanticSpans, getIndexStats,
+} from "./semantic-engine";
+import {
+  seedDemoGraph, getAsset, getNode, listNodes, createNode, createNodeVersion,
+  createGraphVersion, getGraphVersion, listGraphVersions, disableNodeInGraph, reorderGraphNodes,
+  replaceNodeInGraph, compareGraphVersions, createTimelineProjection, getTimelineProjection,
+  cacheKeyFor, cacheGet, cachePut, cacheInvalidateIf, invalidateDownstream, declareReproducibility,
+  verifyReproducibility, estimateCost, scheduleForOutput, explainFrameAtTime, diagnosticsForNode,
+  simulateFailure, traceForArtifact, bindApproval, checkApprovalInvalidation, rollbackToVersion,
+  captureExternal, manifestForNode, c2paManifestForExport, enforceGuardrails, createArtifact, getArtifact,
+  createAsset,
+} from "./graph-engine";
 
 const MODULE = "videos";
 
@@ -672,6 +687,166 @@ export class VideosService {
       })),
       total: projects.length,
     };
+  }
+
+  // ── Semantic Timeline Intelligence Layer (queryable workspace, reversible, explainable) ──
+  async semanticSearch(input: { query: string; timelineVersion?: string; filters?: Record<string, string> }) {
+    await this.assert("READ");
+    const res = semanticSearchAdvanced({
+      query: input.query,
+      scope: { timeline_version: input.timelineVersion },
+      filters: input.filters as unknown as { speaker_id?: string; shot_type?: string; location?: string },
+    });
+    await this.audit("semantic.search", `q:${input.query.slice(0,32)}`, "SemanticSearch", { query: input.query, total: res.total, took_ms: res.took_ms });
+    return res;
+  }
+
+  async createSemanticBranch(input: { name: string; parentVersion: string; rules: { include?: string; exclude?: string; minimum_importance?: number }[]; constraints: { maximum_duration_ms?: number; aspect_ratio?: string } }) {
+    await this.assert("CREATE");
+    const { createBranchFromSemanticRules } = await import("./semantic-engine");
+    const b = createBranchFromSemanticRules({ name: input.name, parent: input.parentVersion, rules: input.rules, constraints: input.constraints });
+    await this.audit("semantic.branch.created", b.branch_id, "Branch", { parent: input.parentVersion, constraints: input.constraints });
+    return b;
+  }
+
+  async getSemanticSpans() {
+    await this.assert("READ");
+    return getSemanticSpans();
+  }
+
+  async getSemanticDiffWrapped(from: string, to: string) {
+    await this.assert("READ");
+    return { diff: getSemanticDiff(from, to), explained: explainVersionDifference(from, to) };
+  }
+
+  async previewTranscriptEditOp(input: { operation: string; tokenIds: string[]; mode: string; preserveReaction?: boolean }) {
+    await this.assert("UPDATE");
+    const preview = previewTranscriptEdit({
+      operation: input.operation as "remove_selected_transcript",
+      token_ids: input.tokenIds,
+      mode: input.mode as "preview",
+      preserve_reaction_shots: input.preserveReaction ?? true,
+      run_continuity_check: true,
+    });
+    await this.audit("semantic.transcript.preview", preview.preview_id, "TranscriptEdit", { operation: input.operation, tokens: input.tokenIds.length });
+    return preview;
+  }
+
+  async compileSemanticCutOp(command: string) {
+    await this.assert("READ");
+    const { plan, preview } = compileSemanticCut(command);
+    await this.audit("semantic.cut.compiled", plan.plan_id, "SemanticCut", { command, selected: plan.selected_spans.length });
+    return { plan, preview };
+  }
+
+  async getIndexStatsSemantic() {
+    await this.assert("READ");
+    return getIndexStats();
+  }
+
+  async getNarrativeWithDiagnosis() {
+    await this.assert("READ");
+    const arc = getNarrativeArc();
+    const diagnoses = diagnoseNarrativeArc(arc);
+    const emotions = getEmotionSpans();
+    const continuity = getContinuityIssues();
+    const reviews = getReviewCommentsSemantic();
+    return { arc, diagnoses, emotions, continuity, reviews };
+  }
+
+  // ── Graph: Non-Destructive AI Editing Graph (immutable assets, DAG, cached artifacts) ──
+  async graphSeedDemo(graphId?: string) {
+    await this.assert("READ");
+    const seeded = seedDemoGraph(graphId ?? "graph_01J_demo");
+    await this.audit("graph.seed", seeded.graph_id, "Graph", { versions: seeded.versions.length, nodes: seeded.nodes.length });
+    return seeded;
+  }
+  async graphGetAsset(assetId: string) { await this.assert("READ"); return getAsset(assetId); }
+  async graphCreateAsset(input: { media: { duration_ms: number; frame_rate: number; resolution: [number, number]; codec: string }; fileHash: string }) {
+    await this.assert("CREATE");
+    const a = createAsset({ media: input.media, fileHash: input.fileHash });
+    await this.audit("graph.asset.created", a.asset_id, "Asset", { hash: a.immutability.content_hash });
+    return a;
+  }
+  async graphListNodes() { await this.assert("READ"); return listNodes(); }
+  async graphCreateNode(input: { operation: string; category?: string; inputs: { port: string; artifact_id: string }[]; parameters?: Record<string, unknown>; scope?: Record<string, unknown>; consent_refs?: string[] }) {
+    await this.assert("CREATE");
+    const n = createNode({ operation: input.operation, category: input.category as unknown as import("./graph-types").NodeCategory, inputs: input.inputs, parameters: input.parameters, scope: input.scope as unknown as import("./graph-types").GraphNode["scope"], attribution: { operator_id: this.userId, agent_id: "agent.video.api.v1", request_id: `req_${Date.now()}` }, consent_refs: input.consent_refs } as unknown as Parameters<typeof createNode>[0]);
+    await this.audit("graph.node.created", n.node_id, "Node", { operation: n.operation, hash: n.node_hash });
+    return n;
+  }
+  async graphCreateNodeVersion(nodeId: string, params: Record<string, unknown>) {
+    await this.assert("UPDATE");
+    const guard = enforceGuardrails("edit_node_in_place", nodeId);
+    if (!guard.allowed) throw new Error(guard.reason);
+    const n2 = createNodeVersion(nodeId, params, "parameter edit via API");
+    await this.audit("graph.node.versioned", n2.node_id, "Node", { supersedes: nodeId, hash: n2.node_hash });
+    return n2;
+  }
+  async graphGetNode(nodeId: string) { await this.assert("READ"); return getNode(nodeId); }
+  async graphCreateVersion(input: { graph_id: string; root_inputs: string[]; active_outputs: string[]; nodes: string[]; edges: [string, string][] }) {
+    await this.assert("CREATE");
+    const v = createGraphVersion({ graph_id: input.graph_id, root_inputs: input.root_inputs, active_outputs: input.active_outputs, nodes: input.nodes, edges: input.edges as unknown as import("./graph-types").GraphEdge[] });
+    await this.audit("graph.version.created", v.graph_version, "GraphVersion", { graph_id: v.graph_id, hash: v.graph_hash });
+    return v;
+  }
+  async graphListVersions(graphId?: string) { await this.assert("READ"); return listGraphVersions(graphId); }
+  async graphGetVersion(graphId: string, gv: string) { await this.assert("READ"); return getGraphVersion(graphId, gv); }
+  async graphDisableNode(input: { graph_id: string; base_gv: string; node_id: string; reason?: string }) {
+    await this.assert("UPDATE");
+    const v = disableNodeInGraph(input.graph_id, input.base_gv, input.node_id, input.reason);
+    await this.audit("graph.node.disabled", input.node_id, "GraphVersion", { new_gv: v.graph_version, reason: input.reason });
+    return v;
+  }
+  async graphReorder(input: { graph_id: string; base_gv: string; newOrder: string[] }) {
+    await this.assert("UPDATE");
+    const r = reorderGraphNodes(input.graph_id, input.base_gv, input.newOrder);
+    await this.audit("graph.reordered", r.version.graph_version, "GraphVersion", { warning: r.warning });
+    return r;
+  }
+  async graphReplaceNode(input: { graph_id: string; base_gv: string; old_node_id: string; new_node_id: string }) {
+    await this.assert("UPDATE");
+    const r = replaceNodeInGraph(input.graph_id, input.base_gv, input.old_node_id, input.new_node_id);
+    await this.audit("graph.node.replaced", input.new_node_id, "GraphVersion", { from: input.old_node_id, new_gv: r.version.graph_version });
+    return r;
+  }
+  async graphCompare(graphId: string, a: string, b: string) { await this.assert("READ"); return compareGraphVersions(graphId, a, b); }
+  async graphCreateProjection(input: { timeline_clip_id: string; source_range: { asset_id: string; in_ms: number; out_ms: number }; graph_root_node: string; active_graph_version: string; displayed_operations: string[] }) {
+    await this.assert("CREATE");
+    const p = createTimelineProjection(input);
+    await this.audit("graph.projection.created", p.timeline_clip_id, "Projection", { gv: p.active_graph_version });
+    return p;
+  }
+  async graphGetProjection(clipId: string) { await this.assert("READ"); return getTimelineProjection(clipId); }
+  async graphCacheKey(input: { input_hashes: string[]; node_hash: string; graph_version_hash: string; render_profile_hash: string; runtime_digest: string; determinism_mode: string }) {
+    await this.assert("READ");
+    return cacheKeyFor({ input_hashes: input.input_hashes, node_hash: input.node_hash, graph_version_hash: input.graph_version_hash, render_profile_hash: input.render_profile_hash, color_config_hash: "color:ACES1.3", audio_config_hash: "audio:-14LUFS", caption_config_hash: "caption:en", runtime_digest: input.runtime_digest, determinism_mode: input.determinism_mode });
+  }
+  async graphSchedule(graphId: string, gv: string, target: string) { await this.assert("READ"); return scheduleForOutput(graphId, gv, target); }
+  async graphExplainAtTime(timeMs: number, graphId: string, gv: string) { await this.assert("READ"); return explainFrameAtTime(timeMs, graphId, gv); }
+  async graphDiagnostics(nodeId: string) { await this.assert("READ"); return diagnosticsForNode(nodeId); }
+  async graphTraceArtifact(artifactId: string) { await this.assert("READ"); return traceForArtifact(artifactId); }
+  async graphBindApproval(input: { approval_id: string; graph_id: string; graph_version: string; output_node: string; output_hash: string; destination: string; territories: string[]; format: string }) {
+    await this.assert("CREATE");
+    const b: import("./graph-types").ApprovalBinding = { approval_id: input.approval_id, approved_target: { graph_id: input.graph_id, graph_version: input.graph_version, output_node: input.output_node, output_hash: input.output_hash }, scope: { destination: input.destination, format: input.format, territories: input.territories }, status: "approved" };
+    const bound = bindApproval(b);
+    await this.audit("graph.approval.bound", b.approval_id, "Approval", { gv: b.approved_target.graph_version });
+    return bound;
+  }
+  async graphRollback(graphId: string, from: string, to: string, reason: string) {
+    await this.assert("UPDATE");
+    const v = rollbackToVersion(graphId, from, to, reason);
+    await this.audit("graph.rollback", v.graph_version, "GraphVersion", { from, to, reason });
+    return v;
+  }
+  async graphReproducibility(target: string) { await this.assert("READ"); return declareReproducibility(target as unknown as import("./graph-types").ReproducibilityLevel); }
+  async graphManifest(nodeId: string, artifactId: string) { await this.assert("READ"); return manifestForNode(nodeId, artifactId); }
+  async graphC2PA(graphId: string, gv: string, outputNode: string) { await this.assert("READ"); return c2paManifestForExport(graphId, gv, outputNode); }
+  async graphCreateArtifact(input: { node_id: string; graph_version: string; input_hashes: string[] }) {
+    await this.assert("CREATE");
+    const art = createArtifact({ node_id: input.node_id, graph_version: input.graph_version, input_hashes: input.input_hashes });
+    await this.audit("graph.artifact.created", art.artifact_id, "Artifact", { node: input.node_id, hash: art.artifact_hash });
+    return art;
   }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────

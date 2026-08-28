@@ -8,6 +8,8 @@ import { embedFor, EXPORT_PRESETS } from "./server";
 import { VideoCopilotPanel } from "./copilot-components";
 import { GovernanceControlCenter } from "./governance-components";
 import { ProvenanceExplorer } from "./provenance-components";
+import { SemanticTimelinePanel } from "./semantic-components";
+import { GraphPanel } from "./graph-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -195,6 +197,8 @@ export function VideoLibrary({
 // ── Transcendent Studio ──────────────────────────────────────────────────────
 const STUDIO_TABS = [
   { id: "studio", label: "Studio" },
+  { id: "graph", label: "Graph" },
+  { id: "semantic", label: "Semantic" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
   { id: "provenance", label: "Provenance" },
@@ -433,9 +437,19 @@ export function VideoStudioTranscendent({
             <GovernanceControlCenter projectId={selectedProj?.id ?? projects[0]?.id ?? "proj_q3_launch"} />
           )}
 
+          {/* SEMANTIC — queryable workspace */}
+          {activeTab === "semantic" && (
+            <SemanticTimelinePanel timelineId={selectedProj?.id ? `tl_${selectedProj.id.slice(0,6)}` : "tl001"} projectId={selectedProj?.id ?? projects[0]?.id ?? "proj_q3_launch"} />
+          )}
+
           {/* PROVENANCE — cryptographically verifiable fabric */}
           {activeTab === "provenance" && (
             <ProvenanceExplorer projectId={selectedProj?.id ?? projects[0]?.id ?? "proj_q3_launch"} />
+          )}
+
+          {/* GRAPH — non-destructive DAG */}
+          {activeTab === "graph" && (
+            <GraphPanel projectId={selectedProj?.id ?? "proj_q3_launch"} timelineId={selectedProj?.id ? `tl_${selectedProj.id.slice(0, 6)}` : "tl_07"} />
           )}
 
           {/* STUDIO */}
