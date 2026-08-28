@@ -10,6 +10,7 @@ import { GovernanceControlCenter } from "./governance-components";
 import { ProvenanceExplorer } from "./provenance-components";
 import { SemanticTimelinePanel } from "./semantic-components";
 import { GraphPanel } from "./graph-components";
+import { QualityPanel } from "./quality-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -199,6 +200,7 @@ const STUDIO_TABS = [
   { id: "studio", label: "Studio" },
   { id: "graph", label: "Graph" },
   { id: "semantic", label: "Semantic" },
+  { id: "quality", label: "Quality" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
   { id: "provenance", label: "Provenance" },
@@ -450,6 +452,11 @@ export function VideoStudioTranscendent({
           {/* GRAPH — non-destructive DAG */}
           {activeTab === "graph" && (
             <GraphPanel projectId={selectedProj?.id ?? "proj_q3_launch"} timelineId={selectedProj?.id ? `tl_${selectedProj.id.slice(0, 6)}` : "tl_07"} />
+          )}
+
+          {/* QUALITY — continuity & quality intelligence */}
+          {activeTab === "quality" && (
+            <QualityPanel timelineId={selectedProj?.id ? `tl_${selectedProj.id.slice(0, 6)}` : "tl001"} graphVersion="gv42" />
           )}
 
           {/* STUDIO */}

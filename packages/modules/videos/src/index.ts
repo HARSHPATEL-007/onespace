@@ -15,3 +15,6 @@ export { SemanticTimelinePanel } from "./semantic-components";
 export * from "./graph-types";
 export * from "./graph-engine";
 export { GraphPanel } from "./graph-components";
+export * from "./quality-types";
+export * from "./quality-engine";
+export { QualityPanel } from "./quality-components";

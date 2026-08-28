@@ -19,6 +19,9 @@ import {
   captureExternal, manifestForNode, c2paManifestForExport, enforceGuardrails, createArtifact, getArtifact,
   createAsset,
 } from "./graph-engine";
+import {
+  runQualityAnalysis, getWarnings, getFindings, generateProposalsForFinding, getProposal, applyProposal, resolveFinding, getDashboard, evaluateGate, recordFeedback, listFeedback, clearQualityStores, getWarning, getFinding,
+} from "./quality-engine";
 
 const MODULE = "videos";
 
@@ -848,6 +851,51 @@ export class VideosService {
     await this.audit("graph.artifact.created", art.artifact_id, "Artifact", { node: input.node_id, hash: art.artifact_hash });
     return art;
   }
+
+  // ── Continuity and Quality Intelligence (Analyze→Detect→Explain→Suggest→Preview→Approval) ──
+  async qualityRunAnalysis(input: { timelineId?: string; graphVersion?: string; passes?: string[]; exportProfiles?: string[]; projectType?: string }) {
+    await this.assert("READ");
+    const warnings = runQualityAnalysis({ timeline_id: input.timelineId ?? "tl001", graph_version: input.graphVersion ?? "gv42", passes: (input.passes as unknown as import("./quality-types").QualityPassId[]) ?? ["editorial_continuity", "technical", "visual_consistency", "graphics_text", "distribution"], export_profiles: input.exportProfiles, project_type: input.projectType as unknown as "documentary" });
+    await this.audit("quality.analysis.run", input.timelineId ?? "tl001", "QualityAnalysis", { passes: input.passes, warnings: warnings.length });
+    return warnings;
+  }
+  async qualityGetFindings(timelineId?: string) { await this.assert("READ"); return getFindings(timelineId); }
+  async qualityGetWarnings(timelineId?: string) { await this.assert("READ"); return getWarnings(timelineId); }
+  async qualityGetFinding(findingId: string) { await this.assert("READ"); return getFinding(findingId); }
+  async qualityGetWarning(warningId: string) { await this.assert("READ"); return getWarning(warningId); }
+  async qualityProposalsForFinding(findingId: string) {
+    await this.assert("READ");
+    const props = generateProposalsForFinding(findingId);
+    await this.audit("quality.proposals.generated", findingId, "QualityFinding", { proposals: props.length });
+    return props;
+  }
+  async qualityApplyProposal(proposalId: string, destination: "new_branch" | "current_timeline", branchName?: string) {
+    await this.assert("UPDATE");
+    const res = applyProposal(proposalId, destination, branchName);
+    await this.audit("quality.proposal.applied", proposalId, "QualityProposal", { destination, branchName });
+    return res;
+  }
+  async qualityResolveFinding(findingId: string, resolution: "intentional" | "dismissed" | "resolved", note?: string) {
+    await this.assert("UPDATE");
+    const f = resolveFinding(findingId, resolution, note, this.userId);
+    await this.audit("quality.finding.resolved", findingId, "QualityFinding", { resolution, note });
+    return f;
+  }
+  async qualityDashboard(timelineId?: string) { await this.assert("READ"); return getDashboard(timelineId); }
+  async qualityGate(input: { graphVersion: string; exportProfile: string; rules?: Record<string, unknown> }) {
+    await this.assert("READ");
+    const rules = (input.rules as unknown as import("./quality-types").QualityGate["blocking_rules"]) ?? { critical_warnings: "zero", high_warnings: "zero", lower_third_identity_mismatch: "zero", audio_sync_max_ms: 40, unsafe_title_overflow_percent: 0 };
+    const gate = evaluateGate(input.graphVersion, input.exportProfile, rules);
+    await this.audit("quality.gate.evaluated", gate.quality_gate_id, "QualityGate", { graphVersion: input.graphVersion, profile: input.exportProfile, result: gate.result });
+    return gate;
+  }
+  async qualityFeedback(statement: string, scope: Record<string, string>) {
+    await this.assert("CREATE");
+    const fb = recordFeedback(statement, scope as unknown as import("./quality-types").EditorialIntentFeedback["scope"]);
+    await this.audit("quality.feedback.recorded", fb.feedback_id, "EditorialFeedback", { statement });
+    return fb;
+  }
+  async qualityListFeedback() { await this.assert("READ"); return listFeedback(); }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────
   // In-memory fallback store when VideoCopilotProposal table not yet migrated

@@ -21,7 +21,10 @@
     "./semantic-components": "./src/semantic-components.tsx",
     "./graph": "./src/graph-engine.ts",
     "./graph-types": "./src/graph-types.ts",
-    "./graph-components": "./src/graph-components.tsx"
+    "./graph-components": "./src/graph-components.tsx",
+    "./quality": "./src/quality-engine.ts",
+    "./quality-types": "./src/quality-types.ts",
+    "./quality-components": "./src/quality-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
