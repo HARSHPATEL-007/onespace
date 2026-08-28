@@ -25,6 +25,9 @@ import {
 import {
   createCanonicalTimeline, createInterchangePackage, getPackage, listPackages, generateRelinkMap, simulateRelink, validateBroadcast, roundtripValidate, lossReportForPackage, interchangeProfileExample,
 } from "./interchange-engine";
+import {
+  createTextToVideoJob, createImageToVideoJob, createObjectRemovalOp, generateCameraVariations, createProductAnchor, createCharacterAnchor, checkAnchorCompliance, createStoryboardCards, createContinuationJob, suggestBroll, getProvenance, getSegmentProvenance, getPromptHistory, addPromptVersion, checkUsage, createConsent, revokeConsent, runSafetyChecks, complianceReport, approveAsset, getApproval, processingRoute, listAssets,
+} from "./generative-engine";
 
 const MODULE = "videos";
 
@@ -922,6 +925,29 @@ export class VideosService {
     return map;
   }
   async interchangeLossReport(packageId: string) { await this.assert("READ"); return lossReportForPackage(packageId); }
+
+  // ── Generative Workspace (governed) ──
+  async generativeCreateJob(input: { project_id: string; mode: string; prompt_id?: string; prompt?: string; reference_assets?: string[]; model_id?: string; output_profile?: string; policy_profile?: string; processing_location?: string }) {
+    await this.assert("CREATE");
+    const job = createTextToVideoJob({ prompt: input.prompt ?? "A close product shot on a studio table...", model_id: input.model_id ?? "n0va-video-gen-pro", reference_assets: input.reference_assets, policy_profile: input.policy_profile });
+    await this.audit("generative.job.created", job.job_id, "GenerativeJob", { mode: input.mode, model: job.generation_job.model_id, seed: job.generation_job.seed });
+    return job;
+  }
+  async generativeApproveAsset(assetId: string, decision: string, disclosureMode: string, usageScope?: { commercial: boolean; territories: string[]; expires_at: string }) {
+    await this.assert("UPDATE");
+    const a = approveAsset(assetId, decision, disclosureMode, usageScope);
+    await this.audit("generative.asset.approved", assetId, "GenerativeAsset", { decision, disclosureMode });
+    return a;
+  }
+  async generativeGetProvenance(assetId: string) { await this.assert("READ"); return getProvenance(assetId); }
+  async generativeSyntheticValidation(timelineId: string, graphVersion: string, checks: string[]) {
+    await this.assert("READ");
+    const report = complianceReport(timelineId);
+    const safety = runSafetyChecks(timelineId);
+    await this.audit("generative.validation.run", timelineId, "SyntheticValidation", { graphVersion, checks });
+    return { timelineId, graphVersion, checks, report, safety };
+  }
+  async generativeListJobs() { await this.assert("READ"); return listAssets().filter(a=>a.domain==="GENERATED_WORKSPACE"); }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────
   // In-memory fallback store when VideoCopilotProposal table not yet migrated

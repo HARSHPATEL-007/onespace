@@ -11,6 +11,7 @@ import { ProvenanceExplorer } from "./provenance-components";
 import { SemanticTimelinePanel } from "./semantic-components";
 import { GraphPanel } from "./graph-components";
 import { QualityPanel } from "./quality-components";
+import { GenerativePanel } from "./generative-components";
 import { InterchangePanel } from "./interchange-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
@@ -203,6 +204,7 @@ const STUDIO_TABS = [
   { id: "semantic", label: "Semantic" },
   { id: "quality", label: "Quality" },
   { id: "interchange", label: "Interchange" },
+  { id: "generative", label: "Generative" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
   { id: "provenance", label: "Provenance" },
@@ -464,6 +466,11 @@ export function VideoStudioTranscendent({
           {/* INTERCHANGE — professional interchange */}
           {activeTab === "interchange" && (
             <InterchangePanel timelineId={selectedProj?.id ? `tl_${selectedProj.id.slice(0, 6)}` : "tl001"} graphVersion="gv42" />
+          )}
+
+          {/* GENERATIVE — controlled workspace */}
+          {activeTab === "generative" && (
+            <GenerativePanel projectId={selectedProj?.id ?? "project001"} />
           )}
 
           {/* STUDIO */}
