@@ -14,6 +14,7 @@ import { QualityPanel } from "./quality-components";
 import { GenerativePanel } from "./generative-components";
 import { InterchangePanel } from "./interchange-components";
 import { BrandPanel } from "./brand-components";
+import { IdentityPanel } from "./identity-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -207,6 +208,7 @@ const STUDIO_TABS = [
   { id: "interchange", label: "Interchange" },
   { id: "generative", label: "Generative" },
   { id: "brand", label: "Brand" },
+  { id: "identity", label: "Identity" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
   { id: "provenance", label: "Provenance" },
@@ -478,6 +480,11 @@ export function VideoStudioTranscendent({
           {/* BRAND — brand intelligence */}
           {activeTab === "brand" && (
             <BrandPanel timelineId={selectedProj?.id ? `tl_${selectedProj.id.slice(0, 6)}` : "tl001"} graphVersion="gv42" />
+          )}
+
+          {/* IDENTITY — consent-aware */}
+          {activeTab === "identity" && (
+            <IdentityPanel projectId={selectedProj?.id ?? "project_001"} />
           )}
 
           {/* STUDIO */}

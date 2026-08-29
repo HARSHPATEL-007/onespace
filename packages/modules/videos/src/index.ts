@@ -27,3 +27,6 @@ export { GenerativePanel } from "./generative-components";
 export * from "./brand-types";
 export * from "./brand-engine";
 export { BrandPanel } from "./brand-components";
+export * from "./identity-types";
+export * from "./identity-engine";
+export { IdentityPanel } from "./identity-components";

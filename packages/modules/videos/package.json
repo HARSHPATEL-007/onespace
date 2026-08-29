@@ -33,7 +33,10 @@
     "./generative-components": "./src/generative-components.tsx",
     "./brand": "./src/brand-engine.ts",
     "./brand-types": "./src/brand-types.ts",
-    "./brand-components": "./src/brand-components.tsx"
+    "./brand-components": "./src/brand-components.tsx",
+    "./identity": "./src/identity-engine.ts",
+    "./identity-types": "./src/identity-types.ts",
+    "./identity-components": "./src/identity-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

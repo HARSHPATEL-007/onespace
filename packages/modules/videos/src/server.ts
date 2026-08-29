@@ -31,6 +31,9 @@ import {
 import {
   createPolicy as createBrandPolicy, getPolicy as getBrandPolicy, listPolicies as listBrandPolicies, compileBrandDocuments, approveCompiledRule, runBrandScan, getBrandFindings, getBrandFinding, explainFinding as explainBrandFinding, generateProposal as generateBrandProposal, getBrandDashboard, evaluateBrandGate, createWaiver as createBrandWaiver, listWaivers as listBrandWaivers, getLogoRegistry, getFontPolicy, getColorPolicy,
 } from "./brand-engine";
+import {
+  registerPerson, getPerson, listPersons, createConsentGrant, getGrant, createEvidence, evaluateConsent, matchIdentity, getFacePolicy, getVoicePermission, evaluatePresenter, evaluateLipSync, getDisclosurePolicy, createIdentityProvenance, getIdentityProvenance, getConsentPassport, checkExpirations, revokeGrant, getRevocationStatus, evaluateExportGate as evaluateIdentityExportGate, issueAgentToken, verifyAgentToken,
+} from "./identity-engine";
 
 const MODULE = "videos";
 
@@ -1004,6 +1007,60 @@ export class VideosService {
     const gate = evaluateBrandGate(input);
     await this.audit("brand.gate.evaluated", gate.gate_id, "BrandGate", { result: gate.result, blocking: gate.blocking_findings.length });
     return gate;
+  }
+
+  // ── Identity Rights & Consent Registry ──
+  async identityRegisterPerson(input: { display_name?: string; verification_method?: string; modalities?: string[] }) {
+    await this.assert("CREATE");
+    const p = registerPerson({ display_name: input.display_name, verification_method: input.verification_method, modalities: input.modalities });
+    await this.audit("identity.person.registered", p.person_id, "IdentityPerson", { method: input.verification_method });
+    return p;
+  }
+  async identityListPersons() { await this.assert("READ"); return listPersons(); }
+  async identityGetPerson(personId: string) { await this.assert("READ"); return getPerson(personId); }
+  async identityCreateConsent(personId: string, input: { territories?: string[]; projects?: string[]; platforms?: string[]; permissions?: Record<string, boolean>; expires_at?: string; evidence_id?: string }) {
+    await this.assert("CREATE");
+    const g = createConsentGrant(personId, { territories: input.territories, projects: input.projects, platforms: input.platforms, permissions: input.permissions as never, expires_at: input.expires_at, evidence_id: input.evidence_id });
+    await this.audit("identity.consent.created", g.grant_id, "ConsentGrant", { person: personId, territories: g.territories });
+    return g;
+  }
+  async identityEvaluate(input: { person_id: string; operation: string; project_id: string; territory: string; platform: string; audience: string }) {
+    await this.assert("READ");
+    const decision = evaluateConsent(input);
+    await this.audit("identity.consent.evaluated", input.person_id, "ConsentDecision", { operation: input.operation, decision: decision.decision });
+    return decision;
+  }
+  async identityRevoke(grantId: string, input: { effective_at?: string; scope?: { operations?: string[]; projects?: string[]; platforms?: string[]; territories?: string[] }; reason?: string }) {
+    await this.assert("UPDATE");
+    const ev = revokeGrant(grantId, { operations: input.scope?.operations ?? ["voice_cloning"], projects: input.scope?.projects ?? ["project_001"], territories: input.scope?.territories ?? ["IN"], platforms: input.scope?.platforms ?? ["youtube"] }, input.reason ?? "consent_withdrawn");
+    await this.audit("identity.consent.revoked", grantId, "ConsentGrant", { reason: input.reason, effective_at: input.effective_at });
+    return ev;
+  }
+  async identityAffectedOutputs(personId: string) {
+    await this.assert("READ");
+    const { checkExpirations } = await import("./identity-engine");
+    const expirations = checkExpirations(365);
+    const person = getPerson(personId);
+    if (!person) return { person_id: personId, projects: [], timelines: [], assets: [], exports: [], published_urls: [] };
+    // mock affected outputs derived from grants
+    const grants = person.consent_grants.map(g => g.grant_id);
+    return { person_id: personId, grants, projects: person.consent_grants.flatMap(g => g.projects), timelines: ["tl001"], assets: grants.map(g => `gen_${g.slice(0,8)}`), exports: grants.map(g => `export_${g.slice(0,8)}`), published_urls: grants.map(g => `https://youtube.com/watch?v=${g.slice(0,8)}`), expirations };
+  }
+  async identityProvenance(exportId: string) {
+    await this.assert("READ");
+    const { getIdentityProvenance } = await import("./identity-engine");
+    const prov = getIdentityProvenance(exportId);
+    if (!prov) {
+      // create mock provenance for demo if missing
+      const { createIdentityProvenance } = await import("./identity-engine");
+      return createIdentityProvenance(exportId, [{ operation: "voice_clone", person_id: "person_01J_demo", grant_id: "consent_01J_demo", model_id: "n0va-voice-v5", model_version: "5.2.1", input_assets: ["audio_01J"], time_range: { start_ms: 12000, end_ms: 18400 } }]);
+    }
+    return prov;
+  }
+  async identityPassport(personId: string, projectId: string) {
+    await this.assert("READ");
+    const { getConsentPassport } = await import("./identity-engine");
+    return getConsentPassport(personId, projectId);
   }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────
