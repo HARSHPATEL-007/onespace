@@ -38,7 +38,7 @@ const regionalProfiles = new Map<string, RegionalProfile>([
 ]);
 
 const findings = new Map<string, BrandFinding>();
-const waivers = new Map<string, BrandWaiver>();
+const waiversStore = new Map<string, BrandWaiver>();
 const compiledProposals: CompiledRuleProposal[] = [];
 
 // ── Seed registries ─────────────────────────────────────────────────────────
@@ -288,10 +288,7 @@ export function runBrandScan(input: { timeline_id?: string; graph_version?: stri
   return out;
 }
 
-const findings = new Map<string, BrandFinding>();
-const waiversStore = new Map<string, BrandWaiver>();
-
-export function getFindings(timelineId?: string, opts?: { region?: string; platform?: string; category?: string; severity?: string }): BrandFinding[] {
+export function getBrandFindings(timelineId?: string, opts?: { region?: string; platform?: string; category?: string; severity?: string }): BrandFinding[] {
   let all = Array.from(findings.values());
   if (timelineId) all = all.filter(f => f.timeline_id === timelineId);
   if (opts?.region) all = all.filter(f => !f.scope.region || f.scope.region === opts.region);
@@ -300,7 +297,7 @@ export function getFindings(timelineId?: string, opts?: { region?: string; platf
   if (opts?.severity) all = all.filter(f => f.severity === opts.severity);
   return all;
 }
-export function getFinding(findingId: string): BrandFinding | null { return findings.get(findingId) ?? null; }
+export function getBrandFinding(findingId: string): BrandFinding | null { return findings.get(findingId) ?? null; }
 export function clearBrandStores(): void { findings.clear(); waiversStore.clear(); }
 
 export function explainFinding(findingId: string): { rule: string; source: string; evidence: string; affected: string; confidence: number; fix: string } | null {
@@ -319,12 +316,12 @@ export function explainFinding(findingId: string): { rule: string; source: strin
 export function generateProposal(findingId: string, preserve: string[] = []): { proposal_id: string; finding_id: string; operation: string; requires_approval: boolean } | null {
   const f = findings.get(findingId);
   if (!f) return null;
-  return { proposal_id: uid("prop"), finding_id, operation: f.suggested_fixes[0]?.type ?? "fix", requires_approval: f.severity === "high" || f.severity === "critical" };
+  return { proposal_id: uid("prop"), finding_id: findingId, operation: f.suggested_fixes[0]?.type ?? "fix", requires_approval: f.severity === "high" || f.severity === "critical" };
 }
 
 // ── Dashboard & gate ───────────────────────────────────────────────────────
 export function getBrandDashboard(timelineId = "tl001", region = "IN", output = "youtube_4k_hdr"): BrandDashboard {
-  const all = getFindings(timelineId);
+  const all = getBrandFindings(timelineId);
   const by_category: Record<string, number> = {};
   for (const f of all) by_category[f.category] = (by_category[f.category] ?? 0) + 1;
   const summary = {
@@ -344,7 +341,7 @@ export function getBrandDashboard(timelineId = "tl001", region = "IN", output = 
 }
 
 export function evaluateBrandGate(input: { timeline_id: string; graph_version: string; export_profile: string; brand_policy: string; region: string }): BrandGate {
-  const findingsForTimeline = getFindings(input.timeline_id, { region: input.region });
+  const findingsForTimeline = getBrandFindings(input.timeline_id, { region: input.region });
   // apply waivers: if waived and not expired and scope matches, exclude
   const activeFindings = findingsForTimeline.filter(f => {
     const w = Array.from(waiversStore.values()).find(wv => wv.finding_id === f.finding_id && wv.scope.regions?.includes(input.region) !== false);

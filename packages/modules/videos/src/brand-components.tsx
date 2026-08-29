@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Badge, Button, Card } from "@n0va/ui";
 import {
   runBrandScan,
-  getFindings,
+  getBrandFindings,
   explainFinding,
   generateProposal,
   evaluateBrandGate,
@@ -22,7 +22,7 @@ import type { BrandFinding } from "./brand-types";
 export function BrandPanel({ timelineId, graphVersion }: { timelineId: string; graphVersion: string }) {
   const [region, setRegion] = useState("IN");
   const [platform, setPlatform] = useState("youtube");
-  const [findings, setFindings] = useState<BrandFinding[]>(() => getFindings(timelineId));
+  const [findings, setFindings] = useState<BrandFinding[]>(() => getBrandFindings(timelineId));
   const [selected, setSelected] = useState<string | null>(null);
   const [compiled, setCompiled] = useState(() => listCompiledProposals());
 

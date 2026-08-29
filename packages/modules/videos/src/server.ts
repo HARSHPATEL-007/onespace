@@ -29,7 +29,7 @@ import {
   createTextToVideoJob, createImageToVideoJob, createObjectRemovalOp, generateCameraVariations, createProductAnchor, createCharacterAnchor, checkAnchorCompliance, createStoryboardCards, createContinuationJob, suggestBroll, getProvenance, getSegmentProvenance, getPromptHistory, addPromptVersion, checkUsage, createConsent, revokeConsent, runSafetyChecks, complianceReport, approveAsset, getApproval, processingRoute, listAssets,
 } from "./generative-engine";
 import {
-  createPolicy as createBrandPolicy, getPolicy as getBrandPolicy, listPolicies as listBrandPolicies, compileBrandDocuments, approveCompiledRule, runBrandScan, getFindings as getBrandFindings, getFinding as getBrandFinding, explainFinding as explainBrandFinding, generateProposal as generateBrandProposal, getBrandDashboard, evaluateBrandGate, createWaiver as createBrandWaiver, listWaivers as listBrandWaivers, getLogoRegistry, getFontPolicy, getColorPolicy,
+  createPolicy as createBrandPolicy, getPolicy as getBrandPolicy, listPolicies as listBrandPolicies, compileBrandDocuments, approveCompiledRule, runBrandScan, getBrandFindings, getBrandFinding, explainFinding as explainBrandFinding, generateProposal as generateBrandProposal, getBrandDashboard, evaluateBrandGate, createWaiver as createBrandWaiver, listWaivers as listBrandWaivers, getLogoRegistry, getFontPolicy, getColorPolicy,
 } from "./brand-engine";
 
 const MODULE = "videos";
@@ -951,6 +951,60 @@ export class VideosService {
     return { timelineId, graphVersion, checks, report, safety };
   }
   async generativeListJobs() { await this.assert("READ"); return listAssets().filter(a=>a.domain==="GENERATED_WORKSPACE"); }
+
+  // ── Brand Intelligence (compiler → policy → scan → gate → waiver) ──
+  async brandCreatePolicy(input: { brand_id: string; version?: string; name?: string }) {
+    await this.assert("CREATE");
+    const p = createBrandPolicy({ brand_id: input.brand_id, version: input.version ?? "2026.08" });
+    await this.audit("brand.policy.created", `${p.brand_id}:${p.version}`, "BrandPolicy", { brand_id: p.brand_id });
+    return p;
+  }
+  async brandListPolicies() { await this.assert("READ"); return listBrandPolicies(); }
+  async brandGetPolicy(brandId: string, version: string) { await this.assert("READ"); return getBrandPolicy(brandId, version); }
+  async brandCompile(input: { brandbook_v7?: string }) {
+    await this.assert("CREATE");
+    const proposals = compileBrandDocuments({ brandbook_v7: input.brandbook_v7 ?? "Brand Book v7" });
+    await this.audit("brand.compile", "brand_nova_001", "BrandCompile", { proposals: proposals.length });
+    return proposals;
+  }
+  async brandRunScan(input: { timelineId: string; graphVersion?: string; region?: string; platforms?: string[]; checks?: string[]; transcript?: string }) {
+    await this.assert("READ");
+    const { runBrandScan } = await import("./brand-engine");
+    const findings = runBrandScan({ timeline_id: input.timelineId, graph_version: input.graphVersion ?? "gv42", region: input.region ?? "IN", platforms: input.platforms ?? ["youtube"], checks: input.checks, transcript: input.transcript });
+    await this.audit("brand.scan.run", input.timelineId, "BrandScan", { region: input.region, findings: findings.length });
+    return findings;
+  }
+  async brandExplainFinding(findingId: string) {
+    await this.assert("READ");
+    const { explainFinding } = await import("./brand-engine");
+    return explainFinding(findingId);
+  }
+  async brandGenerateProposal(findingId: string, preserve?: string[]) {
+    await this.assert("CREATE");
+    const { generateProposal } = await import("./brand-engine");
+    const prop = generateProposal(findingId, preserve ?? ["timing"]);
+    await this.audit("brand.proposal.generated", findingId, "BrandFinding", { proposal: prop?.proposal_id });
+    return prop;
+  }
+  async brandCreateWaiver(input: { finding_id: string; approved_by: string; reason: string; scope?: Record<string, unknown>; expires_at?: string }) {
+    await this.assert("CREATE");
+    const { createWaiver } = await import("./brand-engine");
+    const w = createWaiver({ finding_id: input.finding_id, approved_by: input.approved_by, reason: input.reason, scope: input.scope as never, expires_at: input.expires_at });
+    await this.audit("brand.waiver.created", w.waiver_id, "BrandWaiver", { finding: input.finding_id, reason: input.reason });
+    return w;
+  }
+  async brandGetDashboard(timelineId?: string, region?: string, output?: string) {
+    await this.assert("READ");
+    const { getBrandDashboard } = await import("./brand-engine");
+    return getBrandDashboard(timelineId ?? "tl001", region ?? "IN", output ?? "youtube_4k_hdr");
+  }
+  async brandEvaluateGate(input: { timeline_id: string; graph_version: string; export_profile: string; brand_policy: string; region: string }) {
+    await this.assert("READ");
+    const { evaluateBrandGate } = await import("./brand-engine");
+    const gate = evaluateBrandGate(input);
+    await this.audit("brand.gate.evaluated", gate.gate_id, "BrandGate", { result: gate.result, blocking: gate.blocking_findings.length });
+    return gate;
+  }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────
   // In-memory fallback store when VideoCopilotProposal table not yet migrated
