@@ -27,7 +27,13 @@
     "./quality-components": "./src/quality-components.tsx",
     "./interchange": "./src/interchange-engine.ts",
     "./interchange-types": "./src/interchange-types.ts",
-    "./interchange-components": "./src/interchange-components.tsx"
+    "./interchange-components": "./src/interchange-components.tsx",
+    "./generative": "./src/generative-engine.ts",
+    "./generative-types": "./src/generative-types.ts",
+    "./generative-components": "./src/generative-components.tsx",
+    "./brand": "./src/brand-engine.ts",
+    "./brand-types": "./src/brand-types.ts",
+    "./brand-components": "./src/brand-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

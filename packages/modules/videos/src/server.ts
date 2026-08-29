@@ -28,6 +28,9 @@ import {
 import {
   createTextToVideoJob, createImageToVideoJob, createObjectRemovalOp, generateCameraVariations, createProductAnchor, createCharacterAnchor, checkAnchorCompliance, createStoryboardCards, createContinuationJob, suggestBroll, getProvenance, getSegmentProvenance, getPromptHistory, addPromptVersion, checkUsage, createConsent, revokeConsent, runSafetyChecks, complianceReport, approveAsset, getApproval, processingRoute, listAssets,
 } from "./generative-engine";
+import {
+  createPolicy as createBrandPolicy, getPolicy as getBrandPolicy, listPolicies as listBrandPolicies, compileBrandDocuments, approveCompiledRule, runBrandScan, getFindings as getBrandFindings, getFinding as getBrandFinding, explainFinding as explainBrandFinding, generateProposal as generateBrandProposal, getBrandDashboard, evaluateBrandGate, createWaiver as createBrandWaiver, listWaivers as listBrandWaivers, getLogoRegistry, getFontPolicy, getColorPolicy,
+} from "./brand-engine";
 
 const MODULE = "videos";
 
