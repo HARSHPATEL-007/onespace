@@ -35,6 +35,11 @@ import {
   registerPerson, getPerson, listPersons, createConsentGrant, getGrant, createEvidence, evaluateConsent, matchIdentity, getFacePolicy, getVoicePermission, evaluatePresenter, evaluateLipSync, getDisclosurePolicy, createIdentityProvenance, getIdentityProvenance, getConsentPassport, checkExpirations, revokeGrant, getRevocationStatus, evaluateExportGate as evaluateIdentityExportGate, issueAgentToken, verifyAgentToken,
 } from "./identity-engine";
 import {
+  createReviewItem, getReviewItem, listReviewItems, clusterItems, listClusters, detectReviewDuplicates, detectContradictions,
+  generateSuggestion, getApprovalGraph, detectBlockers, classify, predictDeadlineRisk, verifyChange, ingestVoiceFeedback, ingestVideoFeedback,
+  listReviewRounds, getReviewRound,
+} from "./review-engine";
+import {
   checkPermission, updatePresence, listPresence, acquireLock, listLocks, submitOperation, listOperations, createBranch as createCollabBranch, listBranches as listCollabBranches, mergePreview as collabMergePreview, applyMerge as collabApplyMerge, listApprovals as listCollabApprovals, createCommentThread as createCollabCommentThread, listCommentThreads, listMarkerSets, getDashboard as getCollabDashboard, createOfflineSnapshot, queueOfflineOperation, reconcileOffline, validateOperation,
 } from "./collaboration-engine";
 
@@ -1065,6 +1070,40 @@ export class VideosService {
     const { getConsentPassport } = await import("./identity-engine");
     return getConsentPassport(personId, projectId);
   }
+
+  // ── Review Intelligence (comment → request → verification) ──
+  async reviewCreateItem(input: { revision_id: string; source: { type: string; comment_id: string }; anchor: { start_ms: number; end_ms: number; frame?: number }; text: string }) {
+    await this.assert("CREATE");
+    const item = createReviewItem({ revision_id: input.revision_id, source: input.source, anchor: input.anchor, text: input.text });
+    await this.audit("review.item.created", item.review_item_id, "ReviewItem", { revision: input.revision_id });
+    return item;
+  }
+  async reviewListItems(roundId?: string) { await this.assert("READ"); return listReviewItems(roundId); }
+  async reviewGetItem(itemId: string) { await this.assert("READ"); return getReviewItem(itemId); }
+  async reviewClusterItems(input: { review_round_id: string; item_ids: string[]; mode?: string }) {
+    await this.assert("CREATE");
+    const cluster = clusterItems(input.item_ids, (input.mode as "semantic") ?? "semantic");
+    await this.audit("review.cluster.created", cluster.cluster_id, "Cluster", { items: input.item_ids.length });
+    return cluster;
+  }
+  async reviewGenerateSuggestion(itemId: string, opts?: { respect_locks?: boolean }) {
+    await this.assert("CREATE");
+    const suggestion = generateSuggestion(itemId, { respect_locks: opts?.respect_locks ?? true });
+    await this.audit("review.suggestion.created", suggestion.suggestion_id, "EditSuggestion", { item: itemId });
+    return suggestion;
+  }
+  async reviewVerifyChange(itemId: string, sourceRevision: string, targetRevision: string) {
+    await this.assert("UPDATE");
+    const result = verifyChange(itemId, sourceRevision, targetRevision);
+    await this.audit("review.item.verified", itemId, "ReviewItem", { source: sourceRevision, target: targetRevision, status: result.status });
+    return result;
+  }
+  async reviewGetRisk(roundId: string) {
+    await this.assert("READ");
+    return predictDeadlineRisk(roundId);
+  }
+  async reviewListClusters() { await this.assert("READ"); const { listClusters } = await import("./review-engine"); return listClusters(); }
+  async reviewDetectBlockers() { await this.assert("READ"); const { detectBlockers } = await import("./review-engine"); return detectBlockers(); }
 
   // ── Collaboration Fabric (role-aware, branch-native, CRDT/OT) ──
   async collabCheckPermission(input: { role: string; permission: string; project_id?: string; branch_id?: string }) {

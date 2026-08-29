@@ -31,3 +31,6 @@ export * from "./identity-types";
 export * from "./identity-engine";
 export { IdentityPanel } from "./identity-components";
 export { CollaborationPanel } from "./collaboration-components";
+export * from "./review-types";
+export * from "./review-engine";
+export { ReviewIntelligencePanel } from "./review-components";

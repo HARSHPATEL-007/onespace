@@ -39,7 +39,10 @@
     "./identity-components": "./src/identity-components.tsx",
     "./collaboration": "./src/collaboration-engine.ts",
     "./collaboration-types": "./src/collaboration-types.ts",
-    "./collaboration-components": "./src/collaboration-components.tsx"
+    "./collaboration-components": "./src/collaboration-components.tsx",
+    "./review": "./src/review-engine.ts",
+    "./review-types": "./src/review-types.ts",
+    "./review-components": "./src/review-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

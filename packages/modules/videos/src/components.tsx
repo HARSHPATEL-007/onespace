@@ -15,6 +15,7 @@ import { GenerativePanel } from "./generative-components";
 import { InterchangePanel } from "./interchange-components";
 import { BrandPanel } from "./brand-components";
 import { IdentityPanel } from "./identity-components";
+import { ReviewIntelligencePanel } from "./review-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -209,6 +210,7 @@ const STUDIO_TABS = [
   { id: "generative", label: "Generative" },
   { id: "brand", label: "Brand" },
   { id: "identity", label: "Identity" },
+  { id: "review-intel", label: "Review Intel" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
   { id: "provenance", label: "Provenance" },
@@ -485,6 +487,11 @@ export function VideoStudioTranscendent({
           {/* IDENTITY — consent-aware */}
           {activeTab === "identity" && (
             <IdentityPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* REVIEW INTEL — decision intelligence */}
+          {activeTab === "review-intel" && (
+            <ReviewIntelligencePanel projectId={selectedProj?.id ?? "project_001"} />
           )}
 
           {/* STUDIO */}
