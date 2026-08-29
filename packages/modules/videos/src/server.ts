@@ -34,6 +34,9 @@ import {
 import {
   registerPerson, getPerson, listPersons, createConsentGrant, getGrant, createEvidence, evaluateConsent, matchIdentity, getFacePolicy, getVoicePermission, evaluatePresenter, evaluateLipSync, getDisclosurePolicy, createIdentityProvenance, getIdentityProvenance, getConsentPassport, checkExpirations, revokeGrant, getRevocationStatus, evaluateExportGate as evaluateIdentityExportGate, issueAgentToken, verifyAgentToken,
 } from "./identity-engine";
+import {
+  checkPermission, updatePresence, listPresence, acquireLock, listLocks, submitOperation, listOperations, createBranch as createCollabBranch, listBranches as listCollabBranches, mergePreview as collabMergePreview, applyMerge as collabApplyMerge, listApprovals as listCollabApprovals, createCommentThread as createCollabCommentThread, listCommentThreads, listMarkerSets, getDashboard as getCollabDashboard, createOfflineSnapshot, queueOfflineOperation, reconcileOffline, validateOperation,
+} from "./collaboration-engine";
 
 const MODULE = "videos";
 
@@ -1062,6 +1065,63 @@ export class VideosService {
     const { getConsentPassport } = await import("./identity-engine");
     return getConsentPassport(personId, projectId);
   }
+
+  // ── Collaboration Fabric (role-aware, branch-native, CRDT/OT) ──
+  async collabCheckPermission(input: { role: string; permission: string; project_id?: string; branch_id?: string }) {
+    await this.assert("READ");
+    return checkPermission({ role: input.role as never, permission: input.permission, scope: { project_id: input.project_id ?? "project_001", branch_id: input.branch_id, tracks: ["video_1"] } });
+  }
+  async collabUpdatePresence(input: { user_id: string; role?: string; branch_id?: string; timeline_position_ms?: number }) {
+    await this.assert("UPDATE");
+    const p = updatePresence({
+      user_id: input.user_id, display_name: input.user_id.slice(0, 6), role: (input.role as never) ?? "editor",
+      branch_id: input.branch_id ?? "branch_roughcut", timeline_position_ms: input.timeline_position_ms ?? 0,
+      editing_status: "editing", last_activity: new Date().toISOString(), voice_chat: false, screen_sharing: false,
+      avatar: input.user_id[0]?.toUpperCase(),
+    });
+    await this.audit("collab.presence.updated", input.user_id, "Presence", { branch: p.branch_id });
+    return p;
+  }
+  async collabListPresence() { await this.assert("READ"); return listPresence(); }
+  async collabAcquireLock(input: { branch_id: string; tracks: string[]; start_ms: number; end_ms: number; lock_type?: string; owner_id?: string }) {
+    await this.assert("CREATE");
+    const lock = acquireLock({
+      owner_id: input.owner_id ?? this.userId, branch_id: input.branch_id, scope: { tracks: input.tracks, start_ms: input.start_ms, end_ms: input.end_ms },
+      lock_type: (input.lock_type as never) ?? "exclusive_edit", reason: "Region edit", lease_seconds: 900, allow_comments: true, allow_review: true, allow_override_roles: ["director", "producer"],
+    });
+    await this.audit("collab.lock.acquired", lock.lock_id, "TimelineLock", { branch: lock.branch_id, range: `${lock.scope.start_ms}-${lock.scope.end_ms}` });
+    return lock;
+  }
+  async collabListLocks(branchId?: string) { await this.assert("READ"); return listLocks(branchId); }
+  async collabSubmitOperation(input: { branch_id: string; type: string; clip_id?: string; payload?: Record<string, unknown>; base_revision?: string }) {
+    await this.assert("UPDATE");
+    const validation = validateOperation({ actor_role: this.role as unknown as import("./collaboration-types").CollaboratorRole, branch_id: input.branch_id, type: input.type } as never);
+    if (!validation.allowed) throw new Error(`Operation rejected: ${validation.reason} — ${validation.suggestion}`);
+    const op = submitOperation({
+      actor_id: this.userId, branch_id: input.branch_id, type: input.type, target: { clip_id: input.clip_id ?? "clip_004" }, payload: input.payload ?? {}, base_revision: input.base_revision ?? "rev_0189",
+    });
+    await this.audit("collab.operation.submitted", op.op_id, "TimelineOperation", { branch: op.branch_id, type: op.type });
+    return op;
+  }
+  async collabCreateBranch(input: { name: string; from_revision: string; scope?: { time_ranges: { start_ms: number; end_ms: number }[] } }) {
+    await this.assert("CREATE");
+    const b = createCollabBranch({ name: input.name, from_revision: input.from_revision, scope: input.scope, owner_id: this.userId });
+    await this.audit("collab.branch.created", b.branch_id, "Branch", { name: b.name, parent: b.parent_revision });
+    return b;
+  }
+  async collabListBranches() { await this.assert("READ"); return listCollabBranches(); }
+  async collabMergePreview(source_branch: string, target_branch: string) {
+    await this.assert("READ");
+    return collabMergePreview(source_branch, target_branch);
+  }
+  async collabApplyMerge(input: { source_branch: string; target_branch: string; resolution_map: Record<string, string> }) {
+    await this.assert("UPDATE");
+    const res = collabApplyMerge(input.source_branch, input.target_branch, input.resolution_map);
+    await this.audit("collab.branch.merged", input.target_branch, "Branch", { source: input.source_branch, invalidated: res.invalidated });
+    return res;
+  }
+  async collabListApprovals(branchId?: string) { await this.assert("READ"); return listCollabApprovals(branchId); }
+  async collabDashboard() { await this.assert("READ"); return getCollabDashboard(); }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────
   // In-memory fallback store when VideoCopilotProposal table not yet migrated

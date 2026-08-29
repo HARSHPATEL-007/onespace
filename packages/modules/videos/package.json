@@ -36,7 +36,10 @@
     "./brand-components": "./src/brand-components.tsx",
     "./identity": "./src/identity-engine.ts",
     "./identity-types": "./src/identity-types.ts",
-    "./identity-components": "./src/identity-components.tsx"
+    "./identity-components": "./src/identity-components.tsx",
+    "./collaboration": "./src/collaboration-engine.ts",
+    "./collaboration-types": "./src/collaboration-types.ts",
+    "./collaboration-components": "./src/collaboration-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@n0va/auth";
 import { prisma } from "@n0va/db";
 import { createBranchFromSemanticRules, listBranches } from "@n0va/modules-videos/semantic";
+import { VideosService } from "@n0va/modules-videos/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { timelineId } = await params;
   const body = await request.json().catch(() => ({}));
 
+  const membership = await prisma.workspaceMember.findFirst({ where: { userId: session.user.id, status: "ACTIVE" } });
+  if (!membership) return NextResponse.json({ error: "No workspace" }, { status: 403 });
+
+  // Collaboration branch: {name, from_revision, scope}
+  if (body.from_revision) {
+    const svc = new VideosService(membership.workspaceId, session.user.id, membership.role);
+    const branch = await svc.collabCreateBranch({
+      name: String(body.name ?? `branch_${Date.now()}`),
+      from_revision: String(body.from_revision),
+      scope: body.scope as { time_ranges: { start_ms: number; end_ms: number }[] } | undefined,
+    });
+    return NextResponse.json({ ...branch, timelineId, kind: "collaboration_branch" });
+  }
+
   const name = String(body.name ?? `branch_${Date.now()}`);
   const parent = String(body.parent_version ?? body.parent ?? `${timelineId}:v31`);
   const rules = (body.semantic_rules ?? body.selection_rules ?? [
@@ -24,9 +39,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     { exclude: "dialogue.contains=filler" },
   ]) as { include?: string; exclude?: string; minimum_importance?: number }[];
   const constraints = (body.constraints ?? { max_duration_ms: 60000, aspect_ratio: "9:16" }) as { maximum_duration_ms?: number; aspect_ratio?: string };
-
-  const membership = await prisma.workspaceMember.findFirst({ where: { userId: session.user.id, status: "ACTIVE" } });
-  if (!membership) return NextResponse.json({ error: "No workspace" }, { status: 403 });
 
   // Validate parent exists conceptually; create branch
   const cRaw = constraints as unknown as Record<string, number | string | undefined>;
@@ -56,6 +68,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { timelineId } = await params;
+  const { searchParams } = new URL(request.url);
+  if (searchParams.get("kind") === "collaboration") {
+    const membership = await prisma.workspaceMember.findFirst({ where: { userId: session.user.id, status: "ACTIVE" } });
+    if (!membership) return NextResponse.json({ error: "No workspace" }, { status: 403 });
+    const svc = new VideosService(membership.workspaceId, session.user.id, membership.role);
+    const branches = await svc.collabListBranches();
+    return NextResponse.json({ timelineId, branches, kind: "collaboration" });
+  }
   // list branches filtered by timeline if possible (all for demo)
   return NextResponse.json({ timelineId, branches: listBranches() });
 }

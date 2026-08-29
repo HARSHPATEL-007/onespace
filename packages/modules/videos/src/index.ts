@@ -30,3 +30,4 @@ export { BrandPanel } from "./brand-components";
 export * from "./identity-types";
 export * from "./identity-engine";
 export { IdentityPanel } from "./identity-components";
+export { CollaborationPanel } from "./collaboration-components";
