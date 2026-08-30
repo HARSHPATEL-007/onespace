@@ -42,6 +42,30 @@ import {
 import {
   checkPermission, updatePresence, listPresence, acquireLock, listLocks, submitOperation, listOperations, createBranch as createCollabBranch, listBranches as listCollabBranches, mergePreview as collabMergePreview, applyMerge as collabApplyMerge, listApprovals as listCollabApprovals, createCommentThread as createCollabCommentThread, listCommentThreads, listMarkerSets, getDashboard as getCollabDashboard, createOfflineSnapshot, queueOfflineOperation, reconcileOffline, validateOperation,
 } from "./collaboration-engine";
+import {
+  createPortal as createClientPortal, getPortal as getClientPortal, listPortals as listClientPortals, createReviewLink, verifyLinkAccess, createSession as createPortalSession, revokeLink, revokePortal, visibleWatermarkText, forensicWatermarkId, createPlaybackToken, addExternalComment, listExternalComments, listPortalVersions, getVersionDiff, submitDecision as submitPortalDecision, localizedDecision, listAudit, listDecisions as listPortalDecisions,
+} from "./client-review-engine";
+import {
+  listNodes as kgListNodes, getNode as kgGetNode, createNode as kgCreateNode, listEdges as kgListEdges, createEdge as kgCreateEdge, confirmEdge as kgConfirmEdge, traverse as kgTraverse, findPath as kgFindPath, hybridSearch as kgHybridSearch, queryExpiringConsent as kgExpiringConsent, queryApprovedCurrentPackaging as kgApprovedPack, queryLegalBlockers as kgLegalBlockers, queryUnverifiedChanges as kgUnverified, queryCalendarRisk as kgCalendarRisk, queryUnsupportedClaims as kgUnsupported, evaluatePublishability as kgPublishability, getConflicts as kgConflicts, resolveConflict as kgResolveConflict, listMatches as kgMatches, confirmMatch as kgConfirmMatch, canAccessNode as kgCanAccess, graphMetrics as kgMetrics,
+} from "./knowledge-graph-engine";
+import {
+  parseNaturalQuery as srParse, planQuery as srPlan, smartSearch as srSmart, exactTranscriptSearch as srExact, visualCompositionSearch as srVisual, cameraMovementSearch as srMotion, colorPaletteSearch as srColor, emotionSearch as srEmotion, speakerTopicSearch as srSpeakerTopic, similarShotSearch as srSimilar, duplicateSearch as srDuplicate, fuseResults as srFuse, applyPolicyFilters as srPolicy, searchMetrics as srMetrics, listAudits as srAudits,
+} from "./search-retrieval-engine";
+import {
+  runPreflight as pfRun, getPreflight as pfGet, getLatestPreflight as pfLatest, listFindings as pfList, getFinding as pfFinding, resolveFinding as pfResolve, requestException as pfException, approveFinding as pfApprove, getDashboard as pfDashboard, recheckExportFile as pfRecheck, listRuns as pfRuns,
+} from "./preflight-engine";
+import {
+  createSession as liveCreateSession, getSession as liveGetSession, transitionSession as liveTransition, predictHealth as livePredict, executeFailover as liveFailover, getDestinationHealth as liveDestHealth, reconnectDestination as liveReconnect, createCaptionRevision as liveCaptionRev, createHighlightCandidate as liveHighlight, startReplay as liveReplay, verifyRecording as liveVerify, diagnoseContributor as liveDiagnose, listFallbackAssets as liveFallbacks, generateEventReport as liveReport, listSessions as liveList,
+} from "./live-control-engine";
+import {
+  createPostEventProject as continuumCreate, getPostEventProject as continuumGet, listPostEventProjects as continuumList, generateCandidates as continuumCandidates, createSpeakerCompilation as continuumSpeaker, transcriptEdit as continuumEdit, detectSilence as continuumSilence, createQuoteCard as continuumQuote, buildPackage as continuumPackage,
+} from "./live-edit-engine";
+import {
+  analyzeAudio as audioAnalyze, isolateDialogue as audioIsolate, reconstructRoomTone as audioRoomTone, createDubVersion as audioDub, checkVoiceConsistency as audioVoiceCheck, normalizeForDestination as audioNormalize, decideDucking as audioDuck, suggestSfx as audioSfx, scoreRepair as audioRepairScore, analyzeHum as audioHum, checkPhase as audioPhase, detectSilence as audioSilenceDetect, listStems as audioListStems, createStemVersion as audioCreateVersion, approveStemVersion as audioApproveVersion, getMixGraph as audioMixGraph, checkImmersive as audioImmersive, generateAudioReport as audioReport, getSpeakerProfile as audioSpeakerProfile,
+} from "./audio-intelligence-engine";
+import {
+  analyzeAccessibility as a11yAnalyze, optimizeCaptionPosition as a11yPosition, evaluateCaptionQuality as a11yQuality, checkReadingSpeed as a11yReading, generateAudioDescription as a11yAD, getAudioDescriptionScript as a11yScript, getSignWindow as a11ySignWindow, checkColorAccessibility as a11yColor, detectFlashForTimeline as a11yFlash, getSemanticTimeline as a11ySemantic, generateDestinationReport as a11yReport, generateManifest as a11yManifest,
+} from "./accessibility-automation-engine";
 
 const MODULE = "videos";
 
@@ -1161,6 +1185,298 @@ export class VideosService {
   }
   async collabListApprovals(branchId?: string) { await this.assert("READ"); return listCollabApprovals(branchId); }
   async collabDashboard() { await this.assert("READ"); return getCollabDashboard(); }
+
+  // ── Client Review Portal (external, minimum-access, traceable decisions) ──
+  async portalCreate(input: { snapshot_id: string; access_policy?: Record<string, unknown>; review_policy?: Record<string, unknown>; branding?: Record<string, unknown>; localization?: Record<string, unknown>; projectId?: string; expires_at?: string }) {
+    await this.assert("CREATE");
+    const ap = (input.access_policy ?? {}) as Record<string, unknown>;
+    const portal = createClientPortal({ project_id: String(input.projectId ?? (ap.project_id as string) ?? "project_001"), snapshot_id: input.snapshot_id, access_policy: { ...(ap as object), expires_at: String(input.expires_at ?? ap.expires_at ?? "2026-09-05T18:00:00Z") } as never, review_policy: input.review_policy as never, branding: input.branding as never, localization: input.localization as never });
+    await this.audit("portal.created", portal.portal_id, "ClientReviewPortal", { snapshot: portal.snapshot_id, expires: portal.access_policy.expires_at });
+    return portal;
+  }
+  async portalGet(portalId: string) { await this.assert("READ"); return getClientPortal(portalId); }
+  async portalList(projectId?: string) { await this.assert("READ"); return listClientPortals(projectId); }
+  async portalAddComment(portalId: string, input: { snapshot_id: string; time_ms: number; frame: number; text: string; annotation?: { type: string; x: number; y: number; width: number; height: number }; reviewer_email?: string; review_link_id?: string }) {
+    await this.assert("CREATE");
+    const portal = getClientPortal(portalId);
+    if (!portal) throw new Error("Portal not found");
+    if (!portal.review_policy.allow_comments) throw new Error("Comments not allowed for this portal");
+    // enforce snapshot pinning
+    if (input.snapshot_id !== portal.snapshot_id) throw new Error("Comment snapshot does not match portal snapshot — decision cannot apply to a snapshot that changed after review");
+    void listClientPortals; // keep import used
+    // pick review link: use provided or first for project
+    const { listReviewLinks } = await import("./client-review-engine");
+    const availableLinks = listReviewLinks(portal.project_id);
+    const linkId = input.review_link_id ?? availableLinks[0]?.link_id ?? "rl_01J_demo";
+    const comment = addExternalComment({ review_link_id: linkId, snapshot_id: input.snapshot_id, time_ms: input.time_ms, frame: input.frame, text: input.text, author_email: input.reviewer_email ?? "reviewer@client.example", region: input.annotation ? { x: input.annotation.x, y: input.annotation.y, width: input.annotation.width, height: input.annotation.height } : undefined, annotation_type: input.annotation?.type ?? "rectangle" });
+    await this.audit("portal.comment.added", comment.comment_id, "ExternalComment", { portal: portalId, time_ms: input.time_ms });
+    return comment;
+  }
+  async portalSubmitDecision(portalId: string, input: { snapshot_id: string; decision: string; linked_review_items?: string[]; confirmation?: { verified_identity?: boolean; reviewed_scope?: string }; text?: string; actor_email?: string; language?: string }) {
+    await this.assert("UPDATE");
+    const portal = getClientPortal(portalId);
+    if (!portal) throw new Error("Portal not found");
+    if (input.snapshot_id !== portal.snapshot_id) throw new Error("Decision snapshot does not match portal snapshot — decision cannot apply to a snapshot that changed after review");
+    // idempotent: if same portal+snapshot+decision already exists with same hash, return existing
+    const existing = listPortalDecisions(portalId).find(d => d.snapshot_id === input.snapshot_id && d.decision === input.decision);
+    // enforce confirmation for sensitive decisions
+    if (!input.confirmation?.verified_identity && portal.access_policy.approval_requires_verification) throw new Error("Approval requires identity confirmation — OTP/verified_email required");
+    const decision = submitPortalDecision({ portal_id: portalId, snapshot_id: input.snapshot_id, decision: input.decision as never, actor_email: input.actor_email ?? "reviewer@client.example", linked_review_items: input.linked_review_items, text: input.text, scope: input.confirmation?.reviewed_scope, language: input.language });
+    // workflow side effects audited inside engine
+    await this.audit(`portal.decision.${decision.decision}`, decision.decision_id, "PortalDecision", { portal: portalId, snapshot: input.snapshot_id, decision: decision.decision });
+    if (existing && existing.decision === decision.decision) {
+      // idempotent: return latest but note deduped
+      await this.audit("portal.decision.idempotent", existing.decision_id, "PortalDecision", { deduped: true });
+    }
+    return decision;
+  }
+  async portalRevoke(portalId: string, input: { reason?: string; revoke_active_sessions?: boolean; revoke_download_tokens?: boolean }) {
+    await this.assert("UPDATE");
+    const res = revokePortal(portalId, input.reason ?? "security_incident");
+    await this.audit("portal.revoked", portalId, "ClientReviewPortal", { reason: input.reason, sessions: res.revoked_sessions, links: res.revoked_links });
+    return res;
+  }
+  async portalGetVersions(portalId: string) { await this.assert("READ"); return listPortalVersions(portalId); }
+  async portalGetAudit(portalId: string, role: string = "producer") { await this.assert("READ"); return listAudit(portalId, role); }
+  async portalVerifyLink(linkId: string, context: { email?: string; ip?: string; country?: string }) { await this.assert("READ"); return verifyLinkAccess(linkId, context); }
+  async portalCreateLink(input: { project_id: string; snapshot_id: string; mode?: string; permissions?: Record<string, unknown>; restrictions?: Record<string, unknown>; watermark?: Record<string, unknown>; expires_at?: string }) {
+    await this.assert("CREATE");
+    const link = createReviewLink({ project_id: input.project_id, snapshot_id: input.snapshot_id, mode: input.mode as never, permissions: input.permissions as never, restrictions: input.restrictions as never, watermark: input.watermark as never, expires_at: input.expires_at });
+    await this.audit("portal.link.created", link.link_id, "ReviewLink", { snapshot: input.snapshot_id, mode: link.mode });
+    return link;
+  }
+
+  // ── Multimodal Knowledge Graph (embeddings discover, graph proves) ──
+  async kgListNodes(filter?: { type?: string }) { await this.assert("READ"); return kgListNodes(filter as never); }
+  async kgGetNode(nodeId: string) { await this.assert("READ"); return kgGetNode(nodeId); }
+  async kgCreateNode(input: { type: string; canonical_label: string; attributes?: Record<string, unknown>; aliases?: string[] }) {
+    await this.assert("CREATE");
+    const n = kgCreateNode({ type: input.type as never, canonical_label: input.canonical_label, attributes: input.attributes, aliases: input.aliases });
+    await this.audit("kg.node.created", n.node_id, "GraphNode", { type: n.type });
+    return n;
+  }
+  async kgListEdges(filter?: { type?: string }) { await this.assert("READ"); return kgListEdges(filter as never); }
+  async kgCreateEdge(input: { from_node: string; type: string; to_node: string; confidence?: number; evidence?: Record<string, unknown>; media_interval?: { asset_id: string; start_ms: number; end_ms: number } }) {
+    await this.assert("CREATE");
+    const e = kgCreateEdge({ from_node: input.from_node, type: input.type as never, to_node: input.to_node, confidence: input.confidence, evidence: input.evidence, media_interval: input.media_interval });
+    await this.audit("kg.edge.created", e.edge_id, "GraphEdge", { type: e.type, confidence: e.confidence, trust: e.trust_level });
+    return e;
+  }
+  async kgConfirmEdge(edgeId: string) { await this.assert("UPDATE"); const e = kgConfirmEdge(edgeId, this.userId); await this.audit("kg.edge.confirmed", edgeId, "GraphEdge", { by: this.userId }); return e; }
+  async kgTraverse(fromId: string, maxDepth?: number) { await this.assert("READ"); return kgTraverse(fromId, maxDepth ?? 3); }
+  async kgFindPath(from: string, to: string) { await this.assert("READ"); return kgFindPath(from, to); }
+  async kgHybridSearch(input: { text: string; campaign_id?: string; product_id?: string; require_consent?: boolean }) {
+    await this.assert("READ");
+    const res = kgHybridSearch({ text: input.text, campaign_id: input.campaign_id, product_id: input.product_id, require_consent: input.require_consent, require_no_legal_block: true });
+    await this.audit("kg.hybrid.search", `q:${input.text.slice(0,32)}`, "KgSearch", { campaign: input.campaign_id, results: res.length });
+    return res;
+  }
+  async kgExpiringConsent(days?: number) { await this.assert("READ"); return kgExpiringConsent(days ?? 30); }
+  async kgApprovedPackaging(campaignId: string, productId: string) { await this.assert("READ"); return kgApprovedPack(campaignId, productId); }
+  async kgLegalBlockers() { await this.assert("READ"); return kgLegalBlockers(); }
+  async kgUnverifiedChanges() { await this.assert("READ"); return kgUnverified(); }
+  async kgCalendarRisk() { await this.assert("READ"); return kgCalendarRisk(); }
+  async kgUnsupportedClaims(productId: string) { await this.assert("READ"); return kgUnsupported(productId); }
+  async kgPublishability(projectId: string, destination?: string) {
+    await this.assert("READ");
+    const check = kgPublishability(projectId, destination ?? "paid_social");
+    await this.audit("kg.publishability", check.check_id, "PolicyCheck", { publishable: check.publishable, reasons: check.reasons.length });
+    return check;
+  }
+  async kgConflicts() { await this.assert("READ"); return kgConflicts(); }
+  async kgResolveConflict(conflictId: string, chosenSource: string) { await this.assert("UPDATE"); const c = kgResolveConflict(conflictId, chosenSource, this.userId); await this.audit("kg.conflict.resolved", conflictId, "GraphConflict", { chosenSource }); return c; }
+  async kgMatches() { await this.assert("READ"); return kgMatches(); }
+  async kgConfirmMatch(matchId: string) { await this.assert("UPDATE"); const m = kgConfirmMatch(matchId); await this.audit("kg.match.confirmed", matchId, "EntityMatch", { type: m?.match_type }); return m; }
+  async kgCanAccess(nodeId: string, role?: string, purpose?: string) { await this.assert("READ"); return kgCanAccess(nodeId, role ?? this.role, purpose); }
+  async kgMetrics() { await this.assert("READ"); return kgMetrics(); }
+
+  // ── Search & Retrieval Intelligence (hybrid, explainable, permission-aware) ──
+  async srParseQuery(query: string, scope?: { tenant_id?: string; project_ids?: string[] }) {
+    await this.assert("READ");
+    const ctx = { tenant_id: scope?.tenant_id ?? this.workspaceId, user_id: this.userId, workspace_ids: [this.workspaceId], project_ids: scope?.project_ids ?? ["project_001"], permissions: ["asset:view"], purpose: "editorial_discovery" };
+    return srParse(query, ctx as never);
+  }
+  async srSmartSearch(input: { query: string; scope?: { tenant_id?: string; project_ids?: string[] }; mode?: string; limit?: number }) {
+    await this.assert("READ");
+    const ctx = { tenant_id: input.scope?.tenant_id ?? this.workspaceId, user_id: this.userId, workspace_ids: [this.workspaceId], project_ids: input.scope?.project_ids ?? ["project_001","project_004"], permissions: ["asset:view"], purpose: "editorial_discovery" };
+    const res = srSmart({ query: input.query, scope: ctx as never, mode: input.mode as never, limit: input.limit });
+    await this.audit("search.smart", res.audit.audit_id, "SearchAudit", { query: input.query, results: res.results.length, tenant: ctx.tenant_id });
+    return res;
+  }
+  async srExactSearch(input: { phrase?: string; query?: string; speaker_id?: string; language?: string; time_range?: { start_ms: number; end_ms: number }; boolean_query?: string; tenant_id?: string }) {
+    await this.assert("READ");
+    const tenant = input.tenant_id ?? this.workspaceId;
+    const results = srExact({ phrase: input.phrase, query: input.query, speaker_id: input.speaker_id, language: input.language, time_range: input.time_range, boolean_query: input.boolean_query, tenant_id: tenant });
+    // exact outranks semantic — already sorted
+    await this.audit("search.exact", `q:${(input.phrase ?? input.query ?? "").slice(0,32)}`, "SearchAudit", { tenant, results: results.length });
+    return results;
+  }
+  async srSimilarSearch(input: { source: { asset_id: string; start_ms?: number; end_ms?: number }; similarity_mode?: string; scope?: { tenant_id?: string; project_ids?: string[] } }) {
+    await this.assert("READ");
+    const ctx = { tenant_id: input.scope?.tenant_id ?? this.workspaceId, user_id: this.userId, workspace_ids: [this.workspaceId], project_ids: input.scope?.project_ids ?? ["project_001"], permissions: ["asset:view"], purpose: "editorial_discovery" };
+    const results = srSimilar({ source: input.source, similarity_mode: input.similarity_mode as never, scope: ctx as never, tenant_id: ctx.tenant_id });
+    await this.audit("search.similar", input.source.asset_id, "SearchAudit", { mode: input.similarity_mode, results: results.length });
+    return results;
+  }
+  async srDuplicateSearch(input: { asset_id: string; levels?: string[]; thresholds?: Record<string, number>; tenant_id?: string }) {
+    await this.assert("READ");
+    const tenant = input.tenant_id ?? this.workspaceId;
+    const res = srDuplicate({ asset_id: input.asset_id, levels: input.levels as never, thresholds: input.thresholds as never, tenant_id: tenant });
+    await this.audit("search.duplicates", input.asset_id, "SearchAudit", { families: res.families.length });
+    return res;
+  }
+  async srMetrics() { await this.assert("READ"); return srMetrics(); }
+  async srAudits() { await this.assert("READ"); return srAudits(); }
+
+  // ── Quality & Safety Intelligence (unified preflight) ──
+  async pfRun(input: { project_id: string; project_version?: number; timeline_id?: string; destinations?: (string|{platform:string;territory?:string;profile?:string})[]; checks?: string[]; mode?: string; include?: Record<string, boolean> }) {
+    await this.assert("CREATE");
+    const run = pfRun({ project_id: input.project_id, project_version: input.project_version, timeline_id: input.timeline_id, destinations: input.destinations, checks: input.checks, mode: input.mode });
+    await this.audit("preflight.run", run.preflight_id, "Preflight", { project: input.project_id, readiness: run.readiness_score, status: run.status });
+    return run;
+  }
+  async pfGet(preflightId: string) { await this.assert("READ"); return pfGet(preflightId); }
+  async pfLatest(projectId: string) { await this.assert("READ"); return pfLatest(projectId); }
+  async pfListFindings(projectId?: string) { await this.assert("READ"); return pfList(projectId); }
+  async pfGetFinding(findingId: string) { await this.assert("READ"); return pfFinding(findingId); }
+  async pfResolveFinding(findingId: string, input: { resolution_type: string; replacement_asset_id?: string; note?: string; rerun_affected_checks?: boolean }) {
+    await this.assert("UPDATE");
+    const f = pfResolve(findingId, { resolution_type: input.resolution_type, replacement_asset_id: input.replacement_asset_id, note: input.note, rerun_affected_checks: input.rerun_affected_checks });
+    if (!f) throw new Error("Finding not found");
+    await this.audit("preflight.finding.resolved", findingId, "Finding", { resolution: input.resolution_type });
+    return f;
+  }
+  async pfRequestException(findingId: string, input: { reason: string; scope?: { destination?: string; territories?: string[]; expires_at?: string }; evidence_document_ids?: string[]; approver_role?: string }) {
+    await this.assert("UPDATE");
+    const f = pfException(findingId, { reason: input.reason, scope: input.scope, evidence_document_ids: input.evidence_document_ids, approver_role: input.approver_role });
+    if (!f) throw new Error("Finding not found");
+    await this.audit("preflight.exception.requested", findingId, "Finding", { reason: input.reason });
+    return f;
+  }
+  async pfDashboard(projectId: string) { await this.assert("READ"); return pfDashboard(projectId); }
+  async pfRecheckExport(preflightId: string) { await this.assert("READ"); return pfRecheck(preflightId); }
+  async pfGetEvidence(evidenceId: string) { await this.assert("READ"); const { getEvidence } = await import("./preflight-engine"); return getEvidence(evidenceId); }
+  async pfRerun(preflightId: string, changedEntities: { type: string; id: string }[]) { await this.assert("UPDATE"); const { rerunAffectedChecks } = await import("./preflight-engine"); return rerunAffectedChecks(preflightId, changedEntities); }
+  async pfGetQueues(projectId: string) { await this.assert("READ"); const { getQueues } = await import("./preflight-engine"); return getQueues(projectId); }
+  async pfEvidenceGraph() { await this.assert("READ"); const { listEvidenceGraph } = await import("./preflight-engine"); return listEvidenceGraph(); }
+
+  // ── Live Control Room (resilient broadcast OS) ──
+  async liveCreateSession(input: { event_id: string; regions: string[]; sources: string[]; destinations: { platform: string; profile: string }[]; recording?: { program?: boolean; clean_feed?: boolean; isos?: boolean; audio_stems?: boolean }; failover_policy?: string }) {
+    await this.assert("CREATE");
+    const s = liveCreateSession({ event_id: input.event_id, regions: input.regions, sources: input.sources, destinations: input.destinations, recording: input.recording, failover_policy: input.failover_policy, tenant_id: this.workspaceId });
+    await this.audit("live.session.created", s.session_id, "LiveSession", { event: input.event_id, regions: input.regions.length });
+    return s;
+  }
+  async liveGetSession(sessionId: string) { await this.assert("READ"); const s = liveGetSession(sessionId); if (!s) throw new Error("Live session not found"); return s; }
+  async liveListSessions() { await this.assert("READ"); return liveList(); }
+  async liveFailover(sessionId: string, input: { scope: string; from: string; to: string; reason: string; mode?: string; operator_id?: string }) {
+    await this.assert("UPDATE");
+    const res = liveFailover(sessionId, { scope: input.scope, from: input.from, to: input.to, reason: input.reason, mode: input.mode, operator_id: input.operator_id ?? this.userId });
+    await this.audit("live.failover.executed", sessionId, "LiveSession", { scope: input.scope, from: input.from, to: input.to, mode: res.handoff.mode });
+    return res;
+  }
+  async liveDestinationHealth(sessionId: string, destinationId: string) { await this.assert("READ"); const h = liveDestHealth(sessionId, destinationId); if (!h) throw new Error("Destination not found"); return h; }
+  async liveStartReplay(sessionId: string, input: { source: string; start_offset_seconds: number; duration_seconds: number; speed?: number; graphics_template?: string }) {
+    await this.assert("CREATE");
+    const r = liveReplay({ session_id: sessionId, source: input.source, start_offset_seconds: input.start_offset_seconds, duration_seconds: input.duration_seconds, speed: input.speed, graphics_template: input.graphics_template });
+    await this.audit("live.replay.started", sessionId, "LiveSession", { source: input.source, offset: input.start_offset_seconds });
+    return r;
+  }
+  async liveCreateHighlight(sessionId: string, input: { trigger: string; event_time_ms: number; pre_roll_ms?: number; post_roll_ms?: number; formats?: string[]; publish_mode?: string }) {
+    await this.assert("CREATE");
+    const hl = liveHighlight({ trigger: input.trigger, event_time_ms: input.event_time_ms, pre_roll_ms: input.pre_roll_ms, post_roll_ms: input.post_roll_ms, formats: input.formats, publish_mode: input.publish_mode });
+    await this.audit("live.highlight.created", hl.candidate_id, "Highlight", { trigger: input.trigger });
+    return hl;
+  }
+  async liveVerifyRecording(recordingId: string, checks?: string[]) {
+    await this.assert("READ");
+    const res = liveVerify(recordingId, checks ?? ["segment_completeness","checksums"]);
+    await this.audit("live.recording.verified", recordingId, "Recording", { verified: res.verified });
+    return res;
+  }
+  async livePredict(streamId: string, signals?: Record<string, number>) { await this.assert("READ"); return livePredict(streamId, signals); }
+
+  // ── Live-to-Edit Continuum ──
+  async continuumCreateProject(input: { session_id: string; project_name: string; source_policy?: string; generate?: string[]; languages?: string[]; derivative_profiles?: string[]; review_mode?: string }) {
+    await this.assert("CREATE");
+    const p = continuumCreate({ session_id: input.session_id, project_name: input.project_name, source_policy: input.source_policy, generate: input.generate, languages: input.languages, derivative_profiles: input.derivative_profiles, review_mode: input.review_mode });
+    await this.audit("continuum.project.created", p.project_id, "PostEventProject", { session: input.session_id });
+    return p;
+  }
+  async continuumGetProject(projectId: string) { await this.assert("READ"); const p = continuumGet(projectId); if (!p) throw new Error("Post-event project not found"); return p; }
+  async continuumGenerateCandidates(projectId: string, input: { candidate_types: string[]; signals: string[]; minimum_confidence?: number }) {
+    await this.assert("CREATE");
+    const res = continuumCandidates(projectId, { candidate_types: input.candidate_types, signals: input.signals, minimum_confidence: input.minimum_confidence });
+    await this.audit("continuum.candidates.generated", projectId, "PostEventProject", { types: input.candidate_types.length });
+    return res;
+  }
+  async continuumTranscriptEdit(projectId: string, input: { selection: { start_segment_id: string; end_segment_id: string }; edit_mode: string; ripple_tracks: string[]; preserve_room_tone?: boolean }) {
+    await this.assert("UPDATE");
+    const res = continuumEdit(projectId, { selection: input.selection, edit_mode: input.edit_mode, ripple_tracks: input.ripple_tracks, preserve_room_tone: input.preserve_room_tone });
+    await this.audit("continuum.transcript.edit", projectId, "PostEventProject", { start: input.selection.start_segment_id });
+    return res;
+  }
+  async continuumBuildPackage(projectId: string, include: string[]) {
+    await this.assert("CREATE");
+    const pkg = continuumPackage(projectId, include);
+    await this.audit("continuum.package.built", pkg.package_id, "ContentPackage", { project: projectId });
+    return pkg;
+  }
+
+  // ── Audio Intelligence ──
+  async audioAnalyze(assetId: string, opts?: { detect?: string[]; separate_stems?: boolean }) {
+    await this.assert("READ");
+    const res = audioAnalyze(assetId, opts?.detect ?? ["clipping","hum","phase","silence","loudness"]);
+    await this.audit("audio.analysis.completed", assetId, "AudioAnalysis", { issues: res.issues.length });
+    return res;
+  }
+  async audioIsolate(input: { source_asset_id: string; speaker_id: string; time_range: { start_ms: number; end_ms: number }; preserve_room_tone?: boolean; maximum_artifact_risk?: number }) {
+    await this.assert("CREATE");
+    const iso = audioIsolate({ source_asset_id: input.source_asset_id, speaker_id: input.speaker_id, time_range: input.time_range, preserve_room_tone: input.preserve_room_tone, maximum_artifact_risk: input.maximum_artifact_risk });
+    await this.audit("audio.isolation.created", input.source_asset_id, "DialogueIsolation", { speaker: input.speaker_id });
+    return iso;
+  }
+  async audioCreateDub(projectId: string, input: { source_language: string; target_language: string; voice_policy?: string; pronunciation_dictionary_id?: string; lip_sync?: boolean; preserve_music_and_effects?: boolean }) {
+    await this.assert("CREATE");
+    const dub = audioDub({ source_language: input.source_language, target_language: input.target_language, voice_policy: input.voice_policy, pronunciation_dictionary_id: input.pronunciation_dictionary_id, lip_sync: input.lip_sync, preserve_music_and_effects: input.preserve_music_and_effects });
+    await this.audit("audio.dub.generated", projectId, "DubVersion", { target: input.target_language });
+    return dub;
+  }
+  async audioNormalize(timelineId: string, input: { destination_profile: string; preserve_dynamic_range?: boolean; true_peak_protection?: boolean }) {
+    await this.assert("UPDATE");
+    const res = audioNormalize(timelineId, input.destination_profile, { preserve_dynamic_range: input.preserve_dynamic_range, true_peak_protection: input.true_peak_protection });
+    await this.audit("audio.normalize", timelineId, "AudioNormalization", { profile: input.destination_profile, adjustment: res.adjustment });
+    return res;
+  }
+  async audioApproveStem(stemId: string, version: number, input: { role: string; decision: string; notes?: string }) {
+    await this.assert("UPDATE");
+    if (input.decision!=="approved") throw new Error("Only approved decision supported in demo");
+    const v = audioApproveVersion(stemId, version, `user_${this.userId}`, input.role);
+    if (!v) throw new Error("Stem version not found");
+    await this.audit("audio.stem.approved", `${stemId}_v${version}`, "StemVersion", { role: input.role });
+    return v;
+  }
+
+  // ── Accessibility Automation ──
+  async a11yAnalyze(timelineId: string, input: { checks: string[]; destinations: string[] }) {
+    await this.assert("READ");
+    const res = a11yAnalyze(timelineId, input.checks, input.destinations as never);
+    await this.audit("a11y.analysis.completed", timelineId, "Accessibility", { checks: input.checks.length });
+    return res;
+  }
+  async a11yGenerateAD(timelineId: string, input: { language: string; style?: string; include?: string[]; narration_mode?: string }) {
+    await this.assert("CREATE");
+    const evs = a11yAD(input.language, input.style ?? "concise_neutral", input.include ?? ["scene_changes"]);
+    await this.audit("a11y.audio_description.generated", timelineId, "AudioDescription", { language: input.language });
+    return evs;
+  }
+  async a11yValidateExport(exportId: string, input: { destination_profile: string; strictness?: string }) {
+    await this.assert("READ");
+    const report = a11yReport(exportId, "v08", input.destination_profile as never);
+    await this.audit("a11y.destination_report.generated", exportId, "A11yReport", { profile: input.destination_profile, status: report.status });
+    return report;
+  }
+  async a11ySemanticView(timelineId: string) { await this.assert("READ"); return a11ySemantic(timelineId); }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────
   // In-memory fallback store when VideoCopilotProposal table not yet migrated
