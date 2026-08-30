@@ -58,3 +58,6 @@ export { AudioIntelligencePanel } from "./audio-intelligence-components";
 export * from "./accessibility-automation-types";
 export * from "./accessibility-automation-engine";
 export { AccessibilityAutomationPanel } from "./accessibility-automation-components";
+export * as ZeroTrustTypes from "./zero-trust-types";
+export * as ZeroTrustEngine from "./zero-trust-engine";
+export { ZeroTrustPanel } from "./zero-trust-components";

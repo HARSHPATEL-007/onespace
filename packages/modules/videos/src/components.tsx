@@ -24,6 +24,7 @@ import { LiveControlRoomPanel } from "./live-control-components";
 import { LiveEditContinuumPanel } from "./live-edit-components";
 import { AudioIntelligencePanel } from "./audio-intelligence-components";
 import { AccessibilityAutomationPanel } from "./accessibility-automation-components";
+import { ZeroTrustPanel } from "./zero-trust-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -227,6 +228,7 @@ const STUDIO_TABS = [
   { id: "live-edit", label: "Live→Edit" },
   { id: "audio-intel", label: "Audio Intel" },
   { id: "a11y", label: "Accessibility" },
+  { id: "zero-trust", label: "Zero-Trust" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
   { id: "provenance", label: "Provenance" },
@@ -548,6 +550,11 @@ export function VideoStudioTranscendent({
           {/* ACCESSIBILITY AUTOMATION */}
           {activeTab === "a11y" && (
             <AccessibilityAutomationPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* ZERO-TRUST */}
+          {activeTab === "zero-trust" && (
+            <ZeroTrustPanel projectId={selectedProj?.id ?? "project_001"} />
           )}
 
           {/* STUDIO */}

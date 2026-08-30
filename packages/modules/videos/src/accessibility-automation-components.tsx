@@ -35,7 +35,7 @@ export function AccessibilityAutomationPanel({ projectId }: { projectId: string 
       <div style={{ display:"grid", gridTemplateColumns:"1.1fr 0.9fr", gap:12 }}>
         <Card padded>
           <div style={{ fontWeight:800 }}>Accessibility Asset Graph — visual frame linked</div>
-          <div style={{ marginTop:8, fontSize:11, background:"#0f0f12", color:"#a5b4fc", padding:8, borderRadius:8, fontFamily:"var(--nv-font-mono)", fontSize:10, border:"1px solid #222" }}>
+          <div style={{ marginTop:8, background:"#0f0f12", color:"#a5b4fc", padding:8, borderRadius:8, fontFamily:"var(--nv-font-mono)", fontSize:10, border:"1px solid #222" }}>
             <div>Visual frame → Important object (product_diagram 0.89) → On-screen text → Speaker speaker_07 0.94 → Caption region 0.84×0.16 → AD event required → Sign window 0.27×0.38 → Screen-reader metadata</div>
             <div>Event a11y_0042 842100-914800 audio_description_required true sign safe 0.68,0.10 caption safe 0.08,0.74 confidence 0.91</div>
           </div>
@@ -87,7 +87,7 @@ export function AccessibilityAutomationPanel({ projectId }: { projectId: string 
                 alert(`AD ${evs.length} events lang ${adLang} style concise_neutral`);
               }}>Generate AD {adLang}</Button>
             </div>
-            {script && <div style={{ fontSize:10, background:"var(--nv-color-surface-2)", border:"1px solid var(--nv-color-border)", borderRadius:8, padding:8, marginTop:6 }}>Script v{script.version} {script.language} narrator {script.narrator} {script.segments[0].text.slice(0,40)}… approved {String(script.segments[0].approved)}</div>}
+            {script && script.segments[0] && <div style={{ fontSize:10, background:"var(--nv-color-surface-2)", border:"1px solid var(--nv-color-border)", borderRadius:8, padding:8, marginTop:6 }}>Script v{script.version} {script.language} narrator {script.narrator} {script.segments[0].text.slice(0,40)}… approved {String(script.segments[0].approved)}</div>}
             <div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4 }}>Modes: standard/extended/chart/text/speaker/scene — workflow analysis→candidates→prioritization→gap detection→script→review→narration→mix→validation — never repeat dialogue</div>
           </div>
         </Card>
@@ -115,7 +115,7 @@ export function AccessibilityAutomationPanel({ projectId }: { projectId: string 
             </div>
             <Button size="sm" variant="ghost" onClick={()=>{
               const c = checkColorAccessibility("graphic_07");
-              alert(`Contrast ${c.contrast_score} color_only ${c.color_only_encoding} protanopia ${c.simulations.protanopia.status} → ${c.suggested_actions.join(",")}`);
+              alert(`Contrast ${c.contrast_score} color_only ${c.color_only_encoding} protanopia ${c.simulations.protanopia?.status} → ${c.suggested_actions.join(",")}`);
             }}>Check color-blind simulations</Button>
             <div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4 }}>Simulations: normal/protanopia 0.61 fail/deuteranopia 0.64 fail/tritanopia 0.91 pass/grayscale 0.48 fail — remediation add patterns/icons/labels, preserve brand</div>
           </div>

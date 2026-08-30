@@ -66,6 +66,9 @@ import {
 import {
   analyzeAccessibility as a11yAnalyze, optimizeCaptionPosition as a11yPosition, evaluateCaptionQuality as a11yQuality, checkReadingSpeed as a11yReading, generateAudioDescription as a11yAD, getAudioDescriptionScript as a11yScript, getSignWindow as a11ySignWindow, checkColorAccessibility as a11yColor, detectFlashForTimeline as a11yFlash, getSemanticTimeline as a11ySemantic, generateDestinationReport as a11yReport, generateManifest as a11yManifest,
 } from "./accessibility-automation-engine";
+import {
+  getKeyHierarchy as ztKeyHierarchy, rotateTenantKeys as ztRotate, requestAccessGrant as ztGrant, getGrant as ztGetGrant, evaluateDeviceTrust as ztDeviceTrust, getDeviceTrust as ztGetDevice, evaluateSessionTrust as ztSessionTrust, getSessionTrust as ztGetSession, requestPrivilegedAction as ztPrivRequest, approvePrivilegedAction as ztPrivApprove, getPrivilegedRequest as ztPrivGet, issueMediaCapability as ztMediaCap, verifyCapability as ztVerifyCap, useCapability as ztUseCap, revokeCapability as ztRevokeCap, evaluatePlayback as ztPlayback, evaluateExport as ztExport, issueWorkloadIdentity as ztWorkload, attestGpuWorker as ztAttest, canReleaseKeys as ztCanRelease, evaluateInsiderRisk as ztInsider, detectBulkAnomaly as ztBulk, generateWatermarkPayload as ztWatermark, evaluatePolicy as ztPolicy, getSecurityDashboard as ztDashboard, listSecurityEvents as ztEvents, runIncidentPlaybook as ztPlaybook,
+} from "./zero-trust-engine";
 
 const MODULE = "videos";
 
@@ -1477,6 +1480,43 @@ export class VideosService {
     return report;
   }
   async a11ySemanticView(timelineId: string) { await this.assert("READ"); return a11ySemantic(timelineId); }
+
+  // ── Zero-Trust Media Security ──
+  async ztRequestGrant(input: { asset_ids: string[]; actions: string[]; purpose: string; duration_minutes?: number; device_id: string }) {
+    await this.assert("CREATE");
+    const g = ztGrant({ tenant_id: this.workspaceId, principal_id: this.userId, asset_ids: input.asset_ids, actions: input.actions, purpose: input.purpose, duration_minutes: input.duration_minutes, device_id: input.device_id, session_id: `session_${this.userId.slice(0,6)}` });
+    await this.audit("security.access.granted", g.grant_id, "AccessGrant", { purpose: input.purpose, assets: input.asset_ids.length });
+    return g;
+  }
+  async ztRequestPrivileged(input: { action: string; asset_id: string; destination?: string; purpose: string; required_approvers?: number }) {
+    await this.assert("CREATE");
+    const req = ztPrivRequest({ action: input.action, asset_id: input.asset_id, requester: this.userId, purpose: input.purpose, required_approvers: input.required_approvers });
+    await this.audit("security.privileged.requested", req.request_id, "PrivilegedRequest", { action: input.action });
+    return req;
+  }
+  async ztPlaybackAuthorize(input: { asset_id: string; session_id: string; requested_resolution?: string; device_id?: string; destination?: string }) {
+    await this.assert("READ");
+    const deviceTrust = ztGetDevice(input.device_id ?? "device_008")?.score ?? 86;
+    const sessionTrust = ztGetSession(input.session_id)?.score ?? 78;
+    const policy = ztPlayback("confidential", sessionTrust, deviceTrust);
+    const decision = ztPolicy({ principal: this.userId, action: "preview", asset: input.asset_id, tenant: this.workspaceId, context:{ device_trust: deviceTrust, session_trust: sessionTrust, network_risk:12, asset_classification:"confidential", destination: input.destination ?? "web_player" } });
+    await this.audit("security.playback.authorize", input.asset_id, "Playback", { decision: decision.decision });
+    return { playback_policy: policy, policy_decision: decision };
+  }
+  async ztMediaCapability(input: { asset_id: string; action: string; session_id: string; expires_in_seconds?: number; watermark_profile?: string }) {
+    await this.assert("CREATE");
+    const cap = ztMediaCap({ asset_id: input.asset_id, action: input.action, principal_id: this.userId, device_id: "device_008", session_id: input.session_id, expires_in_seconds: input.expires_in_seconds, watermark_profile: input.watermark_profile });
+    await this.audit("security.capability.issued", cap.token_id, "MediaCapability", { asset: input.asset_id, action: input.action });
+    return cap;
+  }
+  async ztAttestWorkload(input: { workload_id: string; tenant_id?: string; asset_ids: string[]; required_model?: string }) {
+    await this.assert("CREATE");
+    const wi = ztWorkload({ workload_id: input.workload_id, service:"n0va.render", tenant_id: input.tenant_id ?? this.workspaceId, allowed_assets: input.asset_ids, allowed_outputs:[`s3://${this.workspaceId}/exports/${input.workload_id}/*`] });
+    const workerId = input.workload_id.startsWith("gpu_") ? input.workload_id : `gpu_${input.workload_id}`;
+    const att = ztAttest({ worker_id: workerId, gpu_id: `gpu_${workerId}`, firmware_measurement:"sha3-512:trusted_firmware", driver_measurement:"sha3-512:trusted_driver", container_digest:"sha3-512:trusted_container", model_version: input.required_model ?? "n0va-dialogue-isolate-v3", tenant_scope: input.tenant_id ?? this.workspaceId });
+    await this.audit("security.attestation", wi.workload_id, "WorkloadIdentity", { attested: att.attestation_status });
+    return { workload_identity: wi, attestation: att, can_release: ztCanRelease(att.worker_id, input.asset_ids[0] ?? "asset_001") };
+  }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────
   // In-memory fallback store when VideoCopilotProposal table not yet migrated
