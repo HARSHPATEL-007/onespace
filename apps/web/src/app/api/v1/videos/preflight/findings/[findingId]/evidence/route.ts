@@ -1,0 +1,21 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@n0va/auth";
+import { prisma } from "@n0va/db";
+import { VideosService } from "@n0va/modules-videos/server";
+export const runtime = "nodejs"; export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest, { params }: { params: Promise<{ findingId: string }> }) {
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { findingId } = await params;
+  const membership = await prisma.workspaceMember.findFirst({ where: { userId: session.user.id, status: "ACTIVE" } }); if (!membership) return NextResponse.json({ error: "No workspace" }, { status: 403 });
+  const svc = new VideosService(membership.workspaceId, session.user.id, membership.role);
+  const finding = await svc.pfGetFinding(String(findingId));
+  if (!finding) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Evidence graph nodes
+  const evidenceIds = (finding as unknown as { evidence_ids?: string[] }).evidence_ids ?? [];
+  const graph: unknown[] = [];
+  for (const id of evidenceIds) {
+    const ev = await svc.pfGetEvidence ? await (svc as unknown as { pfGetEvidence: (id:string)=>Promise<unknown> }).pfGetEvidence(id) : null;
+    if (ev) graph.push(ev);
+  }
+  return NextResponse.json({ finding_id: findingId, evidence: finding.evidence, evidence_graph: graph });
+}
