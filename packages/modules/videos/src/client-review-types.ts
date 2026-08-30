@@ -18,7 +18,7 @@ export type PortalPermissions = {
   approve: boolean;
   reject: boolean;
   approve_with_changes: boolean;
-  download: boolean | "preview" | "restricted" | "approved_master";
+  download: boolean | "preview" | "restricted" | "approved_master" | "disabled";
   version_history: boolean;
   audit_trail: boolean;
 };
@@ -166,7 +166,7 @@ export type AuditEntry = {
   hash: string;
 };
 
-export type DownloadPolicy = "disabled" | "preview" | "restricted" | "approved_master" | "source_never";
+export type DownloadPolicy = "disabled" | "preview" | "restricted" | "approved_master" | "source_never" | boolean;
 
 export type LocalizedDecision = {
   interface_language: string;

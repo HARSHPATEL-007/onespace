@@ -152,8 +152,8 @@ export function verifyLinkAccess(linkId: string, context: { email?: string; ip?:
   if (link.restrictions.allowed_countries && context.country && !link.restrictions.allowed_countries.includes(context.country)) return { allowed: false, reason: `Country ${context.country} not allowed` };
   // IP check simplified
   if (link.restrictions.allowed_ip_ranges && context.ip) {
-    // for demo, only check prefix 203.0.113
-    const allowed = link.restrictions.allowed_ip_ranges.some(range => context.ip!.startsWith(range.split("/")[0].split(".").slice(0, 3).join(".")));
+    const ip = context.ip;
+    const allowed = (link.restrictions.allowed_ip_ranges as string[]).some(range => ip.startsWith((range.split("/")[0] ?? "").split(".").slice(0, 3).join(".")));
     if (!allowed && link.restrictions.allowed_ip_ranges.length > 0) return { allowed: false, reason: `IP ${context.ip} not in allowed range` };
   }
   const sessionCount = Array.from(sessions.values()).filter(s => s.link_id === linkId && !s.revoked).length;
@@ -163,7 +163,8 @@ export function verifyLinkAccess(linkId: string, context: { email?: string; ip?:
 export function createSession(linkId: string, viewerIdentity: string): PortalSession {
   const link = links.get(linkId);
   if (!link) throw new Error("Link not found");
-  const portal = Array.from(portals.values()).find(p => p.snapshot_id === link.snapshot_id) ?? portals.values().next().value as ClientReviewPortal;
+  const portal = Array.from(portals.values()).find(p => p.snapshot_id === link.snapshot_id) ?? (Array.from(portals.values())[0] as ClientReviewPortal | undefined);
+  if (!portal) throw new Error("No portal for this link");
   const access = verifyLinkAccess(linkId, { email: viewerIdentity.includes("@") ? viewerIdentity : undefined });
   if (!access.allowed) throw new Error(access.reason);
   const session: PortalSession = {
@@ -188,7 +189,11 @@ export function revokePortal(portalId: string, reason?: string): { portal: Clien
   if (!portal) return { portal: null, revoked_sessions: 0, revoked_links: 0 };
   let revokedLinks = 0, revokedSessions = 0;
   for (const link of links.values()) if (link.snapshot_id === portal.snapshot_id && !link.revoked_at) { link.revoked_at = nowIso(); revokedLinks++; }
-  for (const s of sessions.values()) if (s.portal_id === portalId && !s.revoked) { s.revoked = true; revokedSessions++; }
+  for (const s of sessions.values()) {
+    const sessPortal = portals.get(s.portal_id);
+    const snap = sessPortal?.snapshot_id ?? links.get(s.link_id)?.snapshot_id;
+    if (snap === portal.snapshot_id && !s.revoked) { s.revoked = true; revokedSessions++; }
+  }
   audit(portalId, portal.snapshot_id, "system", `portal revoked: ${reason ?? "unspecified"}`);
   return { portal, revoked_sessions: revokedSessions, revoked_links: revokedLinks };
 }
@@ -270,6 +275,7 @@ export function submitDecision(input: {
     decision: input.decision, actor: { type: "verified_guest", email: input.actor_email, organization: input.organization },
     scope: input.scope ?? "full_timeline", linked_review_items: input.linked_review_items ?? [], text: input.text,
     timestamp: nowIso(), audit_hash: hash(`${input.portal_id}:${input.decision}:${Date.now()}`),
+    conditions: { requires_rework: input.decision === "approved_with_changes", requires_resubmission: input.decision === "approved_with_changes" },
     confirmation: { verified_identity: true, reviewed_scope: input.scope ?? "full_timeline", language: input.language ?? "en-US", displayed_text: input.decision, canonical_decision: input.decision },
   };
   decisions.set(decision.decision_id, decision);

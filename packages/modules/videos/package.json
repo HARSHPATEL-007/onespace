@@ -63,7 +63,10 @@
     "./live-edit-components": "./src/live-edit-components.tsx",
     "./audio-intel": "./src/audio-intelligence-engine.ts",
     "./audio-intel-types": "./src/audio-intelligence-types.ts",
-    "./audio-intel-components": "./src/audio-intelligence-components.tsx"
+    "./audio-intel-components": "./src/audio-intelligence-components.tsx",
+    "./a11y": "./src/accessibility-automation-engine.ts",
+    "./a11y-types": "./src/accessibility-automation-types.ts",
+    "./a11y-components": "./src/accessibility-automation-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

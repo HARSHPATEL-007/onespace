@@ -16,6 +16,14 @@ import { InterchangePanel } from "./interchange-components";
 import { BrandPanel } from "./brand-components";
 import { IdentityPanel } from "./identity-components";
 import { ReviewIntelligencePanel } from "./review-components";
+import { ClientReviewPortalPanel } from "./client-review-components";
+import { KnowledgeGraphPanel } from "./knowledge-graph-components";
+import { SearchRetrievalPanel } from "./search-retrieval-components";
+import { PreflightPanel } from "./preflight-components";
+import { LiveControlRoomPanel } from "./live-control-components";
+import { LiveEditContinuumPanel } from "./live-edit-components";
+import { AudioIntelligencePanel } from "./audio-intelligence-components";
+import { AccessibilityAutomationPanel } from "./accessibility-automation-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -211,6 +219,14 @@ const STUDIO_TABS = [
   { id: "brand", label: "Brand" },
   { id: "identity", label: "Identity" },
   { id: "review-intel", label: "Review Intel" },
+  { id: "portal", label: "Client Portal" },
+  { id: "knowledge-graph", label: "Knowledge Graph" },
+  { id: "search", label: "Search" },
+  { id: "preflight", label: "Preflight" },
+  { id: "live", label: "Live Control" },
+  { id: "live-edit", label: "Live→Edit" },
+  { id: "audio-intel", label: "Audio Intel" },
+  { id: "a11y", label: "Accessibility" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
   { id: "provenance", label: "Provenance" },
@@ -492,6 +508,46 @@ export function VideoStudioTranscendent({
           {/* REVIEW INTEL — decision intelligence */}
           {activeTab === "review-intel" && (
             <ReviewIntelligencePanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* CLIENT PORTAL — external review surface */}
+          {activeTab === "portal" && (
+            <ClientReviewPortalPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* KNOWLEDGE GRAPH — multimodal intelligence fabric */}
+          {activeTab === "knowledge-graph" && (
+            <KnowledgeGraphPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* SEARCH — hybrid retrieval */}
+          {activeTab === "search" && (
+            <SearchRetrievalPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* PREFLIGHT — quality & safety intelligence */}
+          {activeTab === "preflight" && (
+            <PreflightPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* LIVE CONTROL ROOM — resilient broadcast OS */}
+          {activeTab === "live" && (
+            <LiveControlRoomPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* LIVE-TO-EDIT CONTINUUM */}
+          {activeTab === "live-edit" && (
+            <LiveEditContinuumPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* AUDIO INTELLIGENCE */}
+          {activeTab === "audio-intel" && (
+            <AudioIntelligencePanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* ACCESSIBILITY AUTOMATION */}
+          {activeTab === "a11y" && (
+            <AccessibilityAutomationPanel projectId={selectedProj?.id ?? "project_001"} />
           )}
 
           {/* STUDIO */}
