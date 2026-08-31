@@ -69,7 +69,10 @@
     "./a11y-components": "./src/accessibility-automation-components.tsx",
     "./zero-trust": "./src/zero-trust-engine.ts",
     "./zero-trust-types": "./src/zero-trust-types.ts",
-    "./zero-trust-components": "./src/zero-trust-components.tsx"
+    "./zero-trust-components": "./src/zero-trust-components.tsx",
+    "./privacy": "./src/privacy-preserving-engine.ts",
+    "./privacy-types": "./src/privacy-preserving-types.ts",
+    "./privacy-components": "./src/privacy-preserving-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

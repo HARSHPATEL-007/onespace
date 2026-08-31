@@ -69,6 +69,12 @@ import {
 import {
   getKeyHierarchy as ztKeyHierarchy, rotateTenantKeys as ztRotate, requestAccessGrant as ztGrant, getGrant as ztGetGrant, evaluateDeviceTrust as ztDeviceTrust, getDeviceTrust as ztGetDevice, evaluateSessionTrust as ztSessionTrust, getSessionTrust as ztGetSession, requestPrivilegedAction as ztPrivRequest, approvePrivilegedAction as ztPrivApprove, getPrivilegedRequest as ztPrivGet, issueMediaCapability as ztMediaCap, verifyCapability as ztVerifyCap, useCapability as ztUseCap, revokeCapability as ztRevokeCap, evaluatePlayback as ztPlayback, evaluateExport as ztExport, issueWorkloadIdentity as ztWorkload, attestGpuWorker as ztAttest, canReleaseKeys as ztCanRelease, evaluateInsiderRisk as ztInsider, detectBulkAnomaly as ztBulk, generateWatermarkPayload as ztWatermark, evaluatePolicy as ztPolicy, getSecurityDashboard as ztDashboard, listSecurityEvents as ztEvents, runIncidentPlaybook as ztPlaybook,
 } from "./zero-trust-engine";
+import {
+  scanPrivacy as privacyScan, createPrivacyDerivative as privacyTransform, reviewExternalShare as privacyReview, requestDeletion as privacyDeletion, evaluatePolicy as privacyPolicyEval, getPrivacyDashboard as privacyDashboard, testPolicySimulation as privacySim, createEmbeddingLineage as privacyEmbedding,
+} from "./privacy-preserving-engine";
+import {
+  evaluatePolicy as ppEvaluate, composePolicies as ppCompose, getPolicyEvidence as ppEvidence, runPolicyTests as ppTests, failSafeDecision as ppFailSafe, registerPlugin as ppRegister, enablePluginForTenant as ppEnable, grantPluginMediaAccess as ppGrant, executePlugin as ppExecute, listPolicies as ppList, getPolicy as ppGetPolicy,
+} from "./policy-plugin-engine";
 
 const MODULE = "videos";
 
@@ -1516,6 +1522,66 @@ export class VideosService {
     const att = ztAttest({ worker_id: workerId, gpu_id: `gpu_${workerId}`, firmware_measurement:"sha3-512:trusted_firmware", driver_measurement:"sha3-512:trusted_driver", container_digest:"sha3-512:trusted_container", model_version: input.required_model ?? "n0va-dialogue-isolate-v3", tenant_scope: input.tenant_id ?? this.workspaceId });
     await this.audit("security.attestation", wi.workload_id, "WorkloadIdentity", { attested: att.attestation_status });
     return { workload_identity: wi, attestation: att, can_release: ztCanRelease(att.worker_id, input.asset_ids[0] ?? "asset_001") };
+  }
+
+  // ── Privacy-Preserving Processing ──
+  async privacyScan(assetId: string, input: { detectors: string[]; regions?: string[] }) {
+    await this.assert("READ");
+    const res = privacyScan(assetId, input.detectors, input.regions);
+    await this.audit("privacy.scan.completed", assetId, "PrivacyScan", { detectors: input.detectors.length });
+    return res;
+  }
+  async privacyTransform(assetId: string, input: { transformations: string[]; profile: string; post_render_verification?: boolean }) {
+    await this.assert("CREATE");
+    const asset = privacyTransform(assetId, input.transformations, input.profile, input.post_render_verification);
+    await this.audit("privacy.transformation.created", asset.asset_id, "PrivacyAsset", { profile: input.profile });
+    return asset;
+  }
+  async privacyReview(assetId: string, input: { purpose: string; destination: string; recipient_domain: string; policy_id: string }) {
+    await this.assert("CREATE");
+    const review = privacyReview(assetId, input.destination, input.recipient_domain, input.policy_id);
+    await this.audit("privacy.external_share.review", assetId, "ExternalShareReview", { destination: input.destination, decision: review.decision });
+    return review;
+  }
+  async privacyDeletion(input: { subject_id?: string; scope: { tenant_id: string; asset_ids?: string[]; derived_types?: string[] }; reason: string; verify_replicas?: boolean }) {
+    await this.assert("CREATE");
+    const cert = privacyDeletion({ asset_id: input.scope.asset_ids?.[0], subject_id: input.subject_id, scope: input.scope, reason: input.reason, verify_replicas: input.verify_replicas });
+    await this.audit("privacy.deletion.requested", cert.request_id, "DeletionCertificate", { reason: input.reason });
+    return cert;
+  }
+  async privacyPolicyEvaluate(input: { policy_id: string; event: string; asset_id: string; destination: string; principal_id?: string }) {
+    await this.assert("READ");
+    const decision = privacyPolicyEval({ event: input.event, tenant_id: this.workspaceId, asset_id: input.asset_id, principal_id: input.principal_id ?? this.userId, region:"EU", destination: input.destination, asset_classification:"confidential", privacy_state:"external_safe", consent_status:"partial", caption_status:"approved", copyright_status:"approved", brand_status:"pending", requested_actions:["export","share"] }, input.policy_id);
+    await this.audit("policy.evaluated", decision.decision_id, "PolicyDecision", { decision: decision.decision });
+    return decision;
+  }
+
+  // ── Policy & Plugin Platform ──
+  async ppEvaluatePolicy(input: { policy_id: string; event: string; asset_id?: string; destination?: string; plugin_id?: string }) {
+    await this.assert("READ");
+    const ctx = { event: input.event, tenant_id: this.workspaceId, project_id:"project_001", asset_ids:[input.asset_id ?? "asset_001"], principal_id: this.userId, region:"EU", destination: input.destination ?? "client_portal", quality:{ brand_review:"pending" } as never, requested_actions:["render","share"], plugin_id: input.plugin_id } as never;
+    const decision = ppEvaluate(ctx as never, input.policy_id);
+    await this.audit("policy.evaluated", decision.decision_id, "PolicyDecision", { decision: decision.decision });
+    return decision;
+  }
+  async ppRegisterPlugin(input: { manifest: import("./policy-plugin-types").PluginManifest; package_uri?: string; signature?: string }) {
+    await this.assert("CREATE");
+    const rec = ppRegister(input.manifest, input.package_uri, input.signature);
+    await this.audit("plugin.registered", rec.manifest.id, "Plugin", { version: rec.manifest.version });
+    return rec;
+  }
+  async ppEnablePlugin(pluginId: string, tenantId: string, scope: { projects?: string[]; asset_classes?: string[]; regions?: string[] }) {
+    await this.assert("UPDATE");
+    const rec = ppEnable(pluginId, tenantId, scope);
+    if (!rec) throw new Error("Plugin not found");
+    await this.audit("plugin.enabled", pluginId, "Plugin", { tenant: tenantId });
+    return rec;
+  }
+  async ppExecutePlugin(pluginId: string, input: { version?: string; operation: string; asset_ids: string[]; timeline_version?: string; purpose?: string }) {
+    await this.assert("CREATE");
+    const exec = ppExecute(pluginId, input.operation, input.asset_ids, input.timeline_version ?? "tl_v08", input.purpose ?? "scene_analysis");
+    await this.audit("plugin.execution.completed", exec.runtime_digest, "PluginExecution", { plugin: pluginId });
+    return exec;
   }
 
   // ── Copilot: plan–simulate–approve–commit (staged, reversible, auditable) ─────

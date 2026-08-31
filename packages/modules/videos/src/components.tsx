@@ -25,6 +25,8 @@ import { LiveEditContinuumPanel } from "./live-edit-components";
 import { AudioIntelligencePanel } from "./audio-intelligence-components";
 import { AccessibilityAutomationPanel } from "./accessibility-automation-components";
 import { ZeroTrustPanel } from "./zero-trust-components";
+import { PrivacyPreservingPanel } from "./privacy-preserving-components";
+import { PolicyPluginPanel } from "./policy-plugin-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -229,6 +231,8 @@ const STUDIO_TABS = [
   { id: "audio-intel", label: "Audio Intel" },
   { id: "a11y", label: "Accessibility" },
   { id: "zero-trust", label: "Zero-Trust" },
+  { id: "privacy", label: "Privacy" },
+  { id: "policy-plugin", label: "Policy & Plugins" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
   { id: "provenance", label: "Provenance" },
@@ -555,6 +559,16 @@ export function VideoStudioTranscendent({
           {/* ZERO-TRUST */}
           {activeTab === "zero-trust" && (
             <ZeroTrustPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* PRIVACY-PRESERVING */}
+          {activeTab === "privacy" && (
+            <PrivacyPreservingPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* POLICY & PLUGINS */}
+          {activeTab === "policy-plugin" && (
+            <PolicyPluginPanel projectId={selectedProj?.id ?? "project_001"} />
           )}
 
           {/* STUDIO */}

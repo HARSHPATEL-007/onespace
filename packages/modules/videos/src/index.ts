@@ -61,3 +61,9 @@ export { AccessibilityAutomationPanel } from "./accessibility-automation-compone
 export * as ZeroTrustTypes from "./zero-trust-types";
 export * as ZeroTrustEngine from "./zero-trust-engine";
 export { ZeroTrustPanel } from "./zero-trust-components";
+export * as PrivacyTypes from "./privacy-preserving-types";
+export * as PrivacyEngine from "./privacy-preserving-engine";
+export { PrivacyPreservingPanel } from "./privacy-preserving-components";
+export * as PolicyPluginTypes from "./policy-plugin-types";
+export * as PolicyPluginEngine from "./policy-plugin-engine";
+export { PolicyPluginPanel } from "./policy-plugin-components";
