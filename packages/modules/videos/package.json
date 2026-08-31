@@ -87,7 +87,10 @@
     "./entitlement-components": "./src/entitlement-components.tsx",
     "./billing": "./src/billing-engine.ts",
     "./billing-types": "./src/billing-types.ts",
-    "./billing-components": "./src/billing-components.tsx"
+    "./billing-components": "./src/billing-components.tsx",
+    "./marketplace": "./src/marketplace-engine.ts",
+    "./marketplace-types": "./src/marketplace-types.ts",
+    "./marketplace-components": "./src/marketplace-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

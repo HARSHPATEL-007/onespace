@@ -32,6 +32,7 @@ import { ObservabilityFinOpsPanel } from "./observability-finops-components";
 import { PolicyPluginPanel } from "./policy-plugin-components";
 import { EntitlementControlCenter } from "./entitlement-components";
 import { BillingControlCenter } from "./billing-components";
+import { MarketplacePanel } from "./marketplace-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -242,6 +243,7 @@ const STUDIO_TABS = [
   { id: "observability", label: "Observability" },
   { id: "entitlements", label: "Entitlements" },
   { id: "billing", label: "Billing" },
+  { id: "marketplace", label: "Marketplace" },
   { id: "policy-plugin", label: "Policy & Plugins" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
@@ -599,6 +601,11 @@ export function VideoStudioTranscendent({
           {/* BILLING — usage-based transparent metering */}
           {activeTab === "billing" && (
             <BillingControlCenter tenantId={typeof window !== "undefined" ? undefined : undefined} />
+          )}
+
+          {/* MARKETPLACE — trusted composable media marketplace */}
+          {activeTab === "marketplace" && (
+            <MarketplacePanel tenantId={typeof window !== "undefined" ? undefined : undefined} projectId={selectedProj?.id ?? "project_001"} />
           )}
 
           {/* POLICY & PLUGINS */}

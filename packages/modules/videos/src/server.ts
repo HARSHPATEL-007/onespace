@@ -98,6 +98,17 @@ import {
   getUsageDashboard as billDashboard, getJobCostView as billJobCost, listBillingEvents as billEvents, reconcileUsage as billReconcile, getBillingAccount as billGetAccount, setBillingAccount as billSetAccount,
 } from "./billing-engine";
 import type { EstimateRequest, EstimateResponse, BudgetPolicy, Invoice, UsageEvent, BillingEvent, MeterKey, PricingVersion, Currency, Region, BillingAccount } from "./billing-types";
+import {
+  seedCatalog as mpSeed, listItems as mpList, getItem as mpGet, searchCatalog as mpSearch, createItem as mpCreate, publishItem as mpPublish, qualityGate as mpQualityGate,
+  scanItem as mpScan, getScanResult as mpScanGet, validateCompatibility as mpCompat, resolveDependencies as mpDeps,
+  purchaseLicense as mpPurchase, listEntitlements as mpEnts, validateLicense as mpValidate, generateRightsManifest as mpRights, getLicenseEvidence as mpEvidence,
+  installItem as mpInstall, uninstallItem as mpUninstall, listInstallations as mpInstList, getLockfile as mpLockGet, setLockfile as mpLockSet,
+  getUpdatePolicy as mpUpdGet, setUpdatePolicy as mpUpdSet, checkForUpdates as mpCheckUpd,
+  revokeItem as mpRevoke, listAffectedProjects as mpAffected, listRevenue as mpRevenue, getRevenueSummary as mpRevSummary,
+  addReview as mpAddReview, listReviews as mpReviews, getAverageRatings as mpAvg,
+  getAuditForItem as mpAuditItem, listAudit as mpAudit, getProvenance as mpProvGet, attachProvenance as mpProvAttach, buildUri as mpBuildUri, getPublisher as mpPubGet, listPublishers as mpPubList, onboardPublisher as mpOnboard, verifyPublisher as mpVerify,
+} from "./marketplace-engine";
+import type { MarketplaceItemRecord, MarketplaceSearchQuery, MarketplaceItemType, SecurityBadge, CertificationLevel, Publisher } from "./marketplace-types";
 
 const MODULE = "videos";
 
@@ -1943,6 +1954,44 @@ export class VideosService {
     await this.audit("billing.account.updated", this.workspaceId, "BillingAccount", { mode, prepaid_balance_cents });
     return acct;
   }
+
+  // ── Marketplace (trusted composable media marketplace) ───────────────────────
+  async marketplaceSeed(){ await this.assert("CREATE"); const items=mpSeed(); await this.audit("marketplace.seed", `seed_${items.length}`, "Marketplace", { count: items.length }); return items; }
+  async marketplaceListItems(filter?: { type?: MarketplaceItemType; status?: string }){ await this.assert("READ"); return mpList(filter as never); }
+  async marketplaceGetItem(item_id:string){ await this.assert("READ"); const it=mpGet(item_id); if(!it) throw new Error("Item not found"); return it; }
+  async marketplaceSearch(query: MarketplaceSearchQuery){ await this.assert("READ"); return mpSearch(query); }
+  async marketplaceCreateItem(input: Omit<MarketplaceItemRecord,"item_id"|"created_at"|"updated_at">){ await this.assert("CREATE"); const it=mpCreate(input); await this.audit("marketplace.item.created", it.item_id, "MarketplaceItem", { slug: it.slug, type: it.type }); return it; }
+  async marketplacePublish(item_id:string){ await this.assert("UPDATE"); const it=mpPublish(item_id); await this.audit("marketplace.item.published", item_id, "MarketplaceItem", { version: it.version }); return it; }
+  async marketplaceQualityGate(item_id:string){ await this.assert("READ"); return mpQualityGate(item_id); }
+  async marketplaceScan(item_id:string){ await this.assert("CREATE"); const res=mpScan(item_id); await this.audit("marketplace.security.scan", res.scan_id, "SecurityScan", { item_id, status: res.status }); return res; }
+  async marketplaceCompatibility(item_id:string, n0va_version?:string){ await this.assert("READ"); return mpCompat(item_id, n0va_version); }
+  async marketplaceResolveDeps(item_ids:string[]){ await this.assert("READ"); return mpDeps(item_ids); }
+  async marketplacePurchase(item_id:string, opts: { project_id?:string; user_id?:string; seats?:number }){ await this.assert("CREATE"); const ent=mpPurchase(item_id, this.workspaceId, { project_id: opts.project_id, user_id: opts.user_id ?? this.userId, seats: opts.seats }); await this.audit("marketplace.license.purchased", ent.entitlement_id, "Entitlement", { item_id, license_id: ent.license_id }); // also meter if usage-based
+    const it=mpGet(item_id); if(it && it.pricing.model==="usage_based"){ try{ billRecordUsage({ tenant_id: this.workspaceId, meter: it.type==="ai_model"? "ai_inference_minutes" as MeterKey : "voice_cloned_seconds" as MeterKey, quantity: 1, idempotency_key:`mp:purchase:${ent.entitlement_id}`, kind:"actual", causation_id:`evt_mp_purchase:${ent.entitlement_id}`, correlation_id: this.workspaceId, schema_version:"1.0.0"} as unknown as UsageEvent); }catch{} }
+    return ent; }
+  async marketplaceValidateLicense(item_id:string, ctx: Partial<import("./marketplace-types").LicenseValidationContext>){ await this.assert("READ"); return mpValidate(item_id, { tenant_id: this.workspaceId, ...ctx }); }
+  async marketplaceInstall(item_id:string, opts: { project_id?:string; n0va_version?:string }){ await this.assert("CREATE"); const inst=mpInstall(item_id, this.workspaceId, { project_id: opts.project_id, user_id: this.userId, n0va_version: opts.n0va_version }); await this.audit("marketplace.item.installed", inst.installation_id, "Installation", { item_id, project_id: opts.project_id, sandbox: inst.sandbox }); return inst; }
+  async marketplaceUninstall(installation_id:string){ await this.assert("DELETE"); const inst=mpUninstall(installation_id, this.userId); await this.audit("marketplace.item.uninstalled", installation_id, "Installation"); return inst; }
+  async marketplaceInstallations(filter?: { project_id?:string }){ await this.assert("READ"); return mpInstList({ tenant_id: this.workspaceId, project_id: filter?.project_id }); }
+  async marketplaceLockfile(project_id:string){ await this.assert("READ"); const lf=mpLockGet(project_id); return lf ?? { project_id, marketplace_lock:{}, entries:[], pinned_at: new Date().toISOString(), updated_at: new Date().toISOString() }; }
+  async marketplaceRightsManifest(item_id:string, asset_id?:string){ await this.assert("READ"); return mpRights(item_id, asset_id); }
+  async marketplaceLicenseEvidence(item_id:string){ await this.assert("READ"); const ev=mpEvidence(item_id, this.workspaceId); if(!ev) throw new Error("License evidence not found — purchase required"); return ev; }
+  async marketplaceProvenance(project_id:string){ await this.assert("READ"); return mpProvGet(project_id); }
+  async marketplaceRevoke(item_id:string, trigger: Parameters<typeof mpRevoke>[1], reason:string){ await this.assert("UPDATE"); const res=mpRevoke(item_id, trigger, reason, this.userId); await this.audit("marketplace.license.revoked", item_id, "MarketplaceItem", { trigger, reason, affected: res.affected_projects.length }); return res; }
+  async marketplaceUpdatePolicy(){ await this.assert("READ"); return mpUpdGet(this.workspaceId); }
+  async marketplaceSetUpdatePolicy(policy: Partial<import("./marketplace-types").UpdatePolicy>){ await this.assert("UPDATE"); const cur=mpUpdGet(this.workspaceId); const next={ ...cur, ...policy, tenant_id: this.workspaceId } as import("./marketplace-types").UpdatePolicy; return mpUpdSet(next); }
+  async marketplaceCheckUpdates(item_id:string, current_version?:string, channel?: import("./marketplace-types").UpdateChannel){ await this.assert("READ"); const it=mpGet(item_id); return mpCheckUpd(item_id, current_version ?? it?.version ?? "1.0.0", channel); }
+  async marketplaceRevenue(){ await this.assert("READ"); return mpRevenue(this.workspaceId); }
+  async marketplaceRevenueSummary(){ await this.assert("READ"); return mpRevSummary(this.workspaceId); }
+  async marketplaceReviews(item_id:string){ await this.assert("READ"); return mpReviews(item_id); }
+  async marketplaceAddReview(item_id:string, ratings: import("./marketplace-types").MarketplaceReview["ratings"], comment?:string){ await this.assert("CREATE"); const rev=mpAddReview(item_id, this.workspaceId, this.userId, ratings, comment); await this.audit("marketplace.review.added", rev.review_id, "Review", { item_id }); return rev; }
+  async marketplacePublisher(publisher_id:string){ await this.assert("READ"); const p=mpPubGet(publisher_id); if(!p) throw new Error("Publisher not found"); return p; }
+  async marketplacePublishers(){ await this.assert("READ"); return mpPubList(); }
+  async marketplaceOnboardPublisher(publisher: Publisher, attestation: Omit<import("./marketplace-types").PublisherOnboarding,"publisher_id"|"created_at"|"status">){ await this.assert("CREATE"); return mpOnboard(publisher, attestation); }
+  async marketplaceVerifyPublisher(publisher_id:string, cert: CertificationLevel){ await this.assert("UPDATE"); return mpVerify(publisher_id, cert); }
+  async marketplaceAudit(limit=50){ await this.assert("READ"); return mpAudit(limit, this.workspaceId); }
+  async marketplaceValidateRightsForExport(project_id:string, destination?:string, territory?:string){ await this.assert("READ"); const { validateRightsForExport } = await import("./marketplace-engine"); return validateRightsForExport(project_id, destination, territory); }
+  async marketplaceGetPreview(item_id:string, mode?: import("./marketplace-types").PreviewMode){ await this.assert("READ"); const { getPreview } = await import("./marketplace-engine"); return getPreview(item_id, mode); }
 
   // ── Transcode ─────────────────────────────────────────────────────────────
   async createTranscode(input: { assetId: string; targetCodec: string; targetResolution: string }) {

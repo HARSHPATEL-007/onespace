@@ -82,3 +82,6 @@ export { EntitlementControlCenter, CapabilityMatrixTable, TierBadge, Entitlement
 export * from "./billing-types";
 export * as BillingEngine from "./billing-engine";
 export { BillingControlCenter, EstimateCard, BudgetPanel, UsageDashboardPanel, JobCostPanel, InvoicePanel } from "./billing-components";
+export * from "./marketplace-types";
+export * as MarketplaceEngine from "./marketplace-engine";
+export { MarketplacePanel } from "./marketplace-components";
