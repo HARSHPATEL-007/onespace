@@ -76,6 +76,9 @@ import {
   createEnvelope as edCreateEnvelope, appendOutbox as edAppend, publishOutbox as edPublish, consumeEvent as edConsume, createAssetIngested as edAssetIngested, replayEvents as edReplay, getWorkflow as edWorkflow, createWebhookSubscription as edWebhookCreate, projectForWebhook as edWebhookProject, getObservability as edObservability,
 } from "./event-driven-engine";
 import {
+  getGpuMetrics as obsGpu, getCostLedger as obsLedger, getExecutiveDashboard as obsDashboard, getTenantProfitability as obsTenant, getAlerts as obsAlerts,
+} from "./observability-finops-engine";
+import {
   evaluatePolicy as ppEvaluate, composePolicies as ppCompose, getPolicyEvidence as ppEvidence, runPolicyTests as ppTests, failSafeDecision as ppFailSafe, registerPlugin as ppRegister, enablePluginForTenant as ppEnable, grantPluginMediaAccess as ppGrant, executePlugin as ppExecute, listPolicies as ppList, getPolicy as ppGetPolicy,
 } from "./policy-plugin-engine";
 
@@ -1585,6 +1588,11 @@ export class VideosService {
     await this.audit("webhook.created", sub.subscription_id, "Webhook", { types: event_types.length });
     return sub;
   }
+
+  // ── Observability & FinOps ──
+  async obsMetrics() { await this.assert("READ"); return { gpu: obsGpu(), dashboard: obsDashboard() }; }
+  async obsCostLedger(assetId?: string) { await this.assert("READ"); return obsLedger(assetId); }
+  async obsDashboard() { await this.assert("READ"); return obsDashboard(); }
 
   // ── Policy & Plugin Platform ──
   async ppEvaluatePolicy(input: { policy_id: string; event: string; asset_id?: string; destination?: string; plugin_id?: string }) {

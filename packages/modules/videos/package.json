@@ -75,7 +75,10 @@
     "./privacy-components": "./src/privacy-preserving-components.tsx",
     "./events": "./src/event-driven-engine.ts",
     "./events-types": "./src/event-driven-types.ts",
-    "./events-components": "./src/event-driven-components.tsx"
+    "./events-components": "./src/event-driven-components.tsx",
+    "./observability": "./src/observability-finops-engine.ts",
+    "./observability-types": "./src/observability-finops-types.ts",
+    "./observability-components": "./src/observability-finops-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
