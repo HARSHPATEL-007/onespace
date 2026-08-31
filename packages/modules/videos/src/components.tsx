@@ -33,6 +33,16 @@ import { PolicyPluginPanel } from "./policy-plugin-components";
 import { EntitlementControlCenter } from "./entitlement-components";
 import { BillingControlCenter } from "./billing-components";
 import { MarketplacePanel } from "./marketplace-components";
+import { IngestProxyPanel } from "./ingest-proxy-components";
+import { PlayerPanel } from "./player-components";
+import { WorkspaceSyncPanel } from "./workspace-sync-components";
+import { DrmForensicPanel } from "./drm-forensic-components";
+import { RenderOrchestrationPanel } from "./render-orchestration-components";
+import { RegulatedControlsPanel } from "./regulated-controls-components";
+import { PredictiveOptimizationPanel } from "./predictive-optimization-components";
+import { CampaignIntelligencePanel } from "./campaign-intelligence-components";
+import { VolumetricPanel } from "./volumetric-components";
+import { PrivateFinetuningPanel } from "./private-finetuning-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -241,6 +251,16 @@ const STUDIO_TABS = [
   { id: "events", label: "Events" },
   { id: "reliability", label: "Reliability" },
   { id: "observability", label: "Observability" },
+  { id: "ingest", label: "Ingest" },
+  { id: "player", label: "Player" },
+  { id: "workspace-sync", label: "Workspace Sync" },
+  { id: "drm", label: "DRM Forensic" },
+  { id: "render-orch", label: "Render Orch." },
+  { id: "regulated", label: "Regulated" },
+  { id: "predictive", label: "Predictive" },
+  { id: "campaign", label: "Campaign Intel" },
+  { id: "volumetric", label: "Volumetric" },
+  { id: "finetuning", label: "Private FT" },
   { id: "entitlements", label: "Entitlements" },
   { id: "billing", label: "Billing" },
   { id: "marketplace", label: "Marketplace" },
@@ -592,6 +612,36 @@ export function VideoStudioTranscendent({
           {activeTab === "observability" && (
             <ObservabilityFinOpsPanel projectId={selectedProj?.id ?? "project_001"} />
           )}
+
+          {/* INGEST — reliable media ingest & proxy */}
+          {activeTab === "ingest" && <IngestProxyPanel tenantId={typeof window !== "undefined" ? undefined : undefined} />}
+
+          {/* PLAYER — exports & player */}
+          {activeTab === "player" && <PlayerPanel tenantId={typeof window !== "undefined" ? undefined : undefined} assetId={selectedProj?.id ?? "asset_001"} />}
+
+          {/* WORKSPACE SYNC — cross-module */}
+          {activeTab === "workspace-sync" && <WorkspaceSyncPanel projectId={selectedProj?.id ?? "project_001"} />}
+
+          {/* DRM FORENSIC — security */}
+          {activeTab === "drm" && <DrmForensicPanel tenantId={typeof window !== "undefined" ? undefined : undefined} />}
+
+          {/* RENDER ORCHESTRATION — multi-region */}
+          {activeTab === "render-orch" && <RenderOrchestrationPanel projectId={selectedProj?.id ?? "project_001"} />}
+
+          {/* REGULATED — industry controls */}
+          {activeTab === "regulated" && <RegulatedControlsPanel />}
+
+          {/* PREDICTIVE — content optimization */}
+          {activeTab === "predictive" && <PredictiveOptimizationPanel />}
+
+          {/* CAMPAIGN INTELLIGENCE — cross-platform */}
+          {activeTab === "campaign" && <CampaignIntelligencePanel />}
+
+          {/* VOLUMETRIC — immersive */}
+          {activeTab === "volumetric" && <VolumetricPanel />}
+
+          {/* PRIVATE FINETUNING — per-tenant */}
+          {activeTab === "finetuning" && <PrivateFinetuningPanel />}
 
           {/* ENTITLEMENTS — capability-based tiers */}
           {activeTab === "entitlements" && (

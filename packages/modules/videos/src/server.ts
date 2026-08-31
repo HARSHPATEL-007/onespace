@@ -109,6 +109,16 @@ import {
   getAuditForItem as mpAuditItem, listAudit as mpAudit, getProvenance as mpProvGet, attachProvenance as mpProvAttach, buildUri as mpBuildUri, getPublisher as mpPubGet, listPublishers as mpPubList, onboardPublisher as mpOnboard, verifyPublisher as mpVerify,
 } from "./marketplace-engine";
 import type { MarketplaceItemRecord, MarketplaceSearchQuery, MarketplaceItemType, SecurityBadge, CertificationLevel, Publisher } from "./marketplace-types";
+import { createIngestJob as ingestCreate, getIngestJob as ingestGet, listIngestJobs as ingestList, advanceProxy as ingestAdvance, getMetrics as ingestMetrics, searchAssets as ingestSearch } from "./ingest-proxy-engine";
+import { createPlayer as playerCreate, getPlayer as playerGet, issuePlaybackToken as playerToken, verifyToken as playerVerify, createExport as playerExport, getExport as playerExportGet } from "./player-engine";
+import { linkEntities as wsLink, syncLink as wsSync, listLinks as wsList, getSyncState as wsState, resolveConflict as wsResolve, getMetrics as wsMetrics } from "./workspace-sync-engine";
+import { issueDrmLicense as drmIssue, createWatermark as drmWm, issuePlaybackLease as drmLease, traceLeak as drmTrace } from "./drm-forensic-engine";
+import { createRenderJob as renderCreate, listRenderJobs as renderList, advanceShard as renderAdvance, getRenderPolicy as renderPolicyGet, setRenderPolicy as renderPolicySet, getMetrics as renderMetrics } from "./render-orchestration-engine";
+import { placeHold as regHold, listHolds as regHolds, canDeleteAsset as regCanDelete, setRetentionPolicy as regRetSet, listAudits as regAudit } from "./regulated-controls-engine";
+import { createPrediction as predCreate, proposeOptimization as predPropose, decideProposal as predDecide, applyProposal as predApply, rollbackProposal as predRollback, getMetrics as predMetrics } from "./predictive-optimization-engine";
+import { createCampaignSync as campCreate, addCampaignAsset as campAddAsset, recordPerformance as campPerf, getCrossPlatformInsights as campInsights } from "./campaign-intelligence-engine";
+import { createVolumetricAsset as volCreate, startImmersiveSession as volSession, getMetrics as volMetrics } from "./volumetric-engine";
+import { createFinetuneJob as ftCreate, advanceFinetune as ftAdvance, listPrivateModels as ftModels, getFinetunePolicy as ftPolicyGet, setFinetunePolicy as ftPolicySet } from "./private-finetuning-engine";
 
 const MODULE = "videos";
 
@@ -1992,6 +2002,76 @@ export class VideosService {
   async marketplaceAudit(limit=50){ await this.assert("READ"); return mpAudit(limit, this.workspaceId); }
   async marketplaceValidateRightsForExport(project_id:string, destination?:string, territory?:string){ await this.assert("READ"); const { validateRightsForExport } = await import("./marketplace-engine"); return validateRightsForExport(project_id, destination, territory); }
   async marketplaceGetPreview(item_id:string, mode?: import("./marketplace-types").PreviewMode){ await this.assert("READ"); const { getPreview } = await import("./marketplace-engine"); return getPreview(item_id, mode); }
+
+  // ── Ingest & Proxy (reliable, searchable, reversible) ────────────────────────
+  async ingestCreate(input: Parameters<typeof ingestCreate>[0]){ await this.assert("CREATE"); const j=ingestCreate({ ...input, tenant_id: this.workspaceId }); await this.audit("ingest.created", j.job_id, "IngestJob", { source: j.source }); return j; }
+  async ingestGet(job_id:string){ await this.assert("READ"); const j=ingestGet(job_id); if(!j) throw new Error("Ingest job not found"); return j; }
+  async ingestList(){ await this.assert("READ"); return ingestList(this.workspaceId); }
+  async ingestAdvanceProxy(proxy_id:string, status: Parameters<typeof ingestAdvance>[1]){ await this.assert("UPDATE"); const p=ingestAdvance(proxy_id, status); if(!p) throw new Error("Proxy not found"); await this.audit("ingest.proxy.advanced", proxy_id, "ProxyJob", { status }); return p; }
+  async ingestMetrics(){ await this.assert("READ"); return ingestMetrics(this.workspaceId); }
+  async ingestSearch(query:string){ await this.assert("READ"); return ingestSearch(this.workspaceId, query); }
+
+  // ── Player (policy-validated exports, auditable playback) ───────────────────
+  async playerCreate(config: Parameters<typeof playerCreate>[0]){ await this.assert("CREATE"); const p=playerCreate({ ...config, tenant_id: this.workspaceId }); await this.audit("player.created", p.player_id, "Player", { asset_id: p.asset_id }); return p; }
+  async playerGet(player_id:string){ await this.assert("READ"); const p=playerGet(player_id); if(!p) throw new Error("Player not found"); return p; }
+  async playerIssueToken(input: Parameters<typeof playerToken>[0]){ await this.assert("CREATE"); const t=playerToken({ ...input, tenant_id: this.workspaceId }); await this.audit("player.token.issued", t.token_id, "PlaybackToken", { asset_id: t.asset_id }); return t; }
+  async playerVerifyToken(token_id:string, domain?:string){ await this.assert("READ"); return playerVerify(token_id, domain); }
+  async playerExportCreate(input: Parameters<typeof playerExport>[0]){ await this.assert("CREATE"); const e=playerExport({ ...input, tenant_id: this.workspaceId }); await this.audit("player.export.queued", e.export_id, "ExportJob", { preset: e.preset }); return e; }
+
+  // ── Workspace Sync (CRDT, every workflow synchronized) ───────────────────────
+  async wsLink(input: Omit<Parameters<typeof wsLink>[0],"tenant_id">){ await this.assert("CREATE"); const l=wsLink({ ...input, tenant_id: this.workspaceId }); await this.audit("workspace.sync.linked", l.link_id, "SyncLink", { source: l.source.module, target: l.target.module }); return l; }
+  async wsSync(link_id:string){ await this.assert("UPDATE"); const l=wsSync(link_id); await this.audit("workspace.sync.synced", link_id, "SyncLink"); return l; }
+  async wsLinks(){ await this.assert("READ"); return wsList(this.workspaceId); }
+  async wsState(project_id:string){ await this.assert("READ"); return wsState(project_id); }
+  async wsResolve(link_id:string, winner:"source"|"target"){ await this.assert("UPDATE"); return wsResolve(link_id, winner); }
+  async wsMetrics(){ await this.assert("READ"); return wsMetrics(this.workspaceId); }
+
+  // ── DRM & Forensic (consent-aware, every playback forensic) ──────────────────
+  async drmIssueLicense(input: Omit<Parameters<typeof drmIssue>[0],"tenant_id">){ await this.assert("CREATE"); const l=drmIssue({ ...input, tenant_id: this.workspaceId }); await this.audit("drm.license.issued", l.license_id, "DrmLicense", { asset_id: l.asset_id }); return l; }
+  async drmWatermark(input: Omit<Parameters<typeof drmWm>[0],"tenant_id">){ await this.assert("CREATE"); const w=drmWm({ ...input, tenant_id: this.workspaceId }); await this.audit("drm.watermark.created", w.watermark_id, "Watermark", { asset_id: w.asset_id }); return w; }
+  async drmLease(input: Omit<Parameters<typeof drmLease>[0],"tenant_id">){ await this.assert("CREATE"); const ls=drmLease({ ...input, tenant_id: this.workspaceId }); await this.audit("drm.lease.issued", ls.lease_id, "PlaybackLease", { asset_id: ls.asset_id }); return ls; }
+  async drmTrace(leaked_hash:string, watermark_hash:string){ await this.assert("READ"); const t=drmTrace(leaked_hash, watermark_hash); if(!t) throw new Error("No match — forensic trace failed"); return t; }
+
+  // ── Render Orchestration (multi-region, explainable, auditable retries) ──────
+  async renderCreate(input: Omit<Parameters<typeof renderCreate>[0],"tenant_id">){ await this.assert("CREATE"); const j=renderCreate({ ...input, tenant_id: this.workspaceId }); await this.audit("render.job.created", j.job_id, "RenderJob", { region: j.region, status: j.status }); return j; }
+  async renderList(){ await this.assert("READ"); return renderList(this.workspaceId); }
+  async renderAdvance(shard_id:string, status: Parameters<typeof renderAdvance>[1]){ await this.assert("UPDATE"); const s=renderAdvance(shard_id, status); if(!s) throw new Error("Shard not found"); await this.audit("render.shard.advanced", shard_id, "RenderShard", { status }); return s; }
+  async renderPolicyGet(){ await this.assert("READ"); return renderPolicyGet(this.workspaceId); }
+  async renderPolicySet(policy: Parameters<typeof renderPolicySet>[1]){ await this.assert("UPDATE"); return renderPolicySet(this.workspaceId, policy); }
+  async renderMetrics(){ await this.assert("READ"); return renderMetrics(this.workspaceId); }
+
+  // ── Regulated Controls (every decision explainable) ──────────────────────────
+  async regulatedHold(input: Omit<Parameters<typeof regHold>[0],"tenant_id"|"actor"|"correlation_id">){ await this.assert("CREATE"); const h=regHold({ ...input, tenant_id: this.workspaceId, actor: this.userId, correlation_id:`corr_${Date.now()}` }); await this.audit("regulated.hold.placed", h.hold_id, "LegalHold", { domain: h.domain }); return h; }
+  async regulatedHolds(){ await this.assert("READ"); return regHolds(this.workspaceId); }
+  async regulatedCanDelete(asset_id:string){ await this.assert("READ"); return regCanDelete(asset_id, this.workspaceId); }
+  async regulatedRetention(input: Omit<Parameters<typeof regRetSet>[0],"tenant_id">){ await this.assert("CREATE"); const p=regRetSet({ ...input, tenant_id: this.workspaceId }); await this.audit("regulated.retention.set", p.policy_id, "RetentionPolicy"); return p; }
+  async regulatedAudits(domain?: Parameters<typeof regAudit>[1]){ await this.assert("READ"); return regAudit(this.workspaceId, domain); }
+
+  // ── Predictive Optimization (reversible, explainable) ────────────────────────
+  async predictiveCreate(input: Omit<Parameters<typeof predCreate>[0],"tenant_id">){ await this.assert("CREATE"); const p=predCreate({ ...input, tenant_id: this.workspaceId }); await this.audit("predictive.prediction.created", p.prediction_id, "Prediction", { signal: p.signal }); return p; }
+  async predictivePropose(prediction_id:string, action: Parameters<typeof predPropose>[1]){ await this.assert("CREATE"); const pr=predPropose(prediction_id, action); await this.audit("predictive.proposal.proposed", pr.proposal_id, "OptimizationProposal"); return pr; }
+  async predictiveDecide(proposal_id:string, decision: Parameters<typeof predDecide>[1]){ await this.assert("UPDATE"); return predDecide(proposal_id, decision); }
+  async predictiveApply(proposal_id:string){ await this.assert("UPDATE"); const pr=predApply(proposal_id); await this.audit("predictive.proposal.applied", proposal_id, "OptimizationProposal"); return pr; }
+  async predictiveRollback(proposal_id:string){ await this.assert("UPDATE"); const pr=predRollback(proposal_id); await this.audit("predictive.proposal.rolled_back", proposal_id, "OptimizationProposal"); return pr; }
+  async predictiveMetrics(){ await this.assert("READ"); return predMetrics(this.workspaceId); }
+
+  // ── Campaign Intelligence (cross-platform, synchronized) ─────────────────────
+  async campaignCreate(input: Omit<Parameters<typeof campCreate>[0],"tenant_id">){ await this.assert("CREATE"); const c=campCreate({ ...input, tenant_id: this.workspaceId }); await this.audit("campaign.sync.created", c.campaign_id, "CampaignSync", { assets: c.assets.length }); return c; }
+  async campaignAddAsset(campaign_id:string, asset: Parameters<typeof campAddAsset>[1]){ await this.assert("UPDATE"); return campAddAsset(campaign_id, asset); }
+  async campaignPerf(perf: Parameters<typeof campPerf>[0]){ await this.assert("CREATE"); return campPerf(perf); }
+  async campaignInsights(){ await this.assert("READ"); return campInsights(this.workspaceId); }
+
+  // ── Volumetric & Immersive (searchable, policy-validated) ───────────────────
+  async volumetricCreate(input: Omit<Parameters<typeof volCreate>[0],"tenant_id">){ await this.assert("CREATE"); const a=volCreate({ ...input, tenant_id: this.workspaceId }); await this.audit("volumetric.asset.created", a.asset_id, "VolumetricAsset", { format: a.format }); return a; }
+  async volumetricSession(input: Omit<Parameters<typeof volSession>[0],"tenant_id">){ await this.assert("CREATE"); const s=volSession({ ...input, tenant_id: this.workspaceId }); await this.audit("volumetric.session.started", s.session_id, "ImmersiveSession", { format: s.format }); return s; }
+  async volumetricMetrics(){ await this.assert("READ"); return volMetrics(this.workspaceId); }
+
+  // ── Private Fine-Tuning (tenant-isolated, consent-aware) ─────────────────────
+  async finetuneCreate(input: Omit<Parameters<typeof ftCreate>[0],"tenant_id">){ await this.assert("CREATE"); const j=ftCreate({ ...input, tenant_id: this.workspaceId }); await this.audit("finetune.job.created", j.job_id, "FinetuneJob", { scope: j.scope, status: j.status }); return j; }
+  async finetuneAdvance(job_id:string, status: Parameters<typeof ftAdvance>[1]){ await this.assert("UPDATE"); const r=ftAdvance(job_id, status); await this.audit("finetune.job.advanced", job_id, "FinetuneJob", { status }); return r; }
+  async finetuneModels(){ await this.assert("READ"); return ftModels(this.workspaceId); }
+  async finetunePolicyGet(){ await this.assert("READ"); return ftPolicyGet(this.workspaceId); }
+  async finetunePolicySet(policy: Parameters<typeof ftPolicySet>[1]){ await this.assert("UPDATE"); return ftPolicySet(this.workspaceId, policy); }
 
   // ── Transcode ─────────────────────────────────────────────────────────────
   async createTranscode(input: { assetId: string; targetCodec: string; targetResolution: string }) {
