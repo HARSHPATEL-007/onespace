@@ -73,6 +73,9 @@ import {
   scanPrivacy as privacyScan, createPrivacyDerivative as privacyTransform, reviewExternalShare as privacyReview, requestDeletion as privacyDeletion, evaluatePolicy as privacyPolicyEval, getPrivacyDashboard as privacyDashboard, testPolicySimulation as privacySim, createEmbeddingLineage as privacyEmbedding,
 } from "./privacy-preserving-engine";
 import {
+  createEnvelope as edCreateEnvelope, appendOutbox as edAppend, publishOutbox as edPublish, consumeEvent as edConsume, createAssetIngested as edAssetIngested, replayEvents as edReplay, getWorkflow as edWorkflow, createWebhookSubscription as edWebhookCreate, projectForWebhook as edWebhookProject, getObservability as edObservability,
+} from "./event-driven-engine";
+import {
   evaluatePolicy as ppEvaluate, composePolicies as ppCompose, getPolicyEvidence as ppEvidence, runPolicyTests as ppTests, failSafeDecision as ppFailSafe, registerPlugin as ppRegister, enablePluginForTenant as ppEnable, grantPluginMediaAccess as ppGrant, executePlugin as ppExecute, listPolicies as ppList, getPolicy as ppGetPolicy,
 } from "./policy-plugin-engine";
 
@@ -1554,6 +1557,33 @@ export class VideosService {
     const decision = privacyPolicyEval({ event: input.event, tenant_id: this.workspaceId, asset_id: input.asset_id, principal_id: input.principal_id ?? this.userId, region:"EU", destination: input.destination, asset_classification:"confidential", privacy_state:"external_safe", consent_status:"partial", caption_status:"approved", copyright_status:"approved", brand_status:"pending", requested_actions:["export","share"] }, input.policy_id);
     await this.audit("policy.evaluated", decision.decision_id, "PolicyDecision", { decision: decision.decision });
     return decision;
+  }
+
+  // ── Event-Driven Architecture ──
+  async edPublishEvent(input: { type: string; subject: string; data: Record<string, unknown>; tenant_id?: string }) {
+    await this.assert("CREATE");
+    const env = edCreateEnvelope({
+      type: input.type, source:"n0va.videos.ingestion", subject: input.subject,
+      tenant:{ id: input.tenant_id ?? this.workspaceId, region:"eu-west-1", classification:"confidential" },
+      project:{ id:"project_001", version:12 }, entity:{ type:"asset", id: input.subject.split(":")[1] ?? "asset_001", version:4 },
+      causation_id: `cmd_${Date.now()}`, correlation_id:`corr_${Date.now()}`, trace_id:`trace_${Date.now()}`,
+      actor:{ id: this.userId, type:"human", role: this.role, authentication:"oidc" },
+      schema:{ name: `n0va.${input.type.replace(/\./g,".")}`, version:"1.0.0" }, data: input.data,
+    });
+    const outbox = edAppend(env);
+    const published = edPublish(outbox.outbox_id);
+    await this.audit("event.published", env.id, "Event", { type: env.type });
+    return published;
+  }
+  async edReplay(filter: { tenant_id?: string; event_type?: string; dry_run?: boolean }) {
+    await this.assert("READ");
+    return edReplay({ tenant_id: filter.tenant_id ?? this.workspaceId, event_type: filter.event_type, dry_run: filter.dry_run });
+  }
+  async edCreateWebhook(event_types: string[], destination_url: string) {
+    await this.assert("CREATE");
+    const sub = edWebhookCreate({ tenant_id: this.workspaceId, event_types, destination_url });
+    await this.audit("webhook.created", sub.subscription_id, "Webhook", { types: event_types.length });
+    return sub;
   }
 
   // ── Policy & Plugin Platform ──

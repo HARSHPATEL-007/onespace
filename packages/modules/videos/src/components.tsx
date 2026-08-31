@@ -26,6 +26,7 @@ import { AudioIntelligencePanel } from "./audio-intelligence-components";
 import { AccessibilityAutomationPanel } from "./accessibility-automation-components";
 import { ZeroTrustPanel } from "./zero-trust-components";
 import { PrivacyPreservingPanel } from "./privacy-preserving-components";
+import { EventDrivenPanel } from "./event-driven-components";
 import { PolicyPluginPanel } from "./policy-plugin-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
@@ -232,6 +233,7 @@ const STUDIO_TABS = [
   { id: "a11y", label: "Accessibility" },
   { id: "zero-trust", label: "Zero-Trust" },
   { id: "privacy", label: "Privacy" },
+  { id: "events", label: "Events" },
   { id: "policy-plugin", label: "Policy & Plugins" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
@@ -564,6 +566,11 @@ export function VideoStudioTranscendent({
           {/* PRIVACY-PRESERVING */}
           {activeTab === "privacy" && (
             <PrivacyPreservingPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* EVENT-DRIVEN */}
+          {activeTab === "events" && (
+            <EventDrivenPanel projectId={selectedProj?.id ?? "project_001"} />
           )}
 
           {/* POLICY & PLUGINS */}

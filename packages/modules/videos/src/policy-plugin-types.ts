@@ -5,10 +5,11 @@
 
 export type PolicyStatus = "draft" | "review" | "simulation" | "approved" | "active" | "deprecated" | "retired";
 export type PolicyEffect = "allow" | "allow_with_controls" | "require_approval" | "warn" | "deny" | "defer_until_data_is_available";
-export type PluginType = "effect" | "codec" | "demuxer" | "color_transform" | "audio_processor" | "transcription" | "translation" | "ai_model" | "storage" | "review_integration" | "export_destination" | "player_extension" | "metadata_schema" | "compliance_policy" | "custom_agent" | "watermark" | "accessibility_provider";
+export type PluginType = "effect" | "codec" | "demuxer" | "color_transform" | "audio_processor" | "transcription" | "translation" | "ai_model" | "storage" | "review_integration" | "export_destination" | "player_extension" | "metadata_schema" | "compliance_policy" | "custom_agent" | "watermark" | "accessibility_provider" | "archival_connector" | "analytics_adapter";
 export type SandboxProfile = "wasm" | "microvm" | "gpu_enclave" | "restricted_container" | "remote_connector";
-export type TrustLevel = "platform_signed" | "verified_publisher" | "tenant_approved" | "experimental" | "quarantined" | "revoked";
+export type TrustLevel = "platform_signed" | "verified_publisher" | "tenant_approved" | "experimental" | "quarantined" | "revoked" | "draft" | "scanned" | "verified_publisher" | "canary" | "active" | "retired";
 export type MediaAccessLevel = "metadata_only" | "thumbnail" | "proxy" | "derived_stem" | "original_range" | "original_full_asset";
+export type PluginCategory = PluginType;
 
 export type CanonicalPolicy = {
   name: string;
@@ -91,7 +92,8 @@ export type PluginManifest = {
   api_version: string;
   license: string;
   signature?: { algorithm: string; key_id: string; signature: string };
-  compatibility: { n0va_versions: string[]; platforms: string[]; gpu?: string[] };
+  package?: { image_digest?: string; sbom_uri?: string; signature?: { algorithm: string; key_id: string; value: string } };
+  compatibility: { n0va_versions: string[]; platforms: string[]; gpu?: string[]; operating_systems?: string[]; architectures?: string[]; accelerators?: string[] };
   permissions: {
     media?: { read?: string[]; write?: string[] };
     metadata?: { read?: string[]; write?: string[] };
@@ -99,18 +101,22 @@ export type PluginManifest = {
     storage?: { temporary_bytes?: number };
     secrets?: string[];
   };
-  resources: { cpu_cores: number; memory_mb: number; gpu_memory_mb?: number; max_runtime_seconds: number; max_output_bytes: number };
+  resources: { cpu_cores: number; memory_mb: number; gpu_memory_mb?: number; max_runtime_seconds: number; max_output_bytes: number; max_threads?: number };
   security: { isolation: string; attestation_required: boolean; training_on_customer_data: boolean; network_policy: string };
+  privacy?: { processes_personal_data: boolean; trains_on_customer_data: boolean; retains_input_media: boolean; retains_output_media: string | boolean };
+  limits?: { max_threads?: number; max_output_bytes?: number };
 };
 
 export type PluginRecord = {
   manifest: PluginManifest;
   package_uri?: string;
   trust_level: TrustLevel;
-  status: "registered" | "review_requested" | "review_completed" | "enabled" | "disabled" | "revoked";
+  status: "registered" | "review_requested" | "review_completed" | "enabled" | "disabled" | "revoked" | "draft" | "scanned" | "canary" | "active" | "quarantined" | "retired";
   enabled_scopes?: { projects?: string[]; asset_classes?: string[]; regions?: string[] }[];
   execution_count?: number;
   health?: PluginHealth;
+  sbom?: string;
+  security_scan?: { malware: string; secrets: string; vulnerabilities: number };
 };
 
 export type PluginHealth = {

@@ -72,7 +72,10 @@
     "./zero-trust-components": "./src/zero-trust-components.tsx",
     "./privacy": "./src/privacy-preserving-engine.ts",
     "./privacy-types": "./src/privacy-preserving-types.ts",
-    "./privacy-components": "./src/privacy-preserving-components.tsx"
+    "./privacy-components": "./src/privacy-preserving-components.tsx",
+    "./events": "./src/event-driven-engine.ts",
+    "./events-types": "./src/event-driven-types.ts",
+    "./events-components": "./src/event-driven-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
