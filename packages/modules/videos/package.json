@@ -81,7 +81,10 @@
     "./reliability-components": "./src/reliability-engineering-components.tsx",
     "./observability": "./src/observability-finops-engine.ts",
     "./observability-types": "./src/observability-finops-types.ts",
-    "./observability-components": "./src/observability-finops-components.tsx"
+    "./observability-components": "./src/observability-finops-components.tsx",
+    "./entitlement": "./src/entitlement-engine.ts",
+    "./entitlement-types": "./src/entitlement-types.ts",
+    "./entitlement-components": "./src/entitlement-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

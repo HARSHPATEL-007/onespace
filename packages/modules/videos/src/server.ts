@@ -84,6 +84,10 @@ import {
 import {
   evaluatePolicy as ppEvaluate, composePolicies as ppCompose, getPolicyEvidence as ppEvidence, runPolicyTests as ppTests, failSafeDecision as ppFailSafe, registerPlugin as ppRegister, enablePluginForTenant as ppEnable, grantPluginMediaAccess as ppGrant, executePlugin as ppExecute, listPolicies as ppList, getPolicy as ppGetPolicy,
 } from "./policy-plugin-engine";
+import {
+  getEntitlement as entGet, setTier as entSetTier, checkEntitlement as entCheck, recordUsage as entRecordUsage, getUsage as entGetUsage, evaluateTierChange as entEvaluateChange, evaluateOverage as entOverage, listTiers as entListTiers, listAddOns as entListAddOns, applyAddOn as entApplyAddOn, removeAddOn as entRemoveAddOn, getCheckHistory as entHistory, getPolicyVersion as entPolicyVersion, exampleEnvelope as entExample, TIER_CATALOG, CAPABILITY_MATRIX, ADDON_CATALOG, COMMERCIAL_METRICS,
+} from "./entitlement-engine";
+import type { VideoTier, EntitlementEnvelope, UsageState, AddOnId } from "./entitlement-types";
 
 const MODULE = "videos";
 
@@ -353,6 +357,7 @@ export class VideosService {
 
   async createProject(input: z.infer<typeof projectSchema>) {
     await this.assert("CREATE");
+    await this.requireEntitlement("editing", "project.create", { activeProjects: 1 });
     try {
       const proj = await (prisma as unknown as { videoProject: { create: (a:unknown)=>Promise<unknown> } }).videoProject.create({
         data: {
@@ -424,6 +429,9 @@ export class VideosService {
     projectId?: string | null; width?: number | null; height?: number | null; durationMs?: number | null;
   }) {
     await this.assert("CREATE");
+    const isRaw = /raw|\bari\b|red|prores.*raw/i.test(input.filename) || (input.mimeType && input.mimeType.includes("raw"));
+    if(isRaw) await this.requireEntitlement("raw_workflows", "asset.ingest.raw", { storage_gb: Math.ceil(input.sizeBytes / (1024*1024*1024)) || 1 });
+    else await this.requireEntitlement("shared_libraries", "asset.ingest", { storage_gb: Math.ceil(input.sizeBytes / (1024*1024*1024)) || 1 });
     try {
       const asset = await (prisma as unknown as { videoAsset: { create: (a:unknown)=>Promise<unknown> } }).videoAsset.create({
         data: {
@@ -497,6 +505,11 @@ export class VideosService {
 
   async createExport(input: z.infer<typeof exportPresetSchema> & { projectId?: string; videoId?: string }) {
     await this.assert("CREATE");
+    // Render orchestration entitlement: advanced broadcast/8K needs Studio; regulated needs dedicated; check premium presets
+    const premiumNeedsStudio = ["broadcast_prores","mp4_8k","dcp","imf"].includes(input.preset);
+    const hdrNeedsStudio = input.hdr && input.hdr!=="sdr";
+    const entitlementKey = premiumNeedsStudio || hdrNeedsStudio ? "render_orchestration_advanced" : "shared_render_queue";
+    await this.requireEntitlement(entitlementKey, `export.create:${input.preset}`, { render_minutes: 5, concurrent_renders: 1 });
     try {
       const exp = await (prisma as unknown as { videoExport: { create: (a:unknown)=>Promise<unknown> } }).videoExport.create({
         data: {
@@ -545,6 +558,7 @@ export class VideosService {
 
   async generateCaptions(input: z.infer<typeof captionSchema> & { projectId?: string; assetId?: string }) {
     await this.assert("CREATE");
+    await this.requireEntitlement(input.language && !["en","es","fr","de"].includes(input.language) ? "captions_advanced" : "captions_basic", `caption.generate:${input.language}`, { ai_credits_used: 10 });
     const vtt = `WEBVTT\n\n00:00:00.000 --> 00:00:03.500\nWelcome to N0VA Videos — Project Aperture Transcendent\n\n00:00:03.500 --> 00:00:07.000\nGenerated with Whisper-N0VA • 98.5% accuracy • ${input.language}\n`;
     try {
       const cap = await (prisma as unknown as { videoCaption: { create: (a:unknown)=>Promise<unknown> } }).videoCaption.create({
@@ -639,6 +653,10 @@ export class VideosService {
   // ── AI Generation (Aperture) ──────────────────────────────────────────────
   async generateVideoAI(input: z.infer<typeof aiGenerateSchema>) {
     await this.assert("CREATE");
+    // AI allowance: Creator includes practical bounded AI; advanced generative metered
+    const advancedAiOps = ["voice_cloning","generative_video","upscaling","style_transfer","autonomous_editing"];
+    const usesAdvanced = input.durationSec > 60 || input.resolution==="4K";
+    await this.requireEntitlement(usesAdvanced ? "ai_advanced" : "ai_basic", `ai.generate:${input.style}`, { ai_credits_used: usesAdvanced? 500:100, processed_hours: input.durationSec/3600 });
     // Mock diffusion pipeline - returns a job
     const jobId = `gen_${Date.now()}`;
     const mockUrl = `https://cdn.n0va.io/ai-generated/${jobId}/preview.mp4`;
@@ -1750,6 +1768,64 @@ export class VideosService {
     await this.audit("copilot.proposal.rollback", proposalId, "VideoProposal", { rollback: p.risk.rollback_info });
     return p;
   }
+
+  // ── Entitlements ( capability-based packaging — 5 dimensions ) ────────────────
+  /** Centralized entitlement envelope — capability/usage/governance/deployment/support */
+  async getEntitlement(tenantId?: string) {
+    await this.assert("READ");
+    const tid = tenantId ?? this.workspaceId;
+    const envelope = entGet(tid);
+    const usage = entGetUsage(tid);
+    const history = entHistory(tid, 50);
+    const overage = entOverage(tid);
+    return { envelope, usage, history, overage, policy_version: entPolicyVersion() };
+  }
+
+  async setEntitlementTier(input: { tenant_id?: string; plan: VideoTier; overrides?: EntitlementEnvelope["overrides"]; addOns?: AddOnId[] }) {
+    await this.assert("UPDATE");
+    const tid = input.tenant_id ?? this.workspaceId;
+    const env = entSetTier(tid, input.plan, input.overrides, input.addOns);
+    await this.audit("entitlement.tier.set", tid, "Entitlement", { plan: input.plan, overrides: input.overrides, addOns: input.addOns });
+    return env;
+  }
+
+  async checkEntitlement(input: { feature: string; requested_operation: string; usage_delta?: Partial<UsageState> }) {
+    await this.assert("READ");
+    const res = entCheck({ tenant_id: this.workspaceId, feature: input.feature, requested_operation: input.requested_operation, actor: this.userId, usage_delta: input.usage_delta as Partial<import("./entitlement-types").UsageState> });
+    await this.audit(`entitlement.check.${res.decision}`, this.workspaceId, "EntitlementCheck", { feature: input.feature, operation: input.requested_operation, decision: res.decision, tier: res.entitlement.plan });
+    return res;
+  }
+
+  /** Throws if not entitled — use as guard in mutating operations */
+  private async requireEntitlement(feature: string, operation: string, usageDelta?: Partial<UsageState>): Promise<void> {
+    const res = entCheck({ tenant_id: this.workspaceId, feature, requested_operation: operation, actor: this.userId, usage_delta: usageDelta as Partial<import("./entitlement-types").UsageState> });
+    await this.audit(`entitlement.check.${res.decision}`, this.workspaceId, "EntitlementCheck", { feature, operation, decision: res.decision, tier: res.entitlement.plan });
+    if (!res.allowed) {
+      throw new Error(`Entitlement denied (${res.decision}) for '${feature}' on tier '${res.entitlement.plan}': ${res.reason ?? "upgrade or add-on required"}`);
+    }
+    // record metering if there is usage delta and allowed
+    if (usageDelta && res.allowed) entRecordUsage(this.workspaceId, usageDelta);
+  }
+
+  async listTiers() { await this.assert("READ"); return entListTiers(); }
+  async getTier(tier: VideoTier) { await this.assert("READ"); return TIER_CATALOG[tier]; }
+  async getCapabilityMatrix() { await this.assert("READ"); return CAPABILITY_MATRIX; }
+  async listAddOns(tier?: VideoTier) { await this.assert("READ"); return entListAddOns(tier); }
+  async catalogAddOns() { await this.assert("READ"); return ADDON_CATALOG; }
+  async applyAddOn(addOnId: AddOnId) { await this.assert("UPDATE"); const env = entApplyAddOn(this.workspaceId, addOnId); await this.audit("entitlement.addon.applied", this.workspaceId, "Entitlement", { addOnId }); return env; }
+  async removeAddOn(addOnId: AddOnId) { await this.assert("UPDATE"); const env = entRemoveAddOn(this.workspaceId, addOnId); await this.audit("entitlement.addon.removed", this.workspaceId, "Entitlement", { addOnId }); return env; }
+  async evaluateTierChange(input: { from?: VideoTier; to: VideoTier }) {
+    await this.assert("READ");
+    const from = input.from ?? entGet(this.workspaceId).plan;
+    const ev = entEvaluateChange(from, input.to);
+    await this.audit("entitlement.tier.evaluate", this.workspaceId, "EntitlementEvaluate", { from, to: input.to, direction: ev.direction, requiresMigration: ev.requiresMigration });
+    return ev;
+  }
+  async getCommercialMetrics(tier?: VideoTier) { await this.assert("READ"); const t = tier ?? entGet(this.workspaceId).plan; return { tier: t, metrics: COMMERCIAL_METRICS.filter(m=> m.tiers.includes(t)), indicators: (await import("./entitlement-engine")).getCommercialIndicator(t) }; }
+  async getPackagingSummary() { await this.assert("READ"); return (await import("./entitlement-engine")).getPackagingSummary(this.workspaceId); }
+  async evaluateOverage() { await this.assert("READ"); return entOverage(this.workspaceId); }
+  async getEntitlementHistory(limit=50){ await this.assert("READ"); return entHistory(this.workspaceId, limit); }
+  async exampleEntitlement(tier?: VideoTier){ await this.assert("READ"); return entExample(this.workspaceId, tier ?? entGet(this.workspaceId).plan); }
 
   // ── Transcode ─────────────────────────────────────────────────────────────
   async createTranscode(input: { assetId: string; targetCodec: string; targetResolution: string }) {

@@ -76,3 +76,6 @@ export { ObservabilityFinOpsPanel } from "./observability-finops-components";
 export * as PolicyPluginTypes from "./policy-plugin-types";
 export * as PolicyPluginEngine from "./policy-plugin-engine";
 export { PolicyPluginPanel } from "./policy-plugin-components";
+export * from "./entitlement-types";
+export * from "./entitlement-engine";
+export { EntitlementControlCenter, CapabilityMatrixTable, TierBadge, EntitlementEnvelopeCard, PackagingDimensionsPanel, AddOnMarketplace, TierChangePanel, EntitlementAuditLedger, CommercialMetricsPanel } from "./entitlement-components";

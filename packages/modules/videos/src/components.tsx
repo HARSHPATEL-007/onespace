@@ -30,6 +30,7 @@ import { EventDrivenPanel } from "./event-driven-components";
 import { ReliabilityEngineeringPanel } from "./reliability-engineering-components";
 import { ObservabilityFinOpsPanel } from "./observability-finops-components";
 import { PolicyPluginPanel } from "./policy-plugin-components";
+import { EntitlementControlCenter } from "./entitlement-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -238,6 +239,7 @@ const STUDIO_TABS = [
   { id: "events", label: "Events" },
   { id: "reliability", label: "Reliability" },
   { id: "observability", label: "Observability" },
+  { id: "entitlements", label: "Entitlements" },
   { id: "policy-plugin", label: "Policy & Plugins" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
@@ -585,6 +587,11 @@ export function VideoStudioTranscendent({
           {/* OBSERVABILITY & FINOPS */}
           {activeTab === "observability" && (
             <ObservabilityFinOpsPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* ENTITLEMENTS — capability-based tiers */}
+          {activeTab === "entitlements" && (
+            <EntitlementControlCenter tenantId={typeof window !== "undefined" ? undefined : undefined} />
           )}
 
           {/* POLICY & PLUGINS */}
