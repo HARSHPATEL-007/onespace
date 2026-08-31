@@ -76,6 +76,9 @@
     "./events": "./src/event-driven-engine.ts",
     "./events-types": "./src/event-driven-types.ts",
     "./events-components": "./src/event-driven-components.tsx",
+    "./reliability": "./src/reliability-engineering-engine.ts",
+    "./reliability-types": "./src/reliability-engineering-types.ts",
+    "./reliability-components": "./src/reliability-engineering-components.tsx",
     "./observability": "./src/observability-finops-engine.ts",
     "./observability-types": "./src/observability-finops-types.ts",
     "./observability-components": "./src/observability-finops-components.tsx"

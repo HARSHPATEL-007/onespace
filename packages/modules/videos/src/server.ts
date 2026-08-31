@@ -76,6 +76,9 @@ import {
   createEnvelope as edCreateEnvelope, appendOutbox as edAppend, publishOutbox as edPublish, consumeEvent as edConsume, createAssetIngested as edAssetIngested, replayEvents as edReplay, getWorkflow as edWorkflow, createWebhookSubscription as edWebhookCreate, projectForWebhook as edWebhookProject, getObservability as edObservability,
 } from "./event-driven-engine";
 import {
+  createJob as relCreateJob, getJob as relGetJob, commitJob as relCommitJob, acquireLease as relAcquireLease, checkpointJob as relCheckpoint, classifyFailure as relClassify, sendToDeadLetter as relDLQ, createSegments as relSegments, recoverRender as relRecover, createInferenceCheckpoint as relInferenceCp, createChaosExperiment as relChaos,
+} from "./reliability-engineering-engine";
+import {
   getGpuMetrics as obsGpu, getCostLedger as obsLedger, getExecutiveDashboard as obsDashboard, getTenantProfitability as obsTenant, getAlerts as obsAlerts,
 } from "./observability-finops-engine";
 import {
@@ -1587,6 +1590,20 @@ export class VideosService {
     const sub = edWebhookCreate({ tenant_id: this.workspaceId, event_types, destination_url });
     await this.audit("webhook.created", sub.subscription_id, "Webhook", { types: event_types.length });
     return sub;
+  }
+
+  // ── Reliability Engineering ──
+  async relCreateJob(input: { asset_id: string; asset_version?: number; operation: string; parameters_hash?: string; timeline_version?: number }) {
+    await this.assert("CREATE");
+    const job = relCreateJob({ tenant_id: this.workspaceId, project_id: "project_001", asset_id: input.asset_id, asset_version: input.asset_version ?? 4, operation: input.operation, parameters_hash: input.parameters_hash, timeline_version: input.timeline_version });
+    await this.audit("reliability.job.created", job.job_id, "Job", { operation: input.operation });
+    return job;
+  }
+  async relLeaseJob(jobId: string, workerId: string) {
+    await this.assert("UPDATE");
+    const lease = relAcquireLease(jobId, workerId);
+    await this.audit("reliability.lease.acquired", jobId, "Job", { worker: workerId });
+    return lease;
   }
 
   // ── Observability & FinOps ──

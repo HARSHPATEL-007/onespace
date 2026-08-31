@@ -27,6 +27,7 @@ import { AccessibilityAutomationPanel } from "./accessibility-automation-compone
 import { ZeroTrustPanel } from "./zero-trust-components";
 import { PrivacyPreservingPanel } from "./privacy-preserving-components";
 import { EventDrivenPanel } from "./event-driven-components";
+import { ReliabilityEngineeringPanel } from "./reliability-engineering-components";
 import { ObservabilityFinOpsPanel } from "./observability-finops-components";
 import { PolicyPluginPanel } from "./policy-plugin-components";
 
@@ -235,6 +236,7 @@ const STUDIO_TABS = [
   { id: "zero-trust", label: "Zero-Trust" },
   { id: "privacy", label: "Privacy" },
   { id: "events", label: "Events" },
+  { id: "reliability", label: "Reliability" },
   { id: "observability", label: "Observability" },
   { id: "policy-plugin", label: "Policy & Plugins" },
   { id: "copilot", label: "Copilot" },
@@ -573,6 +575,11 @@ export function VideoStudioTranscendent({
           {/* EVENT-DRIVEN */}
           {activeTab === "events" && (
             <EventDrivenPanel projectId={selectedProj?.id ?? "project_001"} />
+          )}
+
+          {/* RELIABILITY */}
+          {activeTab === "reliability" && (
+            <ReliabilityEngineeringPanel projectId={selectedProj?.id ?? "project_001"} />
           )}
 
           {/* OBSERVABILITY & FINOPS */}
