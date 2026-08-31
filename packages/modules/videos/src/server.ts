@@ -88,6 +88,16 @@ import {
   getEntitlement as entGet, setTier as entSetTier, checkEntitlement as entCheck, recordUsage as entRecordUsage, getUsage as entGetUsage, evaluateTierChange as entEvaluateChange, evaluateOverage as entOverage, listTiers as entListTiers, listAddOns as entListAddOns, applyAddOn as entApplyAddOn, removeAddOn as entRemoveAddOn, getCheckHistory as entHistory, getPolicyVersion as entPolicyVersion, exampleEnvelope as entExample, TIER_CATALOG, CAPABILITY_MATRIX, ADDON_CATALOG, COMMERCIAL_METRICS,
 } from "./entitlement-engine";
 import type { VideoTier, EntitlementEnvelope, UsageState, AddOnId } from "./entitlement-types";
+import {
+  estimateCost as billEstimate, getEstimate as billGetEstimate, approveEstimate as billApproveEstimate,
+  recordUsageEvent as billRecordUsage, createAdjustment as billAdjustment, getUsageLedger as billLedger, getUsageByPeriod as billUsageByPeriod,
+  normalizeUsage as billNormalize, getRateCard as billRateCard, listRateCards as billListRateCards,
+  createBudgetPolicy as billCreateBudget, getBudget as billGetBudget, listBudgets as billListBudgets, getBudgetState as billBudgetState, checkBudgetForEstimate as billCheckBudget, reserveBudget as billReserve, releaseReservation as billRelease, chargeReservation as billCharge,
+  aggregateInvoice as billAggregateInvoice, finalizeInvoice as billFinalizeInvoice, getInvoice as billGetInvoice, listInvoices as billListInvoices,
+  createCredit as billCreateCredit, listCredits as billListCredits,
+  getUsageDashboard as billDashboard, getJobCostView as billJobCost, listBillingEvents as billEvents, reconcileUsage as billReconcile, getBillingAccount as billGetAccount, setBillingAccount as billSetAccount,
+} from "./billing-engine";
+import type { EstimateRequest, EstimateResponse, BudgetPolicy, Invoice, UsageEvent, BillingEvent, MeterKey, PricingVersion, Currency, Region, BillingAccount } from "./billing-types";
 
 const MODULE = "videos";
 
@@ -444,9 +454,17 @@ export class VideosService {
         } as never,
       } as never);
       await this.audit("asset.uploaded", (asset as { id: string }).id, "VideoAsset");
+      try{
+        const gb = Math.max(0.01, input.sizeBytes / (1024*1024*1024));
+        billRecordUsage({ tenant_id: this.workspaceId, project_id: input.projectId ?? undefined, asset_id: (asset as { id:string }).id, job_id: `ingest:${(asset as { id:string }).id}`, meter:"stored_hot_gb_days" as MeterKey, quantity: gb, idempotency_key:`stored:${this.workspaceId}:${input.storageKey}`, kind:"actual", causation_id:`evt_asset_uploaded:${(asset as { id:string }).id}`, correlation_id: input.projectId ?? this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+      }catch{}
       return asset;
     } catch (e) {
       await this.audit("asset.uploaded", input.filename, "VideoAsset");
+      try{
+        const gb2 = Math.max(0.01, input.sizeBytes / (1024*1024*1024));
+        billRecordUsage({ tenant_id: this.workspaceId, project_id: input.projectId ?? undefined, asset_id: `mock_${Date.now()}`, meter:"stored_hot_gb_days" as MeterKey, quantity: gb2, idempotency_key:`stored:mock:${Date.now()}`, kind:"actual", causation_id:`evt_asset_mock`, correlation_id: this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+      }catch{}
       return { id: `mock_${Date.now()}`, filename: input.filename, mimeType: input.mimeType, sizeBytes: input.sizeBytes, storageKey: input.storageKey, neuralMetadata: mockNeuralMetadata(input.filename) };
     }
   }
@@ -521,6 +539,13 @@ export class VideosService {
         } as never,
       } as never);
       await this.audit("export.queued", (exp as { id: string }).id, "VideoExport");
+      try{
+        // Billing: GPU render minutes (estimate 5 min for HD, 20 for 4K) + egress + watermark
+        const isPremium = ["broadcast_prores","mp4_8k","dcp","imf"].includes(input.preset);
+        billRecordUsage({ tenant_id: this.workspaceId, project_id: input.projectId ?? undefined, job_id: `export:${(exp as { id:string }).id}`, asset_id: input.projectId ?? "export", meter:"gpu_render_minutes" as MeterKey, quantity: isPremium?20:5, provider:"gpu_scheduler", idempotency_key:`gpu:export:${(exp as { id:string }).id}`, kind:"actual", causation_id:`evt_export_queued:${(exp as { id:string }).id}`, correlation_id: input.projectId ?? this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+        billRecordUsage({ tenant_id: this.workspaceId, project_id: input.projectId ?? undefined, job_id: `export:${(exp as { id:string }).id}`, meter:"watermark_embed_ops" as MeterKey, quantity:1, idempotency_key:`wm:export:${(exp as { id:string }).id}`, kind:"actual", causation_id:`evt_export_queued:${(exp as { id:string }).id}`, correlation_id: input.projectId ?? this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+        billRecordUsage({ tenant_id: this.workspaceId, project_id: input.projectId ?? undefined, job_id: `export:${(exp as { id:string }).id}`, meter:"egress_cdn_gb" as MeterKey, quantity: 2, idempotency_key:`egress:export:${(exp as { id:string }).id}`, kind:"actual", causation_id:`evt_export_queued:${(exp as { id:string }).id}`, correlation_id: input.projectId ?? this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+      }catch{}
       // Simulate async progression (fire-and-forget mock)
       setTimeout(() => {
         (prisma as unknown as { videoExport: { update: (a:unknown)=>Promise<unknown> } }).videoExport.update({
@@ -542,6 +567,9 @@ export class VideosService {
     } catch {
       const mockId = `exp_${Date.now()}`;
       await this.audit("export.queued", mockId, "VideoExport");
+      try{
+        billRecordUsage({ tenant_id: this.workspaceId, project_id: input.projectId ?? undefined, job_id:`export:${mockId}`, meter:"gpu_render_minutes" as MeterKey, quantity:5, idempotency_key:`gpu:export:${mockId}`, kind:"actual", causation_id:`evt_export_mock:${mockId}`, correlation_id: this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+      }catch{}
       return { id: mockId, preset: input.preset, status: "QUEUED", progress: 0, format: input };
     }
   }
@@ -569,9 +597,16 @@ export class VideosService {
         } as never,
       } as never);
       await this.audit("caption.generated", (cap as { id: string }).id, "VideoCaption");
+      try{
+        billRecordUsage({ tenant_id: this.workspaceId, project_id: input.projectId ?? undefined, asset_id: input.assetId ?? (cap as { id:string }).id, meter:"ai_inference_minutes" as MeterKey, quantity: 2, idempotency_key:`ai:caption:${(cap as { id:string }).id}`, kind:"actual", causation_id:`evt_caption:${(cap as { id:string }).id}`, correlation_id: input.projectId ?? this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+        billRecordUsage({ tenant_id: this.workspaceId, project_id: input.projectId ?? undefined, meter:"transcription_minutes" as MeterKey, quantity: 2, idempotency_key:`trans:${(cap as { id:string }).id}`, kind:"actual", causation_id:`evt_caption:${(cap as { id:string }).id}`, correlation_id: this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+      }catch{}
       return cap;
     } catch {
       await this.audit("caption.generated", `mock_${Date.now()}`, "VideoCaption");
+      try{
+        billRecordUsage({ tenant_id: this.workspaceId, meter:"ai_inference_minutes" as MeterKey, quantity: 2, idempotency_key:`ai:caption:mock:${Date.now()}`, kind:"actual", causation_id:`evt_caption_mock`, correlation_id: this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+      }catch{}
       return { id: `cap_${Date.now()}`, language: input.language, vttContent: vtt, confidence: 0.985, status: "ready" };
     }
   }
@@ -661,6 +696,13 @@ export class VideosService {
     const jobId = `gen_${Date.now()}`;
     const mockUrl = `https://cdn.n0va.io/ai-generated/${jobId}/preview.mp4`;
     await this.audit("ai.video.generated", jobId, "VideoProject", { prompt: input.prompt, style: input.style });
+    try{
+      // Billing: generated media weighted seconds = duration × resolution mult × premium mult × variations
+      const isPremiumGen = usesAdvanced || input.resolution==="4K";
+      const weighted = input.durationSec * (input.resolution==="4K"?2.5:1) * (isPremiumGen?2.5:1) * 4;
+      billRecordUsage({ tenant_id: this.workspaceId, meter:"generated_video_weighted_seconds" as MeterKey, quantity: weighted, job_id: jobId, idempotency_key:`gen:${jobId}`, kind:"actual", causation_id:`evt_ai_generate:${jobId}`, correlation_id: this.workspaceId, schema_version:"1.0.0", metadata:{ model_id:"n0va-diffusion-v3", premium:isPremiumGen } } as unknown as UsageEvent);
+      billRecordUsage({ tenant_id: this.workspaceId, meter:"ai_inference_minutes" as MeterKey, quantity: Math.ceil(input.durationSec/60* (isPremiumGen?1.5:1)), job_id: jobId, idempotency_key:`ai:${jobId}`, kind:"actual", causation_id:`evt_ai_generate:${jobId}`, correlation_id: this.workspaceId, schema_version:"1.0.0" } as unknown as UsageEvent);
+    }catch{}
     return {
       jobId,
       status: "processing",
@@ -1826,6 +1868,81 @@ export class VideosService {
   async evaluateOverage() { await this.assert("READ"); return entOverage(this.workspaceId); }
   async getEntitlementHistory(limit=50){ await this.assert("READ"); return entHistory(this.workspaceId, limit); }
   async exampleEntitlement(tier?: VideoTier){ await this.assert("READ"); return entExample(this.workspaceId, tier ?? entGet(this.workspaceId).plan); }
+
+  // ── Usage-Based Billing (transparent metering, immutable ledger, versioned pricing) ──
+  /** Estimate before execution: usage → rate card → cost range → confirmation → reservation */
+  async estimateBilling(req: Omit<EstimateRequest,"tenant_id"> & { pricing_version?: PricingVersion }) {
+    await this.assert("READ");
+    const full: EstimateRequest = { ...req, tenant_id: this.workspaceId } as EstimateRequest;
+    const est = billEstimate(full);
+    // Budget check — if would exceed hard cap, include blocking_budget hint
+    const budgetCheck = billCheckBudget(this.workspaceId, est);
+    if(!budgetCheck.allowed){
+      //Annotate estimate requires_confirmation true and include fallback
+      (est as unknown as { blocking_budget?: unknown }).blocking_budget = budgetCheck.blocking_budget;
+    }
+    await this.audit("billing.estimate.created", est.estimate_id, "BillingEstimate", { operation: est.operation, expected_cents: est.estimated_cost.expected_cents, requires_confirmation: est.requires_confirmation });
+    return { ...est, budget_check: budgetCheck };
+  }
+  async getBillingEstimate(estimate_id:string){ await this.assert("READ"); const e=billGetEstimate(estimate_id); if(!e) throw new Error("Estimate not found"); return e; }
+  async approveBillingEstimate(estimate_id:string){
+    await this.assert("UPDATE");
+    const e=billApproveEstimate(estimate_id);
+    await this.audit("billing.estimate.approved", estimate_id, "BillingEstimate", { operation: e.operation });
+    return e;
+  }
+  async recordBillingUsage(input: Omit<UsageEvent,"usage_id"|"recorded_at"|"period"|"cost_cents"|"rate_cents"> & { quantity:number; meter:MeterKey }){
+    await this.assert("CREATE");
+    const evt = billRecordUsage({ ...input, tenant_id: this.workspaceId, currency: (input.currency ?? "USD") as Currency } as unknown as Parameters<typeof billRecordUsage>[0]);
+    await this.audit("billing.usage.recorded", evt.usage_id, "BillingUsage", { meter: evt.meter, quantity: evt.quantity, cost_cents: evt.cost_cents, idempotency_key: evt.idempotency_key });
+    // Also mirror to entitlement usage for included/overage tracking (storage_gb etc.)
+    if(evt.meter.startsWith("stored_")) entRecordUsage(this.workspaceId, { storage_gb: Math.ceil(evt.quantity/30) } as unknown as Partial<UsageState>); // approx GB-months
+    if(evt.meter.startsWith("gpu_")) entRecordUsage(this.workspaceId, { render_minutes: Math.ceil(evt.quantity/60) } as unknown as Partial<UsageState>);
+    if(evt.meter.startsWith("ai_")) entRecordUsage(this.workspaceId, { ai_credits_used: Math.ceil(evt.quantity) } as unknown as Partial<UsageState>);
+    return evt;
+  }
+  async createBillingAdjustment(original_usage_id:string, correction_quantity:number, reason:string){
+    await this.assert("CREATE");
+    const adj=billAdjustment(original_usage_id, correction_quantity, reason, this.userId);
+    await this.audit("billing.usage.adjusted", adj.usage_id, "BillingUsage", { original: original_usage_id, correction_quantity, reason });
+    return adj;
+  }
+  async getBillingLedger(limit=50){ await this.assert("READ"); return billLedger(this.workspaceId, limit); }
+  async getBillingRateCard(version?:PricingVersion, region?:Region, plan?:string){ await this.assert("READ"); return billRateCard(version, region, plan); }
+  async listBillingRateCards(){ await this.assert("READ"); return billListRateCards(); }
+  async getBillingDashboard(period?:string){ await this.assert("READ"); return billDashboard(this.workspaceId, period); }
+  async getBillingJobCost(job_id:string){ await this.assert("READ"); const v=billJobCost(job_id); if(!v) throw new Error("Job not found"); return v; }
+  async listBillingEvents(limit=50){ await this.assert("READ"); return billEvents(this.workspaceId, limit); }
+  // Budgets & quotas (hierarchy: organization → tenant → workspace → project → user → agent → job)
+  async createBillingBudget(policy: Omit<BudgetPolicy,"budget_id"|"created_at"|"updated_at"|"tenant_id">){
+    await this.assert("CREATE");
+    const bp=billCreateBudget({ ...policy, tenant_id: this.workspaceId });
+    await this.audit("billing.budget.created", bp.budget_id, "Budget", { scope: bp.scope, limit_cents: bp.limit_cents, period: bp.period });
+    return bp;
+  }
+  async listBillingBudgets(){ await this.assert("READ"); return billListBudgets(this.workspaceId); }
+  async getBillingBudgetState(budget_id:string){ await this.assert("READ"); const s=billBudgetState(budget_id); if(!s) throw new Error("Budget not found"); return s; }
+  async reserveBillingBudget(estimate_id:string, budget_id:string, amount_cents?:number){
+    await this.assert("CREATE");
+    const r=billReserve(estimate_id, budget_id, amount_cents);
+    await this.audit("billing.budget.reserved", r.reservation_id, "BudgetReservation", { estimate_id, budget_id, amount_cents: r.amount_cents });
+    return r;
+  }
+  async releaseBillingReservation(reservation_id:string, status?: Parameters<typeof billRelease>[1]){ await this.assert("UPDATE"); return billRelease(reservation_id, status); }
+  // Invoice aggregation: immutable ledger → draft → finalized (versioned pricing never retroactively alters)
+  async aggregateBillingInvoice(period?:string){ await this.assert("READ"); const inv=billAggregateInvoice(this.workspaceId, period); await this.audit("billing.invoice.aggregated", inv.invoice_id, "Invoice", { period: inv.period, total_cents: inv.total_cents }); return inv; }
+  async finalizeBillingInvoice(invoice_id:string){ await this.assert("UPDATE"); const inv=billFinalizeInvoice(invoice_id); await this.audit("billing.invoice.finalized", invoice_id, "Invoice", { total_cents: inv.total_cents }); return inv; }
+  async getBillingInvoice(invoice_id:string){ await this.assert("READ"); const inv=billGetInvoice(invoice_id); if(!inv) throw new Error("Invoice not found"); return inv; }
+  async listBillingInvoices(){ await this.assert("READ"); return billListInvoices(this.workspaceId); }
+  async createBillingCredit(input: Omit<import("./billing-types").CreditRecord,"credit_id"|"created_at">){ await this.assert("CREATE"); const c=billCreateCredit(input); await this.audit("billing.credit.created", c.credit_id, "Credit", { amount_cents: c.amount_cents, reason: c.reason }); return c; }
+  async listBillingCredits(){ await this.assert("READ"); return billListCredits(this.workspaceId); }
+  async getBillingAccount(){ await this.assert("READ"); return billGetAccount(this.workspaceId); }
+  async setBillingAccount(mode: import("./billing-types").BillingAccount["mode"], prepaid_balance_cents?:number, hard_cap_cents?:number){
+    await this.assert("UPDATE");
+    const acct=billSetAccount({ tenant_id: this.workspaceId, mode, prepaid_balance_cents: prepaid_balance_cents ?? 0, currency:"USD", hard_cap_cents, soft_cap_cents: hard_cap_cents? Math.round(hard_cap_cents*0.8): undefined });
+    await this.audit("billing.account.updated", this.workspaceId, "BillingAccount", { mode, prepaid_balance_cents });
+    return acct;
+  }
 
   // ── Transcode ─────────────────────────────────────────────────────────────
   async createTranscode(input: { assetId: string; targetCodec: string; targetResolution: string }) {

@@ -31,6 +31,7 @@ import { ReliabilityEngineeringPanel } from "./reliability-engineering-component
 import { ObservabilityFinOpsPanel } from "./observability-finops-components";
 import { PolicyPluginPanel } from "./policy-plugin-components";
 import { EntitlementControlCenter } from "./entitlement-components";
+import { BillingControlCenter } from "./billing-components";
 
 // ── Legacy Types ─────────────────────────────────────────────────────────────
 export interface VideosActions {
@@ -240,6 +241,7 @@ const STUDIO_TABS = [
   { id: "reliability", label: "Reliability" },
   { id: "observability", label: "Observability" },
   { id: "entitlements", label: "Entitlements" },
+  { id: "billing", label: "Billing" },
   { id: "policy-plugin", label: "Policy & Plugins" },
   { id: "copilot", label: "Copilot" },
   { id: "governance", label: "Governance" },
@@ -592,6 +594,11 @@ export function VideoStudioTranscendent({
           {/* ENTITLEMENTS — capability-based tiers */}
           {activeTab === "entitlements" && (
             <EntitlementControlCenter tenantId={typeof window !== "undefined" ? undefined : undefined} />
+          )}
+
+          {/* BILLING — usage-based transparent metering */}
+          {activeTab === "billing" && (
+            <BillingControlCenter tenantId={typeof window !== "undefined" ? undefined : undefined} />
           )}
 
           {/* POLICY & PLUGINS */}

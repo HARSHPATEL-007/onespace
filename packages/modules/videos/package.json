@@ -84,7 +84,10 @@
     "./observability-components": "./src/observability-finops-components.tsx",
     "./entitlement": "./src/entitlement-engine.ts",
     "./entitlement-types": "./src/entitlement-types.ts",
-    "./entitlement-components": "./src/entitlement-components.tsx"
+    "./entitlement-components": "./src/entitlement-components.tsx",
+    "./billing": "./src/billing-engine.ts",
+    "./billing-types": "./src/billing-types.ts",
+    "./billing-components": "./src/billing-components.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
