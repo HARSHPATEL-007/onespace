@@ -139,6 +139,10 @@ integrations    Integration[]
   healthOutcomeTrusts HealthOutcomeTrust[]
   healthProvenanceEvents HealthProvenanceEvent[]
   healthCorrectionTrusts HealthCorrectionTrust[]
+  healthPatientGoals HealthPatientGoal[]
+  healthPriorityItems HealthPriorityItem[]
+  healthWhatChangedEvents HealthWhatChangedEvent[]
+  healthCommandCenterSnapshots HealthCommandCenterSnapshot[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4408,6 +4412,10 @@ model HealthPatient {
   outcomeTrusts HealthOutcomeTrust[]
   provenanceEvents HealthProvenanceEvent[]
   correctionTrusts HealthCorrectionTrust[]
+  patientGoals HealthPatientGoal[]
+  priorityItems HealthPriorityItem[]
+  whatChangedEvents HealthWhatChangedEvent[]
+  commandCenterSnapshots HealthCommandCenterSnapshot[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -6377,6 +6385,163 @@ model HealthCorrectionTrust {
   @@index([workspaceId, patientId])
   @@index([recordId])
   @@index([reviewStatus])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — UNIFIED PATIENT COMMAND CENTER
+// Personalized, prioritized, explainable daily workspace. Four questions: What matters today? What changed? What next? Who is waiting?
+// AHRQ health-literacy: plain language, reduce numbers, evaluate with patients. WCAG 2.2 AA, NHS inclusion.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum CareContext {
+  STABLE_WELLNESS
+  NEW_DIAGNOSIS
+  POST_DISCHARGE_RECOVERY
+  PREGNANCY
+  CHRONIC_DISEASE_MONITORING
+  ACTIVE_TREATMENT
+  MENTAL_HEALTH_SUPPORT
+  CAREGIVER_MANAGED_CARE
+  PEDIATRIC_ADOLESCENT_CARE
+  PALLIATIVE_HOSPICE_CARE
+  EMERGENCY_URGENT_FOLLOWUP
+}
+
+enum PriorityLevel {
+  EMERGENCY // Immediate human help may be needed
+  URGENT // Same-day or rapid review
+  IMPORTANT // Action due soon
+  ROUTINE // Useful but not time-sensitive
+  INFORMATIONAL // No action required
+}
+
+enum HealthTaskStatus {
+  PLANNED
+  DUE_TODAY
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+  RESCHEDULED
+  WAITING_FOR_CLINICIAN
+  BLOCKED
+  CANCELLED
+  NOT_APPLICABLE
+}
+
+enum ResultStatus {
+  NEW
+  AWAITING_CLINICIAN_REVIEW
+  REVIEWED
+  ACTION_REQUESTED
+  REPEAT_RECOMMENDED
+  STABLE_OR_EXPECTED
+  CONFLICTING
+  URGENT_ESCALATION
+}
+
+enum WhatChangedCategory {
+  NEW
+  IMPROVED
+  WORSENED
+  STABLE
+  MISSING
+  CORRECTED
+  RECLASSIFIED
+  AWAITING_REVIEW
+  NEWLY_RESTRICTED_BY_CONSENT
+  NEWLY_SHARED_WITH_CARE_TEAM
+  NEWLY_ADDED_TO_TREATMENT_PLAN
+}
+
+/// Patient goals — “What matters to me” (12 types). Evaluated against recommendations, not only clinical risk.
+model HealthPatientGoal {
+  id          String   @id @default(uuid())
+  workspaceId String
+  patientId   String
+  goalType    String   // health_goals, functional_goals, work_caregiving_constraints, preferred_treatment_outcomes, lifestyle_priorities, cultural_religious_considerations, communication_preferences, financial_constraints, treatment_boundaries, advance_care_preferences, accessibility_needs
+  title       String
+  description String   @default("")
+  priority    Priority @default(MEDIUM)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+}
+
+/// Priority engine ranked item — distinguishes AI-generated priority from diagnosis.
+model HealthPriorityItem {
+  id                  String        @id @default(uuid())
+  workspaceId         String
+  patientId           String
+  title               String        // plain-language, e.g. "Possible concern: blood pressure above usual range"
+  whatChanged         String?       // what changed
+  nextStep            String?       // recommended next step
+  urgency             String?       // urgency
+  reason              String?       // reason shown
+  dataSource          String?       // home BP monitor, etc.
+  timestamp           DateTime      @default(now())
+  confidence          String?       // evidence status
+  responsiblePerson   String?       // care team member
+  dueAt               DateTime?
+  priority            PriorityLevel @default(ROUTINE)
+  status              String        @default("awaiting_patient_action") // awaiting_patient_action, completed, snoozed, hidden
+  requiresHumanReview Boolean       @default(false)
+  whyShown            String?       // 3 readings above threshold in 24h
+  provenanceRef       String?       // prov-...
+  isAiGenerated       Boolean       @default(true)
+  reviewedByClinician Boolean       @default(false)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([priority])
+  @@index([dueAt])
+}
+
+/// What changed since reference point — 11 categories, links to supporting record and provenance.
+model HealthWhatChangedEvent {
+  id               String              @id @default(uuid())
+  workspaceId      String
+  patientId        String
+  category         WhatChangedCategory
+  title            String
+  description      String              @default("")
+  supportingRecordId String?
+  provenanceRef    String?             // prov-...
+  referencePoint   String?             // since_last_visit, since_discharge, since_treatment_started, etc.
+  referenceDate    DateTime?
+  createdAt        DateTime            @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([category])
+  @@index([referencePoint])
+}
+
+/// Home-screen snapshot — personalized command center JSON, versioned for what-changed comparison.
+model HealthCommandCenterSnapshot {
+  id          String   @id @default(uuid())
+  workspaceId String
+  patientId   String
+  asOf        DateTime @default(now())
+  careContext CareContext @default(STABLE_WELLNESS)
+  homeScreen  Json     // { patient_id, as_of, context: { care_state, last_visit, next_visit }, priorities, medications, appointments, results, trends, messages, preventive_gaps, financial_warnings, what_changed, accessibility }
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([asOf(sort: Desc)])
 }
 
 /// N0VA LEGAL - revision history.

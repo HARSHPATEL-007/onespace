@@ -18,6 +18,7 @@ const ENERGY_EMOJI: Record<string, string> = { LOW: "🪫", OK: "🔋", HIGH: "�
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "command", label: "Command Center" },
   { id: "safety", label: "Safety OS" },
   { id: "registry", label: "Registry & CVC" },
   { id: "wallet", label: "Wallet" },
@@ -149,6 +150,14 @@ export function WellnessBoard({
   const [provenanceTrace, setProvenanceTrace] = useState<Record<string, unknown> | null>(null);
   const [upstreamId, setUpstreamId] = useState("");
   const [correctionApproveForm, setCorrectionApproveForm] = useState({ correctionId:"", correctedValue:"20 mg" });
+  // command center state
+  const [commandHome, setCommandHome] = useState<Record<string, unknown> | null>(null);
+  const [commandWhatChanged, setCommandWhatChanged] = useState<Array<Record<string, unknown>>>([]);
+  const [commandGoals, setCommandGoals] = useState<Array<Record<string, unknown>>>([]);
+  const [commandActionCenter, setCommandActionCenter] = useState<Record<string, unknown> | null>(null);
+  const [commandCareContext, setCommandCareContext] = useState("STABLE_WELLNESS");
+  const [newGoal, setNewGoal] = useState({ goalType:"health_goals", title:"" });
+  const [explainLevel, setExplainLevel] = useState<"simple"|"helpful"|"detailed">("helpful");
 
   // fetch dashboard
   useEffect(() => {
@@ -248,6 +257,15 @@ export function WellnessBoard({
         const pc = await j(`/api/health/provenance/corrections?patientId=${demoPatient}`);
         if (alive && pc?.rows) setProvenanceCorrections(pc.rows);
         setProvenanceForm(prev=> ({ ...prev, patientId: demoPatient }));
+        const ch = await j(`/api/health/command-center/home?patientId=${demoPatient}&careContext=${commandCareContext}`);
+        if (alive && ch) setCommandHome(ch.homeScreen ?? ch);
+        const wcc = await j(`/api/health/command-center/what-changed?patientId=${demoPatient}&referencePoint=since_last_visit`);
+        if (alive && wcc?.events) setCommandWhatChanged(wcc.events);
+        else if (alive && wcc?.whatChanged) setCommandWhatChanged(wcc.whatChanged);
+        const cg = await j(`/api/health/command-center/goals?patientId=${demoPatient}`);
+        if (alive && cg?.rows) setCommandGoals(cg.rows);
+        const ac = await j(`/api/health/command-center/action-center?patientId=${demoPatient}`);
+        if (alive && ac) setCommandActionCenter(ac);
       }
     })();
     return () => { alive = false; };
@@ -1295,6 +1313,176 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11 }}>{["Which patient/encounter?","What source data?","Was each source patient-reported/device-generated/clinician-entered/imported/inferred/synthetic?","Which device/fw/calibration/quality?","When did event occur, was clock synchronized?","What transformations?","Which model/policy versions?","What evidence/uncertainty?","Which consent/access policy?","Who reviewed/approved?","What action?","Was action delivered?","What outcome?","Has source been corrected?","Which downstream affected?","Can chain be cryptographically verified?"].map(q=> <div key={q} style={{ padding:"4px 6px", border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)" }}>{q}</div>)}</div>
             <div style={{ marginTop:8, padding:10, border:"1.5px solid #4f46e5", borderRadius:10, fontSize:12, fontWeight:800, textAlign:"center", background:"var(--nv-color-surface-raised)" }}>Every important clinical fact in N0VA should be explainable as a signed, time-aware chain from source to transformation to inference to human decision to outcome.</div>
             <div style={{ marginTop:6, display:"flex", gap:6, flexWrap:"wrap", fontSize:11 }}><Pill>First release: source classification, device metadata, timestamp/freshness, signal quality, FHIR Provenance, model/policy version, upstream/downstream, event log, correction history, explanation, signed high-risk actions</Pill><Pill>Second: device attestation, calibration registry, transformation graph, outcome links, patient-visible, conflict, derived lineage, impact</Pill><Pill>Third: cross-org, research lineage, privacy-wallet integration, automated propagation, post-market surveillance, cryptographic checkpoints, verification portal</Pill></div>
+          </Section>
+        </div>
+      )}
+
+
+
+      {/* COMMAND CENTER — Unified Patient Command Center */}
+      {tab === "command" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Patient Command Center — Prioritized, Explainable Daily Workspace" subtitle="Answers: What matters today? What changed? What next? Who is waiting? — Simplifies by default, drill-down to source/provenance/uncertainty. Adapts to 11 care contexts." action={<><Badge tone="primary">AHRQ Health-Literacy</Badge><Badge tone="warning">WCAG 2.2 AA</Badge><Pill tone="success">NHS Inclusion</Pill></>}>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center", fontSize:11 }}>
+              <span>Care context:</span>
+              <select className="nv-select" value={commandCareContext} onChange={async e=> {
+                const ctx=e.target.value;
+                setCommandCareContext(ctx);
+                const pid=(patients[0] as Record<string,unknown> | undefined)?.id as string | undefined ?? (commandHome as Record<string,unknown> | undefined)?.patient_id as string | undefined;
+                if(pid){
+                  const r=await fetch(`/api/health/command-center/home?patientId=${pid}&careContext=${ctx}`);
+                  const j=await r.json().catch(()=>null);
+                  if(j) setCommandHome(j.homeScreen ?? j);
+                }
+              }} style={{ width:200, fontSize:11 }}>
+                {["STABLE_WELLNESS","NEW_DIAGNOSIS","POST_DISCHARGE_RECOVERY","PREGNANCY","CHRONIC_DISEASE_MONITORING","ACTIVE_TREATMENT","MENTAL_HEALTH_SUPPORT","CAREGIVER_MANAGED_CARE","PEDIATRIC_ADOLESCENT_CARE","PALLIATIVE_HOSPICE_CARE","EMERGENCY_URGENT_FOLLOWUP"].map(c=> <option key={c} value={c}>{c.replace(/_/g," ")}</option>)}
+              </select>
+              <Pill tone="primary">8-card layout</Pill><Pill>Plain language</Pill><Pill>No single health score</Pill>
+            </div>
+            {(commandHome as Record<string,unknown> | null) ? (
+              <div style={{ marginTop:8, padding:10, border:"1.5px solid #059669", borderRadius:10, background:"#ecfdf5" }}>
+                <b>{String((commandHome as Record<string,unknown>).todayCard ? ((commandHome as Record<string,unknown>).todayCard as Record<string,unknown>).overview as string : "Today's health overview")}</b>
+                <div style={{ marginTop:6, display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px,1fr))", gap:8, fontSize:11 }}>
+                  <div>Urgent: <b>{String(((commandHome as Record<string,unknown>).todayCard as Record<string,unknown> | undefined)?.urgentItems ?? (commandHome as Record<string,unknown>).urgentItems ?? "—")}</b></div>
+                  <div>Actions due today: <b>{String(((commandHome as Record<string,unknown>).todayCard as Record<string,unknown> | undefined)?.actionsDueToday ?? "—")}</b></div>
+                  <div>Next appointment: <b>{(commandHome as Record<string,unknown>).next_visit ? new Date(String((commandHome as Record<string,unknown>).next_visit)).toLocaleDateString() : String(((commandHome as Record<string,unknown>).todayCard as Record<string,unknown> | undefined)?.nextAppointment ? new Date(String(((commandHome as Record<string,unknown>).todayCard as Record<string,unknown>).nextAppointment)).toLocaleDateString() : "—")}</b></div>
+                  <div>Medication: <b>{String((commandHome as Record<string,unknown>).medications ? ((commandHome as Record<string,unknown>).medications as unknown[]).length + " active" : String(((commandHome as Record<string,unknown>).todayCard as Record<string,unknown> | undefined)?.medicationStatus ?? "—"))}</b></div>
+                  <div>Freshness: <b>{String((commandHome as Record<string,unknown>).dataFreshness ?? ((commandHome as Record<string,unknown>).todayCard as Record<string,unknown> | undefined)?.dataFreshness ?? "—")}</b></div>
+                  <div>Reviewed: <b>{String(((commandHome as Record<string,unknown>).todayCard as Record<string,unknown> | undefined)?.clinicianReviewed ?? "false")}</b></div>
+                </div>
+                <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Source: Home BP monitor • Last updated: 28 minutes ago • Data quality: Good • Interpretation: Care-plan rule + clinician-approved threshold • Reviewed by clinician: No • Model output: Not used</div>
+              </div>
+            ) : <div style={{ fontSize:12, color:"var(--nv-color-text-faint)"}}>No command center data — select a patient or create one. Home screen adapts to care context (stable wellness → emergency).</div>}
+          </Section>
+          <Section title="What Needs Attention — Priority Engine (12 Factors, 5 Levels)" subtitle="Clinical urgency, time sensitivity, patient safety, overdue, clinician waiting, patient goals, treatment importance, confidence/evidence, consequence of delay, cost/coverage deadline, preference, accessibility — distinguishes AI priority (needs review/possible concern) from diagnosis.">
+            <div style={{ overflowX:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Priority</th><th>Meaning</th><th>Example</th></tr></thead><tbody><tr><td><span style={{ background:"#7f1d1d", color:"white", padding:"2px 6px", borderRadius:999, fontSize:10, fontWeight:800 }}>EMERGENCY</span></td><td>Immediate human help</td><td>Severe breathing difficulty</td></tr><tr><td><Pill tone="danger">URGENT</Pill></td><td>Same-day/rapid review</td><td>Abnormal result awaiting review</td></tr><tr><td><Pill tone="warning">IMPORTANT</Pill></td><td>Action due soon</td><td>Medication refill/follow-up</td></tr><tr><td><Pill tone="primary">ROUTINE</Pill></td><td>Useful not time-sensitive</td><td>Preventive reminder</td></tr><tr><td><Pill>INFORMATIONAL</Pill></td><td>No action required</td><td>Stable sleep trend</td></tr></tbody></table></div>
+            <div style={{ marginTop:8 }}>
+              <div style={{ display:"grid", gap:8 }}>
+                {((commandHome as Record<string,unknown> | null)?.priorities as Array<Record<string,unknown>> | undefined ?? []).slice(0,3).map((p,i)=> (
+                  <div key={String(p.id ?? i)} className="nv-card" style={{ padding:10, borderLeft: `4px solid ${String(p.severity)==="urgent"||String(p.priority)==="URGENT"?"#dc2626": String(p.severity)==="important"?"#d97706":"#6b7280"}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}><b>{String(p.title ?? p.plain_language_title ?? "Priority")}</b><Pill tone={String(p.severity)==="important"||String(p.priority)==="IMPORTANT"?"warning":String(p.priority)==="URGENT"?"danger":"neutral"}>{String(p.urgency ?? p.priority ?? "—")}</Pill></div>
+                    <div style={{ fontSize:11, color:"var(--nv-color-text-faint)", marginTop:4 }}>{String(p.rationale ?? p.reason ?? "Rationale")}</div>
+                    <div style={{ fontSize:11, marginTop:4 }}><b>What changed:</b> {String(p.whatChanged ?? p.what_changed ?? "3 readings above threshold in 24h")} • <b>Next step:</b> {String(p.nextStep ?? p.next_step ?? "Recheck while seated")} • <b>Source:</b> {String(p.source ?? p.dataSource ?? "Home BP monitor")} • <b>Confidence:</b> {String(p.confidence ?? "Good")} • <b>Responsible:</b> {String(p.responsiblePerson ?? p.responsible_person ?? "Care team")}</div>
+                    <div style={{ marginTop:6, display:"flex", gap:6, flexWrap:"wrap" }}><Button size="sm" onClick={()=> alert(`Action for ${String(p.title)} — provenance ${String(p.provenanceRef ?? p.provenance_ref ?? "")}`)}>Action</Button><Button size="sm" variant="ghost" onClick={()=> setExplainLevel("simple")}>Why am I seeing this?</Button><Button size="sm" variant="ghost" onClick={()=> alert("Marked incorrect — will trigger correction workflow")}>This is incorrect</Button><Button size="sm" variant="ghost">Hide/snooze (safe)</Button></div>
+                    <div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4 }}>Human review required: {String(p.requiresHumanReview ?? p.reviewed_by_clinician === false ? "Yes" : "No")} • Due: {p.due_at? new Date(String(p.due_at)).toLocaleString(): p.dueAt? new Date(String(p.dueAt)).toLocaleString():"—"}</div>
+                    <div style={{ marginTop:4, fontSize:11 }}><span style={{ cursor:"pointer", color:"#4f46e5" }} onClick={()=> setExplainLevel(explainLevel==="simple"?"helpful": explainLevel==="helpful"?"detailed":"simple")}>Explain this: {explainLevel==="simple"?"Your blood pressure has been higher than usual.": explainLevel==="helpful"?"Three readings over the last day were above your recent average. Recheck while seated and follow your care plan.":`Readings: ${(p as Record<string,unknown>).readings ?? "148/92 at 08:10, 151/94 at 12:20, 146/90 at 19:05"}. Device: Omron, firmware 2.1. Signal quality: good. Rule: BP-monitoring-policy 4.1. No clinician review.`}</span></div>
+                  </div>
+                ))}
+                {(!commandHome || ((commandHome as Record<string,unknown>).priorities as unknown[] ?? []).length===0) && (
+                  <div className="nv-card" style={{ padding:10, borderLeft:"4px solid #d97706" }}><b>Possible concern: Blood pressure above usual range</b><div style={{ fontSize:11, color:"var(--nv-color-text-faint)"}}>What changed: 3 readings above your personal threshold in 24 hours. Source: Home BP monitor, last reading 28 minutes ago.</div><div style={{ fontSize:11, marginTop:4 }}><b>What to do:</b> Recheck while seated and follow your care plan. <b>Urgency:</b> Contact your care team today if readings remain high. <b>Why shown:</b> 3 readings above threshold in 24h. <b>Confidence:</b> Good. <b>Responsible:</b> Care team.</div><div style={{ marginTop:6, display:"flex", gap:6 }}><Button size="sm">Recheck</Button><Button size="sm" variant="ghost">Why am I seeing this?</Button><Button size="sm" variant="ghost">This is incorrect</Button></div><div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4 }}>Human review required: Yes • Due: Tomorrow • Source: Home BP monitor • Last updated: 28 minutes ago • Reviewed by clinician: No</div></div>
+                )}
+              </div>
+              <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>For safety-sensitive, card must display when human review is required. AI priority never presented as diagnosis — uses “needs review/possible concern/action may be due”.</div>
+            </div>
+          </Section>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Medications and Treatment Plan — Prescribed vs Real-World">
+              <div style={{ fontSize:11 }}>
+                <div style={{ display:"grid", gap:6 }}>
+                  {((commandHome as Record<string,unknown> | null)?.medications as Array<Record<string,unknown>> | undefined ?? []).slice(0,2).map((m,i)=> (
+                    <div key={i} className="nv-card" style={{ padding:10, border:"1px solid var(--nv-color-border)", borderRadius:8 }}>
+                      <b>{String(m.medicine_name ?? m.title ?? "Medication")}</b> <span style={{ color:"var(--nv-color-text-faint)"}}>— {String(m.purpose_plain_language ?? m.purpose ?? "")}</span>
+                      <div style={{ color:"var(--nv-color-text-faint)", marginTop:4 }}>Dose: {String(m.dose_and_schedule ?? m.dosage ?? "Once daily")} • Next dose: {m.next_dose? new Date(String(m.next_dose)).toLocaleString():"—"} • Refill: {String(m.refill_status ?? "5 days remaining")} • Supply: {String(m.remaining_supply ?? "7 days")} • Prescriber: {String(m.prescriber ?? "Dr. Smith")}</div>
+                      <div style={{ marginTop:4 }}><b>Missed-dose:</b> {String(m.missed_dose_guidance ?? "Do not guess about the next dose. Contact your pharmacist or care team.")}</div>
+                      <div style={{ display:"flex", gap:4, marginTop:4 }}><Pill>{String(m.status ?? "active")}</Pill><Pill tone="warning">{String(m.interaction_warning ?? "None")}</Pill><Pill>Reconciled: {String(m.last_reconciliation_date? new Date(String(m.last_reconciliation_date)).toLocaleDateString():"—")}</Pill></div>
+                    </div>
+                  ))}
+                  {(!commandHome || ((commandHome as Record<string,unknown>).medications as unknown[] ?? []).length===0) && <div className="nv-card" style={{ padding:10 }}><b>Lisinopril</b> — For blood pressure<br/><span style={{ color:"var(--nv-color-text-faint)"}}>Dose: 10 mg daily • Next dose: tonight • Refill: 5 days • Supply: 7 days • Prescriber: Dr. Patel • Reconciled: 1 Sep 2026 • Adherence: Good</span><br/><span style={{ fontSize:10, color:"var(--nv-color-text-faint)"}}>Never invent missed-dose — if care plan not specify: “Do not guess about the next dose. Contact your pharmacist or care team.”</span></div>}
+                </div>
+                <div style={{ marginTop:8 }}>
+                  <b>Treatment-plan timeline</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", alignItems:"center", fontSize:11, marginTop:4 }}>{["Today: Take medication","Tomorrow: Blood test before appointment","This week: Complete symptom questionnaire","15 Sep: Follow-up with cardiology","30 Sep: Reassess treatment response"].map((s,i)=> <span key={s} style={{ display:"inline-flex", alignItems:"center", gap:4 }}><span style={{ padding:"3px 8px", borderRadius:999, background:i===0?"#fef3c7":"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>{s}</span>{i<4 && <span style={{ color:"var(--nv-color-text-faint)"}}>→</span>}</span>)}</div>
+                  <div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4 }}>Owner, due time, completion status, dependency, preparation, escalation if overdue, care-team visibility, patient confirmation — Status: Planned/Due today/In progress/Completed/Missed/Rescheduled/Waiting for clinician/Blocked/Cancelled/Not applicable</div>
+                </div>
+              </div>
+            </Section>
+            <Section title="Appointments and Preparation — 15 Fields + Preparation Assistant">
+              <div style={{ fontSize:11 }}>
+                <div style={{ display:"grid", gap:6 }}>
+                  {((commandHome as Record<string,unknown> | null)?.appointments as Array<Record<string,unknown>> | undefined ?? []).slice(0,2).map((a,i)=> (
+                    <div key={i} className="nv-card" style={{ padding:8 }}>
+                      <b>{a.date_and_time? new Date(String(a.date_and_time)).toLocaleString(): "15 Sep 10:00"} — {String(a.clinician_and_specialty ?? "Cardiology")}</b><div style={{ color:"var(--nv-color-text-faint)"}}>Location: {String(a.location_or_video_link ?? "Clinic")} • Purpose: {String(a.visit_purpose ?? "Follow-up")} • Travel: {String(a.travel_time ?? "20 min")} • Insurance: {String(a.insurance_authorization_status ?? "Pending verification")} • Cost: {String(a.estimated_cost ?? "May vary")}</div>
+                      <div style={{ marginTop:4 }}><b>Preparation checklist:</b> {((a as Record<string,unknown>).preparation_checklist as string[] ?? ["Bring BP readings","Confirm med list","Complete questionnaire","Write down dizziness timing"]).map((item,idx)=> <div key={idx} style={{ display:"flex", gap:6 }}><input type="checkbox" /> <span>{item}</span></div>)}</div>
+                      <div style={{ fontSize:10, color:"var(--nv-color-text-faint)"}}>Source: clinic + care pathway + AI draft (labeled) • Follow-up tasks after visit • Interpreter/accessibility • Caregiver permission</div>
+                    </div>
+                  ))}
+                  {(!commandHome || ((commandHome as Record<string,unknown>).appointments as unknown[] ?? []).length===0) && <div className="nv-card" style={{ padding:8 }}><b>Before your cardiology appointment</b><div style={{ marginTop:4 }}><div style={{ display:"flex", gap:6 }}><input type="checkbox" /> Bring your home blood-pressure readings.</div><div style={{ display:"flex", gap:6 }}><input type="checkbox" /> Confirm your current medication list.</div><div style={{ display:"flex", gap:6 }}><input type="checkbox" /> Complete the symptom questionnaire.</div><div style={{ display:"flex", gap:6 }}><input type="checkbox" /> Write down when the dizziness occurs.</div></div><div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4}}>Show whether preparation came from clinic, care pathway, template, or AI draft.</div></div>}
+                </div>
+              </div>
+            </Section>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Results and Care-Team Messages — 8 Statuses, 9 Message States">
+              <div style={{ fontSize:11 }}>
+                <div><b>Results Review Queue</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["NEW","AWAITING_CLINICIAN_REVIEW","REVIEWED","ACTION_REQUESTED","REPEAT_RECOMMENDED","STABLE_OR_EXPECTED","CONFLICTING","URGENT_ESCALATION"].map(s=> <Pill key={s} tone={s==="URGENT_ESCALATION"?"danger":s==="AWAITING_CLINICIAN_REVIEW"?"warning":"neutral"}>{s}</Pill>)}</div>
+                  <div style={{ marginTop:6, padding:8, border:"1px solid var(--nv-color-border)", borderRadius:8, background:"var(--nv-color-surface-raised)" }}><i>“Your potassium result is outside the laboratory’s usual range. This result has not yet been reviewed by your care team. Do not change medication based on this screen; wait for instructions or contact the clinic if prompted.”</i> — Explain result, reference range, patient-specific target, trend, significance, clinician reviewed, what to do, preliminary/final — do not label “abnormal” solely on generic range.</div>
+                  <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Result</th><th>Status</th><th>Reviewed</th></tr></thead><tbody>{((commandHome as Record<string,unknown> | null)?.results as Array<Record<string,unknown>> | undefined ?? []).slice(0,3).map((r,i)=> <tr key={i}><td>{String(r.result).slice(0,30)}</td><td><Pill>{String(r.status)}</Pill></td><td>{String(r.clinician_reviewed? "Yes":"No")}</td></tr>)}{(commandHome as Record<string,unknown> | null) && ((commandHome as Record<string,unknown>).results as unknown[] ?? []).length===0 && <tr><td colSpan={3} className="nv-empty">No results — status distinguishes New/Awaiting/Reviewed/Action requested/Repeat/Stable/Conflicting/Urgent</td></tr>}</tbody></table></div>
+                </div>
+                <div style={{ marginTop:8 }}><b>Messages by action state</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["Needs your reply","Appointment-related","Medication-related","Result-related","Administrative","Billing/insurance","Educational","Completed","Archived"].map(s=> <Pill key={s}>{s}</Pill>)}</div><div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4}}>Sender, role, org, time, deadline, clinical advice, secure, attachments, related result/medication/appointment/task — label: Clinician-authored / AI-drafted clinician-approved / AI educational / Automated administrative — never appear as clinician.</div></div>
+              </div>
+            </Section>
+            <Section title="Trends + What Changed? — 12 Modules, 10 Categories">
+              <div style={{ fontSize:11 }}>
+                <div><b>Supported trends</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["sleep","activity","glucose","blood pressure","weight","heart rate","symptoms","med adherence","mood/stress (explicit permission)","recovery after hospitalization","PROs","lab trajectories"].map(t=> <Pill key={t}>{t}</Pill>)}</div><div style={{ color:"var(--nv-color-text-faint)", marginTop:4}}>Every chart: time period, units, source, measurement count, missing data, quality, baseline, threshold, event annotations, treatment changes, uncertainty, freshness — e.g. “Your average morning BP was higher this week than last.” Avoid “medication caused improvement.”</div></div>
+                <div style={{ marginTop:8 }}><b>What changed — since last visit (12 Aug)</b><div style={{ display:"grid", gap:4, marginTop:4 }}>{(commandWhatChanged.length? commandWhatChanged : [{ category:"IMPROVED", title:"Sleep duration increased by 42 minutes on average" },{ category:"WORSENED", title:"Morning blood pressure is higher than your previous baseline" },{ category:"NEW", title:"A follow-up blood test was ordered" },{ category:"CORRECTED", title:"Your medication list was updated from 10 mg to 20 mg" }].slice(0,4)).map((c:Record<string,unknown>,i:number)=> <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"4px 8px", border:"1px solid var(--nv-color-border)", borderRadius:6 }}><span><Pill tone={String(c.category)==="IMPROVED"?"success":String(c.category)==="WORSENED"||String(c.category)==="NEW"?"warning":"neutral"}>{String(c.category)}</Pill> {String(c.title)}</span><span style={{ fontSize:10, color:"var(--nv-color-text-faint)"}}>{String(c.provenanceRef ?? "prov-... Ner")}</span></div>)}</div><div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4}}>Categories 11: New/Improved/Worsened/Stable/Missing/Corrected/Reclassified/Awaiting review/Newly restricted/Newly shared/Newly added — each links to supporting record + provenance (measured vs AI interpretation).</div></div>
+              </div>
+            </Section>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Prevention, Costs, and Coverage — Personalized Gaps + Financial Warnings">
+              <div style={{ fontSize:11 }}><b>Gaps personalized by</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["age","sex/anatomy","pregnancy","medical history","family history","immunization","previous screening","risk factors","location","guidelines","preference","insurance","care-team"].map(f=> <Pill key={f}>{f}</Pill>)}</div><div style={{ color:"var(--nv-color-text-faint)", marginTop:4}}>Each: why relevant, due/overdue/optional, timing, responsible clinician, preparation, cost, coverage, source guideline, last completion, defer/decline — use “may be due” when incomplete, not “overdue”.</div>
+                <div style={{ marginTop:6 }}><b>Financial — 14 warnings + 5 confidence</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["prior-auth","referral requirements","network","estimated cost","deductible","med coverage","generic alternatives","financial assistance","transport barriers","unpaid balances","billing discrepancies","expiring authorizations","care delays","coverage status"].map(s=> <Pill key={s} tone="warning">{s}</Pill>)}</div><div style={{ display:"flex", gap:4, marginTop:4 }}>{["Confirmed by payer","Estimated","Patient-reported","Pending verification","May vary"].map(s=> <Pill key={s}>{s}</Pill>)}<span style={{ color:"var(--nv-color-text-faint)", alignSelf:"center" }}>— not recommend clinically inferior cheaper option; cost is one factor, route to clinician/patient.</span></div></div>
+              </div>
+            </Section>
+            <Section title="Details, Sources, Uncertainty, and Controls — 3-Level Disclosure">
+              <div style={{ fontSize:11 }}><div><b>Default:</b> Recommended next step: Schedule your follow-up blood test this week. Why: care plan includes check after starting medication. Urgency: Due by 8 Sep. Action: Find a laboratory.</div><div style={{ marginTop:4 }}><b>Expanded:</b> Source care plan, ordering clinician, observations, med start date, guideline, evidence status, contraindications, freshness, model version, uncertainty, alternatives, what happens if delayed, who receives result.</div><div style={{ marginTop:4 }}><b>Technical:</b> FHIR IDs, provenance graph, model card, calibration, validation population, policy decision, consent scope, audit events, version history — supports patient comprehension + professional review. WCAG 2.2, NHS usable by physical/cognitive/sensory/language/digital-access needs.</div></div>
+            </Section>
+          </div>
+          <Section title="Action Center — Single Task Engine (13 Sources) + Personalization (16) + Safety">
+            <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Aggregates from</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["Clinical care plans","Medication schedules","Lab orders","Imaging orders","Referrals","Appointments","Preventive care","Device maintenance","Consent expiration","Research participation","Insurance authorization","Financial assistance","Patient goals"].map(s=> <Pill key={s}>{s}</Pill>)}</div><div style={{ marginTop:6, maxHeight:100, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Task</th><th>Due</th><th>Priority</th><th>Status</th></tr></thead><tbody>{((commandActionCenter as Record<string,unknown> | null)?.tasks as Array<Record<string,unknown>> | undefined ?? [{ title:"Complete follow-up blood test", due_at: new Date(Date.now()+2*86400000).toISOString(), priority:"important", status:"planned" }]).slice(0,5).map((t:Record<string,unknown>,i:number)=> <tr key={i}><td>{String(t.title).slice(0,30)}</td><td style={{ fontSize:10 }}>{t.due_at? new Date(String(t.due_at)).toLocaleDateString():"—"}</td><td><Pill tone={String(t.priority)==="important"?"warning":"neutral"}>{String(t.priority)}</Pill></td><td><Pill>{String(t.status)}</Pill></td></tr>)}</tbody></table></div><div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4}}>Each: task_id, title, source {'{type, id}'}, owner, due_at, priority, status, rationale, requires_human_review, dependencies, escalation {'{after, recipient}'}, provenance_ref — avoid duplicates for same obligation.</div></div>
+              <div><b>Personalization 16</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["home-screen sections","preferred order","notification frequency","quiet hours","urgency sensitivity","displayed sources","units","language","reading level","chart density","caregiver visibility","financial visibility","mental/reproductive display","AI visibility","daily briefing time","preferred contact"].map(s=> <Pill key={s}>{s}</Pill>)}</div><div style={{ color:"var(--nv-color-text-faint)", marginTop:4}}>Must not allow hiding safety-critical alerts without explicit explanation + alternative notification.</div><div style={{ marginTop:6 }}><b>Patient goals “What matters to me” 11</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{(commandGoals.length? commandGoals : [{ title:"Avoid daytime drowsiness" }].slice(0,3)).map((g:Record<string,unknown>,i:number)=> <Pill key={i}>{String(g.title ?? g.goalType ?? "Goal")}</Pill>)}</div><div style={{ display:"flex", gap:4, marginTop:4 }}><input className="nv-input" placeholder="New goal e.g. Avoid daytime drowsiness" value={newGoal.title} onChange={e=> setNewGoal({...newGoal, title:e.target.value})} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!newGoal.title) return; const pid=(patients[0] as Record<string,unknown> | undefined)?.id as string | undefined; if(!pid) return; const r=await fetch("/api/health/command-center/goals",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: pid, goalType: newGoal.goalType, title: newGoal.title })}); const j=await r.json().catch(()=>null); if(r.ok && j?.goal) { setCommandGoals(prev=> [j.goal, ...prev].slice(0,5)); setNewGoal({ goalType:"health_goals", title:"" }); } }}>Add Goal</Button></div><div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4}}>Recommendations evaluated against patient goals, not only clinical risk — e.g. “You said avoiding daytime drowsiness is important. Options differ in this side effect. Discuss at appointment.”</div></div></div>
+            </div>
+          </Section>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Safety Behavior — 6 States">
+              <div style={{ display:"grid", gap:6, fontSize:11 }}><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #059669" }}><b>Normal</b><div style={{ color:"var(--nv-color-text-faint)"}}>Shows current priorities and routine tasks</div></div><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #d97706" }}><b>Data incomplete</b><div style={{ color:"var(--nv-color-text-faint)"}}>“Your glucose data has not updated for 9 hours. Check your sensor or enter a reading manually.”</div></div><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #4f46e5" }}><b>Awaiting clinical review</b><div style={{ color:"var(--nv-color-text-faint)"}}>Separates pending review from completed interpretation</div></div><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #dc2626" }}><b>Care-plan conflict</b><div style={{ color:"var(--nv-color-text-faint)"}}>“Your discharge instructions and medication list do not match. Contact your care team before changing the dose.”</div></div><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #7f1d1d", background:"#fef2f2" }}><b>Emergency concern</b><div style={{ color:"var(--nv-color-text-faint)"}}>Approved wording + human-contact route + local emergency instructions — not solely app notification</div></div><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #6b7280" }}><b>System degraded</b><div style={{ color:"var(--nv-color-text-faint)"}}>Safe fallback when integration unavailable</div></div></div>
+            </Section>
+            <Section title="Notifications + Care-Team Coordination">
+              <div style={{ fontSize:11 }}><b>Notifications 7 (urgency, channel reliability, consent)</b><div style={{ display:"grid", gap:4, marginTop:4, fontSize:10 }}><div>In-app → optional email (routine)</div><div>In-app/chosen → caregiver if authorized (med due)</div><div>In-app → secure message (result awaiting)</div><div>Push + secure → alternate (urgent care-team)</div><div>Voice/SMS/app → human escalation (emergency)</div><div>In-app + email → privacy-office review (consent anomaly)</div><div style={{ color:"var(--nv-color-text-faint)"}}>Show delivery successful — sent ≠ received/acknowledged.</div></div><div style={{ marginTop:6 }}><b>Care-team 8 views</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["Patient","Primary-care","Specialist","Nurse","Pharmacist","Caregiver","Social-care","Billing"].map(v=> <Pill key={v}>{v}</Pill>)} — each sees only necessary purpose. Shared tasks: owner, backup owner, due date, escalation, status, last update, related goal, patient visibility, audit history (AHRQ).</div></div></div>
+            </Section>
+          </div>
+          <Section title="What Changed After a Visit — Patient-Approved Summary">
+            <div style={{ padding:8, border:"1px solid var(--nv-color-border)", borderRadius:8, fontSize:11, background:"var(--nv-color-surface-raised)" }}>
+              Your care plan changed on 1 September:<br/>
+              <b>New:</b> Follow-up blood test ordered. Sleep target added.<br/>
+              <b>Changed:</b> Medication timing moved from morning to evening.<br/>
+              <b>Completed:</b> Cardiology referral reviewed.<br/>
+              <b>Still pending:</b> Insurance authorization for imaging.<br/>
+              <b>Your care team has not yet reviewed:</b> Home BP readings from last 24h.<br/>
+              <span style={{ color:"var(--nv-color-text-faint)"}}>Co-produced from signed clinical records, not inferred from conversational text.</span>
+              <div style={{ marginTop:6 }}><Button size="sm" variant="ghost" onClick={async()=> {
+                const pid=(patients[0] as Record<string,unknown> | undefined)?.id as string | undefined;
+                if(!pid) return;
+                const r=await fetch(`/api/health/command-center/what-changed-after-visit?patientId=${pid}&visitDate=2026-09-01`);
+                const j=await r.json().catch(()=>null);
+                alert(j? JSON.stringify(j,null,2).slice(0,800) : "No data");
+              }}>Fetch post-visit summary</Button></div>
+            </div>
+          </Section>
+          <Section title="Accessibility — WCAG 2.2 AA + NHS + AHRQ">
+            <div style={{ fontSize:11 }}><div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["screen readers","keyboard-only","voice control","low vision","color-blind","cognitive","dyslexia","older adults","low digital literacy","low bandwidth","mobile-only","limited language"].map(t=> <Pill key={t}>{t}</Pill>)} — test with all.</div><div style={{ marginTop:6, display:"flex", gap:4, flexWrap:"wrap" }}>{["No info by color alone","Large persistent focus","Keyboard every action","Plain labels","No forced drag","Adequate touch targets","Captions/transcripts","Text-to-speech","Voice input","Printable/offline","Clear error recovery","No timeout during reading","Consistent help"].map(b=> <Pill key={b} tone="primary">{b}</Pill>)}<span style={{ color:"var(--nv-color-text-faint)", alignSelf:"center" }}>NHS: varied physical/cognitive/social/cultural/learning needs + assisted support. AHRQ: simplify, confirm understanding, easy portals.</span></div></div>
+          </Section>
+          <Section title="Home-Screen Data Model + AI Orchestration + Acceptance">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, whiteSpace:"pre-wrap" }}>{`{
+  "patient_id": "tokenized",
+  "as_of": "2026-09-01T14:40:00+05:30",
+  "context": { "care_state": "active_treatment", "last_visit": "2026-08-12", "next_visit": "2026-09-03" },
+  "priorities": [{ "id": "priority-1", "title": "Possible concern: BP above usual", "severity": "important", "urgency": "today", "source": "home_bp_monitor" }],
+  "medications": [], "appointments": [], "results": [], "trends": [], "messages": []
+}`}</pre><div style={{ marginTop:6 }}><b>AI rules 12:</b> Summarize not diagnose, prioritize within safety, cite records, distinguish observed vs interpretation, abstain when stale/missing/contradictory, ask clarifying, avoid lock-screen sensitive, never expose restricted to caregiver, never create order without auth, never silently change plan, never wellness→medical advice, allow correction, record version/provenance.</div></div>
+              <div><div style={{ display:"grid", gap:4 }}><div><b>Rollout 4 phases</b><div style={{ color:"var(--nv-color-text-faint)"}}>1 Reliable aggregation (priorities, meds, appointments, results, messages, trends, freshness, correction, provenance) → 2 Action coordination (tasks, checklists, gaps, referrals, cost, caregiver, What Changed) → 3 Explainable intelligence (personalized prioritization, summaries, trend interpretation, safe recommendations, uncertainty) → 4 Longitudinal (cross-provider, research, digital-twin, goal optimization, predictive, family)</div></div><div style={{ marginTop:6 }}><b>Acceptance 13:</b> Identify most important action in seconds, understand why, see clinician reviewed, distinguish measured vs AI, see source/timestamp/quality, complete med/appointment tasks, understand what changed, correct record, see pending owners, view cost uncertainty, control caregiver visibility, use language/accessibility, reach human help, safe fallback.</div><div style={{ marginTop:6, padding:8, border:"1.5px solid #4f46e5", borderRadius:8, fontWeight:800, textAlign:"center", background:"var(--nv-color-surface-raised)" }}>Calm, trustworthy personal health operating system: reduce cognitive load, expose next meaningful action, never hide uncertainty behind polish.</div></div></div>
+            </div>
           </Section>
         </div>
       )}

@@ -10,7 +10,8 @@
     "./safety": "./src/safety.ts",
     "./registry": "./src/registry.ts",
     "./wallet": "./src/wallet.ts",
-    "./provenance": "./src/provenance.ts"
+    "./provenance": "./src/provenance.ts",
+    "./command-center": "./src/command-center.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

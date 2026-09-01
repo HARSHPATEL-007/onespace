@@ -5,6 +5,7 @@ import { ClinicalSafetyOS, SAFETY_CLASS, AUTHORIZATION_MATRIX, FEATURE_SAFETY_MA
 import { ModelRegistry, EVIDENCE_TIER, DEPLOYMENT_GATES, DRIFT_THRESHOLDS_EXAMPLE, FEATURE_STATUS, REGISTRY_API } from "./registry";
 import { HealthWallet, DATA_DOMAIN, CONSENT_WHO, ENFORCEMENT_POINTS, CORE_PRINCIPLES, WALLET_DATA_MODEL_TEMPLATE, CONSENT_EVENT_LEDGER_TEMPLATE } from "./wallet";
 import { HealthProvenanceFabric, TRUST_FABRIC_STAGES, PROVENANCE_LAYERS, DATA_ORIGIN, TRUST_LABELS, RETENTION_CLASSES, ACCEPTANCE_CRITERIA } from "./provenance";
+import { PatientCommandCenter, CARE_CONTEXTS, COMMAND_CENTER_LAYOUT, PRIORITY_LEVELS, TREND_MODULES, WHAT_CHANGED_CATEGORIES, RESULT_STATUS } from "./command-center";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -319,6 +320,7 @@ export class HealthService {
   private get registry() { return new ModelRegistry(this.workspaceId, this.userId, this.role); }
   private get wallet() { return new HealthWallet(this.workspaceId, this.userId, this.role); }
   private get provenance() { return new HealthProvenanceFabric(this.workspaceId, this.userId, this.role); }
+  private get commandCenter() { return new PatientCommandCenter(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -453,6 +455,21 @@ export class HealthService {
   async provenanceListCorrections(patientId?: string, take?: number) { return this.provenance.listCorrections(patientId, take); }
   async provenanceImpactAnalysis(recordId: string) { return this.provenance.impactAnalysis(recordId); }
   async provenanceGetProvenance(resourceId: string) { return this.provenance.getProvenance(resourceId); }
+
+  // ── Command Center — Unified Patient Command Center ──────────────────
+  get careContexts() { return CARE_CONTEXTS; }
+  get commandCenterLayout() { return COMMAND_CENTER_LAYOUT; }
+  get priorityLevels() { return PRIORITY_LEVELS; }
+  get trendModules() { return TREND_MODULES; }
+  get whatChangedCategories() { return WHAT_CHANGED_CATEGORIES; }
+  get resultStatuses() { return RESULT_STATUS; }
+  async commandCenterHome(patientId: string, careContext?: string) { return this.commandCenter.homeScreen(patientId, (careContext as never) ?? "STABLE_WELLNESS"); }
+  async commandCenterWhatChanged(patientId: string, referencePoint?: string) { return this.commandCenter.whatChangedSince(patientId, referencePoint); }
+  async commandCenterRecordWhatChanged(patientId: string, category: string, title: string, supportingRecordId?: string, provenanceRef?: string, referencePoint?: string) { return this.commandCenter.recordWhatChanged(patientId, category, title, supportingRecordId, provenanceRef, referencePoint); }
+  async commandCenterGoals(patientId: string) { return this.commandCenter.listGoals(patientId); }
+  async commandCenterCreateGoal(patientId: string, goalType: string, title: string, description?: string) { return this.commandCenter.createGoal(patientId, goalType, title, description); }
+  async commandCenterActionCenter(patientId?: string) { return this.commandCenter.actionCenter(patientId); }
+  async commandCenterWhatChangedAfterVisit(patientId: string, visitDate: string) { return this.commandCenter.whatChangedAfterVisit(patientId, visitDate); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {
