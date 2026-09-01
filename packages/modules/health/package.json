@@ -8,7 +8,8 @@
     "./server": "./src/server.ts",
     "./components": "./src/components.tsx",
     "./safety": "./src/safety.ts",
-    "./registry": "./src/registry.ts"
+    "./registry": "./src/registry.ts",
+    "./wallet": "./src/wallet.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

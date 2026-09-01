@@ -3,6 +3,7 @@ import { prisma, logAudit } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 import { ClinicalSafetyOS, SAFETY_CLASS, AUTHORIZATION_MATRIX, FEATURE_SAFETY_MAP, classifyFeature, DEFAULT_ENVELOPES, SAFE_ABSTENTION_MESSAGE, FMEA_ROWS, GOVERNANCE_ROLES, DEGRADED_RESPONSES } from "./safety";
 import { ModelRegistry, EVIDENCE_TIER, DEPLOYMENT_GATES, DRIFT_THRESHOLDS_EXAMPLE, FEATURE_STATUS, REGISTRY_API } from "./registry";
+import { HealthWallet, DATA_DOMAIN, CONSENT_WHO, ENFORCEMENT_POINTS, CORE_PRINCIPLES, WALLET_DATA_MODEL_TEMPLATE, CONSENT_EVENT_LEDGER_TEMPLATE } from "./wallet";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -315,6 +316,7 @@ export class HealthService {
 
   private get safety() { return new ClinicalSafetyOS(this.workspaceId, this.userId, this.role); }
   private get registry() { return new ModelRegistry(this.workspaceId, this.userId, this.role); }
+  private get wallet() { return new HealthWallet(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -388,6 +390,41 @@ export class HealthService {
   async createPostMarket(input: Parameters<ModelRegistry["createPostMarket"]>[0]) { return this.registry.createPostMarket(input); }
   async listClinicalReviews(modelId?: string) { return this.registry.listClinicalReviews(modelId); }
   async createClinicalReview(input: Parameters<ModelRegistry["createClinicalReview"]>[0]) { return this.registry.createClinicalReview(input); }
+
+  // ── Wallet — Patient-controlled health data wallet (policy-enforcing PDP/PEP) ───
+  get walletDataModelTemplate() { return WALLET_DATA_MODEL_TEMPLATE; }
+  get walletDataDomains() { return DATA_DOMAIN; }
+  get walletConsentWho() { return CONSENT_WHO; }
+  get walletEnforcementPoints() { return ENFORCEMENT_POINTS; }
+  get walletCorePrinciples() { return CORE_PRINCIPLES; }
+  async walletDataInventory(patientId: string) { return this.wallet.dataInventory(patientId); }
+  async walletListConsents(patientId?: string, status?: string) { return this.wallet.listConsents(patientId, status); }
+  async walletCreateConsent(input: Parameters<HealthWallet["createConsent"]>[0]) { return this.wallet.createConsent(input); }
+  async walletRevokeConsent(consentId: string, reason?: string) { return this.wallet.revokeConsent(consentId, reason); }
+  async walletDecide(input: Parameters<HealthWallet["decide"]>[0]) { return this.wallet.decide(input); }
+  async walletBreakGlass(patientId: string, reason: string, role: string, location?: string) { return this.wallet.breakGlass(patientId, reason, role, location); }
+  async walletDetectAnomalies(patientId: string) { return this.wallet.detectAnomalies(patientId); }
+  async walletDerivedData(patientId: string, derivedClass?: string) { return this.wallet.listDerivedData(patientId); }
+  async walletCreateDerivedData(patientId: string, derivedClass: string, sourceRefs: string[], purpose: string, modelVersion?: string) { return this.wallet.createDerivedData(patientId, derivedClass, sourceRefs, purpose, modelVersion); }
+  async walletCheckAISpecific(patientId: string, operation: string) { return this.wallet.checkAISpecificConsent(patientId, operation); }
+  async walletListResearchStudies() { return this.wallet.listResearchStudies(); }
+  async walletCreateResearchStudy(study: Record<string,unknown>) { return this.wallet.createResearchStudy(study); }
+  async walletResearchConsent(patientId: string, studyId: string, options: string[]) { return this.wallet.consentResearch(patientId, studyId, options); }
+  async walletResearchWithdraw(patientId: string, studyId: string) { return this.wallet.withdrawResearch(patientId, studyId); }
+  async walletListProxies(patientId: string) { return this.wallet.listProxies(patientId); }
+  async walletCreateProxy(input: Parameters<HealthWallet["createProxy"]>[0]) { return this.wallet.createProxy(input); }
+  async walletRevokeProxy(proxyId: string) { return this.wallet.revokeProxy(proxyId); }
+  async walletCreateExport(input: Parameters<HealthWallet["createExport"]>[0]) { return this.wallet.createExport(input); }
+  async walletListExports(patientId?: string) { return this.wallet.listExports(patientId); }
+  async walletRequestCorrection(input: Parameters<HealthWallet["requestCorrection"]>[0]) { return this.wallet.requestCorrection(input); }
+  async walletListCorrections(patientId?: string) { return this.wallet.listCorrections(patientId); }
+  async walletCreateRestriction(input: Parameters<HealthWallet["createRestriction"]>[0]) { return this.wallet.createRestriction(input); }
+  async walletListRestrictions(patientId?: string) { return this.wallet.listRestrictions(patientId); }
+  async walletRequestDeletion(patientId: string, dataDomains: string[]) { return this.wallet.requestDeletion(patientId, dataDomains as never); }
+  async walletListDeletionJobs(patientId?: string) { return this.wallet.listDeletionJobs(patientId); }
+  async walletLedgerSummary(patientId: string) { return this.wallet.ledgerSummary(patientId); }
+  async walletListAccessLedger(patientId: string, take?: number) { return this.wallet.listAccessLedger(patientId, take); }
+  async walletDashboard(patientId: string) { return this.wallet.walletDashboard(patientId); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

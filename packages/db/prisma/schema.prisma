@@ -120,6 +120,17 @@ integrations    Integration[]
   healthSafetyCases HealthSafetyCase[]
   healthSafetyAudits HealthSafetyAudit[]
   healthSafetyMonitors HealthSafetyMonitor[]
+  healthWalletConsents HealthWalletConsent[]
+  healthWalletConsentEvents HealthWalletConsentEvent[]
+  healthWalletAccessLedgers HealthWalletAccessLedger[]
+  healthWalletDerivedData HealthWalletDerivedData[]
+  healthWalletProxies HealthWalletProxy[]
+  healthWalletResearchStudies HealthWalletResearchStudy[]
+  healthWalletResearchConsents HealthWalletResearchConsent[]
+  healthWalletExports HealthWalletExport[]
+  healthWalletCorrections HealthWalletCorrection[]
+  healthWalletRestrictions HealthWalletRestriction[]
+  healthWalletDeletionJobs HealthWalletDeletionJob[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4372,6 +4383,16 @@ model HealthPatient {
   imaging   HealthImagingStudy[]
   devices   HealthDevicePatient[]
   wellnessPlan HealthWellnessPlan?
+  walletConsents HealthWalletConsent[]
+  walletAccessLedgers HealthWalletAccessLedger[]
+  walletDerivedData HealthWalletDerivedData[]
+  walletProxies HealthWalletProxy[]
+  walletResearchConsents HealthWalletResearchConsent[]
+  walletExports HealthWalletExport[]
+  walletCorrections HealthWalletCorrection[]
+  walletRestrictions HealthWalletRestriction[]
+  walletDeletionJobs HealthWalletDeletionJob[]
+  walletConsentEvents HealthWalletConsentEvent[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -5568,6 +5589,452 @@ model HealthClinicalReview {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, modelId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — PATIENT HEALTH DATA WALLET
+// Policy-enforcing privacy control plane. HL7 FHIR Consent, HIPAA access/
+// amendment/restriction/accounting, GDPR erasure/restriction/portability.
+// Patient sees/monitors; enforcement services guarantee PDP/PEP across 21 layers.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum WalletConsentStatus {
+  ACTIVE
+  EXPIRING_SOON
+  PAUSED
+  REVOKED
+  UNDER_REVIEW
+  EMERGENCY_OVERRIDE
+  ENFORCEMENT_PENDING
+  UNABLE_TO_DELETE
+  RESEARCH_WITHDRAWAL_COMPLETED
+  EXPIRED
+}
+
+enum WalletDataDomain {
+  GENERAL_MEDICAL
+  MENTAL_HEALTH
+  SUBSTANCE_USE
+  GENOMICS
+  REPRODUCTIVE_HEALTH
+  VOICE_RECORDINGS
+  BEHAVIORAL
+  BIOMETRIC
+  LOCATION
+  RESEARCH_DATA
+  ENVIRONMENTAL
+  FINANCIAL_INSURANCE
+}
+
+enum WalletPurpose {
+  TREATMENT
+  PAYMENT
+  CARE_COORDINATION
+  WELLNESS
+  RESEARCH
+  QUALITY_IMPROVEMENT
+  PUBLIC_HEALTH
+  EMERGENCY_RESPONSE
+  PRODUCT_IMPROVEMENT
+}
+
+enum WalletAction {
+  VIEW
+  DOWNLOAD
+  ANALYZE
+  INFER
+  SHARE
+  TRAIN_MODEL
+  CONTACT_PATIENT
+  CREATE_TASK
+  TRIGGER_ALERT
+}
+
+enum WalletProcessingMode {
+  LOCAL_ONLY
+  CONFIDENTIAL_CLOUD
+  DEIDENTIFIED
+  FEDERATED
+  AGGREGATE_ONLY
+  HUMAN_REVIEWED
+  NO_TRAINING
+  NO_INFERENCE
+}
+
+enum WalletProxyRelationship {
+  PARENT
+  LEGAL_GUARDIAN
+  CAREGIVER
+  SPOUSE_PARTNER
+  HEALTHCARE_PROXY
+  POWER_OF_ATTORNEY
+  TRUSTED_CONTACT
+  HOME_HEALTH_WORKER
+  RESEARCH_DELEGATE
+  EMERGENCY_CONTACT
+  INSTITUTIONAL_REPRESENTATIVE
+}
+
+enum WalletExportFormat {
+  FHIR_R4_BUNDLE
+  C_CDA
+  DICOM
+  CSV
+  JSON
+  MED_LIST
+  CONSENT_HISTORY
+  ACCESS_HISTORY
+}
+
+enum WalletDeletionStatus {
+  PENDING
+  DELETED
+  ANONYMIZED
+  RESTRICTED
+  RETAINED_BY_LAW
+  UNREACHABLE
+  SUPERSEDED
+}
+
+/// FHIR Consent + N0VA extensions — WHO/WHAT/WHY/HOW/WHEN/WHERE/CONDITIONS.
+model HealthWalletConsent {
+  id                String              @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  consentId         String              @unique // FHIR Consent.id
+  status            WalletConsentStatus @default(ACTIVE)
+  version           Int                 @default(1)
+  // WHO
+  recipientType     String              // organization | practitioner | care_team | research_team | insurer | device_provider | emergency_responder | n0va_service
+  recipientId       String
+  recipientRoles    String[]            @default([])
+  // WHAT
+  dataDomains       WalletDataDomain[]  @default([])
+  excludedDomains   WalletDataDomain[]  @default([])
+  specificRecords   String[]            @default([]) // resource IDs
+  derivedAllow      Json                @default("{}") // { health_summary, risk_scores, embeddings, model_training: bool }
+  // WHY
+  purposes          WalletPurpose[]     @default([])
+  // HOW
+  actions           WalletAction[]      @default([])
+  // WHEN
+  validFrom         DateTime?
+  validUntil        DateTime?
+  oneTimeUse        Boolean             @default(false)
+  reconsentInterval Int?                // days
+  // WHERE
+  jurisdictions     String[]            @default([]) // IN-GJ, US-CA, etc.
+  institutions      String[]            @default([])
+  // CONDITIONS
+  minimumNecessary  Boolean             @default(true)
+  deidentification  String?             // none | pseudonymized | anonymized
+  aggregation       String?             // none | aggregated
+  humanReviewRequired Boolean           @default(false)
+  noOnwardSharing   Boolean             @default(false)
+  noAutomatedClinicalAction Boolean     @default(false)
+  noCommercialUse   Boolean             @default(false)
+  processingMode    WalletProcessingMode @default(CONFIDENTIAL_CLOUD)
+  // Provenance — layered UX
+  language          String              @default("en")
+  consentVersion    String              @default("patient-consent-3.1")
+  explanationShown  Boolean             @default(false)
+  understandingConfirmed Boolean        @default(false)
+  signedAt          DateTime?
+  // Inheritance
+  inheritanceEnabled Boolean            @default(false)
+  inheritanceRules  Json                @default("{}")
+  // FHIR + N0VA
+  fhirConsent       Json?               // full FHIR R4 Consent resource
+  policyVersion     String              @default("wallet-policy-4.2")
+  createdById       String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  revokedAt         DateTime?
+  revokedReason     String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  events    HealthWalletConsentEvent[]
+  accesses  HealthWalletAccessLedger[]
+
+  @@index([workspaceId, patientId])
+  @@index([workspaceId, status])
+  @@index([patientId, status])
+  @@index([validUntil])
+}
+
+/// Immutable consent event ledger — SHA256 hash chain per patient.
+model HealthWalletConsentEvent {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  patientId        String
+  consentId        String
+  eventType        String   // CONSENT_GRANTED | CONSENT_REVOKED | CONSENT_MODIFIED | CONSENT_EXPIRED | BREAK_GLASS_USED | CORRECTION_REQUESTED | EXPORT_CREATED | DELETION_REQUESTED | RESTRICTION_APPLIED | RESEARCH_WITHDRAWN
+  actor            String   // patient | caregiver | clinician | system
+  authentication   String?  // passkey_step_up, etc.
+  scope            Json     @default("{}")
+  effectiveAt      DateTime @default(now())
+  enforcement      Json     @default("{}") // { api_tokens_revoked, subscriptions_cancelled, model_processing_blocked, downstream_notifications_sent, deletion_jobs_created }
+  previousHash     String?
+  eventHash        String
+  createdAt        DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  consent   HealthWalletConsent @relation(fields: [consentId], references: [consentId], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([consentId])
+  @@index([eventType])
+}
+
+/// Patient-visible access history — who accessed what, translated.
+model HealthWalletAccessLedger {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  patientId        String
+  consentId        String?  // null = denied / break-glass
+  accessorId       String?
+  accessorName     String?
+  organization     String?
+  role             String?
+  timestamp        DateTime @default(now())
+  location         String?
+  device           String?
+  dataCategory     WalletDataDomain
+  recordsViewed    String[] @default([])
+  purpose          WalletPurpose?
+  action           WalletAction?
+  downloaded       Boolean  @default(false)
+  aiInferenceRun   Boolean  @default(false)
+  onwardSharing    Boolean  @default(false)
+  breakGlass       Boolean  @default(false)
+  denied           Boolean  @default(false)
+  anomalyDetected  Boolean  @default(false)
+  anomalyReason    String?
+  explanation      String?  // human-readable: "A cardiology nurse viewed your BP trend to prepare for your appointment."
+  createdAt        DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  consent   HealthWalletConsent? @relation(fields: [consentId], references: [consentId], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([patientId, timestamp(sort: Desc)])
+  @@index([consentId])
+  @@index([anomalyDetected])
+}
+
+/// Derived-data governance — every derived item has 11 metadata fields.
+model HealthWalletDerivedData {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  derivedClass      String   // health_scores | risk_predictions | digital_biomarkers | voice_embeddings | behavioral_profiles | genomic_interpretations | biological_age | digital_twin_attributes | cohort_membership | personalization_vectors | summaries | research_features | alert_histories
+  sourceRefs        String[] @default([]) // source data IDs
+  processingPurpose WalletPurpose?
+  modelVersion      String?
+  derivedValue      Json?
+  confidence        Float?
+  retentionPolicy   String?
+  patientVisible    Boolean  @default(true)
+  correctionDependency String?
+  deletionDependency String?
+  sharingRestrictions String[] @default([])
+  canBeUsedForFutureInference Boolean @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([derivedClass])
+}
+
+/// Proxy and delegated access — relationship-based, jurisdiction-aware.
+model HealthWalletProxy {
+  id                String                    @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  proxyUserId       String?
+  proxyEmail        String?
+  proxyName         String?
+  relationship      WalletProxyRelationship
+  permissions       WalletAction[]            @default([])
+  dataDomains       WalletDataDomain[]        @default([])
+  viewMentalHealth  Boolean                   @default(false)
+  viewReproductive  Boolean                   @default(false)
+  viewGenomics      Boolean                   @default(false)
+  approveResearch   Boolean                   @default(false)
+  downloadRecords   Boolean                   @default(false)
+  receiveEmergencyAlerts Boolean              @default(false)
+  manageDevices     Boolean                   @default(false)
+  actDuringIncapacity Boolean                @default(false)
+  expiration        DateTime?
+  legalDocVerified  Boolean                   @default(false)
+  dualApproval      Boolean                   @default(false)
+  stepUpAuth        Boolean                   @default(false)
+  status            String                    @default("active") // active | expired | revoked | pending
+  createdById       String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([proxyUserId])
+}
+
+/// Research consent marketplace — study-specific license.
+model HealthWalletResearchStudy {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  sponsor           String
+  institution       String
+  principalInvestigator String?
+  researchQuestion  String?
+  dataCategories    WalletDataDomain[] @default([])
+  timePeriod        String?
+  geography         String?
+  studyDuration     String?
+  dataRecipients    String[] @default([])
+  commercialInvolvement Boolean @default(false)
+  geneticAnalysis   Boolean @default(false)
+  aiModelTraining   Boolean @default(false)
+  recontactPermissions String?
+  returnOfResults   String?
+  compensation      String?
+  withdrawalProcess String?
+  risks             String?
+  benefits          String?
+  ethicsApproval    String?
+  retentionPeriod   String?
+  publicationPolicy String?
+  internationalTransfers Boolean @default(false)
+  status            String   @default("active") // active | closed | withdrawn
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  consents  HealthWalletResearchConsent[]
+
+  @@index([workspaceId])
+}
+
+model HealthWalletResearchConsent {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  studyId           String
+  consentOptions    String[] @default([]) // one_time, longitudinal, disease_specific, broad, genomic, data_only, recontact_allowed, commercial_allowed, deidentified_only, etc.
+  withdrawalStatus  String   @default("active") // active | withdrawn | completed
+  dataCollected     Boolean  @default(false)
+  futureCollectionStopped Boolean @default(false)
+  removedFromCohort Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  withdrawnAt       DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  study     HealthWalletResearchStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, patientId, studyId])
+  @@index([patientId])
+}
+
+/// Export — human + machine-readable, provenance, selective, secure.
+model HealthWalletExport {
+  id                String            @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  format            WalletExportFormat
+  scope             Json              @default("{}") // { dataDomains, timeRange, recordIds }
+  bundleUrl         String?
+  provenance        Json              @default("{}") // source, timestamp, author, device, transformation, confidence, observed vs inferred
+  passphraseProtected Boolean          @default(false)
+  watermark         String?
+  recipientVerified Boolean           @default(false)
+  expiresAt         DateTime?
+  downloaded        Boolean           @default(false)
+  downloadedAt      DateTime?
+  revokedBeforeDownload Boolean       @default(false)
+  createdById       String?
+  createdAt         DateTime          @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+}
+
+/// Correction — history preserved, downstream propagation via dependency graph.
+model HealthWalletCorrection {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  recordId          String   // original record ID
+  dataDomain        WalletDataDomain
+  originalValue     Json
+  proposedValue     Json
+  reason            String?
+  evidence          Json?
+  reviewStatus      String   @default("pending") // pending | approved | rejected
+  responsibleOrg    String?
+  correctedValue    Json?
+  effectiveDate     DateTime?
+  downstreamImpact  Json     @default("[]") // affected alerts, summaries, care plans, research extracts
+  notifiedRecipients String[] @default([])
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([recordId])
+}
+
+/// Restriction — 11 types.
+model HealthWalletRestriction {
+  id                String           @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  restrictionType   String           // hide_from_recipients, block_research, block_ai_training, block_behavioral_inference, block_cross_border, mask_location, mask_diagnosis, aggregate_only, treatment_only_not_product, clinician_not_caregiver, emergency_only
+  dataDomains       WalletDataDomain[] @default([])
+  recipients        String[]         @default([])
+  purpose           WalletPurpose?
+  active            Boolean          @default(true)
+  createdById       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+}
+
+/// Deletion orchestration — 14 asset locations, ledger per request.
+model HealthWalletDeletionJob {
+  id                String               @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  dataDomains       WalletDataDomain[]   @default([])
+  asset             String               // primary_records, cached_records, search_indexes, vector_embeddings, knowledge_graph_edges, derived_risk_scores, model_features, research_extracts, warehouse_copies, backups, audit_references, vendor_copies, device_local_copies
+  location          String               // EHR store, time-series DB, search index, etc.
+  status            WalletDeletionStatus @default(PENDING)
+  reason            String?              // deleted, anonymized, restricted, retained_by_law, unreachable
+  requestedAt       DateTime             @default(now())
+  completedAt       DateTime?
+  requestedById     String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([asset])
+  @@index([status])
 }
 
 /// N0VA LEGAL - revision history.
