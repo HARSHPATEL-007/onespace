@@ -105,6 +105,16 @@ integrations    Integration[]
   healthOperatingEnvelopes HealthOperatingEnvelope[]
   healthSafetyPolicies HealthSafetyPolicy[]
   healthSafetyRecommendations HealthSafetyRecommendation[]
+  healthDatasets HealthDataset[]
+  healthValidationStudies HealthValidationStudy[]
+  healthEvidenceClaims HealthEvidenceClaim[]
+  healthModelCards HealthModelCard[]
+  healthRegulatoryStatuses HealthRegulatoryStatus[]
+  healthDeployments HealthDeployment[]
+  healthDriftSignals HealthDriftSignal[]
+  healthChangeControls HealthChangeControl[]
+  healthPostMarketReports HealthPostMarketReport[]
+  healthClinicalReviews HealthClinicalReview[]
   healthSafetyReviews HealthSafetyReview[]
   healthSafetyIncidents HealthSafetyIncident[]
   healthSafetyCases HealthSafetyCase[]
@@ -5175,6 +5185,389 @@ model HealthSafetyMonitor {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, windowStart(sort: Desc)])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — AI MODEL REGISTRY & CLINICAL VALIDATION CENTER (AMR-CVC)
+// Governed product subsystem controlling full model lifecycle. FDA lifecycle
+// guidance + PCCP (modification description / protocol / impact assessment).
+// Every model needs intended use, population, evidence, safety controls,
+// operational behavior — production-eligible only when all approved.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum EvidenceTier {
+  E0 // Concept/feasibility — research only
+  E1 // Retrospective internal — shadow
+  E2 // Retrospective external — controlled pilot
+  E3 // Prospective silent — shadow deployment
+  E4 // Prospective interventional — limited clinical
+  E5 // Real-world post-deployment — broader use
+  E6 // Regulatory/institutional authorization — jurisdiction-specific
+}
+
+enum ReleaseChannel {
+  RESEARCH
+  SHADOW
+  CANARY
+  PRODUCTION
+  RETIRED
+}
+
+enum ModelStatusDetailed {
+  DRAFT
+  VALIDATING
+  APPROVED
+  SUSPENDED
+  RETIRED
+}
+
+enum ValidationDesign {
+  RETROSPECTIVE_INTERNAL
+  RETROSPECTIVE_EXTERNAL
+  TEMPORAL
+  PROSPECTIVE_SILENT
+  PROSPECTIVE_INTERVENTIONAL
+  STANDARD_CARE_COMPARISON
+  CLINICIAN_COMPARISON
+  WORKFLOW_SIMULATION
+  HUMAN_FACTORS
+}
+
+enum DeploymentGate {
+  G0 // Research
+  G1 // Offline validation
+  G2 // Shadow
+  G3 // Canary
+  G4 // Controlled production
+  G5 // Expanded production
+}
+
+enum ChangeClass {
+  C0 // Administrative
+  C1 // Technical maintenance
+  C2 // Controlled model change
+  C3 // Major clinical change
+}
+
+enum DriftType {
+  DATA
+  CONCEPT
+  PERFORMANCE
+  DEVICE
+  WORKFLOW
+}
+
+enum DriftLevel {
+  GREEN
+  AMBER
+  RED
+}
+
+/// Dataset lineage graph — source → consent → de-id → quality → labeling → cohort → features → split → training → evaluation → deployment population.
+model HealthDataset {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  name                String
+  version             String   @default("1.0.0")
+  sourceOrg           String?
+  collectionStart     DateTime?
+  collectionEnd       DateTime?
+  geography           String?
+  careSettings        String[] @default([])
+  patientCount        Int?
+  encounterCount      Int?
+  modality            String?
+  inclusionCriteria   String?
+  exclusionCriteria   String?
+  labelDefinition     String?
+  labelerQualification String?
+  interRaterAgreement Float?
+  missingness         Json     @default("{}")
+  units               String?
+  deviceManufacturers String[] @default([])
+  deviceFirmware      String[] @default([])
+  consentBasis        String?
+  dataUseRestrictions String?
+  licenseTerms        String?
+  deidentificationMethod String?
+  reidentificationRisk Float?
+  retentionPeriod     String?
+  transformationHistory Json @default("[]")
+  knownBiases         String[] @default([])
+  leakageRisks        String[] @default([])
+  restrictedFields    String[] @default([])
+  lineageGraph        Json     @default("{}") // full graph JSON
+  createdById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  validationStudies HealthValidationStudy[]
+  evidenceClaims HealthEvidenceClaim[]
+
+  @@unique([workspaceId, name, version])
+  @@index([workspaceId])
+}
+
+/// Validation study — analytical, clinical, generative per TRIPOD+AI.
+model HealthValidationStudy {
+  id                  String            @id @default(uuid())
+  workspaceId         String
+  modelId             String
+  modelVersion        String
+  design              ValidationDesign
+  evidenceTier        EvidenceTier      @default(E1)
+  datasetId           String?
+  protocol            Json              @default("{}") // statistical analysis plan, endpoints
+  results             Json              @default("{}") // metrics + CI
+  subgroupAnalysis    Json              @default("{}")
+  calibrationAnalysis Json              @default("{}")
+  missingDataAnalysis Json              @default("{}")
+  robustnessTesting   Json              @default("{}")
+  humanFactorsTesting Json              @default("{}")
+  cybersecurityAssessment Json          @default("{}")
+  privacyAssessment   Json              @default("{}")
+  fmea                Json              @default("{}")
+  residualRisk        String?
+  reviewerSignOff     String?
+  regulatoryAssessment Json             @default("{}")
+  monitoringPlan      Json              @default("{}")
+  changeControlPlan   Json              @default("{}")
+  rollbackPlan        String?
+  labeling            Json              @default("{}")
+  sampleSize          Int?
+  comparator          String?
+  confidenceIntervals Json              @default("{}")
+  validationDate      DateTime?
+  jurisdiction        String?           // US, EU, etc.
+  status              String            @default("draft") // draft / approved / rejected
+  createdById         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dataset   HealthDataset? @relation(fields: [datasetId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, modelId])
+  @@index([workspaceId, evidenceTier])
+}
+
+/// Performance claims registry — replaces fixed "AUC 0.94" with evidence objects.
+model HealthEvidenceClaim {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  claimId          String   // claim-sepsis-v3-sensitivity
+  modelId          String
+  modelVersion     String?
+  claimType        String   // clinical_performance, regulatory, etc.
+  metric           String   // sensitivity, specificity, AUC, etc.
+  value            Float
+  confidenceInterval Json @default("{}") // { lower, upper }
+  population       String?
+  siteCount        Int?
+  sampleSize       Int?
+  outcomeDefinition String?
+  predictionHorizon String?
+  comparator       String?
+  validationDesign String?
+  dataCutoff       DateTime?
+  reviewStatus     String   @default("unverified") // unverified / internal / external / prospective / regulated
+  regulatoryStatus String?  // not a clearance claim, etc.
+  expiresAt        DateTime?
+  sourceDocument   String?  // validation-report-2026-018
+  datasetId        String?
+  jurisdiction     String?
+  status           String   @default("active") // active / expired / retracted
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  dataset   HealthDataset? @relation(fields: [datasetId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, claimId])
+  @@index([workspaceId, modelId])
+  @@index([workspaceId, status])
+}
+
+/// Model card + safety card (separate concerns: what it is/how it performs vs how it may harm/how N0VA controls).
+model HealthModelCard {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  modelId          String
+  modelVersion     String   @default("1.0.0")
+  cardType         String   @default("model") // model | safety
+  title            String
+  content          Json     @default("{}") // sections JSON
+  version          String   @default("1.0.0")
+  status           String   @default("draft") // draft / approved / retired
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, modelId, modelVersion, cardType])
+  @@index([workspaceId, modelId])
+}
+
+/// Regulatory status — 12 fields, never infer from name.
+model HealthRegulatoryStatus {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  modelId             String
+  modelVersion        String?
+  classification      String?  // SaMD Class I/II/III
+  pathway             String?  // 510k, PMA, De Novo
+  submissionStatus    String?  // not_submitted / submitted / cleared
+  clearanceNumber     String?
+  approvedIndication  String?
+  approvedPopulation  String?
+  approvedVersion     String?
+  approvedHardware    String?
+  approvedJurisdiction String?
+  labelingRestrictions String?
+  changeControlRestrictions String?
+  postMarketObligations String?
+  createdById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, modelId, modelVersion])
+  @@index([workspaceId, modelId])
+}
+
+/// Deployment gate record — G0 research → G5 expanded production.
+model HealthDeployment {
+  id                String         @id @default(uuid())
+  workspaceId       String
+  modelId           String
+  modelVersion      String
+  gate              DeploymentGate
+  status            String         @default("pending") // pending / passed / failed / blocked
+  channel           ReleaseChannel @default(RESEARCH)
+  tenantRouting     Json           @default("{}")
+  siteRouting       Json           @default("{}")
+  percentage        Int?           // canary %
+  featureFlag       String?
+  safetyOwnerApproval String?
+  metrics           Json           @default("{}") // both model + workflow metrics
+  rollbackEnabled   Boolean        @default(true)
+  championModelId   String?        // for champion-challenger
+  challengerModelId String?
+  comparisonMetrics Json           @default("{}")
+  createdById       String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, modelId])
+  @@index([workspaceId, gate])
+}
+
+/// Drift signal — data, concept, performance, device, workflow with Green/Amber/Red thresholds.
+model HealthDriftSignal {
+  id                String     @id @default(uuid())
+  workspaceId       String
+  modelId           String
+  modelVersion      String?
+  driftType         DriftType
+  level             DriftLevel @default(GREEN)
+  metric            String     // calibration_error, subgroup_sensitivity_gap, false_negative_rate, input_missingness, alert_acknowledgement_time, etc.
+  value             Float
+  thresholdAmber    Float?
+  thresholdRed      Float?
+  details           Json       @default("{}")
+  action            String?    // create_investigation, disable_model, route_to_fallback, notify_cso, open_safety_event
+  createdAt         DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, modelId])
+  @@index([workspaceId, driftType])
+  @@index([workspaceId, level])
+}
+
+/// Change control + PCCP — C0 administrative → C3 major clinical.
+model HealthChangeControl {
+  id                String      @id @default(uuid())
+  workspaceId       String
+  modelId           String
+  modelVersion      String?
+  changeClass       ChangeClass
+  title             String
+  description       String      @default("")
+  // PCCP
+  pccpDescription   Json        @default("{}") // permitted changes
+  pccpProtocol      Json        @default("{}") // data, validation, tests, human factors, security, rollout, monitoring, rollback
+  pccpImpact        Json        @default("{}") // clinical benefit, hazards, subgroup, workflow, privacy, cyber, regulatory, residual risk
+  status            String      @default("draft") // draft / approved / implemented / rolled_back
+  approvedById      String?
+  approvedAt        DateTime?
+  createdById       String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, modelId])
+  @@index([workspaceId, changeClass])
+}
+
+/// Post-market surveillance — real-world performance, complaints, CAPA.
+model HealthPostMarketReport {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  modelId           String
+  modelVersion      String?
+  periodStart       DateTime
+  periodEnd         DateTime
+  realWorldPerformance Json @default("{}")
+  complaints        Json     @default("[]")
+  adverseEvents     Json     @default("[]")
+  nearMisses        Json     @default("[]")
+  overrides         Json     @default("[]")
+  subgroupDisparities Json   @default("{}")
+  deviceBehavior    Json     @default("{}")
+  driftSummary      Json     @default("{}")
+  updates           Json     @default("[]")
+  downtime          Json     @default("[]")
+  capa              Json     @default("[]") // corrective and preventive action
+  labelUpdates      Json     @default("[]")
+  regulatoryReporting Json   @default("{}")
+  createdById       String?
+  createdAt         DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, modelId])
+}
+
+/// Clinical review board decision — standardized for S3-S5.
+model HealthClinicalReview {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  modelId           String
+  modelVersion      String?
+  decision          String   // Approve / Approve with restrictions / Shadow / Require evidence / Defer / Reject / Suspend / Retire
+  evidenceReviewed  String[] @default([])
+  knownLimitations  String[] @default([])
+  residualRisk      String?
+  requiredControls  String[] @default([])
+  approvedPopulations String[] @default([])
+  approvedJurisdictions String[] @default([])
+  monitoringObligations String[] @default([])
+  reviewDate        DateTime @default(now())
+  owners            String[] @default([])
+  createdById       String?
+  createdAt         DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, modelId])
 }
 
 /// N0VA LEGAL - revision history.

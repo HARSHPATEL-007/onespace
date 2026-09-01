@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma, logAudit } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
 import { ClinicalSafetyOS, SAFETY_CLASS, AUTHORIZATION_MATRIX, FEATURE_SAFETY_MAP, classifyFeature, DEFAULT_ENVELOPES, SAFE_ABSTENTION_MESSAGE, FMEA_ROWS, GOVERNANCE_ROLES, DEGRADED_RESPONSES } from "./safety";
+import { ModelRegistry, EVIDENCE_TIER, DEPLOYMENT_GATES, DRIFT_THRESHOLDS_EXAMPLE, FEATURE_STATUS, REGISTRY_API } from "./registry";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -313,6 +314,7 @@ export class HealthService {
   constructor(private readonly workspaceId: string, private readonly userId: string, private readonly role: Role) {}
 
   private get safety() { return new ClinicalSafetyOS(this.workspaceId, this.userId, this.role); }
+  private get registry() { return new ModelRegistry(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -357,6 +359,35 @@ export class HealthService {
   async getDegradedStatus() { return this.safety.degradedStatus(); }
   async listSafetyModels() { return this.safety.listModels(); }
   async listSafetyPolicies() { return this.safety.listPolicies(); }
+
+  // ── AMR-CVC delegation — Model Registry & Clinical Validation Center ───
+  get evidenceTiers() { return EVIDENCE_TIER; }
+  get deploymentGates() { return DEPLOYMENT_GATES; }
+  get driftThresholdsExample() { return DRIFT_THRESHOLDS_EXAMPLE; }
+  get featureStatus() { return FEATURE_STATUS; }
+  get registryApi() { return REGISTRY_API; }
+  async registryCanOperate(modelId: string, version: string, opts: Parameters<ModelRegistry["canOperate"]>[2]) { return this.registry.canOperate(modelId, version, opts); }
+  async registrySuccessMetrics() { return this.registry.successMetrics(); }
+  async listDatasets() { return this.registry.listDatasets(); }
+  async createDataset(input: Parameters<ModelRegistry["createDataset"]>[0]) { return this.registry.createDataset(input); }
+  async listValidationStudies(modelId?: string) { return this.registry.listValidationStudies(modelId); }
+  async createValidationStudy(input: Parameters<ModelRegistry["createValidationStudy"]>[0]) { return this.registry.createValidationStudy(input); }
+  async listEvidenceClaims(modelId?: string) { return this.registry.listEvidenceClaims(modelId); }
+  async createEvidenceClaim(input: Parameters<ModelRegistry["createEvidenceClaim"]>[0]) { return this.registry.createEvidenceClaim(input); }
+  async listModelCards(modelId?: string) { return this.registry.listModelCards(modelId); }
+  async upsertModelCard(input: Parameters<ModelRegistry["upsertModelCard"]>[0]) { return this.registry.upsertModelCard(input); }
+  async listRegulatory(modelId?: string) { return this.registry.listRegulatory(modelId); }
+  async upsertRegulatory(input: Parameters<ModelRegistry["upsertRegulatory"]>[0]) { return this.registry.upsertRegulatory(input); }
+  async listDeployments(modelId?: string) { return this.registry.listDeployments(modelId); }
+  async createDeployment(input: Parameters<ModelRegistry["createDeployment"]>[0]) { return this.registry.createDeployment(input); }
+  async listDrift(modelId?: string, take?: number) { return this.registry.listDrift(modelId, take); }
+  async recordDrift(input: Parameters<ModelRegistry["recordDrift"]>[0]) { return this.registry.recordDrift(input); }
+  async listChangeControls(modelId?: string) { return this.registry.listChangeControls(modelId); }
+  async createChangeControl(input: Parameters<ModelRegistry["createChangeControl"]>[0]) { return this.registry.createChangeControl(input); }
+  async listPostMarket(modelId?: string) { return this.registry.listPostMarket(modelId); }
+  async createPostMarket(input: Parameters<ModelRegistry["createPostMarket"]>[0]) { return this.registry.createPostMarket(input); }
+  async listClinicalReviews(modelId?: string) { return this.registry.listClinicalReviews(modelId); }
+  async createClinicalReview(input: Parameters<ModelRegistry["createClinicalReview"]>[0]) { return this.registry.createClinicalReview(input); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

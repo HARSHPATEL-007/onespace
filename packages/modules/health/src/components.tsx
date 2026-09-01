@@ -19,6 +19,7 @@ const ENERGY_EMOJI: Record<string, string> = { LOW: "🪫", OK: "🔋", HIGH: "�
 const TABS = [
   { id: "overview", label: "Overview" },
   { id: "safety", label: "Safety OS" },
+  { id: "registry", label: "Registry & CVC" },
   { id: "patients", label: "UHR & Patients" },
   { id: "twin", label: "Bio-Digital Twin" },
   { id: "vitals", label: "Vitals & Mesh" },
@@ -100,6 +101,23 @@ export function WellnessBoard({
   const [auditChain, setAuditChain] = useState<Record<string, unknown> | null>(null);
   const [reviewForm, setReviewForm] = useState({ id:"", decision:"AGREED" as string, reason:"" });
   const [incidentForm, setIncidentForm] = useState({ title:"", kind:"NEAR_MISS" as string, severity:"MODERATE" as string });
+  // registry & CVC state
+  const [registryModels, setRegistryModels] = useState<Array<Record<string, unknown>>>([]);
+  const [datasets, setDatasets] = useState<Array<Record<string, unknown>>>([]);
+  const [validationStudies, setValidationStudies] = useState<Array<Record<string, unknown>>>([]);
+  const [evidenceClaims, setEvidenceClaims] = useState<Array<Record<string, unknown>>>([]);
+  const [modelCards, setModelCards] = useState<Array<Record<string, unknown>>>([]);
+  const [regulatory, setRegulatory] = useState<Array<Record<string, unknown>>>([]);
+  const [deployments, setDeployments] = useState<Array<Record<string, unknown>>>([]);
+  const [driftSignals, setDriftSignals] = useState<Array<Record<string, unknown>>>([]);
+  const [changeControls, setChangeControls] = useState<Array<Record<string, unknown>>>([]);
+  const [postMarket, setPostMarket] = useState<Array<Record<string, unknown>>>([]);
+  const [clinicalReviews, setClinicalReviews] = useState<Array<Record<string, unknown>>>([]);
+  const [registryAuthorize, setRegistryAuthorize] = useState<Record<string, unknown> | null>(null);
+  const [newDataset, setNewDataset] = useState({ name:"", sourceOrg:"", modality:"wearable" });
+  const [newClaim, setNewClaim] = useState({ claim_id:"", model_id:"sepsis-risk-v3", metric:"sensitivity", value:"0.92" });
+  const [newDeployment, setNewDeployment] = useState({ modelId:"sepsis-risk-v3", modelVersion:"3.4.1", gate:"G2", channel:"SHADOW" });
+  const [newDrift, setNewDrift] = useState({ modelId:"sepsis-risk-v3", metric:"calibration_error", value:"0.04", level:"AMBER" });
 
   // fetch dashboard
   useEffect(() => {
@@ -137,6 +155,28 @@ export function WellnessBoard({
       if (alive && dg) setDegraded(dg.degraded ?? dg);
       const ac = await j("/api/health/safety/audit?take=6");
       if (alive && ac) setAuditChain(ac);
+      const rm = await j("/api/health/registry/models");
+      if (alive && rm?.rows) setRegistryModels(rm.rows);
+      const ds = await j("/api/health/registry/datasets");
+      if (alive && ds?.rows) setDatasets(ds.rows);
+      const vs = await j("/api/health/registry/validation-studies");
+      if (alive && vs?.rows) setValidationStudies(vs.rows);
+      const ec = await j("/api/health/registry/evidence-claims");
+      if (alive && ec?.rows) setEvidenceClaims(ec.rows);
+      const mc = await j("/api/health/registry/model-cards");
+      if (alive && mc?.rows) setModelCards(mc.rows);
+      const rg = await j("/api/health/registry/regulatory");
+      if (alive && rg?.rows) setRegulatory(rg.rows);
+      const dep = await j("/api/health/registry/deployments");
+      if (alive && dep?.rows) setDeployments(dep.rows);
+      const dr = await j("/api/health/registry/drift");
+      if (alive && dr?.rows) setDriftSignals(dr.rows);
+      const cc = await j("/api/health/registry/change-controls");
+      if (alive && cc?.rows) setChangeControls(cc.rows);
+      const pm = await j("/api/health/registry/post-market");
+      if (alive && pm?.rows) setPostMarket(pm.rows);
+      const cr = await j("/api/health/registry/clinical-reviews");
+      if (alive && cr?.rows) setClinicalReviews(cr.rows);
     })();
     return () => { alive = false; };
   }, []);
@@ -616,6 +656,325 @@ controls: require_prescriber_approval, require_pharmacist_review,
           <Section title="Vitality Workspace Promise — Amendments Applied" subtitle="Automatic antibiotic → clinician-reviewed sepsis-risk support • Automatic emergency dispatch → validated jurisdiction-specific escalation • 'Mortality reduced' → outcome tracking without causality claim • Fixed accuracy → versioned validation records • Neural/twin/longevity/voice/BCI/genomic marked research/validated/production • No autonomous diagnosis/treatment/consciousness/guaranteed optimization • Every cross-module workflow has policy engine gate • Safety gates before tasks/messages/orders/family/financial/emergency • Every AI action reversible, attributable, time-bounded, reviewable • Safe abstention in every agent.">
             <div style={{ padding:10, border:"1.5px solid #4f46e5", borderRadius:10, fontSize:12, fontWeight:800, textAlign:"center", background:"var(--nv-color-surface-raised)" }}>
               N0VA may detect, explain, prioritize, draft, and coordinate — but high-risk clinical decisions remain explicitly authorized by accountable healthcare professionals.
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {/* REGISTRY & CVC — AMR-CVC */}
+      {tab === "registry" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="AI Model Registry & Clinical Validation Center — Governed Product Subsystem" subtitle="FDA lifecycle (design→development→deployment→maintenance→monitoring→change control) + PCCP (description/protocol/impact). No model production-eligible by benchmark alone — needs intended use, population, evidence, safety controls, operational behavior." action={<><Badge tone="primary">FDA PCCP</Badge><Badge tone="warning">TRIPOD+AI</Badge><Pill tone="danger">G0-G5</Pill><Pill>E0-E6</Pill></>}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px,1fr))", gap:8 }}>
+              <Stat label="MODELS REGISTERED" value={String(registryModels.length)} hint={`${String(registryModels.filter((m:Record<string,unknown>)=> String(m.status)==="ACTIVE").length)} active • ${String(registryModels.filter((m:Record<string,unknown>)=> String(m.safetyClass)==="S4"||String(m.safetyClass)==="S5").length)} S4/S5`} />
+              <Stat label="EVIDENCE CLAIMS" value={String(evidenceClaims.length)} hint={`${String(evidenceClaims.filter((c:Record<string,unknown>)=> String(c.reviewStatus)!=="unverified").length)} verified • ${String(evidenceClaims.filter((c:Record<string,unknown>)=> String(c.status)==="active").length)} active`} />
+              <Stat label="VALIDATION STUDIES" value={String(validationStudies.length)} hint={`E0-E6 • TRIPOD+AI • dossier 22 items`} />
+              <Stat label="DEPLOYMENTS" value={String(deployments.length)} hint={`G0-G5 • shadow/canary • champion-challenger`} />
+              <Stat label="DRIFT SIGNALS" value={String(driftSignals.length)} hint={`${String(driftSignals.filter((d:Record<string,unknown>)=> String(d.level)==="RED").length)} RED • ${String(driftSignals.filter((d:Record<string,unknown>)=> String(d.level)==="AMBER").length)} AMBER`} tone={driftSignals.some((d:Record<string,unknown>)=> String(d.level)==="RED")?"danger":undefined} />
+              <Stat label="CLINICAL REVIEWS" value={String(clinicalReviews.length)} hint={`${String(clinicalReviews.filter((r:Record<string,unknown>)=> String(r.decision).includes("Approve")).length)} approve • ${String(postMarket.length)} post-market`} />
+            </div>
+            <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap" }}>
+              <Pill tone="primary">Governance: 11 checks</Pill><Pill>Architecture: 10 sections</Pill><Pill>Identity: 14 + 8 generative</Pill><Pill>Contract: runtime-checked</Pill><Pill>WHO bias + WHO post-market</Pill>
+            </div>
+          </Section>
+
+          <Section title="Governance Principle — 9 Required Before Production-Eligible" subtitle="A model becomes production-eligible only when intended use, population, evidence, safety controls, operational behavior are all approved — not by benchmark.">
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", fontSize:11 }}>
+              {["Intended use","Non-intended use","Technical owner","Clinical owner","Risk S0-S5","Validated population","Evidence package","Deployment approval","Monitoring plan","Rollback plan","Retirement/replacement"].map(c=> <Pill key={c} tone={c.includes("owner")||c.includes("Risk")?"primary":"neutral"}>{c}</Pill>)}
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>If evidence missing/invalid for this patient/device/location/population/action/version → abstain/downgrade/require review (target operating model).</div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Registry Architecture — 10 Sections" subtitle="Connects to git, data catalogs, feature stores, experiment trackers, artifact stores, FHIR/DICOM, CI/CD, feature flags, K8s, observability, QMS, regulatory docs, safety events, outcomes.">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11 }}>
+                {["Model Identity & Lineage","Intended Use & Risk","Dataset & Consent Provenance","Validation Evidence","Fairness & Subgroup","Regulatory & Jurisdiction","Deployment & Release","Monitoring & Drift","Incident & CAPA","Retirement & Archival"].map(s=> <div key={s} style={{ padding:"4px 6px", border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)" }}>{s}</div>)}
+              </div>
+            </Section>
+            <Section title="Model Identity — 14 Fields (Generative +8)" subtitle="Permanent immutable family ID + versioned artifacts.">
+              <div style={{ fontSize:11, lineHeight:1.6 }}>
+                <b>14:</b> family ID, version, artifact digest (SHA), code commit, feature schema, prompt/policy version, embedding/index version, runtime, lockfile, training run ID, release channel (RESEARCH→RETIRED), owner, clinical owner, risk S0-S5, status DRAFT/VALIDATING/APPROVED/SUSPENDED/RETIRED<br/>
+                <b>Generative extra:</b> weights, system prompts, retrieval corpus, tool permissions, safety policies, evaluator version, temperature, tool routing
+              </div>
+              <div style={{ marginTop:6, maxHeight:120, overflowY:"auto", border:"1px solid var(--nv-color-border)", borderRadius:8 }}>
+                <table className="nv-table" style={{ fontSize:11 }}>
+                  <thead><tr><th>Model</th><th>Version</th><th>Risk</th><th>Channel</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {registryModels.length===0 && <tr><td colSpan={5} className="nv-empty">No models — shadow/canary/production via G0-G5</td></tr>}
+                    {registryModels.slice(0,6).map((m:Record<string,unknown>,i:number)=> <tr key={String(m.id ?? i)}><td><b>{String(m.modelId ?? m.model_id ?? "")}</b></td><td>{String(m.modelVersion ?? m.model_version ?? "")}</td><td><Pill tone={String(m.safetyClass)==="S4"||String(m.safetyClass)==="S5"?"danger":String(m.safetyClass)==="S3"?"warning":"neutral"}>{String(m.safetyClass)}</Pill></td><td>{String(m.status ?? m.releaseChannel ?? "")}</td><td>{String(m.driftStatus ?? m.regulatoryStatus ?? "—").slice(0,12)}</td></tr>)}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          </div>
+
+          <Section title="Intended-Use Contract — Machine-Readable, Runtime-Checked" subtitle="If patient/setting/modality/use case outside contract → abstain or low-risk fallback.">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, fontSize:11 }}>
+              <pre style={{ background:"var(--nv-color-surface-raised)", padding:10, borderRadius:8, whiteSpace:"pre-wrap" }}>{`model_id: sepsis-risk-v3
+intended_use:
+  clinical_purpose: "Support early recognition of possible inpatient deterioration"
+  user: "Qualified inpatient clinical staff"
+  care_setting: "Adult inpatient units"
+  output_type: "Risk signal and evidence summary"
+  decision_role: "Clinical decision support only"
+  action_limit: "No autonomous diagnosis, medication order, or treatment initiation"
+population: { included: [adults_18_plus, inpatient], excluded: [pediatrics, pregnancy, outpatient, unsupported_devices] }
+modalities: { required: [vitals, labs, encounter_context] }
+approval: { clinical_review: required, regulatory_status: pending, jurisdiction: US }`}</pre>
+              <div>
+                <div style={{ display:"grid", gap:6 }}>
+                  <div style={{ display:"flex", gap:6 }}><input className="nv-input" placeholder="modelId" value={newDeployment.modelId} onChange={e=> setNewDeployment({...newDeployment, modelId:e.target.value})} style={{ flex:1 }} /><input className="nv-input" placeholder="version" value={newDeployment.modelVersion} onChange={e=> setNewDeployment({...newDeployment, modelVersion:e.target.value})} style={{ width:90 }} /></div>
+                  <Button size="sm" onClick={async()=> {
+                    const r=await fetch(`/api/health/registry/authorize?modelId=${encodeURIComponent(newDeployment.modelId)}&version=${encodeURIComponent(newDeployment.modelVersion)}&jurisdiction=US&population=adult_inpatient&modality=vitals&careSetting=inpatient&actionClass=S4`);
+                    const j=await r.json().catch(()=>null);
+                    setRegistryAuthorize(j);
+                  }}>Check: Can M vV operate in J/P/X/C/A/Q? (registry authorize)</Button>
+                  {registryAuthorize && <div style={{ padding:8, border:`1px solid ${ (registryAuthorize as Record<string,unknown>).allowed? "#10b981":"#ef4444"}`, borderRadius:8, background: (registryAuthorize as Record<string,unknown>).allowed? "#ecfdf5":"#fef2f2" }}><b>{(registryAuthorize as Record<string,unknown>).allowed? "ALLOWED":"BLOCKED"}</b> — {String((registryAuthorize as Record<string,unknown>).reason)}{(registryAuthorize as Record<string,unknown>).fallback? ` → ${(registryAuthorize as Record<string,unknown>).fallback}`:""}</div>}
+                  <div style={{ color:"var(--nv-color-text-faint)"}}>Negative → block or safe fallback. FDA PCCP: description/protocol/impact.</div>
+                </div>
+              </div>
+            </div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Evidence Tiers E0-E6" subtitle="Maturity scale — permission by tier.">
+              <div style={{ overflowX:"auto" }}>
+                <table className="nv-table" style={{ fontSize:11 }}>
+                  <thead><tr><th>Tier</th><th>Evidence</th><th>Permitted</th></tr></thead>
+                  <tbody>
+                    <tr><td><Pill>E0</Pill></td><td>Concept/feasibility</td><td>Internal research only</td></tr>
+                    <tr><td><Pill>E1</Pill></td><td>Retrospective internal</td><td>Shadow mode</td></tr>
+                    <tr><td><Pill>E2</Pill></td><td>Retrospective external</td><td>Controlled pilot</td></tr>
+                    <tr><td><Pill>E3</Pill></td><td>Prospective silent</td><td>Shadow deployment</td></tr>
+                    <tr><td><Pill>E4</Pill></td><td>Prospective interventional</td><td>Limited clinical</td></tr>
+                    <tr><td><Pill>E5</Pill></td><td>Real-world post-deployment</td><td>Broader approved</td></tr>
+                    <tr><td><Pill tone="success">E6</Pill></td><td>Regulatory/institutional auth</td><td>Jurisdiction-specific regulated</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ fontSize:11, color:"var(--nv-color-text-faint)", marginTop:6}}>Not “clinically validated” unless registry specifies design/population/comparator/endpoint/n/sample/CI/authority.</div>
+            </Section>
+            <Section title="Dataset Lineage Graph — Source → Deployment Population" subtitle="Raw → Consent → De-id → Quality → Labeling → Cohort → Features → Split → Training → Evaluation → Deployment.">
+              <div style={{ fontSize:11, lineHeight:1.5, color:"var(--nv-color-text-faint)"}}>
+                {["Raw Source","Consent & Legal Basis","De-identification / Tokenization","Quality Filtering","Labeling & Adjudication","Cohort Construction","Feature Generation","Train/Val/Test Split","Model Training","Evaluation Dataset","Deployment Population"].map((s,i)=> <span key={s}>{i>0 && " → "}<b style={{ color:"var(--nv-color-text)"}}>{s}</b></span>)}
+              </div>
+              <div style={{ marginTop:6, display:"flex", gap:6, flexWrap:"wrap", fontSize:11 }}>
+                <span>30+ fields:</span> {["Source org","Collection dates","Geography","Care settings","Patient/encounter count","Modality","Inclusion/exclusion","Label definitions","Labeler qualifications","Inter-rater agreement","Missingness","Units","Device mfr/fw","Consent basis","Restrictions","License","De-id method","Re-id risk","Retention","Transformation","Known biases","Leakage","Restricted fields"].map(f=> <Pill key={f}>{f}</Pill>)}
+              </div>
+              <div style={{ marginTop:8, display:"flex", gap:6 }}>
+                <input className="nv-input" placeholder="Dataset name" value={newDataset.name} onChange={e=> setNewDataset({...newDataset, name:e.target.value})} style={{ flex:1 }} />
+                <input className="nv-input" placeholder="Source org" value={newDataset.sourceOrg} onChange={e=> setNewDataset({...newDataset, sourceOrg:e.target.value})} style={{ width:140 }} />
+                <Button size="sm" onClick={async()=> {
+                  if(!newDataset.name) return;
+                  const r=await fetch("/api/health/registry/datasets",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ name: newDataset.name, sourceOrg: newDataset.sourceOrg, modality: newDataset.modality })});
+                  const j=await r.json().catch(()=>null);
+                  if(r.ok && j?.dataset) { setDatasets(prev=> [j.dataset, ...prev].slice(0,8)); setNewDataset({ name:"", sourceOrg:"", modality:"wearable" }); }
+                }} disabled={!newDataset.name}>Create Dataset</Button>
+              </div>
+              <div style={{ marginTop:6, maxHeight:90, overflowY:"auto" }}>
+                <table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Name</th><th>Version</th><th>Source</th><th>Patients</th></tr></thead>
+                  <tbody>{datasets.length===0 && <tr><td colSpan={4} className="nv-empty">No datasets — lineage required per dataset</td></tr>}{datasets.slice(0,4).map((d:Record<string,unknown>,i:number)=> <tr key={String(d.id ?? i)}><td>{String(d.name)}</td><td>{String(d.version)}</td><td>{String(d.sourceOrg ?? "—")}</td><td>{String(d.patientCount ?? "—")}</td></tr>)}</tbody>
+                </table>
+              </div>
+            </Section>
+          </div>
+
+          <Section title="Consent Provenance — 11 Fields + Withdrawn Handling" subtitle="Each record linked to consent metadata; if withdrawn, N0VA identifies affected datasets/features/versions/evaluations/deployments.">
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", fontSize:11 }}>
+              {["consent_identifier","permitted_purposes","research authorization","geographic_scope","data_categories","commercial_use","AI-training permission","withdrawal_status","expiration_date","sharing_restrictions","secondary_use","family/genomic dependencies"].map(c=> <Pill key={c}>{c}</Pill>)}
+            </div>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Distinguishes: data deletable • aggregated retained • models retraining • regulatory retained • outputs corrected/invalidated.</div>
+          </Section>
+
+          <Section title="Bias & Representativeness — Before/During/After Deployment" subtitle="16 subgroups × 15 metrics — not demographic parity alone; missed-event/delayed escalation/inappropriate intervention matters. WHO: intensified post-deployment monitoring.">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Subgroups</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["age","sex","gender identity","race/ethnicity","language","geography","socioeconomic","disability","pregnancy","comorbidity","care setting","device mfr","device gen","image protocol","clinical site","clinician specialty","insurance/access"].map(s=> <Pill key={s}>{s}</Pill>)}</div></div>
+              <div><b>Metrics</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["sensitivity","specificity","PPV/NPV","calibration","false-pos/neg","equal opportunity diff","subgroup calibration error","abstention","time-to-alert","time-to-treatment","outcome difference","missing-data rate","explanation completeness"].map(s=> <Pill key={s} tone="primary">{s}</Pill>)}</div></div>
+            </div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Validation Program" subtitle="TRIPOD+AI reporting for prediction model development/evaluation.">
+              <div style={{ display:"grid", gap:6, fontSize:11 }}>
+                <div><b>Analytical (11)</b><div style={{ color:"var(--nv-color-text-faint)"}}>Unit conversion, time sync, missing-value, image resolution/orientation, DICOM metadata, FHIR mapping, device signal, dedup, boundary/invalid, numerical reproducibility, schema stability</div></div>
+                <div><b>Clinical (12)</b><div style={{ color:"var(--nv-color-text-faint)"}}>Retrospective internal/external, temporal, prospective silent/interventional, standard care & clinician comparison, workflow simulation, human-factors, alert burden, outcome analysis</div></div>
+                <div><b>Generative — Ani/Scribe (17)</b><div style={{ color:"var(--nv-color-text-faint)"}}>Factual accuracy, unsupported inference, hallucinated citations, missing critical facts, wrong-patient contamination, contradiction, risk severity, triage, refusal/abstention, tool-use, PHI leakage, prompt injection, translation, health-literacy, editing burden, comprehension</div></div>
+              </div>
+              <div style={{ marginTop:8, display:"flex", gap:6 }}>
+                <Button size="sm" variant="ghost" onClick={async()=> {
+                  const r=await fetch("/api/health/registry/validation-studies",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ modelId:"sepsis-risk-v3", design:"PROSPECTIVE_SILENT", evidenceTier:"E3", sampleSize:18420, comparator:"standard clinical monitoring" })});
+                  const j=await r.json().catch(()=>null);
+                  if(r.ok && j?.study) setValidationStudies(prev=> [j.study, ...prev].slice(0,6));
+                }}>Create Silent Study (E3)</Button>
+                <span style={{ fontSize:11, color:"var(--nv-color-text-faint)", alignSelf:"center" }}>{validationStudies.length} studies</span>
+              </div>
+              {validationStudies.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Model</th><th>Design</th><th>Tier</th><th>n</th></tr></thead><tbody>{validationStudies.slice(0,4).map((s:Record<string,unknown>,i:number)=> <tr key={String(s.id ?? i)}><td>{String(s.modelId)}</td><td>{String(s.design)}</td><td><Pill>{String(s.evidenceTier)}</Pill></td><td>{String(s.sampleSize ?? "—")}</td></tr>)}</tbody></table></div>}
+            </Section>
+            <Section title="Validation Dossier — 22 Items, Thresholds Pre-Specified" subtitle="Immutable evidence dossier for each production candidate — thresholds approved before evaluation, not post-hoc.">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11 }}>
+                {["intended-use statement","risk classification","system architecture","data-flow diagram","dataset lineage","labeling protocol","statistical analysis plan","pre-specified endpoints","validation datasets","test results","confidence intervals","subgroup analysis","calibration","missing-data analysis","robustness","human-factors","cybersecurity","privacy","FMEA & hazard","residual-risk","reviewer sign-off","regulatory assessment","post-market plan","change-control","rollback","user labeling"].map(d=> <div key={d} style={{ padding:"3px 6px", border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)" }}>{d}</div>)}
+              </div>
+              <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>TRIPOD+AI informs report format. No deployment with unresolved critical findings.</div>
+            </Section>
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Model Card (19) + Safety Card (16)" subtitle="Technically accurate ≠ clinically safe (alert overload, delays, misrouting, automation bias).">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+                <div><b>Model</b><div style={{ color:"var(--nv-color-text-faint)"}}>description, intended/non-intended use, inputs/outputs, architecture, training/validation data, metrics, subgroup, limitations, failure modes, bias, env/hardware, version history, ownership, contact, license, regulatory</div></div>
+                <div><b>Safety</b><div style={{ color:"var(--nv-color-text-faint)"}}>hazard summary, risk class, unsafe scenarios, abstention, thresholds, human-review, contraindications, fallback, emergency, automation-bias risks, monitoring, incident/rollback triggers, residual risk, patient limitations, reviewer responsibilities</div></div>
+              </div>
+              {modelCards.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Model</th><th>Type</th><th>Title</th></tr></thead><tbody>{modelCards.slice(0,4).map((c:Record<string,unknown>,i:number)=> <tr key={String(c.id ?? i)}><td>{String(c.modelId)}</td><td><Pill tone={String(c.cardType)==="safety"?"warning":"primary"}>{String(c.cardType)}</Pill></td><td>{String(c.title).slice(0,40)}</td></tr>)}</tbody></table></div>}
+            </Section>
+            <Section title="Performance Claims Registry — Evidence Objects, Not Fixed AUC" subtitle="Replace '92%' with configurable claim; display only when evidence valid for jurisdiction/population/context.">
+              <pre style={{ fontSize:11, background:"var(--nv-color-surface-raised)", padding:8, borderRadius:8, whiteSpace:"pre-wrap" }}>{`{
+  "claim_id": "claim-sepsis-v3-sensitivity",
+  "model_id": "sepsis-risk-v3", "metric": "sensitivity", "value": 0.92,
+  "confidence_interval": { "lower": 0.89, "upper": 0.94 },
+  "population": "adult inpatient", "site_count": 4, "sample_size": 18420,
+  "outcome_definition": "adjudicated sepsis", "prediction_horizon": "6 hours",
+  "comparator": "standard monitoring", "validation_design": "prospective external",
+  "review_status": "clinical-review-approved", "regulatory_status": "not a clearance claim",
+  "expires": "2027-06-30", "source_document": "validation-report-2026-018"
+}`}</pre>
+              <div style={{ display:"flex", gap:6, marginTop:6 }}>
+                <input className="nv-input" placeholder="claim_id" value={newClaim.claim_id} onChange={e=> setNewClaim({...newClaim, claim_id:e.target.value})} style={{ flex:1 }} />
+                <input className="nv-input" placeholder="value" value={newClaim.value} onChange={e=> setNewClaim({...newClaim, value:e.target.value})} style={{ width:70 }} />
+                <Button size="sm" onClick={async()=> {
+                  if(!newClaim.claim_id) return;
+                  const r=await fetch("/api/health/registry/evidence-claims",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ claim_id: newClaim.claim_id, model_id: newClaim.model_id, metric: newClaim.metric, value: Number(newClaim.value), population:"adult inpatient", site_count:4, sample_size:18420, validation_design:"prospective external", confidence_interval:{lower:0.89, upper:0.94}, review_status:"clinical-review-approved", source_document:"validation-report-2026-018" })});
+                  const j=await r.json().catch(()=>null);
+                  if(r.ok && j?.claim) { setEvidenceClaims(prev=> [j.claim, ...prev].slice(0,6)); setNewClaim({ claim_id:"", model_id:"sepsis-risk-v3", metric:"sensitivity", value:"0.92" }); }
+                }} disabled={!newClaim.claim_id}>Create Claim</Button>
+              </div>
+              {evidenceClaims.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Claim</th><th>Metric</th><th>Value</th><th>Review</th><th>Expires</th></tr></thead><tbody>{evidenceClaims.slice(0,4).map((c:Record<string,unknown>,i:number)=> <tr key={String(c.id ?? i)}><td>{String(c.claimId ?? c.claim_id ?? "").slice(0,18)}</td><td>{String(c.metric)}</td><td>{String(c.value)}</td><td><Pill>{String(c.reviewStatus ?? c.review_status ?? "")}</Pill></td><td style={{ fontSize:10 }}>{c.expiresAt? new Date(String(c.expiresAt)).toLocaleDateString():"—"}</td></tr>)}</tbody></table></div>}
+              <div style={{ fontSize:11, color:"var(--nv-color-text-faint)", marginTop:6}}>Immediate changes: replace fixed AUC/92%/FDA-cleared/98% fertility/3-year warning/99.5% med-rec with evidence objects + required fields + jurisdiction.</div>
+            </Section>
+          </div>
+
+          <Section title="Regulatory-Status Controls — 12 Fields, Never Infer From Name" subtitle="Project Vita assigns labels; treat as unverified until source evidence. Never infer FDA-cleared/CE/Breakthrough/research/LDT/validated from name.">
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", fontSize:11 }}>
+              {["classification","pathway","submission_status","clearance_number","approved_indication","approved_population","approved_version","approved_hardware","approved_jurisdiction","labeling_restrictions","change_control_restrictions","post_market_obligations"].map(f=> <Pill key={f}>{f}</Pill>)}
+            </div>
+            <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}>
+              <table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Model</th><th>Pathway</th><th>Submission</th><th>Jurisdiction</th></tr></thead>
+                <tbody>{regulatory.length===0 && <tr><td colSpan={4} className="nv-empty">No regulatory records — research/LDT/shadow until cleared</td></tr>}{regulatory.slice(0,4).map((r:Record<string,unknown>,i:number)=> <tr key={String(r.id ?? i)}><td>{String(r.modelId)}</td><td>{String(r.pathway ?? "—")}</td><td>{String(r.submissionStatus ?? "—")}</td><td>{String(r.approvedJurisdiction ?? "—")}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr", gap:12 }}>
+            <Section title="Deployment Gates G0-G5 — Progressively Stricter" subtitle="Shadow reproduces full pathway without clinical action; Canary supports 12 routing controls; Champion-challenger 11 compares, not average metric alone.">
+              <div style={{ overflowX:"auto" }}>
+                <table className="nv-table" style={{ fontSize:11 }}>
+                  <thead><tr><th>Gate</th><th>Label</th><th>Criteria</th></tr></thead>
+                  <tbody>
+                    <tr><td><Pill>G0</Pill></td><td>Research</td><td style={{ fontSize:10 }}>Data/consent, security scan, artifact registered, no production output</td></tr>
+                    <tr><td><Pill>G1</Pill></td><td>Offline validation</td><td style={{ fontSize:10 }}>Pre-specified metrics, external dataset, subgroup, failure modes</td></tr>
+                    <tr><td><Pill>G2</Pill></td><td>Shadow</td><td style={{ fontSize:10 }}>Real inputs, no action, logged, alert volume, drift, clinician review</td></tr>
+                    <tr><td><Pill tone="warning">G3</Pill></td><td>Canary</td><td style={{ fontSize:10 }}>Small tenant/unit, % traffic, human review, safety monitoring, rollback</td></tr>
+                    <tr><td><Pill tone="danger">G4</Pill></td><td>Controlled production</td><td style={{ fontSize:10 }}>Approved use only, explicit roles, thresholds, outcome tracking</td></tr>
+                    <tr><td><Pill tone="success">G5</Pill></td><td>Expanded</td><td style={{ fontSize:10 }}>Multi-site, post-market, stable subgroup, alert burden, governance approval</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Shadow captures: input eligibility, prediction, confidence, explanation, alert priority, expected action, whether clinician independently recognized, outcome, time-to-event, counterfactual, subgroup/site performance — mixture of normal/borderline/missing/contradictory/extreme.</div>
+              <div style={{ marginTop:6, display:"flex", gap:6 }}>
+                <input className="nv-input" placeholder="modelId" value={newDeployment.modelId} onChange={e=> setNewDeployment({...newDeployment, modelId:e.target.value})} style={{ flex:1 }} />
+                <select className="nv-select" value={newDeployment.gate} onChange={e=> setNewDeployment({...newDeployment, gate:e.target.value})} style={{ width:80 }}>{["G0","G1","G2","G3","G4","G5"].map(g=> <option key={g} value={g}>{g}</option>)}</select>
+                <select className="nv-select" value={newDeployment.channel} onChange={e=> setNewDeployment({...newDeployment, channel:e.target.value})} style={{ width:110 }}>{["RESEARCH","SHADOW","CANARY","PRODUCTION","RETIRED"].map(c=> <option key={c} value={c}>{c}</option>)}</select>
+                <Button size="sm" onClick={async()=> {
+                  const r=await fetch("/api/health/registry/deployments",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ modelId: newDeployment.modelId, modelVersion: newDeployment.modelVersion, gate: newDeployment.gate, channel: newDeployment.channel })});
+                  const j=await r.json().catch(()=>null);
+                  if(r.ok && j?.deployment) setDeployments(prev=> [j.deployment, ...prev].slice(0,8));
+                }}>Deploy</Button>
+              </div>
+              {deployments.length>0 && <div style={{ marginTop:6, maxHeight:90, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Model</th><th>Gate</th><th>Channel</th><th>Status</th></tr></thead><tbody>{deployments.slice(0,5).map((d:Record<string,unknown>,i:number)=> <tr key={String(d.id ?? i)}><td>{String(d.modelId)}</td><td><Pill>{String(d.gate)}</Pill></td><td>{String(d.channel)}</td><td><Pill tone={String(d.status)==="passed"?"success":String(d.status)==="failed"?"danger":"neutral"}>{String(d.status)}</Pill></td></tr>)}</tbody></table></div>}
+              <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Canary routing: tenant/site/department/role/device/%/flags/instant disable/fallback/parallel comparison/safety-owner approval/auto rollback. Champion (approved) vs challenger (shadow) — discrimination, calibration, subgroup, abstention, alert volume, acceptance, time-to-review, outcomes.</div>
+            </Section>
+            <Section title="Drift Detection — 5 Types + Green/Amber/Red" subtitle="Thresholds based on clinical harm/workflow, not statistical deviation alone.">
+              <div style={{ display:"grid", gap:6, fontSize:11 }}>
+                <div><b>Data</b> <span style={{ color:"var(--nv-color-text-faint)"}}>PSI, Jensen-Shannon, Wasserstein, missingness, range, device distribution</span></div>
+                <div><b>Concept</b> <span style={{ color:"var(--nv-color-text-faint)"}}>Delayed-label performance, calibration, outcome-stratified, change-point, adjudication</span></div>
+                <div><b>Performance</b> <span style={{ color:"var(--nv-color-text-faint)"}}>Sensitivity, specificity, PPV/NPV, calibration, false-neg, time-to-alert, subgroup, outcome</span></div>
+                <div><b>Device</b> <span style={{ color:"var(--nv-color-text-faint)"}}>Firmware, sampling, calibration, signal quality, battery, manufacturer</span></div>
+                <div><b>Workflow</b> <span style={{ color:"var(--nv-color-text-faint)"}}>Routing, staffing, ack delays, override, documentation, care-pathway</span></div>
+                <div style={{ padding:8, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)", borderRadius:8 }}>
+                  <b>Example thresholds:</b><br/>
+                  calibration_error: Amber &gt;0.03 for 7d → investigation; Red &gt;0.05 for 3d → disable + fallback + CSO + safety event<br/>
+                  subgroup_sensitivity_gap: Amber &gt;0.05; Red &gt;0.10<br/>
+                  Actions: amber → investigation/notify/increase review; red → disable/route/notify/open event
+                </div>
+              </div>
+              <div style={{ marginTop:6, display:"flex", gap:6 }}>
+                <input className="nv-input" placeholder="metric e.g. calibration_error" value={newDrift.metric} onChange={e=> setNewDrift({...newDrift, metric:e.target.value})} style={{ flex:1 }} />
+                <input className="nv-input" placeholder="value" value={newDrift.value} onChange={e=> setNewDrift({...newDrift, value:e.target.value})} style={{ width:80 }} />
+                <select className="nv-select" value={newDrift.level} onChange={e=> setNewDrift({...newDrift, level:e.target.value})} style={{ width:90 }}>{["GREEN","AMBER","RED"].map(l=> <option key={l} value={l}>{l}</option>)}</select>
+                <Button size="sm" onClick={async()=> {
+                  const r=await fetch("/api/health/registry/drift",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ modelId: newDrift.modelId, metric: newDrift.metric, value: Number(newDrift.value), level: newDrift.level, driftType:"PERFORMANCE" })});
+                  const j=await r.json().catch(()=>null);
+                  if(r.ok && j?.signal) setDriftSignals(prev=> [j.signal, ...prev].slice(0,8));
+                }}>Record Drift</Button>
+              </div>
+              {driftSignals.length>0 && <div style={{ marginTop:6, maxHeight:90, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Type</th><th>Metric</th><th>Value</th><th>Level</th></tr></thead><tbody>{driftSignals.slice(0,5).map((d:Record<string,unknown>,i:number)=> <tr key={String(d.id ?? i)}><td>{String(d.driftType)}</td><td>{String(d.metric)}</td><td>{String(d.value)}</td><td><Pill tone={String(d.level)==="RED"?"danger":String(d.level)==="AMBER"?"warning":"success"}>{String(d.level)}</Pill></td></tr>)}</tbody></table></div>}
+            </Section>
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Change-Control C0-C3 + PCCP" subtitle="FDA PCCP: description (permitted changes) / protocol (data, validation, tests, human factors, security, rollout, monitoring, rollback) / impact (benefit, hazards, subgroup, workflow, privacy, cyber, regulatory, residual).">
+              <div style={{ overflowX:"auto" }}>
+                <table className="nv-table" style={{ fontSize:11 }}>
+                  <thead><tr><th>Class</th><th>Examples</th><th>Approval</th></tr></thead>
+                  <tbody>
+                    <tr><td><Pill>C0</Pill></td><td>Documentation/owner/metadata</td><td>Registry admin</td></tr>
+                    <tr><td><Pill>C1</Pill></td><td>Dependency/infra/perf/security patch identical outputs</td><td>Eng + quality + regression</td></tr>
+                    <tr><td><Pill tone="warning">C2</Pill></td><td>Threshold/calibration/feature/corpus/prompt/device</td><td>Model + clinical + validation + board</td></tr>
+                    <tr><td><Pill tone="danger">C3</Pill></td><td>New population/modality/indication/action/jurisdiction/claim/autonomous</td><td>Governance + regulatory submission</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>PCCP permitted: recalibration, threshold, retraining on approved data, approved devices, retrieval-source, bug fixes, perf, language.</div>
+              {changeControls.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Class</th><th>Title</th><th>Status</th></tr></thead><tbody>{changeControls.slice(0,4).map((c:Record<string,unknown>,i:number)=> <tr key={String(c.id ?? i)}><td><Pill>{String(c.changeClass)}</Pill></td><td>{String(c.title).slice(0,30)}</td><td>{String(c.status)}</td></tr>)}</tbody></table></div>}
+            </Section>
+            <Section title="Post-Market Surveillance — 16 Collects → 8 Drives" subtitle="WHO: proactive + additional clinical follow-up. Not compliance archive — drives CAPA.">
+              <div style={{ fontSize:11, lineHeight:1.6 }}>
+                <b>Collects:</b> real-world performance, complaints, adverse events, near misses, overrides, patient feedback, subgroup disparities, device behavior, drift, updates, downtime, cyber, new evidence, guideline changes, outcome association, resource utilization<br/>
+                <b>Drives:</b> CAPA, label updates, threshold changes, training, restriction, suspension, replacement, regulatory reporting<br/>
+                <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Model</th><th>Period</th><th>CAPA</th></tr></thead><tbody>{postMarket.length===0 && <tr><td colSpan={3} className="nv-empty">No post-market reports — real-world evidence required for E5</td></tr>}{postMarket.slice(0,4).map((p:Record<string,unknown>,i:number)=> <tr key={String(p.id ?? i)}><td>{String(p.modelId)}</td><td style={{ fontSize:10 }}>{p.periodStart? new Date(String(p.periodStart)).toLocaleDateString():"—"} → {p.periodEnd? new Date(String(p.periodEnd)).toLocaleDateString():"—"}</td><td>{String((p.capa as unknown[] ?? []).length)} items</td></tr>)}</tbody></table></div>
+              </div>
+            </Section>
+          </div>
+
+          <Section title="Clinical Validation Center — Permanent Multidisciplinary Service" subtitle="Teams 13 + Capabilities 14 + Review Board 8 standardized decisions.">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Teams</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["clinical validation","biostatistics","epidemiology","data engineering","ML","human factors","clinical safety","regulatory","privacy","cybersecurity","health economics","patient/caregiver reps","QA"].map(t=> <Pill key={t}>{t}</Pill>)}</div></div>
+              <div><b>Capabilities</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["protocol design","cohort construction","dataset review","label adjudication","statistical analysis","fairness assessment","prospective study","silent deployment","workflow simulation","usability testing","dossier generation","regulatory support","post-market analysis","CAPA"].map(t=> <Pill key={t} tone="primary">{t}</Pill>)}</div></div>
+            </div>
+            <div style={{ marginTop:6, display:"flex", gap:4, flexWrap:"wrap", fontSize:11 }}><b>Board:</b> {["Approve","Approve with restrictions","Shadow","Require evidence","Defer","Reject","Suspend","Retire"].map(d=> <Pill key={d} tone={d.includes("Approve")?"success":d==="Reject"||d==="Suspend"?"danger":"neutral"}>{d}</Pill>)} — records evidence, limitations, residual risk, controls, populations, jurisdictions, monitoring, review date, owners</div>
+            {clinicalReviews.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Model</th><th>Decision</th><th>Residual</th></tr></thead><tbody>{clinicalReviews.slice(0,4).map((r:Record<string,unknown>,i:number)=> <tr key={String(r.id ?? i)}><td>{String(r.modelId)}</td><td><Pill>{String(r.decision)}</Pill></td><td style={{ fontSize:10 }}>{String(r.residualRisk ?? "—").slice(0,30)}</td></tr>)}</tbody></table></div>}
+          </Section>
+
+          <Section title="Registry API — 12 Endpoints + Authorization Check" subtitle="POST /models, GET /models/{id}, POST /models/{id}/versions, validation-studies, evidence-claims, approvals, deployments, GET drift/subgroup-performance/audit-trail, POST suspend/rollback/retire, plus Can model M vV operate in J/P/X/C/A/Q?">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11, fontFamily:"monospace" }}>
+              {["POST   /models","GET    /models/{model_id}","POST   /models/{model_id}/versions","POST   /models/{model_id}/validation-studies","POST   /models/{model_id}/evidence-claims","POST   /models/{model_id}/approvals","POST   /models/{model_id}/deployments","GET    /models/{model_id}/drift","GET    /models/{model_id}/subgroup-performance","POST   /models/{model_id}/suspend","POST   /models/{model_id}/rollback","POST   /models/{model_id}/retire","GET    /models/{model_id}/audit-trail","POST   /registry/authorize ? J/P/X/C/A/Q"].map(e=> <div key={e} style={{ padding:"3px 6px", background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)", borderRadius:6 }}>{e}</div>)}
+            </div>
+          </Section>
+
+          <Section title="Evidence-Aware UI + Immediate Changes to Project Vita" subtitle="Replace fixed 0.94-0.98 AUC/92% sepsis/FDA-cleared/98% fertility/3-year/99.5% med-rec with evidence objects (claim_id, metric, value, CI, population, siteCount, n, outcomeDefinition, horizon, comparator, design, dataCutoff, reviewStatus, regulatoryStatus, expires, sourceDocument). Show only when evidence valid for jurisdiction/population/context.">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Clinician sees</b><div style={{ color:"var(--nv-color-text-faint)"}}>Evidence maturity, validation population, local vs external, last validation, version, drift, calibration, exclusions, required reviewer, regulated/investigational/wellness</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Patient sees</b><div style={{ color:"var(--nv-color-text-faint)"}}>What N0VA noticed, info used, cannot determine, whether clinician reviewed, what to do next, urgency, how to dispute/correct</div></div>
+            </div>
+            <div style={{ marginTop:6, display:"flex", gap:4, flexWrap:"wrap", fontSize:11 }}><b>Feature status 10:</b> {["Concept","Research","Prototype","Internal validation","Shadow","Clinical pilot","Production wellness","Clinical decision support","Regulated medical-device function","Retired"].map(s=> <Pill key={s} tone={s.includes("Regulated")?"danger":s==="Retired"?"neutral":"primary"}>{s}</Pill>)} — Vita currently mixes production/research/regulated/speculative in same hierarchy → separate.</div>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Target operating model: Registry → Validation → Clinical Review → Shadow → Canary → Controlled Production → Continuous Monitoring → Incident/CAPA or Revalidation → Renewal/Restriction/Replacement/Retirement — evidence is runtime property.</div>
+          </Section>
+
+          <Section title="Success Metrics — Registry / Validation / Operational / Clinical">
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:11 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Registry completeness</b><div style={{ color:"var(--nv-color-text-faint)"}}>100% models registered, S0-S5 with owners, intended-use contracts, rollback plans, cards, claims linked</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Validation quality</b><div style={{ color:"var(--nv-color-text-faint)"}}>All S3-S5 externally validated, local calibration, high-risk across subgroups, pre-specified protocol, no unresolved critical findings</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Operational safety</b><div style={{ color:"var(--nv-color-text-faint)"}}>Rollback in recovery time, drift before harm, no unapproved version in prod, no high-risk without approval, all events linked, post-market on schedule</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Clinical value</b><div style={{ color:"var(--nv-color-text-faint)"}}>Faster appropriate review, fewer missed deterioration, false-alert burden ↓, documentation ↓, care-gap closure ↑, no subgroup harm, no unsafe dependence</div></div>
             </div>
           </Section>
         </div>
