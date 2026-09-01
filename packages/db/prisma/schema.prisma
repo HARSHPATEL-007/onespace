@@ -85,8 +85,22 @@ integrations    Integration[]
   deals           Deal[]
   subscriptions   Subscription[]
   payments        Payment[]
-  campaigns       Campaign[]
+   campaigns       Campaign[]
   healthCheckins  HealthCheckin[]
+  healthPatients  HealthPatient[]
+  healthBioTwins  HealthBioTwin[]
+  healthVitals    HealthVital[]
+  healthDevices   HealthDevice[]
+  healthEncounters HealthEncounter[]
+  healthCarePlans HealthCarePlan[]
+  healthMedications HealthMedication[]
+  healthLabResults HealthLabResult[]
+  healthImagingStudies HealthImagingStudy[]
+  healthAlerts    HealthAlert[]
+  healthWellnessPlans HealthWellnessPlan[]
+  healthTelehealthSessions HealthTelehealthSession[]
+  healthFhirSyncs HealthFhirSync[]
+  healthAgentRuns HealthAgentRun[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4292,6 +4306,449 @@ enum EnergyLevel {
   LOW
   OK
   HIGH
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH & WELLNESS — Transcendent (Project Vitality Ω)
+// Unified Health Record, Bio-Digital Twin, 12-Layer Biometric Mesh, Care
+// Orchestration, Pharmacy, Wellness, Telehealth, Ani Intelligence, N0VA1O
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Unified Health Record — golden patient record with probabilistic matching.
+model HealthPatient {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  mrn              String?
+  externalId       String?
+  firstName        String
+  lastName         String
+  dob              DateTime?
+  sex              String?
+  genderIdentity   String?
+  bloodType        String?
+  language         String   @default("en")
+  phone            String?
+  email            String?
+  address          Json?
+  emergencyContact Json?
+  insurance        Json?
+  status           String   @default("active") // active | inactive | deceased
+  riskScore        Float    @default(0)
+  twinId           String?  @unique
+  consentJson      Json     @default("{}")
+  tags             String[] @default([])
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  bioTwin   HealthBioTwin?
+  vitals    HealthVital[]
+  encounters HealthEncounter[]
+  carePlans HealthCarePlan[]
+  medications HealthMedication[]
+  labs      HealthLabResult[]
+  imaging   HealthImagingStudy[]
+  devices   HealthDevicePatient[]
+  wellnessPlan HealthWellnessPlan?
+
+  @@unique([workspaceId, mrn])
+  @@index([workspaceId, lastName])
+  @@index([workspaceId, status])
+  @@index([workspaceId, riskScore(sort: Desc)])
+}
+
+/// Bio-Digital Twin — quantum-encrypted continuous computational model.
+model HealthBioTwin {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  patientId      String   @unique
+  version        String   @default("2026.07.12.1")
+  anatomy        Json     @default("{}")
+  biomarkerBaselines Json @default("{}")
+  epigeneticClock Json    @default("{}")
+  temporalHealth Json     @default("{}")
+  exposome       Json     @default("{}")
+  microbiome     Json     @default("{}")
+  pharmacogenomics Json   @default("{}")
+  neuralEmbedding Json    @default("{}")
+  trajectoryVector String  @default("")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+/// 12-Layer Biometric Ingestion — real-time vitals streaming (50B+ readings/day).
+model HealthVital {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String
+  encounterId   String?
+  deviceId      String?
+  layer         HealthVitalLayer @default(CARDIOVASCULAR)
+  heartRate     Int?
+  hrvSdnn       Float?
+  bpSystolic    Int?
+  bpDiastolic   Int?
+  spo2          Float?
+  respiratoryRate Int?
+  temperatureC  Float?
+  glucoseMgDl   Float?
+  weightKg      Float?
+  signals       Json     @default("{}")
+  source        String   @default("manual")
+  qualityScore  Float    @default(1)
+  recordedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounter HealthEncounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  device    HealthDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId, recordedAt(sort: Desc)])
+  @@index([workspaceId, layer])
+  @@index([deviceId])
+}
+
+enum HealthVitalLayer {
+  CARDIOVASCULAR
+  METABOLIC
+  NEUROLOGICAL
+  RESPIRATORY
+  MUSCULOSKELETAL
+  DERMATOLOGICAL
+  GASTROINTESTINAL
+  IMMUNOLOGICAL
+  GENOMIC
+  ENVIRONMENTAL
+  BEHAVIORAL
+  QUANTUM_BIOLOGICAL
+}
+
+/// Device Gateway — 500+ device families, zero-touch provisioning.
+model HealthDevice {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  name           String
+  manufacturer   String?
+  model          String?
+  serialNumber   String?
+  family         String   @default("wearable") // wearable | medical_sensor | imaging | lab | implantable
+  protocol       String   @default("BLUETOOTH_LE") // BLE5.3 | ANT+ | NFC | UWB | MQTT | DICOMweb | HL7
+  status         String   @default("active") // active | offline | maintenance | quarantined
+  firmwareVersion String?
+  batteryPct     Int?
+  signalQuality  Float    @default(1)
+  lastSyncAt     DateTime?
+  assignedPatientId String?
+  config         Json     @default("{}")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patients  HealthDevicePatient[]
+  vitals    HealthVital[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, family])
+  @@index([assignedPatientId])
+}
+
+model HealthDevicePatient {
+  id          String   @id @default(uuid())
+  deviceId    String
+  patientId   String
+  workspaceId String
+  linkedAt    DateTime @default(now())
+  active      Boolean  @default(true)
+
+  device    HealthDevice  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, patientId])
+  @@index([patientId])
+}
+
+/// Clinical Encounter — appointment, admission, telehealth, ED, etc.
+model HealthEncounter {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String
+  type          HealthEncounterType @default(OUTPATIENT)
+  status        String   @default("planned") // planned | in_progress | finished | cancelled
+  providerId    String?
+  providerName  String?
+  location      String?
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  endedAt       DateTime?
+  chiefComplaint String?
+  diagnosisCodes String[] @default([])
+  notes         String   @default("")
+  vitalsSnapshot Json    @default("{}")
+  fhirResource  Json?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  vitals    HealthVital[]
+
+  @@index([workspaceId, patientId, scheduledAt(sort: Desc)])
+  @@index([workspaceId, status])
+}
+
+enum HealthEncounterType {
+  OUTPATIENT
+  INPATIENT
+  EMERGENCY
+  TELEHEALTH
+  HOME_VISIT
+  VIRTUAL
+  SURGERY
+  LAB
+  IMAGING
+}
+
+/// Care Plan & Clinical Pathways — evidence-based pathways for 15k+ conditions.
+model HealthCarePlan {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String
+  title         String
+  category      String   @default("general") // wellness | chronic | acute | preventive
+  status        String   @default("active") // draft | active | completed | revoked
+  conditions    String[] @default([])
+  activities    Json     @default("[]")
+  goals         Json     @default("[]")
+  teamMembers   Json     @default("[]")
+  fhirCarePlan  Json?
+  adherenceScore Float   @default(0)
+  dueDate       DateTime?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+}
+
+/// Medication & Pharmacy Intelligence — drug interactions, pharmacogenomics.
+model HealthMedication {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  patientId       String
+  encounterId     String?
+  drugName        String
+  genericName     String?
+  rxcui           String?
+  dosage          String?
+  route           String?  @default("PO")
+  frequency       String?
+  duration        String?
+  status          String   @default("active") // active | completed | stopped | on_hold
+  prescriber      String?
+  pharmacy        String?
+  ndc             String?
+  lotNumber       String?
+  interactionChecked Boolean @default(false)
+  adherencePct    Float    @default(1)
+  fhirMedicationRequest Json?
+  prescribedAt    DateTime @default(now())
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+  @@index([workspaceId, drugName])
+}
+
+/// Lab Results — FHIR DiagnosticReport, LOINC, SNOMED, ICD-10.
+model HealthLabResult {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  patientId    String
+  encounterId  String?
+  testName     String
+  loinc        String?
+  category     String   @default("laboratory") // chemistry | hematology | microbiology | genomics
+  value        String?
+  numericValue Float?
+  unit         String?
+  referenceRange String?
+  status       String   @default("final") // preliminary | final | amended | cancelled
+  abnormal     Boolean  @default(false)
+  specimenId   String?
+  performer    String?
+  fhirObservation Json?
+  resultedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, resultedAt(sort: Desc)])
+  @@index([workspaceId, testName])
+}
+
+/// Medical Imaging — DICOMweb, HL7 FHIR ImagingStudy, WADO-RS / STOW-RS.
+model HealthImagingStudy {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String
+  encounterId   String?
+  modality      String   @default("CT") // CT | MRI | XRAY | US | PET | MG | DX
+  bodySite      String?
+  description   String?
+  accessionNumber String?
+  dicomStudyUid String?
+  seriesCount   Int      @default(0)
+  instanceCount Int      @default(0)
+  aiFindings    Json     @default("[]")
+  fhirImagingStudy Json?
+  status        String   @default("available")
+  performedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([workspaceId, modality])
+}
+
+/// Predictive Health Alert — sepsis, deterioration, cardiac arrest, etc.
+model HealthAlert {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  patientId    String?
+  encounterId  String?
+  kind         String   // sepsis | deterioration | cardiac_arrest | fall | stroke | readmission | aki | ...
+  severity     String   @default("moderate") // low | moderate | high | critical
+  status       String   @default("active") // active | acknowledged | resolved | dismissed
+  score        Float    @default(0)
+  confidence   Float    @default(0)
+  horizon      String?  // 6h | 24h | 7d | 30d
+  message      String
+  explainability Json  @default("{}")
+  actions      Json     @default("[]")
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, severity])
+  @@index([workspaceId, patientId])
+  @@index([workspaceId, kind])
+}
+
+/// Personalized Wellness Plan — nutrition, fitness, sleep, longevity, women's health.
+model HealthWellnessPlan {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String   @unique
+  goals         Json     @default("[]")
+  nutrition     Json     @default("{}")
+  fitness       Json     @default("{}")
+  sleep         Json     @default("{}")
+  mentalHealth  Json     @default("{}")
+  womensHealth  Json     @default("{}")
+  longevity     Json     @default("{}")
+  adherenceScore Float   @default(0)
+  biologicalAge Float?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+/// Telehealth Session — video consultations with FHIR + N0VA Meet bridge.
+model HealthTelehealthSession {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String
+  encounterId   String?
+  providerId    String?
+  providerName  String?
+  status        String   @default("scheduled") // scheduled | waiting | in_progress | completed | cancelled | no_show
+  scheduledAt   DateTime
+  startedAt     DateTime?
+  endedAt       DateTime?
+  durationSec   Int?
+  modality      String   @default("video") // video | audio | chat
+  meetRoomId    String?
+  recordingUrl  String?
+  notes         String   @default("")
+  fhirAppointment Json?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, scheduledAt(sort: Desc)])
+  @@index([workspaceId, status])
+}
+
+/// FHIR Sync Log — interoperability audit for Epic/Cerner/Meditech/etc.
+model HealthFhirSync {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  resourceType String   // Patient | Observation | MedicationRequest | ImagingStudy | etc.
+  resourceId   String?
+  direction    String   @default("outbound") // inbound | outbound
+  system       String   // epic | cerner | meditech | athena | labcorp | payer
+  status       String   @default("pending") // pending | success | failed | conflict
+  payload      Json?
+  error        String?
+  durationMs   Int?
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, resourceType])
+  @@index([workspaceId, status])
+}
+
+/// N0VA1O Health Agent Run — swarm orchestration logs.
+model HealthAgentRun {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  agentId       String
+  agentName     String?
+  intent        String?
+  patientId     String?
+  input         Json     @default("{}")
+  output        Json     @default("{}")
+  confidence    Float    @default(0)
+  latencyMs     Int?
+  status        String   @default("completed") // queued | running | completed | failed | compensated
+  crossModuleActions Json @default("[]")
+  createdAt     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, agentId])
+  @@index([workspaceId, patientId])
 }
 
 /// N0VA LEGAL - revision history.
