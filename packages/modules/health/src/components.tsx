@@ -18,6 +18,7 @@ const ENERGY_EMOJI: Record<string, string> = { LOW: "🪫", OK: "🔋", HIGH: "�
 
 const TABS = [
   { id: "overview", label: "Overview" },
+  { id: "safety", label: "Safety OS" },
   { id: "patients", label: "UHR & Patients" },
   { id: "twin", label: "Bio-Digital Twin" },
   { id: "vitals", label: "Vitals & Mesh" },
@@ -90,6 +91,15 @@ export function WellnessBoard({
   const [newPatient, setNewPatient] = useState({ firstName: "", lastName: "", mrn: "", email: "" });
   const [vitalForm, setVitalForm] = useState({ patientId: "", heartRate: "78", spo2: "98", bpSystolic: "120", bpDiastolic: "80", layer: "CARDIOVASCULAR" });
   const [ambient, setAmbient] = useState<Record<string, unknown> | null>(null);
+  // safety OS state
+  const [recs, setRecs] = useState<Array<Record<string, unknown>>>([]);
+  const [incidents, setIncidents] = useState<Array<Record<string, unknown>>>([]);
+  const [policies, setPolicies] = useState<Array<Record<string, unknown>>>([]);
+  const [monitor, setMonitor] = useState<Record<string, unknown> | null>(null);
+  const [degraded, setDegraded] = useState<Record<string, unknown> | null>(null);
+  const [auditChain, setAuditChain] = useState<Record<string, unknown> | null>(null);
+  const [reviewForm, setReviewForm] = useState({ id:"", decision:"AGREED" as string, reason:"" });
+  const [incidentForm, setIncidentForm] = useState({ title:"", kind:"NEAR_MISS" as string, severity:"MODERATE" as string });
 
   // fetch dashboard
   useEffect(() => {
@@ -115,6 +125,18 @@ export function WellnessBoard({
       if (alive && al?.rows) setAlerts(al.rows);
       const amb = await j("/api/health/ambient");
       if (alive && amb) setAmbient(amb);
+      const sr = await j("/api/health/safety/recommendations?take=12");
+      if (alive && sr?.rows) setRecs(sr.rows);
+      const si = await j("/api/health/safety/incidents?take=8");
+      if (alive && si?.rows) setIncidents(si.rows);
+      const sp = await j("/api/health/safety/policies");
+      if (alive && sp?.rows) setPolicies(sp.rows);
+      const mo = await j("/api/health/safety/monitor");
+      if (alive && mo) setMonitor(mo.monitor ?? mo);
+      const dg = await j("/api/health/safety/degraded");
+      if (alive && dg) setDegraded(dg.degraded ?? dg);
+      const ac = await j("/api/health/safety/audit?take=6");
+      if (alive && ac) setAuditChain(ac);
     })();
     return () => { alive = false; };
   }, []);
@@ -268,6 +290,332 @@ export function WellnessBoard({
               <div className="nv-card" style={{ padding:12 }}><div style={{ fontWeight:800 }}>Sepsis 47ms Cascade</div><div style={{ color:"var(--nv-color-text-faint)"}}>Vital breach → Health alert → Tasks (cultures + antibiotics) → Chat (rapid response) → Calendar (ETA 3m) → Docs (bundle) → Mail → ERP — ACID</div></div>
               <div className="nv-card" style={{ padding:12 }}><div style={{ fontWeight:800 }}>Discharge-to-Home</div><div style={{ color:"var(--nv-color-text-faint)"}}>Note generation → med rec → follow-up tasks → appointments → discharge summary → billing → Vault 7y — all-or-all rollback</div></div>
               <div className="nv-card" style={{ padding:12 }}><div style={{ fontWeight:800 }}>Clinician Wellness Intervention</div><div style={{ color:"var(--nv-color-text-faint)"}}>HRV 28ms + sleep 4.2h → Calendar reschedule + task redistribute + EAP + peer buddy — reassess 24h</div></div>
+            </div>
+          </Section>
+        </div>
+      )}
+
+      {/* SAFETY OS — Clinical Safety Operating System */}
+      {tab === "safety" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Clinical Safety Operating System — Mandatory Control Plane" subtitle="Every AI output → recommendation → evidence panel → policy engine → human review gate → execution guard → hash-chain audit. Model never approves its own output, never modifies threshold, never bypasses review, never directly executes S4-S5." action={<><Badge tone="warning">FDA CDS • WHO • NIST RMF</Badge><span style={{ marginLeft:8 }}><Pill tone="danger">S0-S5</Pill></span></>}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px,1fr))", gap:8 }}>
+              <Stat label="RECS 24H" value={String((monitor as Record<string,unknown>)?.generated ?? recs.length ?? "—")} hint={`${String((monitor as Record<string,unknown>)?.reviewRequired ?? recs.filter(r=> String(r.state)==="REVIEW_REQUIRED").length)} review req • ${String((monitor as Record<string,unknown>)?.abstained ?? recs.filter(r=> String(r.state)==="ABSTAINED").length)} abstained`} />
+              <Stat label="ABSTENTION RATE" value={`${Math.round(((monitor as Record<string,unknown>)?.abstentionRate as number ?? (recs.filter(r=> String(r.state)==="ABSTAINED").length / Math.max(1, recs.length)))*100)}%`} hint="Target: abstain > block unsafe confidence" />
+              <Stat label="APPROVED" value={String((monitor as Record<string,unknown>)?.approved ?? recs.filter(r=> String(r.state)==="APPROVED").length)} hint="Requires evidence viewed + reason" />
+              <Stat label="INCIDENTS" value={String(incidents.length)} hint="Open + investigating" tone={incidents.length>0?"warning":undefined} />
+              <Stat label="AUDIT CHAIN" value={(auditChain as Record<string,unknown>)?.valid===false? "BROKEN":"OK"} hint={`${String((auditChain as Record<string,unknown>)?.count ?? "—")} entries • SHA-256`} tone={(auditChain as Record<string,unknown>)?.valid===false?"danger":"success" as unknown as string} />
+              <Stat label="DEGRADED" value={degraded ? Object.values(degraded as Record<string,Record<string,string>>).some(v=> v.status!=="nominal")? "DEGRADED":"NOMINAL" : "—"} hint={degraded? Object.entries(degraded as Record<string,Record<string,string>>).filter(([,v])=> v.status!=="nominal").map(([k])=>k).join(", ")||"All nominal" : ""} />
+            </div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1.3fr 1fr", gap:12 }}>
+            <Section title="Safety Classification (Potential Harm, Not Complexity)" subtitle="S0 informational → S5 regulated/safety-critical. Simple dispatch rule > sophisticated wellness model.">
+              <div style={{ overflowX:"auto" }}>
+                <table className="nv-table" style={{ fontSize:12 }}>
+                  <thead><tr><th>Class</th><th>Description</th><th>Examples</th><th>Default</th></tr></thead>
+                  <tbody>
+                    <tr><td><Pill tone="neutral">S0</Pill></td><td>Informational wellness</td><td style={{ fontSize:11, color:"var(--nv-color-text-faint)" }}>Sleep edu, hydration, general fitness</td><td style={{ fontSize:11 }}>May be automated with disclaimers</td></tr>
+                    <tr><td><Pill tone="success">S1</Pill></td><td>Low-risk guidance</td><td style={{ fontSize:11, color:"var(--nv-color-text-faint)" }}>Wellness plans, habit coaching</td><td style={{ fontSize:11 }}>Automated if inputs valid</td></tr>
+                    <tr><td><Pill tone="primary">S2</Pill></td><td>Patient-specific support</td><td style={{ fontSize:11, color:"var(--nv-color-text-faint)" }}>Symptom navigation, adherence</td><td style={{ fontSize:11 }}>Human rules, safe escalation</td></tr>
+                    <tr><td><Pill tone="warning">S3</Pill></td><td>Clinical decision support</td><td style={{ fontSize:11, color:"var(--nv-color-text-faint)" }}>Risk scores, differential, care-gap</td><td style={{ fontSize:11 }}><b>Clinician review required</b></td></tr>
+                    <tr><td><Pill tone="danger">S4</Pill></td><td>High-risk clinical</td><td style={{ fontSize:11, color:"var(--nv-color-text-faint)" }}>Sepsis, stroke, cardiac, dosing, suicide</td><td style={{ fontSize:11 }}><b>Immediate qualified review</b></td></tr>
+                    <tr><td><span style={{ background:"#7c2d12", color:"white", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:800 }}>S5</span></td><td>Regulated / safety-critical</td><td style={{ fontSize:11, color:"var(--nv-color-text-faint)" }}>Med order, emergency dispatch, device control</td><td style={{ fontSize:11 }}><b>Explicit auth + execution guard</b></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap" }}>
+                <Pill tone="danger">S4/S5 never autonomous</Pill><Pill>Model ≠ approver</Pill><Pill>Independent review (FDA)</Pill><Pill>WHO autonomy/safety</Pill>
+              </div>
+            </Section>
+            <Section title="Action Authorization Matrix" subtitle="Observe → Suggest → Draft → Request Approval → Execute — AI may draft task/order but never implies clinician reviewed.">
+              <div style={{ overflowX:"auto" }}>
+                <table className="nv-table" style={{ fontSize:11 }}>
+                  <thead><tr><th>Action</th><th>Suggest</th><th>Draft</th><th>Human</th><th>Auto Exec</th></tr></thead>
+                  <tbody>
+                    <tr><td>Wellness reminder</td><td>✅</td><td>✅</td><td>Usually no</td><td style={{ color:"#059669", fontWeight:800 }}>Yes</td></tr>
+                    <tr><td>Symptom triage</td><td>✅</td><td>✅</td><td>High-risk req</td><td style={{ color:"#dc2626", fontWeight:800 }}>No</td></tr>
+                    <tr><td>Clinical risk alert</td><td>✅</td><td>✅</td><td>Required</td><td style={{ color:"#dc2626", fontWeight:800 }}>No</td></tr>
+                    <tr><td>Medication order</td><td>✅</td><td>Draft only</td><td>Required</td><td style={{ color:"#dc2626", fontWeight:800 }}>No</td></tr>
+                    <tr><td>Sepsis protocol</td><td>✅</td><td>✅</td><td>Required</td><td style={{ fontSize:10 }}>Only pre-auth logistics</td></tr>
+                    <tr><td>Suicide escalation</td><td>✅</td><td>✅</td><td>Immediately</td><td style={{ fontSize:10 }}>Only narrow safety notif</td></tr>
+                    <tr><td>Emergency dispatch</td><td>✅</td><td>Draft</td><td>Confirm if feasible</td><td style={{ fontSize:10 }}>Validated policy only</td></tr>
+                    <tr><td>Diagnostic report</td><td>Prelim</td><td>✅</td><td>Sign-off</td><td style={{ color:"#dc2626", fontWeight:800 }}>No</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+          </div>
+
+          <Section title="Recommendation Lifecycle — Every State Transition Has Actor, Timestamp, Context, Model/Policy Versions, Input Hash, Reason, Authorization, Signature, Links, Outcome" subtitle="Terminal: ABSTAINED / REJECTED / EXPIRED / CANCELLED / SUPERSEDED / FAILED_SAFE — never fail-open for S3-S5.">
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", alignItems:"center", fontSize:11, fontWeight:800 }}>
+              {["GENERATED","VALIDATING","ELIGIBLE","REVIEW_REQUIRED","APPROVED","EXECUTING","COMPLETED","OUTCOME_MONITORED"].map((s,i)=> (
+                <span key={s} style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
+                  <span style={{ padding:"4px 8px", borderRadius:999, background: s==="REVIEW_REQUIRED"?"#fef3c7": s==="APPROVED"?"#d1fae5": s==="ABSTAINED"?"#fee2e2":"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>{s}</span>
+                  {i<7 && <span style={{ color:"var(--nv-color-text-faint)"}}>→</span>}
+                </span>
+              ))}
+              <span style={{ color:"var(--nv-color-text-faint)", marginLeft:8 }}>Terminal: <Pill tone="danger">ABSTAINED</Pill> <Pill>REJECTED</Pill> <Pill>EXPIRED</Pill> <Pill>CANCELLED</Pill> <Pill>SUPERSEDED</Pill> <Pill tone="danger">FAILED_SAFE</Pill></span>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              WHO: autonomy & human oversight • FDA: sufficient information for independent review, not primary reliance • NIST: govern-map-measure-manage • Independent safety system (model never approves own output)
+            </div>
+            <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap" }}>
+              <Pill tone="primary">Enforced: allowed transitions only</Pill><Pill>Trace ID + input hash + chainPrev</Pill><Pill>Dual approval for DUAL/SPECIALIST</Pill>
+            </div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Input Safety Gateway — Before Inference" subtitle="If stale/corrupted/contradictory/out-of-range/outside population → abstain or request confirmation, never confident recommendation.">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11 }}>
+                {["Patient identity & encounter matching","Data freshness & timestamp consistency","Device identity & authentication","Signal quality & artifact detection","Unit normalization","Reference-range & plausibility","Missing-value detection","Duplicate-event detection","Contradictory data","Pregnancy/age/renal/hepatic/allergy/medication context","Location & care setting","Population approval","Device/modality approval","Operating envelope"].map(c=> (
+                  <div key={c} style={{ padding:"4px 6px", border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)" }}>✓ {c}</div>
+                ))}
+              </div>
+              <div style={{ marginTop:8, padding:8, border:"1px dashed #d97706", borderRadius:8, fontSize:11, background:"#fffbeb" }}>
+                <b>Safe abstention:</b> “N0VA cannot safely assess this situation from the available information. A clinician review is required.”
+              </div>
+            </Section>
+            <Section title="Operating Envelope (Machine-Readable)" subtitle="Per-model declaration — policy engine blocks/downgrades when missing.">
+              <pre style={{ fontSize:11, background:"var(--nv-color-surface-raised)", padding:8, borderRadius:8, overflowX:"auto", whiteSpace:"pre-wrap" }}>{`{
+  "model_id": "sepsis-risk-v3",
+  "approved_use": "adult inpatient deterioration",
+  "excluded_use": ["pediatric","pregnancy","outpatient","single wearable"],
+  "required_inputs": ["heart_rate","respiratory_rate","blood_pressure","temperature","oxygen_saturation","labs"],
+  "maximum_input_age_minutes": 30,
+  "minimum_signal_quality": 0.85,
+  "minimum_calibration_confidence": 0.90,
+  "required_human_role": "attending_or_rapid_response",
+  "execution_mode": "recommendation_only"
+}`}</pre>
+              <div style={{ fontSize:11, color:"var(--nv-color-text-faint)"}}>Stored as HealthModelRegistry + HealthOperatingEnvelope • status ACTIVE/SUSPENDED/EXPIRED • drift_detected auto-suspends</div>
+            </Section>
+          </div>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Confidence & Abstention — Never Single %" subtitle="Suppress when required inputs missing / quality inadequate / conflicts / outside population / unstable / interval crosses boundary / expired / drift / conflicts clinician fact.">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6, fontSize:11 }}>
+                <div><b>Predictive probability</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Raw model output</span></div>
+                <div><b>Calibration</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Is 80% really 80%?</span></div>
+                <div><b>Aleatoric</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Noisy/incomplete data</span></div>
+                <div><b>Epistemic</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Model unfamiliarity</span></div>
+                <div><b>Input quality</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Sensor/data trust</span></div>
+                <div><b>Population conf</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Representativeness</span></div>
+                <div><b>Temporal stability</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Repeated inference variance</span></div>
+                <div><b>Evidence strength</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Strong/moderate/weak</span></div>
+              </div>
+            </Section>
+            <Section title="Evidence & Explanation Contract (FDA CDS)" subtitle="Every clinical recommendation has structured panel — intended use, facts, sources, freshness, missing, model/policy versions, validation, pos/neg factors, contraindications, alternatives, uncertainty, next step, urgency, reviewer, expiration, source links.">
+              <div style={{ display:"grid", gap:4, fontSize:11 }}>
+                <div><b>Required:</b> Title • Intended use • Patient facts • Sources • Freshness • Missing • Model/policy/validation • Local metrics • Pos/neg factors • Contraindications • Alternatives • Uncertainty • Next step • Urgency • Required reviewer • Expiration • Source links</div>
+                <div style={{ padding:8, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)", borderRadius:8 }}>
+                  <div style={{ fontWeight:800 }}>Wellness reminder (S0)</div>
+                  <div style={{ color:"var(--nv-color-text-faint)"}}>May be automated with disclaimers</div>
+                  <div style={{ fontWeight:800, marginTop:6 }}>Sepsis risk (S4)</div>
+                  <div style={{ color:"var(--nv-color-text-faint)"}}>80% • Calibration nominal • Aleatoric 0.18 • Epistemic 0.11 • Trends + vitals + labs shown • Contraindications • Alternatives: pneumonia/PE • Next: rapid response assessment • Expires +4h • Links: vitals snapshot, labs</div>
+                </div>
+              </div>
+            </Section>
+          </div>
+
+          <Section title="Human Review — Structured, Not Superficial Accept" subtitle="Reviewer sees original data, trends, notes/orders, missing/corrupted/conflicts, evidence, validation, can ask Ani rationale/counterargument, request second model/clinician, accept/modify/reject/defer with reason, assign follow-up, set reassessment.">
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Single</b><div style={{ color:"var(--nv-color-text-faint)"}}>Low-moderate support</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Dual</b><div style={{ color:"var(--nv-color-text-faint)"}}>Med dosing, high-risk, invasive</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Specialist</b><div style={{ color:"var(--nv-color-text-faint)"}}>Oncology, psychiatry, OB, peds, transplant, critical care</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Emergency concurrence</b><div style={{ color:"var(--nv-color-text-faint)"}}>Rapid response / ED for time-critical</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Patient confirmation</b><div style={{ color:"var(--nv-color-text-faint)"}}>Treatment/consent/monitoring/sharing changes</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Distinguishes reviewed / agreed / modified / overridden — clinically different events. Override requires reason.</div>
+            <div style={{ marginTop:8, padding:8, border:"1px solid var(--nv-color-border)", borderRadius:8, fontSize:11, background:"var(--nv-color-surface-raised)", display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+              <input className="nv-input" placeholder="Recommendation ID (UUID)" value={reviewForm.id} onChange={e=> setReviewForm({...reviewForm, id: e.target.value})} style={{ flex:1, minWidth:220 }} />
+              <select className="nv-select" value={reviewForm.decision} onChange={e=> setReviewForm({...reviewForm, decision: e.target.value})} style={{ width:150 }}>
+                {["AGREED","MODIFIED","REVIEWED","OVERRIDDEN","REJECTED","DEFERRED"].map(o=> <option key={o} value={o}>{o}</option>)}
+              </select>
+              <input className="nv-input" placeholder="Reason (required for override)" value={reviewForm.reason} onChange={e=> setReviewForm({...reviewForm, reason: e.target.value})} style={{ flex:1, minWidth:160 }} />
+              <Button onClick={async()=> {
+                if (!reviewForm.id) return;
+                const r = await fetch(`/api/health/safety/recommendations/${reviewForm.id}/review`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ decision: reviewForm.decision, reason: reviewForm.reason, viewedEvidence:true, viewedTrends:true }) });
+                const j = await r.json().catch(()=>null);
+                if (r.ok) { setRecs(prev=> prev.map(x=> String(x.id)===reviewForm.id? {...x, state: j?.review? "APPROVED": x.state } as Record<string,unknown> : x)); setReviewForm({...reviewForm, id:"", reason:""}); }
+                else alert(j?.error ?? "Review failed — ensure DUAL/SPECIALIST has second reviewer");
+              }} disabled={!reviewForm.id}>Submit Review</Button>
+            </div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr", gap:12 }}>
+            <Section title="Safety Policy Engine — Separate From Inference" subtitle="Inputs: age, care setting, diagnosis, allergies, meds, pregnancy, organ function, vitals, device quality, urgency, confidence, regulatory status, reviewer role, protocol, consent, jurisdiction, time since review.">
+              <div style={{ fontSize:11, lineHeight:1.6 }}>
+                <b>Outputs:</b> allow • require review • require second review • downgrade • suppress patient message • trigger escalation • require re-collection • lock medication • create task • expire • safe-degraded<br/>
+                <b>Example policy: medication_dose_change (S5)</b>
+                <pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:8, fontSize:11, marginTop:6, whiteSpace:"pre-wrap" }}>{`when: risk_class S5 + renal_impairment/pregnancy/pediatric/allergy/narrow_index
+controls: require_prescriber_approval, require_pharmacist_review,
+  block_autonomous_execution, show_contraindications,
+  require_recent_labs 24h, create_reassessment_task`}</pre>
+                <div style={{ display:"flex", gap:6, marginTop:6, flexWrap:"wrap" }}><Pill>Eval live via /api/health/safety/policies</Pill><Pill tone="danger">Policy ≠ model</Pill></div>
+                {policies.length>0 && <div style={{ marginTop:6, fontSize:11 }}>Loaded: {policies.map(p=> String((p as Record<string,unknown>).policyKey)).join(", ")}</div>}
+              </div>
+            </Section>
+            <Section title="High-Risk Workflow Controls" subtitle="Sepsis never states confirmed — states risk signal requiring assessment. Track time to ack → bedside → treatment → reassessment → outcome.">
+              <div style={{ display:"grid", gap:6, fontSize:11 }}>
+                <div className="nv-card" style={{ padding:8 }}><b>Sepsis</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Multi-evidence categories • verify freshness/quality • trends not score • no auto antibiotic/dosing • time-bound review • protocol only after approval • logistics (checklist/notify) pre-authorized OK • dedup with escalation preserved</span></div>
+                <div className="nv-card" style={{ padding:8 }}><b>Medication optimization</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Reconciliation • allergy/duplicate • renal/hepatic/pregnancy • interaction severity • CPIC grading • formulary • pharmacist review • patient explanation • signature • post-order monitoring • rollback only if safe/authorized — never silent replacement</span></div>
+                <div className="nv-card" style={{ padding:8 }}><b>Suicide/crisis</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>No passive signal alone as imminent risk • validated assessment + human conversation • taxonomy distress/concern/ideation/plan/danger • immediate human contact • jurisdiction-aware escalation • no alarming opaque-score message</span></div>
+                <div className="nv-card" style={{ padding:8 }}><b>Emergency dispatch</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Multi-modality confirmation • two-way voice/text • location • cancel/ack check • local number • minimum info • ack tracking • operator override • connectivity-loss resilience • post-event review</span></div>
+              </div>
+            </Section>
+          </div>
+
+          <Section title="Review Queue — Structured Human Review (Not Accept Button)" subtitle="Every S3-S5 recommendation appears here until clinician completes evidence review. Distinguishes reviewed/agreed/modified/overridden.">
+            <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap" }}>
+              <Button variant="ghost" size="sm" onClick={async()=> { const r=await fetch("/api/health/safety/recommendations?take=12",{cache:"no-store"}); const j=await r.json().catch(()=>null); if(j?.rows) setRecs(j.rows); }}>Refresh</Button>
+              <span style={{ fontSize:11, color:"var(--nv-color-text-faint)", alignSelf:"center" }}>{recs.length} recommendations • abstain safe • expired 24h • superseded tracked</span>
+            </div>
+            <div style={{ overflowX:"auto" }}>
+              <table className="nv-table" style={{ fontSize:12 }}>
+                <thead><tr><th>When</th><th>Kind</th><th>Class</th><th>State</th><th>Title</th><th>Patient</th><th>Urgency</th></tr></thead>
+                <tbody>
+                  {recs.length===0 && <tr><td colSpan={7} className="nv-empty">No recommendations — predictive scores, Ani DDX, med orders, imaging, vitals breaches automatically create S0-S5 recommendations via CSOS (safe abstention when inputs invalid)</td></tr>}
+                  {recs.map((r,i)=> (
+                    <tr key={String((r as Record<string,unknown>).id ?? i)}>
+                      <td style={{ fontSize:11, color:"var(--nv-color-text-faint)" }}>{r.createdAt? new Date(String(r.createdAt)).toLocaleString():""}</td>
+                      <td><Pill tone={(r as Record<string,unknown>).kind==="sepsis"||(r as Record<string,unknown>).kind==="deterioration"?"danger": (r as Record<string,unknown>).safetyClass==="S5"?"danger": (r as Record<string,unknown>).safetyClass==="S4"?"warning":"primary"}>{String((r as Record<string,unknown>).kind)}</Pill></td>
+                      <td><Pill tone={(r as Record<string,unknown>).safetyClass==="S5"||(r as Record<string,unknown>).safetyClass==="S4"?"danger": (r as Record<string,unknown>).safetyClass==="S3"?"warning":"neutral"}>{String((r as Record<string,unknown>).safetyClass)}</Pill></td>
+                      <td><Pill tone={String((r as Record<string,unknown>).state)==="REVIEW_REQUIRED"?"warning": String((r as Record<string,unknown>).state)==="APPROVED"?"success": String((r as Record<string,unknown>).state)==="ABSTAINED"?"danger":"neutral"}>{String((r as Record<string,unknown>).state)}</Pill></td>
+                      <td style={{ maxWidth:240, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{String((r as Record<string,unknown>).title).slice(0,80)}</td>
+                      <td style={{ fontSize:11 }}>{String((r as Record<string,unknown>).patientId ?? "—").slice(0,8)}</td>
+                      <td><Pill tone={(r as Record<string,unknown>).urgency==="emergent"?"danger": (r as Record<string,unknown>).urgency==="urgent"?"warning":"neutral"}>{String((r as Record<string,unknown>).urgency ?? (r as Record<string,unknown>).priority ?? "routine")}</Pill></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop:8, padding:8, border:"1px solid var(--nv-color-border)", borderRadius:8, fontSize:11, background:"var(--nv-color-surface-raised)" }}>
+              <b>Execution guard:</b> Approved → EXECUTING → COMPLETED → OUTCOME_MONITORED. <code>EXECUTE</code> checks state + blockedActions + authorizedActions + S5 dual-approval + jurisdiction. Try: <code>POST /api/health/safety/recommendations/:id/execute {"{ actionKind: 'EXECUTE' }"}</code> — blocked until reviewed.
+            </div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Safe-Degraded Operation — Never Fail-Open for S3-S5" subtitle="Hierarchy of fallbacks with jurisdiction-aware routing.">
+              <div style={{ overflowX:"auto" }}>
+                <table className="nv-table" style={{ fontSize:11 }}>
+                  <thead><tr><th>Failure</th><th>System Response</th></tr></thead>
+                  <tbody>
+                    <tr><td>Wearable unavailable</td><td>Mark stale, notify, manual measurement</td></tr>
+                    <tr><td>Signal poor</td><td>Request repositioning / alternate device</td></tr>
+                    <tr><td>EHR unavailable</td><td>Read-only cached summary, block unsafe orders</td></tr>
+                    <tr><td>Model unavailable</td><td>Validated rules or human review</td></tr>
+                    <tr><td>Policy engine unavailable</td><td>Block high-risk; only S0 allowed</td></tr>
+                    <tr><td>Network unavailable</td><td>Encrypted offline emergency summary</td></tr>
+                    <tr><td>Model drift detected</td><td>Disable model, fallback active</td></tr>
+                    <tr><td>Cybersecurity incident</td><td>Isolate, preserve clinical continuity</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              {degraded && <div style={{ marginTop:8, fontSize:11 }}>Live: {JSON.stringify(degraded, null, 0).slice(0,300)}</div>}
+            </Section>
+            <Section title="Monitoring Dashboard — NIST Govern/Map/Measure/Manage" subtitle="Sensitivity, specificity, PPV/NPV, calibration, false-neg/pos, abstention, drift, subgroup, OOD, explanation completeness, time-to-ack/review, override, duplicate, escalation fail, alert burden, automation bias…">
+              {monitor ? (
+                <div style={{ display:"grid", gap:6, fontSize:12 }}>
+                  <div>Generated: <b>{String((monitor as Record<string,unknown>).generated)}</b> • Abstained: <b>{String((monitor as Record<string,unknown>).abstained)}</b> ({Math.round(((monitor as Record<string,unknown>).abstentionRate as number ?? 0)*100)}%) • Review req: <b>{String((monitor as Record<string,unknown>).reviewRequired)}</b> • Approved: <b>{String((monitor as Record<string,unknown>).approved)}</b></div>
+                  <div>Avg time to review: <b>{String((monitor as Record<string,unknown>).avgTimeToReviewSec)}s</b> • Incidents: <b>{String((monitor as Record<string,unknown>).incidents)}</b></div>
+                  <div style={{ color:"var(--nv-color-text-faint)", fontSize:11 }}>By class: {JSON.stringify((monitor as Record<string,unknown>).byClass)}<br/>By state: {JSON.stringify((monitor as Record<string,unknown>).byState)}</div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}><Pill tone="primary">NIST govern: Clinical Safety Officer</Pill><Pill>map: hazard/FMEA</Pill><Pill>measure: cal/PPV/drift</Pill><Pill>manage: policy+gate+degraded</Pill></div>
+                </div>
+              ) : <div style={{ fontSize:12, color:"var(--nv-color-text-faint)"}}>Loading monitor… (seeded after first recommendation)</div>}
+              <div style={{ marginTop:8, display:"flex", gap:6 }}><Button variant="ghost" size="sm" onClick={async()=> { const r=await fetch("/api/health/safety/monitor?windowHours=24"); const j=await r.json().catch(()=>null); if(j?.monitor) setMonitor(j.monitor); }}>Refresh</Button><Pill tone="warning">Alert burden / per clinician tracked</Pill></div>
+            </Section>
+          </div>
+
+          <Section title="Incident & Near-Miss Management — Clinical AI Safety Event Service" subtitle="Timeline, impact, versions, snapshot, decision path, human actions, contributing, severity, detectability, root cause, corrective/preventive, regulatory assessment, closure owner, verified remediation.">
+            <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap", alignItems:"center" }}>
+              <input className="nv-input" placeholder="Title" value={incidentForm.title} onChange={e=> setIncidentForm({...incidentForm, title:e.target.value})} style={{ flex:1, minWidth:200 }} />
+              <select className="nv-select" value={incidentForm.kind} onChange={e=> setIncidentForm({...incidentForm, kind:e.target.value})} style={{ width:160 }}>
+                {["FALSE_NEGATIVE","FALSE_POSITIVE","DELAYED_ALERT","UNSAFE_RECOMMENDATION","MISSING_CONTRAINDICATION","HALLUCINATED_EVIDENCE","INCORRECT_DOSE","ALERT_FATIGUE","PARTIAL_TRANSACTION","CLINICIAN_OVERRIDE","NEAR_MISS","OTHER"].map(k=> <option key={k} value={k}>{k}</option>)}
+              </select>
+              <select className="nv-select" value={incidentForm.severity} onChange={e=> setIncidentForm({...incidentForm, severity:e.target.value})} style={{ width:130 }}>
+                {["MINOR","MODERATE","MAJOR","CATASTROPHIC"].map(s=> <option key={s} value={s}>{s}</option>)}
+              </select>
+              <Button onClick={async()=> {
+                if (!incidentForm.title) return;
+                const r=await fetch("/api/health/safety/incidents",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ kind: incidentForm.kind, severity: incidentForm.severity, title: incidentForm.title })});
+                const j=await r.json().catch(()=>null);
+                if(r.ok && j?.incident) { setIncidents(prev=> [j.incident, ...prev].slice(0,8)); setIncidentForm({ title:"", kind:"NEAR_MISS", severity:"MODERATE" }); }
+              }} disabled={!incidentForm.title}>Report</Button>
+            </div>
+            <div style={{ overflowX:"auto" }}>
+              <table className="nv-table" style={{ fontSize:12 }}>
+                <thead><tr><th>When</th><th>Kind</th><th>Severity</th><th>Status</th><th>Title</th></tr></thead>
+                <tbody>
+                  {incidents.length===0 && <tr><td colSpan={5} className="nv-empty">No incidents — near-misses encouraged (wrong patient, stale vitals, motion artifact, drift, hallucinated evidence, alert fatigue, wrong contact, partial transaction, model update) — each gets root cause + CAPA.</td></tr>}
+                  {incidents.map((inc,i)=> (
+                    <tr key={String((inc as Record<string,unknown>).id ?? i)}>
+                      <td style={{ fontSize:11, color:"var(--nv-color-text-faint)" }}>{inc.createdAt? new Date(String(inc.createdAt)).toLocaleString():""}</td>
+                      <td><Pill>{String((inc as Record<string,unknown>).kind)}</Pill></td>
+                      <td><Pill tone={String((inc as Record<string,unknown>).severity)==="MAJOR"||String((inc as Record<string,unknown>).severity)==="CATASTROPHIC"?"danger":"warning"}>{String((inc as Record<string,unknown>).severity)}</Pill></td>
+                      <td><Pill tone={String((inc as Record<string,unknown>).status)==="CLOSED"||String((inc as Record<string,unknown>).status)==="VERIFIED"?"success":"neutral"}>{String((inc as Record<string,unknown>).status)}</Pill></td>
+                      <td>{String((inc as Record<string,unknown>).title).slice(0,70)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Safety Case — Living S3-S5" subtitle="Claim → Subclaims → Hazard Analysis → Risk Controls → Verification → Clinical Validation → Residual Risk Acceptance → Post-Deployment Monitoring">
+              <div style={{ fontSize:11, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+                Example claim: “Sepsis-risk provides timely interpretable risk signals without autonomously diagnosing or initiating treatment.”<br/>
+                Evidence: intended use, hazard analysis, dataset/population, external validation, subgroup/calibration, input-failure testing, workflow simulation, human factors, alert burden, downtime, security, sign-off, residual acceptance.<br/>
+                Status: DRAFT → IN_REVIEW → APPROVED/CONDITIONAL/REJECTED → RETIRED. API: <code>POST /api/health/safety/cases</code> / <code>PUT /cases/:id/approve</code>
+              </div>
+            </Section>
+            <Section title="Governance Roles — No Single Team Deploys High-Risk Without Approval">
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap", fontSize:11 }}>
+                {["Clinical Safety Officer","Medical Director","Model Owner","Product Owner","Privacy Officer","Security Officer","Quality & Regulatory Lead","Human Factors Lead","Clinical Review Board","Incident Review Board"].map(r=> <Pill key={r}>{r}</Pill>)}
+              </div>
+              <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>S3-S5 deployments & major changes require clinical + quality + privacy + security + human-factors approval.</div>
+            </Section>
+          </div>
+
+          <Section title="FMEA — Traditional + AI-Specific (12 Rows)" subtitle="Hover control shows mitigation that CSOS enforces.">
+            <div style={{ overflowX:"auto" }}>
+              <table className="nv-table" style={{ fontSize:11 }}>
+                <thead><tr><th>Failure Mode</th><th>Potential Harm</th><th>Control</th></tr></thead>
+                <tbody>
+                  <tr><td>Wrong patient matched</td><td>Incorrect treatment</td><td>Multi-factor identity + encounter lock</td></tr>
+                  <tr><td>Stale vital signs</td><td>Delayed care</td><td>Freshness threshold + timestamp</td></tr>
+                  <tr><td>Motion artifact → arrhythmia</td><td>Unnecessary emergency</td><td>Signal-quality gate + confirmation</td></tr>
+                  <tr><td>Model poor on local pop</td><td>Missed/excess alerts</td><td>Local validation + subgroup monitor</td></tr>
+                  <tr><td>Conflicting lab/medication</td><td>Unsafe dose</td><td>Conflict flag + pharmacist review</td></tr>
+                  <tr><td>Confidence overstated</td><td>Automation bias</td><td>Calibrated uncertainty + limitations</td></tr>
+                  <tr><td>Hallucinated evidence</td><td>Incorrect decision</td><td>Retrieval-grounded + source verification</td></tr>
+                  <tr><td>Alert duplicated</td><td>Alert fatigue</td><td>Event identity + dedup</td></tr>
+                  <tr><td>Emergency wrong contact</td><td>Privacy/safety harm</td><td>Contact verification + role routing</td></tr>
+                  <tr><td>Partial transaction</td><td>Incomplete care</td><td>Saga + reconciliation</td></tr>
+                  <tr><td>Model update changes behavior</td><td>Unexpected risk</td><td>Shadow + approval + rollback</td></tr>
+                  <tr><td>Clinician accepts without review</td><td>Unsafe action</td><td>Structured review + audit</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </Section>
+
+          <Section title="Audit Record — Tamper-Evident Hash Chain (SHA-256) per Workspace" subtitle="Every decision has cryptographic trace: patient context, recommendation, evidence, decision, execution (blocked autonomous), audit (trace ID, snapshot hash, signature, retention).">
+            <pre style={{ fontSize:11, background:"var(--nv-color-surface-raised)", padding:10, borderRadius:8, overflowX:"auto", whiteSpace:"pre-wrap" }}>{`{
+  "safety_event_id": "safety-2026-000184",
+  "patient_context": { "patient_id": "tokenized", "encounter_id": "enc-9842", "care_setting": "inpatient" },
+  "recommendation": { "type": "clinical_risk_alert", "risk_class": "S4", "model_id": "deterioration-risk-v3", "model_version": "3.4.1", "policy_version": "clinical-safety-policy-12.7", "probability": 0.86, "uncertainty": { "epistemic": 0.11, "aleatoric": 0.18 } },
+  "evidence": { "sources": ["vitals","labs","medications"], "missing_inputs": [], "signal_quality": 0.96 },
+  "decision": { "required_action": "clinician_review", "reviewer_role": "attending_physician", "status": "approved_for_assessment" },
+  "execution": { "actions": ["rapid_response_notification","clinical_task_created"], "autonomous_actions_blocked": ["medication_order","treatment_change"] },
+  "audit": { "trace_id": "trace-...", "input_snapshot_hash": "sha256:...", "chainIndex": 42, "chainPrev": "sha256:..." }
+}`}</pre>
+            {auditChain && <div style={{ marginTop:8, fontSize:11 }}>Chain: {String((auditChain as Record<string,unknown>).valid === false? "BROKEN at "+String((auditChain as Record<string,unknown>).brokenAt) : "valid — "+String((auditChain as Record<string,unknown>).count)+" entries")} — verification via SHA-256 hash chain per workspace • retention: clinical-safety-record</div>}
+          </Section>
+
+          <Section title="Vitality Workspace Promise — Amendments Applied" subtitle="Automatic antibiotic → clinician-reviewed sepsis-risk support • Automatic emergency dispatch → validated jurisdiction-specific escalation • 'Mortality reduced' → outcome tracking without causality claim • Fixed accuracy → versioned validation records • Neural/twin/longevity/voice/BCI/genomic marked research/validated/production • No autonomous diagnosis/treatment/consciousness/guaranteed optimization • Every cross-module workflow has policy engine gate • Safety gates before tasks/messages/orders/family/financial/emergency • Every AI action reversible, attributable, time-bounded, reviewable • Safe abstention in every agent.">
+            <div style={{ padding:10, border:"1.5px solid #4f46e5", borderRadius:10, fontSize:12, fontWeight:800, textAlign:"center", background:"var(--nv-color-surface-raised)" }}>
+              N0VA may detect, explain, prioritize, draft, and coordinate — but high-risk clinical decisions remain explicitly authorized by accountable healthcare professionals.
             </div>
           </Section>
         </div>
@@ -640,3 +988,4 @@ export function WellnessBoard({
 
 // Backwards-compat alias — page imports { WellnessBoard }
 export const HealthVitalityBoard = WellnessBoard;
+export const SafetyBoard = WellnessBoard;

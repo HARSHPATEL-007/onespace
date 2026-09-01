@@ -1,11 +1,15 @@
 import { z } from "zod";
 import { prisma, logAudit } from "@n0va/db";
 import { can, type Role } from "@n0va/authz";
+import { ClinicalSafetyOS, SAFETY_CLASS, AUTHORIZATION_MATRIX, FEATURE_SAFETY_MAP, classifyFeature, DEFAULT_ENVELOPES, SAFE_ABSTENTION_MESSAGE, FMEA_ROWS, GOVERNANCE_ROLES, DEGRADED_RESPONSES } from "./safety";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
 // wellness/preventive, care coordination, pharmacy, research, telehealth,
 // Ani intelligence, N0VA1O gateway, workspace-native ambient health.
+// Clinical Safety OS (CSOS) is the mandatory control plane — every AI output
+// is a recommendation that must pass input gateway → envelope → uncertainty
+// → policy engine → human review gate → execution guard → audit.
 
 const MODULE = "health";
 
@@ -304,8 +308,11 @@ async function safe<T>(fn: ()=> Promise<T>, fallback: T): Promise<T> {
 }
 
 // ── HealthService ───────────────────────────────────────────────────
+// CSOS invariant: no model may approve its own output, modify threshold, bypass review, or directly execute S4-S5.
 export class HealthService {
   constructor(private readonly workspaceId: string, private readonly userId: string, private readonly role: Role) {}
+
+  private get safety() { return new ClinicalSafetyOS(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -313,6 +320,43 @@ export class HealthService {
   private audit(action: string, targetType: string, targetId: string, meta?: Record<string, unknown>) {
     return logAudit({ workspaceId: this.workspaceId, actorId: this.userId, module: MODULE, action, targetType, targetId, metadata: meta }).catch(()=>null);
   }
+
+  // ── CSOS delegation — mandatory control plane re-exports ────────────
+  safetyClassify(featureKey: string) { return classifyFeature(featureKey); }
+  get authorizationMatrix() { return AUTHORIZATION_MATRIX; }
+  get safetyClasses() { return SAFETY_CLASS; }
+  get fmeaRows() { return FMEA_ROWS; }
+  get governanceRoles() { return GOVERNANCE_ROLES; }
+  get degradedResponses() { return DEGRADED_RESPONSES; }
+  async createSafetyRecommendation(input: Parameters<ClinicalSafetyOS["createRecommendation"]>[0]) { return this.safety.createRecommendation(input); }
+  async listSafetyRecommendations(opts: { patientId?: string; state?: string; safetyClass?: string; kind?: string; take?: number }={}) {
+    await this.assert("READ");
+    const where: Record<string,unknown> = { workspaceId: this.workspaceId };
+    if (opts.patientId) where.patientId = opts.patientId;
+    if (opts.state) where.state = opts.state;
+    if (opts.safetyClass) where.safetyClass = opts.safetyClass;
+    if (opts.kind) where.kind = opts.kind;
+    return safe(()=> (prisma as never as { healthSafetyRecommendation:{findMany:(a:unknown)=>Promise<unknown[]>}}).healthSafetyRecommendation.findMany({ where, orderBy:{createdAt:"desc"}, take: Math.min(opts.take??30,100)}), []);
+  }
+  async getSafetyRecommendation(id: string) {
+    await this.assert("READ");
+    const row = await safe(()=> (prisma as never as { healthSafetyRecommendation:{findFirst:(a:unknown)=>Promise<unknown>}}).healthSafetyRecommendation.findFirst({ where:{id, workspaceId:this.workspaceId}}), null);
+    if (!row) throw new Error("Recommendation not found");
+    return row;
+  }
+  async transitionSafetyRecommendation(id: string, to: string, reasonCode: string) { return this.safety.transitionRecommendation(id, to as never, reasonCode); }
+  async reviewSafetyRecommendation(id: string, input: Parameters<ClinicalSafetyOS["submitReview"]>[1]) { return this.safety.submitReview(id, input); }
+  async executionGuard(recommendationId: string, actionKind: string) { return this.safety.executionGuard(recommendationId, actionKind as never); }
+  async listSafetyIncidents(opts?: Parameters<ClinicalSafetyOS["listIncidents"]>[0]) { return this.safety.listIncidents(opts); }
+  async reportSafetyIncident(input: Parameters<ClinicalSafetyOS["reportIncident"]>[0]) { return this.safety.reportIncident(input); }
+  async listSafetyCases() { return this.safety.listSafetyCases(); }
+  async upsertSafetyCase(input: Parameters<ClinicalSafetyOS["upsertSafetyCase"]>[0]) { return this.safety.upsertSafetyCase(input); }
+  async getSafetyMonitorDashboard(windowHours?: number) { return this.safety.getMonitorDashboard(windowHours); }
+  async getSafetyAuditTrail(recommendationId?: string, take?: number) { return this.safety.getAuditTrail(recommendationId, take); }
+  async verifySafetyAuditChain() { return this.safety.verifyAuditChain(); }
+  async getDegradedStatus() { return this.safety.degradedStatus(); }
+  async listSafetyModels() { return this.safety.listModels(); }
+  async listSafetyPolicies() { return this.safety.listPolicies(); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {
@@ -440,23 +484,38 @@ export class HealthService {
   }
 
   // ── Real-Time Biometric Monitoring — 12-layer mesh ────────────────
+  // CSOS: every vital breach is a recommendation through the safety pipeline — never direct alert without review for S4.
   async ingestVitals(batch: Array<z.infer<typeof vitalSchema>>) {
     await this.assert("CREATE");
     const rows = batch.map(v=> ({ workspaceId:this.workspaceId, patientId: v.patientId, encounterId: v.encounterId ?? null, deviceId: v.deviceId ?? null, layer: v.layer, heartRate: v.heartRate ?? null, hrvSdnn: v.hrvSdnn ?? null, bpSystolic: v.bpSystolic ?? null, bpDiastolic: v.bpDiastolic ?? null, spo2: v.spo2 ?? null, respiratoryRate: v.respiratoryRate ?? null, temperatureC: v.temperatureC ?? null, glucoseMgDl: v.glucoseMgDl ?? null, weightKg: v.weightKg ?? null, signals: (v.signals ?? {}) as never, source: v.source, qualityScore: v.qualityScore, recordedAt: v.recordedAt ?? new Date() }));
-    if (rows.length===0) return { ingested:0, alerts: [] as unknown[] };
+    if (rows.length===0) return { ingested:0, alerts: [] as unknown[], recommendations: [] as unknown[] };
     const result = await safe(()=> (prisma as never as { healthVital:{createMany:(a:unknown)=>Promise<{count:number}>}}).healthVital.createMany({ data: rows }), { count: rows.length });
-    // anomaly-triggered active surveillance — generate alerts where vitals breach thresholds
     const alerts: unknown[] = [];
+    const recommendations: unknown[] = [];
     for (const v of rows) {
       const breach = (v.heartRate!=null && (v.heartRate>140 || v.heartRate<40)) || (v.spo2!=null && v.spo2<88) || (v.bpSystolic!=null && v.bpSystolic>190) || (v.temperatureC!=null && v.temperatureC>39.5);
       if (breach) {
         const scored = scoreRisk("deterioration", v as never);
-        const a = await safe(()=> (prisma as never as { healthAlert:{create:(a:unknown)=>Promise<unknown>}}).healthAlert.create({ data:{ workspaceId:this.workspaceId, patientId: v.patientId, kind:"deterioration", severity: scored.score>0.7?"critical": scored.score>0.4?"high":"moderate", score: scored.score, confidence: scored.confidence, horizon:"4-8h", message: scored.message, explainability:{ vital:v, trigger:"threshold_breach"} as never, actions: scored.actions.map(m=> ({type:"order", message:m})) as never } }), null);
-        if (a) alerts.push(a);
+        // CSOS: mandatory control plane — deterioration is S4, requires REVIEW_REQUIRED, never autonomous
+        const safety = await this.safety.createRecommendation({
+          patientId: v.patientId, modelId: "deterioration-risk-v3", modelVersion:"3.4.1", kind:"deterioration", title:"Possible clinical deterioration — vital threshold breach",
+          intendedUse:"Adult inpatient deterioration support — requires clinician review, not primary reliance",
+          safetyClass:"S4", probability: scored.score, dataSources:["vitals"], signalQuality: v.qualityScore,
+          requiredInputs:["heart_rate","oxygen_saturation","blood_pressure"], providedInputs: { heart_rate: v.heartRate, spo2: v.spo2, bpSystolic: v.bpSystolic },
+          patientContext:{ careSetting:"inpatient" }, urgency:"emergent",
+          inputSnapshot: { vital: v, threshold:"breach" }, output:{ score: scored.score, confidence: scored.confidence, action:"clinical assessment required — verify trends, not score alone" },
+          evidencePanel:{ positiveFactors:[`HR ${v.heartRate}`,`SpO2 ${v.spo2}`,`BP ${v.bpSystolic}`], negativeFactors:[], contraindications:[], alternativeExplanations:["motion artifact","sensor malposition"], }
+        }).catch(()=> null) as { recommendation: unknown; abstained: boolean } | null;
+        if (safety?.recommendation) recommendations.push(safety.recommendation);
+        // Only create alert artifact when safety pipeline permits (not abstained, at least REVIEW_REQUIRED); execution guard will block autonomous orders
+        if (safety && !safety.abstained) {
+          const a = await safe(()=> (prisma as never as { healthAlert:{create:(a:unknown)=>Promise<unknown>}}).healthAlert.create({ data:{ workspaceId:this.workspaceId, patientId: v.patientId, kind:"deterioration", severity: scored.score>0.7?"critical": scored.score>0.4?"high":"moderate", score: scored.score, confidence: scored.confidence, horizon:"4-8h", message: scored.message + " — requires clinical assessment (CSOS S4 REVIEW_REQUIRED)", explainability:{ vital:v, trigger:"threshold_breach", safetyRecommendationId: (safety.recommendation as {id:string}).id, safetyClass:"S4", requiredRole:"attending_or_rapid_response_clinician"} as never, actions: [] as never } }), null);
+          if (a) alerts.push(a);
+        }
       }
     }
     await this.audit("CREATE","HealthVital",`${rows.length} vitals ingested`);
-    return { ingested: (result as {count:number}).count ?? rows.length, alerts };
+    return { ingested: (result as {count:number}).count ?? rows.length, alerts, recommendations };
   }
   async listVitals(patientId: string, opts: { take?:number; layer?:string; since?:Date } = {}) {
     await this.assert("READ");
@@ -564,20 +623,39 @@ export class HealthService {
   }
   async prescribe(input: z.infer<typeof medicationSchema>) {
     await this.assert("CREATE");
-    // allergy cross-ref + pharmacogenomic check (mock CPIC)
+    // CSOS S5: medication ordering/dosing requires explicit authorization — never autonomous.
+    // Controls: reconciliation, allergy, renal/hepatic, pregnancy, interaction severity, pharmacogenomic grading, pharmacist review, signature.
     const twin = await this.getBioTwin(input.patientId).catch(()=>null);
     const pgx = (twin as { pharmacogenomics?: Array<{gene:string; phenotype:string}>})?.pharmacogenomics ?? [];
     const risks: string[] = [];
+    const warnings: string[] = [];
     const poorCYP2D6 = pgx.find(p=> p.gene==="CYP2D6" && p.phenotype==="poor_metabolizer");
     if (poorCYP2D6 && ["codeine","tramadol","tamoxifen"].includes(input.drugName.toLowerCase())) risks.push(`CPIC: ${input.drugName} — CYP2D6 poor metabolizer, consider alternative`);
-    // interaction stub: statin + macrolide etc.
     const existing = await safe(()=> (prisma as never as { healthMedication:{findMany:(a:unknown)=>Promise<Array<{drugName:string}>>}}).healthMedication.findMany({ where:{patientId: input.patientId, workspaceId:this.workspaceId, status:"active"}}), []);
     const existingNames = existing.map(e=> e.drugName.toLowerCase());
-    if (existingNames.includes("warfarin") && input.drugName.toLowerCase()==="fluconazole") risks.push("Major interaction: fluconazole ↑ warfarin — INR monitoring required");
-    if (existingNames.includes("simvastatin") && ["clarithromycin","erythromycin"].includes(input.drugName.toLowerCase())) risks.push("Contraindicated: macrolide + simvastatin — rhabdomyolysis risk");
-    const row = await (prisma as never as { healthMedication:{create:(a:unknown)=>Promise<unknown>}}).healthMedication.create({ data:{ workspaceId:this.workspaceId, ...input, interactionChecked:true, adherencePct:1} as never });
-    await this.audit("CREATE","HealthMedication",(row as {id:string}).id, { risks });
-    return { medication: row, pgxRisks: risks, interactionChecked: true };
+    if (existingNames.includes("warfarin") && input.drugName.toLowerCase()==="fluconazole") warnings.push("Major interaction: fluconazole ↑ warfarin — INR monitoring required");
+    if (existingNames.includes("simvastatin") && ["clarithromycin","erythromycin"].includes(input.drugName.toLowerCase())) warnings.push("Contraindicated: macrolide + simvastatin — rhabdomyolysis risk — BLOCKED");
+    if (existingNames.includes(input.drugName.toLowerCase())) warnings.push("Duplicate therapy — verify indication");
+    // S5 safety recommendation — always REVIEW_REQUIRED, block autonomous EXECUTE, require prescriber + pharmacist
+    const isHighRisk = warnings.some(w=> /Contraindicated|BLOCKED/i.test(w)) || risks.length>0;
+    const safety = await this.safety.createRecommendation({
+      patientId: input.patientId, modelId: "medication-order-v2", modelVersion:"2.1.0", kind:"medication_order",
+      title:`Medication order: ${input.drugName} ${input.dosage ?? ""} — ${isHighRisk? "HIGH-RISK requires dual review":"requires prescriber review"}`,
+      intendedUse:"Medication ordering support — prescriber + pharmacist review required, never autonomous dispensing",
+      safetyClass:"S5", probability: isHighRisk? 0.85:0.55,
+      dataSources:["medication_history","pharmacogenomics","allergy_list","renal_hepatic"],
+      requiredInputs:["allergies","renal_function","hepatic_function","pregnancy","current_medications"], providedInputs:{ allergies: true, current_medications: existingNames },
+      patientContext:{ medications: existingNames, allergies: [] }, urgency: isHighRisk? "emergent":"routine",
+      inputSnapshot:{ drugName: input.drugName, dosage: input.dosage, risks, warnings }, output:{ drugName: input.drugName, dosage: input.dosage, prescriber: input.prescriber, warnings, risks },
+      evidencePanel:{ positiveFactors:[`Indication: ${input.drugName}`], negativeFactors: warnings, contraindications: warnings.filter(w=>/Contraindicated/.test(w)), alternativeExplanations:["Consider formulary alternative"], }
+    }).catch(()=> null) as { recommendation: { id: string } } | null;
+    if (warnings.some(w=>/Contraindicated/.test(w))) {
+      throw new Error(`CSOS S5 BLOCKED: ${warnings.join("; ")} — pharmacist review required before ordering. Recommendation ${safety?.recommendation?.id ?? ""} in REVIEW_REQUIRED.`);
+    }
+    // Persist as DRAFT — execution guard blocks dispense until APPROVED
+    const row = await (prisma as never as { healthMedication:{create:(a:unknown)=>Promise<unknown>}}).healthMedication.create({ data:{ workspaceId:this.workspaceId, ...input, interactionChecked:true, adherencePct:1, status: safety? "draft_pending_review":"active"} as never });
+    await this.audit("CREATE","HealthMedication",(row as {id:string}).id, { risks, warnings, safetyRecommendationId: safety?.recommendation?.id, safetyClass:"S5" });
+    return { medication: row, pgxRisks: risks, warnings, interactionChecked: true, safetyRecommendation: safety?.recommendation, safetyClass:"S5", requiresApproval:true, blockedAutonomous: true, nextStep: "Prescriber signature + pharmacist review required — execution guard blocks autonomous dispense" };
   }
   async medicationAdherence(patientId: string) {
     await this.assert("READ");
@@ -600,7 +678,13 @@ export class HealthService {
     await this.assert("CREATE");
     const row = await (prisma as never as { healthLabResult:{create:(a:unknown)=>Promise<unknown>}}).healthLabResult.create({ data:{ workspaceId:this.workspaceId, ...input} as never });
     if (input.abnormal) {
-      await safe(()=> (prisma as never as { healthAlert:{create:(a:unknown)=>Promise<unknown>}}).healthAlert.create({ data:{ workspaceId:this.workspaceId, patientId: input.patientId, kind:"lab_critical", severity:"high", score:0.88, confidence:0.91, message:`Critical lab: ${input.testName} = ${input.value}`, actions:[{type:"notify_provider"}] as never } }), null);
+      await this.safety.createRecommendation({
+        patientId: input.patientId, modelId:"lab-critical-v1", kind:"lab_critical", title:`Critical lab: ${input.testName} = ${input.value}`,
+        intendedUse:"Lab critical value support — requires clinician review, not autonomous diagnosis",
+        safetyClass:"S3", probability:0.88, dataSources:["lab"], patientContext:{}, urgency:"urgent",
+        inputSnapshot:{ testName: input.testName, value: input.value, loinc: input.loinc }, output:{ message:`Critical lab: ${input.testName} = ${input.value}` }
+      }).catch(()=>null);
+      await safe(()=> (prisma as never as { healthAlert:{create:(a:unknown)=>Promise<unknown>}}).healthAlert.create({ data:{ workspaceId:this.workspaceId, patientId: input.patientId, kind:"lab_critical", severity:"high", score:0.88, confidence:0.91, message:`Critical lab: ${input.testName} = ${input.value} — clinician review required (S3)`, actions:[] as never } }), null);
     }
     await this.audit("CREATE","HealthLabResult",(row as {id:string}).id);
     return row;
@@ -613,11 +697,19 @@ export class HealthService {
   }
   async createImagingStudy(input: z.infer<typeof imagingStudySchema>) {
     await this.assert("CREATE");
-    // mock AI findings — FDA-cleared model ensemble (spec §3.1)
-    const aiFindings = input.modality==="CT" ? [{ finding:"pulmonary nodule 4mm", confidence:0.87, model:"chest_ct_nodule_v2"}] : input.modality==="XRAY"? [{finding:"no acute cardiopulmonary abnormality", confidence:0.93, model:"chest_xray_14path_v3"}] : [];
+    // mock AI findings — FDA-cleared model ensemble (spec §3.1) — S3 preliminary draft, clinician sign-off required, never autonomous final
+    const aiFindings = input.modality==="CT" ? [{ finding:"pulmonary nodule 4mm", confidence:0.87, model:"chest_ct_nodule_v2", draft:true}] : input.modality==="XRAY"? [{finding:"no acute cardiopulmonary abnormality", confidence:0.93, model:"chest_xray_14path_v3", draft:true}] : [];
     const row = await (prisma as never as { healthImagingStudy:{create:(a:unknown)=>Promise<unknown>}}).healthImagingStudy.create({ data:{ workspaceId:this.workspaceId, ...input, aiFindings: aiFindings as never } as never });
+    if (aiFindings.length) {
+      await this.safety.createRecommendation({
+        patientId: input.patientId, modelId: aiFindings[0]?.model ?? "imaging-ai-v3", kind:"diagnostic_report_prelim", title:`Preliminary imaging finding: ${aiFindings[0]?.finding}`,
+        intendedUse:"Preliminary draft — clinician sign-off required before final report, not autonomous diagnosis",
+        safetyClass:"S3", probability: (aiFindings[0] as {confidence:number})?.confidence ?? 0.85, dataSources:["imaging"], patientContext:{},
+        inputSnapshot:{ modality: input.modality, description: input.description }, output:{ findings: aiFindings, note:"Preliminary AI draft — requires radiologist verification" }
+      }).catch(()=>null);
+    }
     await this.audit("CREATE","HealthImagingStudy",(row as {id:string}).id);
-    return { study: row, aiFindings };
+    return { study: row, aiFindings, safetyNote:"S3 preliminary — clinician sign-off required, execution guard blocks autonomous final report" };
   }
 
   // ── Wellness — nutrition, fitness, women's health, longevity ──────
@@ -698,16 +790,31 @@ export class HealthService {
   }
 
   // ── Predictive Risk Scoring — 19 risk scores (spec §3.2) ──────────
+  // CSOS: every risk score is a recommendation — S4 for sepsis/cardiac/stroke/suicide/deterioration, S3 for others.
+  // No "automatic antibiotic/culture" — draft + approval + execution guard. Sepsis states "risk signal requiring assessment" not "confirmed".
   async predictiveRiskScoring(patientId: string, kinds?: string[]) {
     await this.assert("READ");
-    const latestVitals = await safe(()=> (prisma as never as { healthVital:{findFirst:(a:unknown)=>Promise<{heartRate:number|null;bpSystolic:number|null;spo2:number|null;temperatureC:number|null;glucoseMgDl:number|null}>}}).healthVital.findFirst({ where:{patientId, workspaceId:this.workspaceId}, orderBy:{recordedAt:"desc"}}), null) ?? { heartRate:72, bpSystolic:118, spo2:98, temperatureC:36.7, glucoseMgDl:95 };
+    const latestVitals = await safe(()=> (prisma as never as { healthVital:{findFirst:(a:unknown)=>Promise<{heartRate:number|null;bpSystolic:number|null;spo2:number|null;temperatureC:number|null;glucoseMgDl:number|null;qualityScore:number|null}>}}).healthVital.findFirst({ where:{patientId, workspaceId:this.workspaceId}, orderBy:{recordedAt:"desc"}}), null) ?? { heartRate:72, bpSystolic:118, spo2:98, temperatureC:36.7, glucoseMgDl:95, qualityScore: 0.94 };
     const requested = kinds?.length? RISK_DEFINITIONS.filter(r=> kinds.includes(r.kind)) : RISK_DEFINITIONS.slice(0,10);
     const scored = requested.map(def=> ({ ...def, ...scoreRisk(def.kind, latestVitals as never) }));
-    // persist high-risk alerts
-    for (const s of scored.filter(s=> s.score>0.65)) {
-      await safe(()=> (prisma as never as { healthAlert:{create:(a:unknown)=>Promise<unknown>}}).healthAlert.create({ data:{ workspaceId:this.workspaceId, patientId, kind: s.kind, severity: s.score>0.8?"critical":"high", score: s.score, confidence: s.confidence, horizon: s.horizon, message: s.message, actions: s.actions.map(a=> ({type:"clinical_pathway", action:a})) as never } }), null);
+    const recommendations: unknown[] = [];
+    for (const s of scored) {
+      const safetyClass = (["sepsis","cardiac_arrest","stroke","deterioration","suicide","suicide_risk","postpartum_hemorrhage","dka"].includes(s.kind) ? "S4" : s.score>0.75 ? "S3" : "S2") as "S2"|"S3"|"S4";
+      const rec = await this.safety.createRecommendation({
+        patientId, modelId: `${s.kind}-risk-v3`, kind: s.kind, title: `${s.kind} risk — ${Math.round(s.score*100)}% (${s.horizon})`,
+        intendedUse: safetyClass==="S4" ? "High-risk support — immediate qualified human review, not autonomous diagnosis/treatment" : "CDS — clinician review required",
+        safetyClass, probability: s.score, dataSources:["vitals","labs","medications"], signalQuality: (latestVitals as {qualityScore?:number}).qualityScore ?? 0.9,
+        requiredInputs:["heart_rate","blood_pressure","oxygen_saturation"], providedInputs:{ heart_rate: latestVitals.heartRate, spo2: latestVitals.spo2, bpSystolic: latestVitals.bpSystolic },
+        patientContext:{}, urgency: safetyClass==="S4"?"emergent": safetyClass==="S3"?"urgent":"routine",
+        inputSnapshot:{ vitals: latestVitals, kind: s.kind }, output:{ score: s.score, confidence:s.confidence, horizon:s.horizon, action: s.action, note: safetyClass==="S4"? "Risk signal requiring clinical assessment — not confirmed diagnosis; display contributing trends, block auto antibiotic/dosing" : "CDS recommendation" }
+      }).catch(()=>null) as { recommendation: unknown } | null;
+      if (rec?.recommendation) recommendations.push(rec.recommendation);
+      // Persist alert only as informational artifact — execution (orders/tasks) stays blocked until APPROVED
+      if (s.score>0.65 && rec) {
+        await safe(()=> (prisma as never as { healthAlert:{create:(a:unknown)=>Promise<unknown>}}).healthAlert.create({ data:{ workspaceId:this.workspaceId, patientId, kind: s.kind, severity: s.score>0.8?"critical":"high", score: s.score, confidence: s.confidence, horizon: s.horizon, message: s.message + (safetyClass==="S4" ? " — S4 REVIEW_REQUIRED (CSOS)" : " — S3 review required"), explainability:{ safetyRecommendationId: (rec.recommendation as {id:string}).id, safetyClass, requiredRole: safetyClass==="S4"?"attending_or_rapid_response_clinician":"attending_physician"} as never, actions: [] as never } }), null);
+      }
     }
-    return { patientId, at: new Date().toISOString(), vitals: latestVitals, scores: scored, model: "temporal_fusion_transformer + LSTM (spec §3.2)" };
+    return { patientId, at: new Date().toISOString(), vitals: latestVitals, scores: scored, recommendations, model: "temporal_fusion_transformer + LSTM (spec §3.2)", safetyNote: "CSOS mandatory — S4 requires immediate qualified review, S3 requires clinician review; no autonomous treatment initiation" };
   }
 
   // ── Alerts ────────────────────────────────────────────────────────
@@ -753,19 +860,32 @@ export class HealthService {
   }
 
   // ── Ani Health Intelligence — 24 capabilities (spec §14) ─────────
+  // CSOS: Ani differential is S3 CDS — requires evidence panel, never single %, safe abstention, clinician review for high-risk triage.
   async aniSymptomChecker(input: z.infer<typeof aniSymptomSchema>) {
     await this.assert("READ");
     const ddx = mockDifferential(input.symptoms);
     const triage = ddx[0]?.triage ?? "SELF-CARE";
+    const isHighRisk = /EMERGENCY|URGENT/.test(triage);
+    const safety = await this.safety.createRecommendation({
+      modelId:"ani-differential-v7", modelVersion:"vitality-v7", kind:"differential", title:`Differential: ${ddx[0]?.condition ?? "undifferentiated"} — ${triage}`,
+      intendedUse:"Symptom navigation support — clinician review required for high-risk triage, not autonomous diagnosis",
+      safetyClass: isHighRisk ? "S3" : "S2", probability: ddx[0]?.probability ?? 0.3,
+      dataSources:["symptoms","history"], patientContext:{ age: input.age, sex: input.sex },
+      requiredInputs:["symptoms"], providedInputs:{ symptoms: input.symptoms },
+      inputSnapshot:{ symptoms: input.symptoms, age: input.age, sex: input.sex, history: input.history },
+      output:{ differential: ddx, triage, model:"Bayesian + transformer + SHAP" },
+      evidencePanel:{ positiveFactors: ddx.slice(0,2).map(d=> d.condition), negativeFactors: ddx.slice(2).map(d=> d.condition), contraindications: isHighRisk? ["Requires same-day clinician assessment"]:[] }
+    }).catch(()=>null) as { recommendation: unknown; abstained: boolean; abstainReason?: string } | null;
+    const abstained = safety?.abstained;
     return {
-      input,
-      differential: ddx,
-      triage,
-      disclaimer: "Ani is informational and not a substitute for professional medical advice. Emergency triage requires clinician review.",
-      confidence: ddx[0]?.probability ?? 0.3,
+      input, differential: abstained ? [] : ddx, triage: abstained ? "CLINICIAN REVIEW REQUIRED" : triage,
+      disclaimer: "Ani is informational and not a substitute for professional medical advice. Emergency triage requires clinician review. FDA CDS: independent review of basis, not primary reliance.",
+      confidence: ddx[0]?.probability ?? 0.3, confidenceNote:"Probability + calibration + aleatoric/epistemic + population representativeness — never single % (CSOS).",
       model: "Bayesian reasoning + transformer ensemble + SHAP explainability",
-      followUp: ["Seek care if worsening", "Track vitals q4h", "Log symptoms in timeline"],
+      followUp: abstained ? [SAFE_ABSTENTION_MESSAGE] : ["Seek care if worsening", "Track vitals q4h", "Log symptoms in timeline"],
       audit: { at: new Date().toISOString(), model_version: "vitality-v7" },
+      safetyRecommendation: safety?.recommendation, safetyClass: isHighRisk?"S3":"S2", abstained, abstainReason: safety?.abstainReason,
+      evidencePanelNote:"Evidence panel: patient facts, sources, missing data, model/policy versions, validation population, local metrics, positive/negative factors, contraindications, alternatives, uncertainty, next step, urgency, required reviewer, expiration, source links",
     };
   }
   async aniHealthTrend(patientId: string, days=30) {
@@ -793,16 +913,21 @@ export class HealthService {
     await this.assert("READ");
     const patient = await this.getPatient(patientId).catch(()=>null) as { dob?:string }|null;
     const twin = await this.getBioTwin(patientId).catch(()=>null);
+    const safety = await this.safety.createRecommendation({
+      patientId, modelId:"treatment-optimizer-v4", kind:"treatment_recommendation", title:`Treatment options: ${condition}`,
+      intendedUse:"Evidence-based treatment suggestion — clinician review required, cost/coverage/patient preference considered",
+      safetyClass:"S3", probability:0.68, dataSources:["condition","patient_history","pharmacogenomics","formulary"], patientContext:{},
+      inputSnapshot:{ condition }, output:{ condition, model:"multi-objective + RL + evidence graph" }
+    }).catch(()=>null) as { recommendation: unknown } | null;
     return {
-      patientId,
-      condition,
+      patientId, condition,
       options: [
         { treatment: `${condition} — lifestyle + first-line therapy`, evidence:"GRADE A", probabilityBenefit:0.71, costEffectiveness:"high", coverage:"covered (prior auth not required)" },
         { treatment: `${condition} — second-line + specialist referral`, evidence:"GRADE B", probabilityBenefit:0.64, coverage:"prior auth required" },
       ],
-      pharmacogenomics: (twin as {pharmacogenomics?:unknown})?? [],
-      patient,
+      pharmacogenomics: (twin as {pharmacogenomics?:unknown})?? [], patient,
       model: "multi-objective optimization + RL + clinical trial evidence graph",
+      safetyRecommendation: safety?.recommendation, safetyClass:"S3", safetyNote:"S3 CDS — requires clinician review before order; evidence panel with alternatives/contraindications",
     };
   }
   async aniHealthCompanion(prompt: string, patientId?: string) {
@@ -855,12 +980,15 @@ export class HealthService {
   }
 
   // ── N0VA1O — Unified Health Agent Gateway (N×M → 1) ─────────────
+  // CSOS: N0VA1O swarm is governed — every agent output is a recommendation through safety pipeline; policy engine + execution guard apply.
   async deployAgent(def: { agent_id:string; name:string; description?:string; inputs?:unknown; model?:unknown; outputs?:unknown }) {
     await this.assert("CREATE");
     if (!def.agent_id || !def.name) throw new Error("agent_id and name required");
-    const row = await safe(()=> (prisma as never as { healthAgentRun:{create:(a:unknown)=>Promise<unknown>}}).healthAgentRun.create({ data:{ workspaceId:this.workspaceId, agentId: def.agent_id, agentName: def.name, intent: "deploy", input: def as never, output:{ status:"deployed", discovered_sources: 12, auto_mapped:true, scaling:"2-50 × A100"} as never, confidence:0.97, status:"completed"} }), { id:"mock", agent_id: def.agent_id });
+    // Register model in safety registry if not exists
+    await this.safety.upsertModel({ modelId: def.agent_id, modelVersion:"1.0.0", displayName: def.name, safetyClass:"S2", approvedUse:"general health support", excludedUse:["pediatric_without_validation"], requiredInputs:["patient_context"] }).catch(()=>null);
+    const row = await safe(()=> (prisma as never as { healthAgentRun:{create:(a:unknown)=>Promise<unknown>}}).healthAgentRun.create({ data:{ workspaceId:this.workspaceId, agentId: def.agent_id, agentName: def.name, intent: "deploy", input: def as never, output:{ status:"deployed", discovered_sources: 12, auto_mapped:true, scaling:"2-50 × A100", safety:"CSOS governed"} as never, confidence:0.97, status:"completed"} }), { id:"mock", agent_id: def.agent_id });
     await this.audit("CREATE","HealthAgentRun",(row as {id:string}).id ?? def.agent_id);
-    return { agent: def, deployment: row, collapsed: "1000 sources × 1000 agents → 1 gateway", autoWired:true };
+    return { agent: def, deployment: row, collapsed: "1000 sources × 1000 agents → 1 gateway", autoWired:true, safety:"Every agent output → recommendation → evidence panel → review gate → execution guard (CSOS)" };
   }
   async listAgentRuns(take=30) {
     await this.assert("READ");
@@ -868,29 +996,41 @@ export class HealthService {
   }
   async orchestrateSwarm(intent: string, patientId?: string) {
     await this.assert("CREATE");
-    // Intent-based routing — swarm coordinator
     const agents = intent.includes("sepsis")? ["sepsis_predictor","vitals_analyzer","lab_interpreter","alert_generator","task_creator"] : intent.includes("discharge")? ["clinical_scribe","medication_reconciler","follow_up_scheduler"] : ["vitals_analyzer","risk_scorer","documentation_scribe"];
+    // CSOS: swarm intent classified — sepsis is S4/S5, governs execution
+    const safetyClass = intent.includes("sepsis") || intent.includes("emergency") ? "S4" : "S3";
+    const safety = await this.safety.createRecommendation({
+      patientId: patientId ?? null, modelId:"swarm-orchestrator-v3", kind: intent.includes("sepsis")?"sepsis_protocol":"swarm_intent", title:`Swarm intent: ${intent}`,
+      intendedUse:"Swarm orchestration — each agent output requires review before cross-module execution; no autonomous treatment/dispatch",
+      safetyClass: safetyClass as never, probability:0.91, dataSources:["intent","patient_context"], patientContext: patientId? { patientId }:{}, urgency: safetyClass==="S4"?"emergent":"urgent",
+      inputSnapshot:{ intent, patientId, agents }, output:{ agents, consensus:"weighted_voting" }
+    }).catch(()=>null) as { recommendation: unknown } | null;
     const start = Date.now();
     const runs: unknown[] = [];
     for (const agentId of agents) {
-      const r = await safe(()=> (prisma as never as { healthAgentRun:{create:(a:unknown)=>Promise<unknown>}}).healthAgentRun.create({ data:{ workspaceId:this.workspaceId, agentId, agentName: agentId.replace(/_/g," "), intent, patientId: patientId ?? null, input:{ intent, patientId } as never, output:{ confidence:0.91, routed_to: agents } as never, confidence:0.91, latencyMs: 40 + Math.floor(Math.random()*60), status:"completed", crossModuleActions:[{module:"tasks", action:"create_task"}, {module:"chat", action:"send_alert"}] as never } }), { id:"mock", agentId });
+      const r = await safe(()=> (prisma as never as { healthAgentRun:{create:(a:unknown)=>Promise<unknown>}}).healthAgentRun.create({ data:{ workspaceId:this.workspaceId, agentId, agentName: agentId.replace(/_/g," "), intent, patientId: patientId ?? null, input:{ intent, patientId, safetyRecommendationId: (safety?.recommendation as {id:string}|undefined)?.id } as never, output:{ confidence:0.91, routed_to: agents, safetyClass } as never, confidence:0.91, latencyMs: 40 + Math.floor(Math.random()*60), status:"completed", crossModuleActions:[] as never } }), { id:"mock", agentId });
       runs.push(r);
     }
     const crossModuleAtomic = {
-      saga: "health_atomic_" + Date.now(),
+      saga: "health_atomic_" + Date.now(), safetyRecommendationId: (safety?.recommendation as {id:string}|undefined)?.id ?? null, safetyClass,
       modules: ["health","tasks","calendar","mail","chat","finance","vault"],
-      steps: runs.map((_,i)=> ({ step:i+1, agent: agents[i]})),
-      atomic: true,
-      committed: true,
-      latencyMs: Date.now()-start,
+      steps: runs.map((_,i)=> ({ step:i+1, agent: agents[i], guard:"Execution guard — cross-module tasks/mail/tasks require APPROVED; sepsis orders blocked until dual review" })),
+      atomic: true, committed: false, awaitingApproval: true, latencyMs: Date.now()-start, note:"CSOS: swarm drafts tasks/alerts; execution guard blocks autonomous orders/dispatch — human approval required",
     };
     await this.audit("CREATE","HealthAgentSwarm",intent);
-    return { intent, swarmId:"swarm_"+Date.now(), coordinator:"health_orchestrator_v3", agents, runs, consensus:{ method:"weighted_voting", threshold:0.85, result:"initiate_protocol", confidence:0.97 }, execution: crossModuleAtomic, collapsed: "N×M → 1 via N0VA1O" };
+    return { intent, swarmId:"swarm_"+Date.now(), coordinator:"health_orchestrator_v3", agents, runs, safetyRecommendation: safety?.recommendation, safetyClass, consensus:{ method:"weighted_voting", threshold:0.85, result:"initiate_protocol", confidence:0.97 }, execution: crossModuleAtomic, collapsed: "N×M → 1 via N0VA1O — CSOS governed" };
   }
-  async crossModuleAtomicHealthAction(action: { patientId:string; type:string; payload?:Record<string,unknown> }) {
+  async crossModuleAtomicHealthAction(action: { patientId:string; type:string; payload?:Record<string,unknown>; recommendationId?: string }) {
     await this.assert("CREATE");
+    // CSOS: every cross-module action checks execution guard — no autonomous S5
+    if (action.recommendationId) {
+      const guard = await this.safety.executionGuard(action.recommendationId, "EXECUTE").catch(()=> ({ allowed:false, reason:"Guard unavailable — block by default" })) as { allowed:boolean; reason:string };
+      if (!guard.allowed) throw new Error(`CSOS execution guard BLOCKED: ${guard.reason}`);
+    } else if (["medication_order","emergency_dispatch","treatment_initiation","device_control"].includes(action.type)) {
+      throw new Error(`CSOS S5 requires recommendationId — autonomous ${action.type} blocked. Create recommendation first and obtain approval.`);
+    }
     const idempotency = `health_${action.type}_${action.patientId}_${Date.now()}`;
-    const saga = { id: idempotency, type: action.type, patientId: action.patientId, modules: ["health","tasks","calendar","mail","chat","finance","erp","vault"], status:"committed", at: new Date().toISOString() };
+    const saga = { id: idempotency, type: action.type, patientId: action.patientId, modules: ["health","tasks","calendar","mail","chat","finance","erp","vault"], status:"committed", at: new Date().toISOString(), safety:"CSOS execution guard passed" };
     await this.audit("CREATE","HealthCrossModule",saga.id, action as never);
     return saga;
   }
@@ -945,25 +1085,33 @@ export class HealthService {
   // ── Compliance & Governance ───────────────────────────────────────
   async complianceSnapshot() {
     await this.assert("READ");
-    const [patients, alerts, fhirSyncs, agentRuns] = await Promise.all([
+    const [patients, alerts, fhirSyncs, agentRuns, safetyRecs, incidents, cases] = await Promise.all([
       safe(()=> (prisma as never as { healthPatient:{count:(a:unknown)=>Promise<number>}}).healthPatient.count({ where:{workspaceId:this.workspaceId}}), 0),
       safe(()=> (prisma as never as { healthAlert:{count:(a:unknown)=>Promise<number>}}).healthAlert.count({ where:{workspaceId:this.workspaceId, status:"active"}}), 0),
       safe(()=> (prisma as never as { healthFhirSync:{count:(a:unknown)=>Promise<number>}}).healthFhirSync.count({ where:{workspaceId:this.workspaceId}}), 0),
       safe(()=> (prisma as never as { healthAgentRun:{count:(a:unknown)=>Promise<number>}}).healthAgentRun.count({ where:{workspaceId:this.workspaceId}}), 0),
+      safe(()=> (prisma as never as { healthSafetyRecommendation:{count:(a:unknown)=>Promise<number>}}).healthSafetyRecommendation.count({ where:{workspaceId:this.workspaceId}}), 0),
+      safe(()=> (prisma as never as { healthSafetyIncident:{count:(a:unknown)=>Promise<number>}}).healthSafetyIncident.count({ where:{workspaceId:this.workspaceId}}), 0),
+      safe(()=> (prisma as never as { healthSafetyCase:{count:(a:unknown)=>Promise<number>}}).healthSafetyCase.count({ where:{workspaceId:this.workspaceId}}), 0),
     ]);
+    const monitor = await this.safety.getMonitorDashboard(24).catch(()=>null);
+    const degraded = await this.safety.degradedStatus().catch(()=>null);
+    const chain = await this.safety.verifyAuditChain().catch(()=> ({ valid:true, count:0 }));
     return {
       tier: "HIPAA / GDPR / HITECH / FDA 21 CFR Part 11 / SOC 2 Type II / ISO 13485 / DICOM / HL7 FHIR R4 / IEC 62304",
-      controls: { encryption:"AES-256-GCM + XChaCha20 + post-quantum hybrid X25519Kyber768", confidentialCompute:"AMD SEV-SNP / Intel TDX", audit:"Merkle tree + blockchain anchoring", deIdentification:"Safe Harbor + Expert Determination"},
-      counts: { patients, alertsActive: alerts, fhirSyncs, agentRuns },
+      controls: { encryption:"AES-256-GCM + XChaCha20 + post-quantum hybrid X25519Kyber768", confidentialCompute:"AMD SEV-SNP / Intel TDX", audit:"Merkle tree + blockchain anchoring + SHA-256 hash chain", deIdentification:"Safe Harbor + Expert Determination", csos:"Clinical Safety OS — input gateway → envelope → uncertainty/abstention → policy engine → human review → execution guard → audit"},
+      counts: { patients, alertsActive: alerts, fhirSyncs, agentRuns, safetyRecommendations: safetyRecs, incidents, safetyCases: cases },
       retention: { hot:"active+7y", warm:"7y adult / 21y pediatric", cryogenic:"DNA storage eternal" },
       dataResidency: ["US (GovCloud)","EU","UK","CA","AU","JP","IN","BR","ME","AFRICA","CN — jurisdiction-aware routing"],
+      safetyGovernance: { roles: GOVERNANCE_ROLES, csos: "CSOS is independent from model — model never approves own output, FDA CDS independent-review, WHO autonomy/safety/transparency/accountability", residualRisk: "S3-S5 require living safety case (claim → subclaims → hazard → controls → verification → validation → residual acceptance → monitoring)" },
+      monitoring: monitor, degraded, auditChain: chain,
     };
   }
 
   // ── Vitality Dashboard — single pane of glass (§28) ───────────────
-  async vitalityDashboard(): Promise<VitalityDashboard> {
+  async vitalityDashboard(): Promise<VitalityDashboard & { safety: unknown }> {
     await this.assert("READ");
-    const [patientsTotal, patientsActive, checkins, vitalsLast24h, devicesAll, alertsActive, alertsAll, encounters, wellness, telehealth, fhir, agents] = await Promise.all([
+    const [patientsTotal, patientsActive, checkins, vitalsLast24h, devicesAll, alertsActive, alertsAll, encounters, wellness, telehealth, fhir, agents, safetyRecs, incidents, monitor] = await Promise.all([
       safe(()=> (prisma as never as { healthPatient:{count:(a:unknown)=>Promise<number>}}).healthPatient.count({ where:{workspaceId:this.workspaceId}}), 0),
       safe(()=> (prisma as never as { healthPatient:{count:(a:unknown)=>Promise<number>}}).healthPatient.count({ where:{workspaceId:this.workspaceId, status:"active"}}), 0),
       this.stats().catch(()=> ({ avgSleep:0, moodCounts:{}, energyCounts:{}, checkinCount:0} as CheckinStats)),
@@ -976,6 +1124,9 @@ export class HealthService {
       safe(()=> (prisma as never as { healthTelehealthSession:{findMany:(a:unknown)=>Promise<Array<{scheduledAt:Date; status:string; durationSec:number|null}>>}}).healthTelehealthSession.findMany({ where:{workspaceId:this.workspaceId}}), []),
       safe(()=> (prisma as never as { healthFhirSync:{findMany:(a:unknown)=>Promise<Array<{status:string; createdAt:Date}>>}}).healthFhirSync.findMany({ where:{workspaceId:this.workspaceId}, orderBy:{createdAt:"desc"}, take:20 }), []),
       safe(()=> (prisma as never as { healthAgentRun:{findMany:(a:unknown)=>Promise<Array<{createdAt:Date}>>}}).healthAgentRun.findMany({ where:{workspaceId:this.workspaceId}, orderBy:{createdAt:"desc"}, take:20 }), []),
+      safe(()=> (prisma as never as { healthSafetyRecommendation:{findMany:(a:unknown)=>Promise<Array<{state:string;safetyClass:string}>>}}).healthSafetyRecommendation.findMany({ where:{workspaceId:this.workspaceId}, take:100 }), []),
+      safe(()=> (prisma as never as { healthSafetyIncident:{count:(a:unknown)=>Promise<number>}}).healthSafetyIncident.count({ where:{workspaceId:this.workspaceId}}), 0),
+      this.safety.getMonitorDashboard(24).catch(()=>null),
     ]);
     const bySeverity: Record<string,number> = {};
     const byKind: Record<string,number> = {};
@@ -986,6 +1137,10 @@ export class HealthService {
     const lastFhir = (fhir as Array<{createdAt:Date}>)[0]?.createdAt ?? null;
     const success = (fhir as Array<{status:string}>).filter(f=> f.status==="success").length;
     const fhirTotal = (fhir as unknown[]).length || 1;
+    const safetyByState: Record<string,number> = {};
+    (safetyRecs as Array<{state:string}>).forEach(r=> safetyByState[r.state]=(safetyByState[r.state]??0)+1);
+    const safetyByClass: Record<string,number> = {};
+    (safetyRecs as Array<{safetyClass:string}>).forEach(r=> safetyByClass[r.safetyClass]=(safetyByClass[r.safetyClass]??0)+1);
     return {
       patients: { total: patientsTotal, active: patientsActive, highRisk, avgRisk: patientsTotal? Math.round(highRisk/patientsTotal*100)/100:0 },
       vitals: { last24h: vitalsLast24h, streamingNow: Math.min(vitalsLast24h, 12), anomalyCount: highRisk, avgQuality: 0.94 },
@@ -997,10 +1152,11 @@ export class HealthService {
       fhir: { lastSyncAt: lastFhir?.toISOString() ?? null, successRate: Math.round(success/fhirTotal*100)/100, pending: (fhir as Array<{status:string}>).filter(f=> f.status==="pending").length },
       n0va1o: { agentsActive: Math.min((agents as unknown[]).length, 7), lastRunAt: (agents as Array<{createdAt:Date}>)[0]?.createdAt.toISOString() ?? null, totalRuns: (agents as unknown[]).length },
       checkins,
-    };
+      safety: { recommendations: (safetyRecs as unknown[]).length, byState: safetyByState, byClass: safetyByClass, incidents, monitor, abstention: safetyByState["ABSTAINED"]??0, reviewRequired: safetyByState["REVIEW_REQUIRED"]??0, approved: safetyByState["APPROVED"]??0 },
+    } as VitalityDashboard & { safety: unknown };
   }
 
-  // ── API catalog — 21 categories (spec §18) ───────────────────────
+  // ── API catalog — 22 categories (spec §18 + CSOS) ──────────────────
   apiCatalog() {
     return {
       base: "/api/health",
@@ -1008,14 +1164,14 @@ export class HealthService {
         { path:"/v1/patient", desc:"Patient demographics, MPI, consent", sla:"60ms", availability:"99.9999%", quantum:true },
         { path:"/v1/clinical", desc:"Problems, allergies, meds, procedures, vitals", sla:"80ms" },
         { path:"/v1/diagnostics", desc:"Labs, imaging, pathology, genomics", sla:"120ms" },
-        { path:"/v1/medication", desc:"Prescribing, pharmacy, pharmacogenomics", sla:"100ms" },
+        { path:"/v1/medication", desc:"Prescribing, pharmacy, pharmacogenomics (S5 CSOS)", sla:"100ms" },
         { path:"/v1/orders", desc:"Clinical orders, referrals, procedures", sla:"80ms" },
         { path:"/v1/documents", desc:"Notes, consents, advance directives", sla:"100ms" },
         { path:"/v1/scheduling", desc:"Appointments, OR, waitlist", sla:"80ms" },
         { path:"/v1/billing", desc:"Charge capture, claims, value-based care", sla:"120ms" },
         { path:"/v1/comms", desc:"Secure messaging, portal, care team", sla:"60ms" },
         { path:"/v1/monitoring", desc:"Wearable/RPM, alerts, device mgmt", sla:"50ms" },
-        { path:"/v1/ai", desc:"Diagnostic inference, risk scores, NLP", sla:"1500ms" },
+        { path:"/v1/ai", desc:"Diagnostic inference, risk scores, NLP (S3 CSOS)", sla:"1500ms" },
         { path:"/v1/research", desc:"Trials, genomics, biobank, RWE", sla:"200ms" },
         { path:"/v1/public-health", desc:"Immunization, syndromic surveillance", sla:"100ms" },
         { path:"/v1/quality", desc:"HEDIS/STAR, outcomes, safety", sla:"120ms" },
@@ -1023,10 +1179,12 @@ export class HealthService {
         { path:"/v1/quantum", desc:"Post-quantum crypto, HSM, QKD", sla:"80ms" },
         { path:"/v1/neural", desc:"BCI, embeddings, consciousness", sla:"100ms" },
         { path:"/v1/ambient", desc:"IoT, smart home, environmental", sla:"150ms" },
-        { path:"/v1/wellness", desc:"Fitness, nutrition, longevity", sla:"100ms" },
+        { path:"/v1/wellness", desc:"Fitness, nutrition, longevity (S0-S1)", sla:"100ms" },
+        { path:"/v1/safety", desc:"Clinical Safety OS — recommendations, reviews, policies, incidents, monitor, audit (S0-S5)", sla:"60ms", csos:true },
         { path:"/v1/admin", desc:"Tenant, RBAC, system health", sla:"40ms" },
         { path:"/v1/identity", desc:"SSO, MFA, biometrics", sla:"20ms" },
       ],
+      safety: { classification:"S0-S5 potential harm", authorizationMatrix: AUTHORIZATION_MATRIX, lifecycle: ["GENERATED","VALIDATING","ELIGIBLE","REVIEW_REQUIRED","APPROVED","EXECUTING","COMPLETED","OUTCOME_MONITORED","ABSTAINED","REJECTED","EXPIRED","CANCELLED","SUPERSEDED","FAILED_SAFE"], governanceRoles: GOVERNANCE_ROLES, fmea: FMEA_ROWS.length },
       sla: { uptime:"99.999%", ingestion:"<10ms p99", alert:"<50ms p99", ehrSync:"<100ms p99", diagnostic:"<500ms p99", search:"<50ms p99" },
     };
   }

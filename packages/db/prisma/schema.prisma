@@ -101,6 +101,15 @@ integrations    Integration[]
   healthTelehealthSessions HealthTelehealthSession[]
   healthFhirSyncs HealthFhirSync[]
   healthAgentRuns HealthAgentRun[]
+  healthModelRegistries HealthModelRegistry[]
+  healthOperatingEnvelopes HealthOperatingEnvelope[]
+  healthSafetyPolicies HealthSafetyPolicy[]
+  healthSafetyRecommendations HealthSafetyRecommendation[]
+  healthSafetyReviews HealthSafetyReview[]
+  healthSafetyIncidents HealthSafetyIncident[]
+  healthSafetyCases HealthSafetyCase[]
+  healthSafetyAudits HealthSafetyAudit[]
+  healthSafetyMonitors HealthSafetyMonitor[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -333,6 +342,7 @@ createdCalendarEvents CalendarEvent[]
       threadBookmarks ThreadBookmark[]
       threadExports ThreadExport[]
       notificationEvents NotificationEvent[]
+      healthSafetyReviews HealthSafetyReview[]
       notificationRules NotificationRule[]
       userNotificationPrefs UserNotificationPrefs[]
       notificationDigests NotificationDigest[]
@@ -4749,6 +4759,422 @@ model HealthAgentRun {
 
   @@index([workspaceId, agentId])
   @@index([workspaceId, patientId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — CLINICAL SAFETY OPERATING SYSTEM (CSOS)
+// Mandatory control plane between every AI output and every clinical /
+// patient-facing action. FDA CDS § "independent review", WHO AI governance,
+// NIST AI RMF govern-map-measure-manage. No model may approve its own output.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum SafetyClass {
+  S0 // Informational wellness
+  S1 // Low-risk guidance
+  S2 // Patient-specific support
+  S3 // Clinical decision support — clinician review required
+  S4 // High-risk clinical support — immediate qualified human review
+  S5 // Regulated / safety-critical — explicit authorization + execution controls
+}
+
+enum SafetyActionKind {
+  OBSERVE
+  SUGGEST
+  DRAFT
+  REQUEST_APPROVAL
+  EXECUTE
+}
+
+enum RecommendationState {
+  GENERATED
+  VALIDATING
+  ELIGIBLE
+  REVIEW_REQUIRED
+  APPROVED
+  EXECUTING
+  COMPLETED
+  OUTCOME_MONITORED
+  ABSTAINED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  SUPERSEDED
+  FAILED_SAFE
+}
+
+enum ReviewDecision {
+  REVIEWED
+  AGREED
+  MODIFIED
+  OVERRIDDEN
+  REJECTED
+  DEFERRED
+}
+
+enum ReviewLevel {
+  SINGLE
+  DUAL
+  SPECIALIST
+  EMERGENCY_CONCURRENCE
+  PATIENT_CONFIRMATION
+}
+
+enum SafetyIncidentKind {
+  FALSE_NEGATIVE
+  FALSE_POSITIVE
+  DELAYED_ALERT
+  WRONG_PATIENT
+  UNSAFE_RECOMMENDATION
+  MISSING_CONTRAINDICATION
+  HALLUCINATED_EVIDENCE
+  INCORRECT_DOSE
+  ALERT_FATIGUE
+  UNAUTHORIZED_DISCLOSURE
+  WRONG_RECIPIENT
+  DEVICE_DATA_CORRUPTION
+  MODEL_DRIFT
+  AUTOMATION_BIAS
+  WORKFLOW_COLLISION
+  FAILED_ESCALATION
+  INCORRECT_EMERGENCY_LOCATION
+  PARTIAL_TRANSACTION
+  CLINICIAN_OVERRIDE
+  PATIENT_HARM
+  NEAR_MISS
+  OTHER
+}
+
+enum SafetyIncidentSeverity {
+  NEGLIGIBLE
+  MINOR
+  MODERATE
+  MAJOR
+  CATASTROPHIC
+}
+
+enum SafetyIncidentStatus {
+  OPEN
+  INVESTIGATING
+  CORRECTIVE_ACTION
+  PREVENTIVE_ACTION
+  REGULATORY_REVIEW
+  CLOSED
+  VERIFIED
+}
+
+enum SafetyCaseStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  CONDITIONAL
+  REJECTED
+  RETIRED
+}
+
+enum EnvelopeStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  RETIRED
+}
+
+/// Model / agent registry — single source of truth for operating envelope.
+model HealthModelRegistry {
+  id               String        @id @default(uuid())
+  workspaceId      String
+  modelId          String        // e.g. sepsis-risk-v3
+  modelVersion     String        // e.g. 3.4.1
+  displayName      String
+  safetyClass      SafetyClass
+  approvedUse      String
+  excludedUse      String[]      @default([])
+  requiredInputs   String[]      @default([])
+  maxInputAgeMin   Int?
+  minSignalQuality Float?
+  minCalibration   Float?
+  requiredRole     String?       // attending_or_rapid_response_clinician
+  executionMode    String        @default("recommendation_only") // recommendation_only | draft | autonomous_logistics_only
+  regulatoryStatus String        @default("research") // research | 510k | ce_class_iia | ldt
+  validationPop    Json          @default("{}")
+  localMetrics     Json          @default("{}")
+  driftStatus      String        @default("nominal") // nominal | drift_detected | suspended
+  status           EnvelopeStatus @default(ACTIVE)
+  expiresAt        DateTime?
+  createdById      String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, modelId, modelVersion])
+  @@index([workspaceId, safetyClass])
+  @@index([workspaceId, status])
+}
+
+/// Machine-readable operating envelope instance (versioned).
+model HealthOperatingEnvelope {
+  id                String        @id @default(uuid())
+  workspaceId       String
+  modelId           String
+  modelVersion      String
+  envelope          Json          // full envelope JSON (see spec § operating-envelope control)
+  status            EnvelopeStatus @default(ACTIVE)
+  createdById       String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, modelId])
+}
+
+/// Safety policy — separate from inference (policy engine).
+model HealthSafetyPolicy {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  policyKey        String   // e.g. medication_dose_change
+  name             String
+  description      String   @default("")
+  riskClass        SafetyClass
+  conditions       Json     @default("{}") // { patient_factors, care_setting, urgency, ... }
+  controls         Json     @default("{}") // { require_prescriber_approval, block_autonomous_execution, ... }
+  version          String   @default("1.0.0")
+  active           Boolean  @default(true)
+  requiresApproval Boolean  @default(false) // whether policy itself needed Clinical Review Board approval
+  approvedById     String?
+  approvedAt       DateTime?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, policyKey, version])
+  @@index([workspaceId, riskClass])
+}
+
+/// Central recommendation — every AI output is a recommendation with full lifecycle.
+model HealthSafetyRecommendation {
+  id                String              @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  encounterId       String?
+  modelId           String
+  modelVersion      String
+  policyVersion     String?
+  safetyClass       SafetyClass
+  kind              String              // sepsis | deterioration | medication | suicide_risk | diagnostic_report | ...
+  title             String
+  intendedUse       String              @default("")
+  state             RecommendationState @default(GENERATED)
+  priority          String              @default("routine") // routine | urgent | emergent
+  requiredReviewerRole String?
+  reviewLevel       ReviewLevel         @default(SINGLE)
+  urgency           String?
+  inputSnapshot     Json                @default("{}")
+  inputSnapshotHash String?
+  dataSources       String[]            @default([])
+  dataFreshness     Json                @default("{}")
+  missingInputs     String[]            @default([])
+  contradictions    Json                @default("[]")
+  signalQuality     Float?
+  // Multi-dimensional confidence (never single %)
+  probability       Float?
+  calibrationStatus String?
+  aleatoricUncert   Float?
+  epistemicUncert   Float?
+  inputQualityConf  Float?
+  populationConf    Float?
+  temporalStability Float?
+  driftStatus       String?
+  evidenceStrength  String?
+  actionability     String?
+  confidenceInterval Json?
+  // Evidence & explanation contract
+  evidencePanel     Json                @default("{}") // { patientFacts, sources, positiveFactors, negativeFactors, contraindications, alternatives, ... }
+  output            Json                @default("{}") // model output
+  explainability    Json                @default("{}")
+  // Authorization
+  authorizedActions SafetyActionKind[]  @default([])
+  blockedActions    SafetyActionKind[]  @default([])
+  // Lifecycle linkage
+  linkedTaskId      String?
+  linkedOrderId     String?
+  linkedAlertId     String?
+  linkedMessageId   String?
+  expiresAt         DateTime?
+  supersededById    String?
+  // Audit
+  traceId           String?
+  createdById       String?             // AI agent or user that generated
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  stateChangedAt    DateTime            @default(now())
+  outcomeStatus     String?
+  outcomeAt         DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  reviews   HealthSafetyReview[]
+  auditTrail HealthSafetyAudit[]
+
+  @@index([workspaceId, state])
+  @@index([workspaceId, patientId])
+  @@index([workspaceId, safetyClass])
+  @@index([workspaceId, kind])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+/// Structured human review — not a superficial accept button.
+model HealthSafetyReview {
+  id               String         @id @default(uuid())
+  workspaceId      String
+  recommendationId String
+  reviewerId       String
+  reviewerName     String?
+  reviewerRole     String
+  decision         ReviewDecision
+  reason           String?
+  modifications    Json           @default("{}")
+  secondReviewerId String?
+  secondDecision   ReviewDecision?
+  followUpOwnerId  String?
+  reassessAt       DateTime?
+  viewedEvidence   Boolean        @default(false)
+  viewedTrends     Boolean        @default(false)
+  requestedSecondOpinion Boolean  @default(false)
+  timeToReviewSec  Int?
+  createdAt        DateTime       @default(now())
+
+  workspace      Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  recommendation HealthSafetyRecommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  reviewer       User?                      @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, recommendationId])
+  @@index([reviewerId])
+}
+
+/// Incident & near-miss — full investigation lifecycle.
+model HealthSafetyIncident {
+  id               String                @id @default(uuid())
+  workspaceId      String
+  kind             SafetyIncidentKind
+  severity         SafetyIncidentSeverity @default(MODERATE)
+  status           SafetyIncidentStatus  @default(OPEN)
+  title            String
+  description      String                @default("")
+  patientId        String?
+  encounterId      String?
+  recommendationId String?
+  modelId          String?
+  modelVersion     String?
+  policyVersion    String?
+  inputSnapshot    Json                  @default("{}")
+  decisionPath     Json                  @default("[]")
+  timeline         Json                  @default("[]")
+  contributing     Json                  @default("[]")
+  detectability    String?
+  rootCause        String?
+  correctiveAction String?
+  preventiveAction String?
+  regulatoryReport String?               // assessment
+  closureOwnerId   String?
+  verifiedAt       DateTime?
+  createdById      String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, kind])
+  @@index([workspaceId, severity])
+}
+
+/// Living safety case for S3-S5 features.
+model HealthSafetyCase {
+  id               String           @id @default(uuid())
+  workspaceId      String
+  featureKey       String           // e.g. sepsis-risk
+  version          String           @default("1.0.0")
+  safetyClaim      String
+  subclaims        Json             @default("[]")
+  hazardAnalysis   Json             @default("{}")
+  riskControls     Json             @default("[]")
+  verification     Json             @default("{}")
+  clinicalValidation Json           @default("{}")
+  residualRisk     String           @default("")
+  monitoring       Json             @default("{}")
+  status           SafetyCaseStatus @default(DRAFT)
+  approvedById     String?
+  approvedAt       DateTime?
+  createdById      String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, featureKey, version])
+  @@index([workspaceId, status])
+}
+
+/// Tamper-evident safety audit record — complete trace per decision.
+model HealthSafetyAudit {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  recommendationId  String?
+  safetyEventId     String?  // FK to incident if applicable
+  traceId           String
+  patientContext    Json     @default("{}")
+  recommendation    Json     @default("{}")
+  evidence          Json     @default("{}")
+  decision          Json     @default("{}")
+  execution         Json     @default("{}")
+  auditMeta         Json     @default("{}")
+  actorId           String?
+  actorRole         String?
+  hash              String
+  chainPrev         String?
+  chainIndex        Int
+  createdAt         DateTime @default(now())
+
+  workspace      Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  recommendationRef HealthSafetyRecommendation? @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, chainIndex])
+  @@index([workspaceId, recommendationId])
+  @@index([traceId])
+}
+
+/// Continuous monitoring snapshot (NIST govern-map-measure-manage).
+model HealthSafetyMonitor {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  windowStart       DateTime
+  windowEnd         DateTime
+  // Model safety
+  sensitivity       Json     @default("{}")
+  specificity       Json     @default("{}")
+  ppv               Json     @default("{}")
+  npv               Json     @default("{}")
+  calibrationError  Json     @default("{}")
+  abstentionRate    Float    @default(0)
+  drift             Json     @default("{}")
+  subgroupPerf      Json     @default("{}")
+  oodRate           Float    @default(0)
+  // Workflow
+  timeToAckSec      Json     @default("{}")
+  timeToReviewSec   Json     @default("{}")
+  overrideRate      Float    @default(0)
+  duplicateRate     Float    @default(0)
+  escalationFailRate Float   @default(0)
+  // Human factors
+  alertBurdenPerClinician Json @default("{}")
+  automationBias    Json     @default("{}")
+  createdAt         DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, windowStart(sort: Desc)])
 }
 
 /// N0VA LEGAL - revision history.
