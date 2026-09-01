@@ -39,6 +39,7 @@
     "./intention-predictor": "./src/intention-predictor.ts",
     "./audit-logger": "./src/audit-logger.ts",
     "./risk-redaction": "./src/risk-redaction.ts",
+    "./risk-approval": "./src/risk-approval.ts",
     "./preference-evolution": "./src/preference-evolution.ts",
     "./code-evolution": "./src/code-evolution.ts",
     "./multimodal-memory": "./src/multimodal-memory.ts",
