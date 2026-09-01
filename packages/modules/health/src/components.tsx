@@ -21,6 +21,7 @@ const TABS = [
   { id: "safety", label: "Safety OS" },
   { id: "registry", label: "Registry & CVC" },
   { id: "wallet", label: "Wallet" },
+  { id: "provenance", label: "Provenance" },
   { id: "patients", label: "UHR & Patients" },
   { id: "twin", label: "Bio-Digital Twin" },
   { id: "vitals", label: "Vitals & Mesh" },
@@ -136,6 +137,18 @@ export function WellnessBoard({
   const [exportForm, setExportForm] = useState({ patientId:"", format:"FHIR_R4_BUNDLE" });
   const [correctionForm, setCorrectionForm] = useState({ patientId:"", recordId:"", dataDomain:"GENERAL_MEDICAL" });
   const [restrictionForm, setRestrictionForm] = useState({ patientId:"", restrictionType:"block_ai_training", dataDomains:"GENERAL_MEDICAL" });
+  // provenance state
+  const [deviceTrusts, setDeviceTrusts] = useState<Array<Record<string, unknown>>>([]);
+  const [observations, setObservations] = useState<Array<Record<string, unknown>>>([]);
+  const [inferences, setInferences] = useState<Array<Record<string, unknown>>>([]);
+  const [provActions, setProvActions] = useState<Array<Record<string, unknown>>>([]);
+  const [provenanceEvents, setProvenanceEvents] = useState<Array<Record<string, unknown>>>([]);
+  const [provenanceCorrections, setProvenanceCorrections] = useState<Array<Record<string, unknown>>>([]);
+  const [provenanceForm, setProvenanceForm] = useState({ patientId:"", code:"8867-4", amount:"92", unit:"%", origin:"DEVICE_GENERATED" });
+  const [provenanceGraph, setProvenanceGraph] = useState<Record<string, unknown> | null>(null);
+  const [provenanceTrace, setProvenanceTrace] = useState<Record<string, unknown> | null>(null);
+  const [upstreamId, setUpstreamId] = useState("");
+  const [correctionApproveForm, setCorrectionApproveForm] = useState({ correctionId:"", correctedValue:"20 mg" });
 
   // fetch dashboard
   useEffect(() => {
@@ -222,6 +235,19 @@ export function WellnessBoard({
         setExportForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCorrectionForm(prev=> ({ ...prev, patientId: demoPatient }));
         setRestrictionForm(prev=> ({ ...prev, patientId: demoPatient }));
+        const obs = await j(`/api/health/provenance/observations?patientId=${demoPatient}&take=6`);
+        if (alive && obs?.rows) setObservations(obs.rows);
+        const inf = await j(`/api/health/provenance/inferences?patientId=${demoPatient}&take=6`);
+        if (alive && inf?.rows) setInferences(inf.rows);
+        const provAct = await j(`/api/health/provenance/actions?patientId=${demoPatient}&take=6`);
+        if (alive && provAct?.rows) setProvActions(provAct.rows);
+        const dev = await j(`/api/health/provenance/device-trust`);
+        if (alive && dev?.rows) setDeviceTrusts(dev.rows);
+        const ev = await j(`/api/health/provenance/events?take=8`);
+        if (alive && ev?.rows) setProvenanceEvents(ev.rows);
+        const pc = await j(`/api/health/provenance/corrections?patientId=${demoPatient}`);
+        if (alive && pc?.rows) setProvenanceCorrections(pc.rows);
+        setProvenanceForm(prev=> ({ ...prev, patientId: demoPatient }));
       }
     })();
     return () => { alive = false; };
@@ -1095,6 +1121,180 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
               <div><b>Deletion Ledger</b><div style={{ overflowX:"auto", maxHeight:90 }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Asset</th><th>Status</th><th>Reason</th></tr></thead><tbody>{walletDeletions.length===0 && <tr><td colSpan={3} className="nv-empty">No deletions — 14 assets</td></tr>}{walletDeletions.slice(0,5).map((d:Record<string,unknown>,i:number)=> <tr key={String(d.id ?? i)}><td style={{ fontSize:10 }}>{String(d.asset)}</td><td><Pill tone={String(d.status)==="DELETED"?"success":String(d.status)==="RETAINED_BY_LAW"?"warning":"neutral"}>{String(d.status)}</Pill></td><td style={{ fontSize:10 }}>{String(d.reason ?? "—").slice(0,20)}</td></tr>)}</tbody></table></div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, display:"flex", gap:4, flexWrap:"wrap" }}><Pill>India-ready: gu-IN/Hindi/English, IN-GJ residency, DPDP consent-manager, cross-border</Pill><Pill>Security: passkeys, step-up, hardware keys, device binding, no support visibility</Pill><Pill>PDP returns 11 decisions: Allow/masking/redaction/human review/emergency/treatment/Deny/Defer/Require renewed/legal rep/fallback</Pill></div>
+          </Section>
+        </div>
+      )}
+
+
+
+      {/* PROVENANCE — HDPTF */}
+      {tab === "provenance" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Health Data Provenance and Trust Fabric — Clinical Reasoning & Accountability Layer" subtitle="HL7 FHIR Provenance (entities/processes) + W3C PROV (entities/activities/agents) + FDA time-stamped audit trail. Not blockchain — source → transformation → inference → human decision → outcome, cryptographically verifiable." action={<><Badge tone="primary">FHIR Provenance</Badge><Badge tone="warning">W3C PROV</Badge><Pill tone="success">FDA Audit Trail</Pill></>}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px,1fr))", gap:8 }}>
+              <Stat label="OBSERVATIONS" value={String(observations.length)} hint="L1-L3 trust-enriched" />
+              <Stat label="INFERENCES" value={String(inferences.length)} hint="L4 model provenance" />
+              <Stat label="ACTIONS" value={String(provActions.length)} hint="L5 authorization→execution" />
+              <Stat label="EVENTS" value={String(provenanceEvents.length)} hint="Append-only hash chain" />
+              <Stat label="CORRECTIONS" value={String(provenanceCorrections.length)} hint="Preserves history" />
+              <Stat label="DEVICE TRUST" value={String(deviceTrusts.length)} hint="Versioned, firmware→revalidation" />
+            </div>
+            <div style={{ marginTop:8, display:"flex", gap:6, flexWrap:"wrap", fontSize:11 }}><Pill tone="primary">Source → Outcome → Ledger</Pill><Pill>10 origins</Pill><Pill>11 trust labels</Pill><Pill>8 time stamps</Pill><Pill>7 retention P0-P7</Pill></div>
+          </Section>
+          <Section title="Trust-Fabric Architecture — 10 Stages Across 12 Sources">
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", alignItems:"center", fontSize:11, fontWeight:800 }}>{["Source Capture","Identity/Time/Device Attestation","Signal Quality/Calibration","Normalization/Unit Conversion","Observation Store","Feature/Inference Lineage","Clinical Review/Authorization","Alert/Order/Message/Care Action","Outcome/Follow-up","Immutable Ledger"].map((s,i)=> <span key={s} style={{ display:"inline-flex", alignItems:"center", gap:4 }}><span style={{ padding:"4px 8px", borderRadius:999, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>{s}</span>{i<9 && <span style={{ color:"var(--nv-color-text-faint)"}}>→</span>}</span>)}</div>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Across: wearables, devices, labs, EHR/FHIR, imaging/DICOM, patient-reported, clinician docs, voice/text/behavioral, AI/retrieval, care plans/orders, patient comms, research, external orgs.</div>
+          </Section>
+          <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1fr", gap:12 }}>
+            <Section title="Provenance Layers — 6">
+              <div style={{ display:"grid", gap:6, fontSize:11 }}>
+                <div className="nv-card" style={{ padding:8, borderLeft:"3px solid #059669" }}><b>L1 Source</b><div style={{ color:"var(--nv-color-text-faint)"}}>Patient/encounter, org, device (mfr/model/fw/sensor/serial/collection method/collector/source class/consent/geography/residency)</div></div>
+                <div className="nv-card" style={{ padding:8, borderLeft:"3px solid #4f46e5" }}><b>L2 Measurement</b><div style={{ color:"var(--nv-color-text-faint)"}}>Event/device/receipt timestamp, TZ, clock sync, sampling rate, placement, signal quality, battery, calibration (status/date/standard), environment, motion, duplicate, manual confirmation</div></div>
+                <div className="nv-card" style={{ padding:8, borderLeft:"3px solid #d97706" }}><b>L3 Transformation</b><div style={{ color:"var(--nv-color-text-faint)"}}>Raw hash, parsing version, decryption, unit conversion, filtering, artifact rejection, interpolation, gap filling, sensor fusion, normalization, reference-range, derived feature, missing handling, human correction, code version, params, input/output hashes</div></div>
+                <div className="nv-card" style={{ padding:8, borderLeft:"3px solid #7c3aed" }}><b>L4 Inference</b><div style={{ color:"var(--nv-color-text-faint)"}}>Model family/version/digest, prompt/retrieval index, source docs, feature snapshot, input/model timestamp, confidence, calibration, uncertainty, abstention, policy version, guideline, contraindications, human-review, expiration</div></div>
+                <div className="nv-card" style={{ padding:8, borderLeft:"3px solid #dc2626" }}><b>L5 Action</b><div style={{ color:"var(--nv-color-text-faint)"}}>Alert (recipient/priority/ack), reviewer, approval/rejection, order draft/sign, message, escalation, care-plan/medication change, notification, execution result, time to action</div></div>
+                <div className="nv-card" style={{ padding:8, borderLeft:"3px solid #0ea5e9" }}><b>L6 Outcome</b><div style={{ color:"var(--nv-color-text-faint)"}}>Follow-up measurement, clinical/patient-reported outcome, adverse event, override, reassessment, readmission, escalation, resolution, adjudicator, timestamp</div></div>
+              </div>
+            </Section>
+            <Section title="Data-Origin Taxonomy — 10 Origins, Never Display Inferred as Measured">
+              <div style={{ overflowX:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Origin</th><th>Meaning</th><th>Trust</th></tr></thead><tbody><tr><td>Patient-reported</td><td>Entered/spoken by patient</td><td style={{ fontSize:10 }}>May require confirmation</td></tr><tr><td>Caregiver-reported</td><td>Authorized proxy</td><td style={{ fontSize:10 }}>Show identity/relationship</td></tr><tr><td>Clinician-entered</td><td>Healthcare professional</td><td style={{ fontSize:10 }}>Signed</td></tr><tr><td><b>Device-generated</b></td><td>Sensor/medical device</td><td style={{ fontSize:10 }}>Device/fw/calibration/quality</td></tr><tr><td>Laboratory-generated</td><td>Approved lab system</td><td style={{ fontSize:10 }}>Lab/analyzer/method</td></tr><tr><td>Imported</td><td>External system</td><td style={{ fontSize:10 }}>Source org + import history</td></tr><tr><td>Transformed</td><td>Deterministic processing</td><td style={{ fontSize:10 }}>Source + version</td></tr><tr><td><b>Inferred</b></td><td>Model/rules engine</td><td style={{ fontSize:10 }}>Model/evidence/uncertainty</td></tr><tr><td><b>Synthetic</b></td><td>Testing/simulation</td><td style={{ fontSize:10, color:"#dc2626", fontWeight:800 }}>Never mix silently</td></tr><tr><td>Human-adjudicated</td><td>Confirmed by authorized person</td><td style={{ fontSize:10 }}>Reviewer + rationale</td></tr></tbody></table></div>
+              <div style={{ marginTop:6, display:"flex", gap:4, flexWrap:"wrap", fontSize:11 }}><b>Trust labels 11:</b> {["Measured","Reported","Imported","Validated","Derived","Inferred","Unverified","Stale","Conflicted","Synthetic","Corrected"].map(l=> <Pill key={l} tone={l==="Synthetic"||l==="Conflicted"?"danger":l==="Measured"?"success":"neutral"}>{l}</Pill>)}</div>
+            </Section>
+          </div>
+          <Section title="Why This Appeared — Clinician-Facing Provenance View">
+            <div style={{ padding:10, border:"1px solid var(--nv-color-border)", borderRadius:8, fontSize:12, background:"var(--nv-color-surface-raised)" }}>
+              <b>Possible clinical deterioration</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>Generated at 14:14 IST by Deterioration Risk Model v3.4.1. Contributing: respiratory rate 18→29/min over 3h; SpO2 97%→92%; temperature 38.4°C. Input quality: acceptable. Latest vitals: 8 min old. Missing: current lactate. <b>This is a risk signal, not a diagnosis. Clinician assessment required.</b></span>
+              <div style={{ marginTop:6, display:"flex", gap:4, flexWrap:"wrap" }}><Pill>Expand: raw measurements</Pill><Pill>Trend charts</Pill><Pill>Device quality</Pill><Pill>Calibration</Pill><Pill>Transformation pipeline</Pill><Pill>Model version</Pill><Pill>Uncertainty</Pill><Pill>Contradictory data</Pill><Pill>Actions taken</Pill><Pill>Outcome history</Pill></div>
+            </div>
+            <div style={{ marginTop:8, display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:11 }}>
+              <div><b>Graph — Entities/Activities/Agents</b><div style={{ color:"var(--nv-color-text-faint)"}}>Entities: observations, docs, models, features, alerts, orders, outcomes<br/>Activities: capture, import, transform, infer, review, approve, execute, revise<br/>Agents: patient, clinician, device, lab, org, model, software</div><pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, whiteSpace:"pre-wrap" }}>{`Apple Watch ECG → Raw ECG Segment → Artifact Filter v2.1 → Normalized Rhythm → Arrhythmia Model v5.0 → Possible AF Alert → Cardiologist → ECG Order → Confirmed`}</pre></div>
+              <div><b>Queries</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}>{["Why was this alert generated?","Which raw measurements contributed?","Which model version was used?","Which patients were affected by flawed model?","Which recommendations used corrected lab?","Which actions followed uncalibrated device?","Which outcomes followed alert?"].map(q=> <Pill key={q}>{q}</Pill>)}</div><div style={{ marginTop:6, display:"flex", gap:4 }}><input className="nv-input" placeholder="resourceId e.g. alert-7842" value={upstreamId} onChange={e=> setUpstreamId(e.target.value)} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!upstreamId) return; const u=await fetch(`/api/health/provenance/${upstreamId}/upstream?depth=5`).then(r=> r.json()).catch(()=>null); setProvenanceGraph(u); }}>Upstream</Button><Button size="sm" variant="ghost" onClick={async()=> { if(!upstreamId) return; const d=await fetch(`/api/health/provenance/${upstreamId}/downstream?depth=5`).then(r=> r.json()).catch(()=>null); setProvenanceGraph(d); }}>Downstream</Button></div>{provenanceGraph && <pre style={{ marginTop:6, background:"var(--nv-color-surface-raised)", padding:6, borderRadius:6, fontSize:10, maxHeight:100, overflowY:"auto" }}>{JSON.stringify(provenanceGraph, null, 2).slice(0,600)}</pre>}</div>
+            </div>
+          </Section>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Event-Sourcing — Append-Only, Reconstruct Any Point">
+              <div style={{ display:"flex", gap:4, flexWrap:"wrap", alignItems:"center", fontSize:11, fontWeight:800 }}>{["OBSERVATION_RECEIVED","VALIDATED","NORMALIZED","CORRECTED","INFERENCE_GENERATED","REVIEWED","ACTION_APPROVED","EXECUTED","OUTCOME_RECORDED"].map((s,i)=> <span key={s} style={{ display:"inline-flex", alignItems:"center", gap:3 }}><span style={{ padding:"3px 6px", borderRadius:999, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)", fontSize:10 }}>{s}</span>{i<8 && <span style={{ color:"var(--nv-color-text-faint)"}}>→</span>}</span>)}</div>
+              <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Each event: eventId, type, aggregateId, patient/encounter, actor, timestamp, previousStateHash, currentPayloadHash, parentEvent, software/policy version, signature, reasonCode, correlationId, retentionClass P0-P7.</div>
+              <div style={{ marginTop:6, maxHeight:100, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Event</th><th>Aggregate</th><th>Actor</th><th>When</th></tr></thead><tbody>{provenanceEvents.length===0 && <tr><td colSpan={4} className="nv-empty">No provenance events — observations/inferences/actions will append here with hash chain</td></tr>}{provenanceEvents.slice(0,5).map((e:Record<string,unknown>,i:number)=> <tr key={String(e.id ?? i)}><td><Pill>{String(e.eventType)}</Pill></td><td style={{ fontSize:10 }}>{String(e.aggregateId).slice(0,12)}</td><td>{String(e.actor ?? "—")}</td><td style={{ fontSize:10 }}>{e.timestamp? new Date(String(e.timestamp)).toLocaleTimeString():""}</td></tr>)}</tbody></table></div>
+            </Section>
+            <Section title="Time Integrity — 8 Timestamps + Clock Sync">
+              <div style={{ fontSize:11, lineHeight:1.6 }}><b>Preserve:</b> event time, device time, ingestion time, processing time, inference time, review time, action time, outcome time + clock offset + synchronization status<pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, whiteSpace:"pre-wrap", marginTop:6 }}>{`{
+  "event_time": "2026-09-01T14:05:12+05:30",
+  "device_time": "2026-09-01T14:05:09+05:30",
+  "ingestion_time": "2026-09-01T14:05:16+05:30",
+  "clock_offset_ms": 3000,
+  "synchronization": "within_tolerance",
+  "time_source": "NTP_authenticated"
+}`}</pre><div style={{ color:"var(--nv-color-text-faint)"}}>If sync poor → mark temporally uncertain, not silently accepted.</div></div>
+            </Section>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Device Trust Profile — 19 Fields, Versioned">
+              <div style={{ display:"flex", gap:4, flexWrap:"wrap", fontSize:11 }}>{["manufacturer","device model","serial/attestation","firmware","hardware revision","regulatory status","intended use","supported measurements","calibration requirements","expected ranges","sampling behavior","known limitations","security status","last maintenance","last calibration","signal-quality algorithm","data-transfer","time-sync","revocation"].map(f=> <Pill key={f}>{f}</Pill>)}</div>
+              <div style={{ marginTop:6, display:"flex", gap:4 }}><input className="nv-input" placeholder="Manufacturer e.g. PulseOx-4" value={provenanceForm.code} onChange={e=> setProvenanceForm({...provenanceForm, code:e.target.value})} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { const r=await fetch("/api/health/provenance/device-trust",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ manufacturer: provenanceForm.code || "Example Medical", deviceModel:"PulseOx-4", firmware:"2.8.1" })}); const j=await r.json().catch(()=>null); if(r.ok && j?.profile) setDeviceTrusts(prev=> [j.profile, ...prev].slice(0,6)); }}>Create Trust Profile (versioned)</Button></div>
+              {deviceTrusts.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Manufacturer</th><th>Model</th><th>Firmware</th><th>v</th></tr></thead><tbody>{deviceTrusts.slice(0,4).map((d:Record<string,unknown>,i:number)=> <tr key={String(d.id ?? i)}><td>{String(d.manufacturer)}</td><td>{String(d.deviceModel)}</td><td>{String(d.firmware ?? "—")}</td><td>{String(d.version)}</td></tr>)}</tbody></table></div>}
+              <div style={{ fontSize:10, color:"var(--nv-color-text-faint)", marginTop:4}}>Firmware update → new provenance version → may trigger model revalidation.</div>
+            </Section>
+            <Section title="Signal-Quality Envelope — Every Measurement">
+              <div style={{ fontSize:11 }}><pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, whiteSpace:"pre-wrap" }}>{`{
+  "signal_quality": {
+    "overall": 0.91,
+    "motion_artifact": 0.04,
+    "electrode_contact": 0.98,
+    "battery_sufficient": true,
+    "calibration_valid": true,
+    "sampling_complete": true,
+    "quality_method": "ppg-quality-v2.3"
+  }
+}`}</pre><div style={{ display:"flex", gap:4, marginTop:4, flexWrap:"wrap" }}><Pill tone="success">High-quality</Pill><Pill tone="warning">Usable with caution</Pill><Pill tone="danger">Poor</Pill><Pill>Uninterpretable</Pill><Pill>Missing</Pill><Pill>Device fault</Pill><Pill>Manually overridden</Pill></div><div style={{ color:"var(--nv-color-text-faint)", marginTop:4}}>Prevent high-risk inference when below threshold.</div></div>
+            </Section>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Observation Object — FHIR Observation + Provenance">
+              <div style={{ fontSize:11 }}><pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, whiteSpace:"pre-wrap" }}>{`{
+  "observation_id": "obs-...",
+  "patient_id": "tokenized", "code": "8867-4",
+  "value": { "amount": 92, "unit": "%", "display": "Oxygen saturation" },
+  "origin": "device_generated",
+  "source": { "device_id": "device-...", "manufacturer": "Example Medical", "model": "PulseOx-4", "firmware": "2.8.1" },
+  "timing": { "event_time": "2026-09-01T14:05:12+05:30", "synchronization": "within_tolerance" },
+  "quality": { "score": 0.94, "status": "usable" },
+  "calibration": { "status": "valid", "last_calibrated": "2026-08-15" },
+  "provenance_ref": "prov-...", "content_hash": "sha256:..."
+}`}</pre><div style={{ display:"flex", gap:4, marginTop:4 }}><input className="nv-input" placeholder="patientId" value={provenanceForm.patientId} onChange={e=> setProvenanceForm({...provenanceForm, patientId:e.target.value})} style={{ flex:1, fontSize:11 }} /><input className="nv-input" placeholder="code e.g. 8867-4" value={provenanceForm.code} onChange={e=> setProvenanceForm({...provenanceForm, code:e.target.value})} style={{ width:90, fontSize:11 }} /><input className="nv-input" placeholder="value" value={provenanceForm.amount} onChange={e=> setProvenanceForm({...provenanceForm, amount:e.target.value})} style={{ width:60, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!provenanceForm.patientId) return; const r=await fetch("/api/health/provenance/observations",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: provenanceForm.patientId, code: provenanceForm.code, value:{ amount: Number(provenanceForm.amount), unit: provenanceForm.unit, display:"Observation" }, origin: provenanceForm.origin })}); const j=await r.json().catch(()=>null); if(r.ok && j?.observation) setObservations(prev=> [j.observation, ...prev].slice(0,6)); }}>Create Observation (L1-L3)</Button></div>{observations.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Observation</th><th>Code</th><th>Value</th><th>Label</th><th>Hash</th></tr></thead><tbody>{observations.slice(0,4).map((o:Record<string,unknown>,i:number)=> <tr key={String(o.id ?? i)}><td style={{ fontSize:10 }}>{String(o.observationId ?? o.id).slice(0,10)}</td><td>{String(o.code)}</td><td>{String((o.value as Record<string,unknown>)?.amount ?? (o as Record<string,unknown>).value ?? "—")}</td><td><Pill>{String(o.trustLabel)}</Pill></td><td style={{ fontSize:9 }}>{String(o.contentHash ?? "").slice(0,10)}</td></tr>)}</tbody></table></div>}</div>
+            </Section>
+            <Section title="Inference Object + Action Provenance">
+              <div style={{ fontSize:11 }}><pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, whiteSpace:"pre-wrap" }}>{`{
+  "inference_id": "inf-...",
+  "type": "clinical_risk_signal", "statement": "Possible deterioration", "status": "review_required",
+  "model": { "family": "deterioration-risk", "version": "3.4.1", "artifact_digest": "sha256:..." },
+  "inputs": [{ "observation_id": "obs-...", "role": "primary_feature" }],
+  "uncertainty": { "predictive_probability": 0.86, "epistemic": 0.11, "aleatoric": 0.18 },
+  "valid_until": "2026-09-01T15:14:00+05:30", "requires_human_review": true
+}`}</pre><pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, whiteSpace:"pre-wrap", marginTop:6 }}>{`{
+  "action_id": "action-...",
+  "type": "rapid_response_notification",
+  "trigger": { "inference_id": "inf-...", "policy_id": "policy-..." },
+  "authorization": { "required_role": "attending_or_rapid_response", "reviewer_id": "clinician-token", "decision": "approved" },
+  "execution": { "recipient": "rapid-response-team", "sent_at": "2026-09-01T14:16:20+05:30", "delivery_status": "acknowledged" }
+}`}</pre><div style={{ color:"var(--nv-color-text-faint)", marginTop:4}}>Distinguishes model-generated vs clinician-approved vs automatically sent vs failed delivery vs human override vs outcome.</div></div>
+            </Section>
+          </div>
+          <Section title="Clinical Decision Trace — 5 Panels (Not Generic 'AI Detected Risk')">
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(5, 1fr)", gap:8, fontSize:11 }}>
+              <div className="nv-card" style={{ padding:8 }}><b>1. What was observed?</b><div style={{ color:"var(--nv-color-text-faint)"}}>Values, trends, source, quality, freshness, calibration</div></div>
+              <div className="nv-card" style={{ padding:8 }}><b>2. What changed?</b><div style={{ color:"var(--nv-color-text-faint)"}}>Normalization, filtering, missing-data, derived features, conflict resolution</div></div>
+              <div className="nv-card" style={{ padding:8 }}><b>3. What did model do?</b><div style={{ color:"var(--nv-color-text-faint)"}}>Version, input snapshot, output, confidence, uncertainty, envelope status</div></div>
+              <div className="nv-card" style={{ padding:8 }}><b>4. What policy applied?</b><div style={{ color:"var(--nv-color-text-faint)"}}>Safety threshold, human-review rule, contraindication, consent, escalation</div></div>
+              <div className="nv-card" style={{ padding:8 }}><b>5. What happened afterward?</b><div style={{ color:"var(--nv-color-text-faint)"}}>Reviewer, approval, action, delivery, reassessment, outcome</div></div>
+            </div>
+            <div style={{ marginTop:8, display:"flex", gap:4 }}><input className="nv-input" placeholder="resourceId e.g. inf-..." value={upstreamId} onChange={e=> setUpstreamId(e.target.value)} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!upstreamId) return; const r=await fetch(`/api/health/provenance/trace/${upstreamId}`).then(r=> r.json()).catch(()=>null); setProvenanceTrace(r?.trace ?? r); }}>Trace 5 Panels</Button></div>
+            {provenanceTrace && <pre style={{ marginTop:6, background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, maxHeight:120, overflowY:"auto" }}>{JSON.stringify(provenanceTrace, null, 2).slice(0,1000)}</pre>}
+          </Section>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Digital Signatures — 3 Classes">
+              <div style={{ fontSize:11 }}><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #059669" }}><b>Human Clinical</b><div style={{ color:"var(--nv-color-text-faint)"}}>Orders, diagnoses, treatment plans, notes, consent, overrides — verified identity, role, intent confirmation, step-up auth, timestamp, certificate, status</div></div><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #4f46e5", marginTop:6 }}><b>System</b><div style={{ color:"var(--nv-color-text-faint)"}}>Device data, transformations, AI inferences, notifications, policy decisions — workload identity, attested runtime, artifact digest, software version, key rotation, replay protection</div></div><div className="nv-card" style={{ padding:8, borderLeft:"3px solid #d97706", marginTop:6 }}><b>Organization</b><div style={{ color:"var(--nv-color-text-faint)"}}>Validation reports, regulatory docs, research agreements, data-release approvals, institutional protocols</div></div><div style={{ marginTop:6, color:"var(--nv-color-text-faint)"}}>Signatures authenticate + detect modification, not confidentiality/replay — combine with encryption, key management, timestamps, nonce/sequence, revocation. HSM, separate keys by tenant/env, model/data keys, rotation, revocation, dual authorization, offline emergency verification, post-quantum migration.</div></div>
+            </Section>
+            <Section title="Tamper-Evident Audit + Retention P0-P7">
+              <div style={{ fontSize:11 }}><div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Append-only event storage","Hash chaining","Merkle-tree checkpoints","External time-stamping","Immutable object storage","Write-once retention","Separate audit admin","Independent replication","Access logging","Signature verification","Exportable evidence package","Legal-hold support","Disaster-recovery testing"].map(s=> <Pill key={s}>{s}</Pill>)}</div><div style={{ marginTop:6, display:"flex", gap:4, flexWrap:"wrap" }}><Pill>P0 Temporary buffer — short</Pill><Pill>P1 Wellness — patient-configurable</Pill><Pill>P2 Clinical observation — clinical-record</Pill><Pill tone="danger">P3 Signed order — legal</Pill><Pill tone="danger">P4 High-risk AI — safety/regulatory</Pill><Pill>P5 Incident/CAPA — quality</Pill><Pill>P6 Research — protocol/legal</Pill><Pill>P7 Security audit</Pill></div><div style={{ color:"var(--nv-color-text-faint)", marginTop:4}}>Hash chain shows whether records changed after creation; does not prove original truth — preserve source signatures, device attestations, human identity, independent logs.</div></div>
+            </Section>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Correction Workflow — Preserve History">
+              <div style={{ display:"flex", gap:4, flexWrap:"wrap", alignItems:"center", fontSize:11, fontWeight:800 }}>{["Correction Requested","Original Preserved","Evidence Submitted","Clinical/Data Steward Review","Corrected Version Created","Original Superseded","Dependents Identified","Alerts/Reports Re-evaluated","Downstream Notified","Patient Shown Final"].map((s,i)=> <span key={s} style={{ display:"inline-flex", alignItems:"center", gap:3 }}><span style={{ padding:"3px 6px", borderRadius:999, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)", fontSize:10 }}>{s}</span>{i<9 && <span style={{ color:"var(--nv-color-text-faint)"}}>→</span>}</span>)}</div>
+              <div style={{ marginTop:6, padding:8, border:"1px dashed #059669", borderRadius:8, fontSize:11, background:"#ecfdf5" }}><i>“Your recorded medication dose was corrected from 10 mg to 20 mg after review by City Hospital on 1 September 2026. The original entry remains visible in the history. N0VA rechecked two medication alerts that used the earlier value.”</i> — never silently replace.</div>
+              <div style={{ marginTop:6, display:"flex", gap:4 }}><input className="nv-input" placeholder="correctionId" value={correctionApproveForm.correctionId} onChange={e=> setCorrectionApproveForm({...correctionApproveForm, correctionId:e.target.value})} style={{ flex:1, fontSize:11 }} /><input className="nv-input" placeholder="corrected value e.g. 20 mg" value={correctionApproveForm.correctedValue} onChange={e=> setCorrectionApproveForm({...correctionApproveForm, correctedValue:e.target.value})} style={{ width:100, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!correctionApproveForm.correctionId) return; const r=await fetch(`/api/health/provenance/corrections/${correctionApproveForm.correctionId}/approve`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ correctedValue:{ value: correctionApproveForm.correctedValue }, responsibleOrg:"City Hospital" })}); const j=await r.json().catch(()=>null); if(r.ok) setProvenanceCorrections(prev=> prev.map(c=> String((c as Record<string,unknown>).id)===correctionApproveForm.correctionId? {...c, reviewStatus:"approved"} as Record<string,unknown>:c)); }}>Approve Correction</Button></div>
+              {provenanceCorrections.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Record</th><th>Status</th><th>Original → Proposed</th></tr></thead><tbody>{provenanceCorrections.slice(0,4).map((c:Record<string,unknown>,i:number)=> <tr key={String(c.id ?? i)}><td style={{ fontSize:10 }}>{String(c.recordId).slice(0,12)}</td><td><Pill>{String(c.reviewStatus)}</Pill></td><td style={{ fontSize:10 }}>{String(JSON.stringify(c.originalValue)).slice(0,20)} → {String(JSON.stringify(c.proposedValue)).slice(0,20)}</td></tr>)}</tbody></table></div>}
+            </Section>
+            <Section title="Correction Impact Graph + Trust Posture (7 Dimensions)">
+              <div style={{ fontSize:11 }}><b>Corrected allergy →</b> medication reconciliation → interaction checker → medication recommendation → care-plan draft → patient message → research feature — each: Unaffected / Recomputed / Requires review / Withdrawn / Superseded / Patient notification required / Research correction / Regulatory report</div>
+              <Button size="sm" variant="ghost" onClick={async()=> { if(!correctionApproveForm.correctionId) return; const r=await fetch(`/api/health/provenance/corrections/${correctionApproveForm.correctionId}/impact`).then(r=> r.json()).catch(()=>null); alert(r? `Impact: ${JSON.stringify(r.impact ?? r,null,2).slice(0,500)}` : "No impact"); }} style={{ marginTop:6 }}>Impact Analysis</Button>
+              <div style={{ marginTop:6, padding:8, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)", borderRadius:8 }}><b>Trust posture (not single score):</b><div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11, marginTop:4 }}><div>Authenticity: verified device</div><div>Quality: 0.94</div><div>Freshness: 8 min old</div><div>Calibration: valid</div><div>Corroboration: confirmed manual</div><div>Model validity: approved adult inpatient</div><div>Authorization: review required</div></div></div>
+            </Section>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <Section title="Provenance-Aware AI Retrieval + Conflict Resolution">
+              <div style={{ fontSize:11 }}><pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:10, whiteSpace:"pre-wrap" }}>{`{
+  "fact": "Patient reports penicillin allergy",
+  "source_type": "clinician_entered",
+  "author": "Dr. ...",
+  "recorded_at": "2026-08-20T10:12:00Z",
+  "last_verified": "2026-08-28T09:00:00Z",
+  "status": "active",
+  "confidence": "clinician_confirmed",
+  "consent_scope": "treatment"
+}`}</pre><div style={{ marginTop:6 }}><b>Conflict:</b> “Two active medication lists conflict: imported warfarin 5 mg vs clinician-entered apixaban 5 mg. Recommendations paused until reconciliation.” — display conflicting values, source identities, timestamps, quality, significance, required reviewer, safe interim behavior. Precedence not absolute — recent lab/device may outrank clinician-entered.</div><div style={{ marginTop:6 }}><b>Synthetic separation (hard boundary):</b> separate namespace/patient-ID pattern/storage bucket/FHIR tenant/tag, visible flag, no alerts/messages/billing/validation/timeline mixing.</div></div>
+            </Section>
+            <Section title="Provenance API — 11 Endpoints + FHIR/W3C PROV">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11, fontFamily:"monospace" }}>{["GET    /provenance/{resource_id}","GET    /provenance/{resource_id}/upstream","GET    /provenance/{resource_id}/downstream","GET    /provenance/{resource_id}/explanation","POST   /provenance/corrections","GET    /provenance/corrections/{id}","POST   /provenance/sign","POST   /provenance/verify","GET    /provenance/audit-events","POST   /provenance/holds","GET    /provenance/impact-analysis"].map(e=> <div key={e} style={{ padding:"3px 6px", background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)", borderRadius:6 }}>{e}</div>)}</div>
+              <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>FHIR: Observation, Device, DeviceMetric, DiagnosticReport, DocumentReference, MedicationRequest, Consent, Provenance (agents/entities/activities), AuditEvent, Task, CarePlan — FHIR Provenance links target/agents/entities/activities + N0VA extensions (model version, quality, calibration, uncertainty, params, signatures). W3C PROV internally, FHIR clinically.</div>
+              <div style={{ marginTop:6, fontSize:11 }}><b>Note markers 7 + Order linkage:</b> Patient-reported: / Clinician-observed: / Device-measured: / Imported: / AI-summarized: / Clinician-verified: / Not independently verified: — AI suggestion never represented as ordering clinician’s independent rationale.</div>
+            </Section>
+          </div>
+          <Section title="Acceptance — 16 Questions for Any High-Risk Alert">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11 }}>{["Which patient/encounter?","What source data?","Was each source patient-reported/device-generated/clinician-entered/imported/inferred/synthetic?","Which device/fw/calibration/quality?","When did event occur, was clock synchronized?","What transformations?","Which model/policy versions?","What evidence/uncertainty?","Which consent/access policy?","Who reviewed/approved?","What action?","Was action delivered?","What outcome?","Has source been corrected?","Which downstream affected?","Can chain be cryptographically verified?"].map(q=> <div key={q} style={{ padding:"4px 6px", border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)" }}>{q}</div>)}</div>
+            <div style={{ marginTop:8, padding:10, border:"1.5px solid #4f46e5", borderRadius:10, fontSize:12, fontWeight:800, textAlign:"center", background:"var(--nv-color-surface-raised)" }}>Every important clinical fact in N0VA should be explainable as a signed, time-aware chain from source to transformation to inference to human decision to outcome.</div>
+            <div style={{ marginTop:6, display:"flex", gap:6, flexWrap:"wrap", fontSize:11 }}><Pill>First release: source classification, device metadata, timestamp/freshness, signal quality, FHIR Provenance, model/policy version, upstream/downstream, event log, correction history, explanation, signed high-risk actions</Pill><Pill>Second: device attestation, calibration registry, transformation graph, outcome links, patient-visible, conflict, derived lineage, impact</Pill><Pill>Third: cross-org, research lineage, privacy-wallet integration, automated propagation, post-market surveillance, cryptographic checkpoints, verification portal</Pill></div>
           </Section>
         </div>
       )}

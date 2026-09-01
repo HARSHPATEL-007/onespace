@@ -131,6 +131,14 @@ integrations    Integration[]
   healthWalletCorrections HealthWalletCorrection[]
   healthWalletRestrictions HealthWalletRestriction[]
   healthWalletDeletionJobs HealthWalletDeletionJob[]
+  healthDeviceTrustProfiles HealthDeviceTrustProfile[]
+  healthProvenanceRecords HealthProvenanceRecord[]
+  healthObservationTrusts HealthObservationTrust[]
+  healthInferenceTrusts HealthInferenceTrust[]
+  healthActionTrusts HealthActionTrust[]
+  healthOutcomeTrusts HealthOutcomeTrust[]
+  healthProvenanceEvents HealthProvenanceEvent[]
+  healthCorrectionTrusts HealthCorrectionTrust[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4393,6 +4401,13 @@ model HealthPatient {
   walletRestrictions HealthWalletRestriction[]
   walletDeletionJobs HealthWalletDeletionJob[]
   walletConsentEvents HealthWalletConsentEvent[]
+  provenanceRecords HealthProvenanceRecord[]
+  observationTrusts HealthObservationTrust[]
+  inferenceTrusts HealthInferenceTrust[]
+  actionTrusts HealthActionTrust[]
+  outcomeTrusts HealthOutcomeTrust[]
+  provenanceEvents HealthProvenanceEvent[]
+  correctionTrusts HealthCorrectionTrust[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -6035,6 +6050,333 @@ model HealthWalletDeletionJob {
   @@index([workspaceId, patientId])
   @@index([asset])
   @@index([status])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — HEALTH DATA PROVENANCE AND TRUST FABRIC (HDPTF)
+// Clinical reasoning and accountability layer — not merely blockchain.
+// HL7 FHIR Provenance + W3C PROV + FDA time-stamped audit trail.
+// Source → Measurement → Transformation → Inference → Action → Outcome → Immutable Ledger
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum ProvenanceOrigin {
+  PATIENT_REPORTED
+  CAREGIVER_REPORTED
+  CLINICIAN_ENTERED
+  DEVICE_GENERATED
+  LABORATORY_GENERATED
+  IMPORTED
+  TRANSFORMED
+  INFERRED
+  SYNTHETIC
+  HUMAN_ADJUDICATED
+}
+
+enum TrustLabel {
+  MEASURED
+  REPORTED
+  IMPORTED
+  VALIDATED
+  DERIVED
+  INFERRED
+  UNVERIFIED
+  STALE
+  CONFLICTED
+  SYNTHETIC
+  CORRECTED
+}
+
+enum ProvenanceEventType {
+  OBSERVATION_RECEIVED
+  OBSERVATION_VALIDATED
+  OBSERVATION_NORMALIZED
+  OBSERVATION_CORRECTED
+  INFERENCE_GENERATED
+  INFERENCE_REVIEWED
+  ACTION_APPROVED
+  ACTION_EXECUTED
+  OUTCOME_RECORDED
+}
+
+enum SignatureClass {
+  HUMAN_CLINICAL
+  SYSTEM
+  ORGANIZATION
+}
+
+enum RetentionClass {
+  P0 // Temporary telemetry buffer — short
+  P1 // Wellness measurement — patient-configurable
+  P2 // Clinical observation — clinical-record retention
+  P3 // Signed order or consent — legal and clinical
+  P4 // High-risk AI decision — clinical safety and regulatory
+  P5 // Incident or CAPA — quality-system
+  P6 // Research record — study protocol and legal
+  P7 // Security audit — security and compliance
+}
+
+/// Versioned device trust profile — firmware update creates new provenance version.
+model HealthDeviceTrustProfile {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  deviceId            String?  // links to HealthDevice.id if known
+  manufacturer        String
+  deviceModel         String
+  serialOrAttestation String?
+  firmware            String?
+  hardwareRevision    String?
+  regulatoryStatus    String?
+  intendedUse         String?
+  supportedMeasurements String[] @default([])
+  calibrationRequirements String?
+  expectedRanges      Json     @default("{}")
+  samplingBehavior    String?
+  knownLimitations    String[] @default([])
+  securityStatus      String?
+  lastMaintenance     DateTime?
+  lastCalibration     DateTime?
+  signalQualityAlgorithm String?
+  dataTransferMethod  String?
+  timeSyncMethod      String?
+  revocationStatus    String?  // active | revoked
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, manufacturer, deviceModel, firmware, version])
+  @@index([workspaceId, deviceId])
+}
+
+/// Generic provenance graph — FHIR Provenance + W3C PROV (Entities/Activities/Agents).
+model HealthProvenanceRecord {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  encounterId       String?
+  targetResourceType String  // Observation | DiagnosticReport | MedicationRequest | Consent | etc.
+  targetResourceId  String
+  // W3C PROV
+  entityType        String   // observation | document | model | feature | alert | order | outcome
+  activityType      String   // capture | import | transform | infer | review | approve | execute | revise
+  agentType         String   // patient | clinician | device | laboratory | organization | model | software_service
+  agentId           String?
+  // FHIR Provenance fields
+  fhirProvenance    Json?    // full FHIR Provenance resource
+  w3cProv           Json?    // W3C PROV JSON
+  // Upstream/downstream
+  parentIds         String[] @default([]) // upstream provenance record IDs
+  childIds          String[] @default([]) // downstream
+  // Origin & trust
+  origin            ProvenanceOrigin @default(DEVICE_GENERATED)
+  trustLabel        TrustLabel @default(MEASURED)
+  retentionClass    RetentionClass @default(P2)
+  fhirTargetReference String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, targetResourceType, targetResourceId])
+  @@index([workspaceId, patientId])
+  @@index([origin])
+  @@index([trustLabel])
+}
+
+/// Observation object — Level 1-3 provenance + FHIR Observation + FHIR Provenance linkage.
+model HealthObservationTrust {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  encounterId       String?
+  observationId     String   @unique // obs-...
+  code              String   // LOINC e.g. 8867-4 (Heart rate), 2708-6 (SpO2)
+  value             Json     // { amount, unit, display }
+  origin            ProvenanceOrigin @default(DEVICE_GENERATED)
+  // Level 1: Source
+  source            Json     @default("{}") // { device_id, manufacturer, model, firmware, sensor_type, collection_method, collector_identity, consent_basis, geography, residency }
+  // Level 2: Measurement
+  timing            Json     @default("{}") // { event_time, device_time, ingestion_time, time_zone_offset, clock_offset_ms, synchronization, time_source, sampling_rate, sensor_placement, battery_sufficient, calibration_status, calibration_date, reference_standard, environmental_conditions, motion_artifact, duplicate_status, manual_confirmation }
+  quality           Json     @default("{}") // { score, status, motion_artifact, electrode_contact, battery_sufficient, calibration_valid, sampling_complete, quality_method }
+  calibration       Json     @default("{}") // { status, last_calibrated, expires, reference_standard }
+  // Level 3: Transformation
+  transformation    Json     @default("{}") // { raw_payload_hash, parsing_version, decryption_event, unit_conversion, noise_filtering, artifact_rejection, interpolation, gap_filling, sensor_fusion, normalization, reference_range_mapping, derived_feature, missing_value_handling, human_correction, code_version, parameters, input_output_hashes }
+  provenanceRef     String?  // prov-...
+  contentHash       String?
+  trustLabel        TrustLabel @default(MEASURED)
+  retentionClass    RetentionClass @default(P2)
+  fhirObservation   Json?    // FHIR Observation
+  fhirProvenanceId  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([code])
+  @@index([origin])
+}
+
+/// Inference object — Level 4 provenance.
+model HealthInferenceTrust {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  encounterId       String?
+  inferenceId       String   @unique // inf-...
+  type              String   // clinical_risk_signal, diagnostic, etc.
+  statement         String   // "Possible clinical deterioration"
+  status            String   @default("review_required") // review_required | approved | rejected | superseded
+  // Model
+  modelFamily       String
+  modelVersion      String
+  artifactDigest    String?
+  promptVersion     String?
+  retrievalIndexVersion String?
+  sourceDocuments   String[] @default([])
+  featureSnapshot   Json     @default("{}")
+  inputTimestamp    DateTime?
+  modelTimestamp    DateTime?
+  confidence        Float?
+  calibrationStatus String?
+  uncertainty       Json     @default("{}") // { predictive_probability, epistemic, aleatoric, calibration_status }
+  abstentionChecks  Json     @default("{}")
+  policyEngineVersion String?
+  applicableGuideline String?
+  contraindicationsConsidered String[] @default([])
+  humanReviewRequirement String?
+  outputExpiration  DateTime?
+  inputs            Json     @default("[]") // [{ observation_id, role, contribution }]
+  evidence          Json     @default("{}") // { positive_factors, missing_inputs, contradictions, source_freshness }
+  validUntil        DateTime?
+  requiresHumanReview Boolean @default(true)
+  signature         Json?    // { algorithm, key_id, signature }
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([modelFamily, modelVersion])
+  @@index([status])
+}
+
+/// Action provenance — Level 5.
+model HealthActionTrust {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  encounterId       String?
+  actionId          String   @unique // action-...
+  type              String   // rapid_response_notification, order, message, care_plan_change
+  trigger           Json     @default("{}") // { inference_id, policy_id, alert_id }
+  authorization     Json     @default("{}") // { required_role, reviewer_id, decision, decision_time, reason }
+  execution         Json     @default("{}") // { recipient, sent_at, delivery_status, failure_or_rollback, time_to_action }
+  outcomeRef        String?  // links to HealthOutcomeTrust
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([type])
+}
+
+/// Outcome provenance — Level 6.
+model HealthOutcomeTrust {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  encounterId       String?
+  outcomeId         String   @unique
+  actionId          String?  // links to HealthActionTrust.actionId
+  followUpMeasurement Json?  // observation ref
+  clinicalOutcome   String?
+  patientReportedOutcome String?
+  adverseEvent      String?
+  override          String?
+  reassessment      String?
+  readmission       Boolean?
+  escalation        String?
+  resolution        String?
+  unresolvedStatus  String?
+  outcomeAdjudicator String?
+  outcomeTimestamp  DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([actionId])
+}
+
+/// Event-sourcing — append-only, derive current state, reconstruct any point in time.
+model HealthProvenanceEvent {
+  id                String               @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  encounterId       String?
+  eventId           String               @unique // event-...
+  eventType         ProvenanceEventType
+  aggregateId       String               // resource ID (observation/inference/action)
+  actor             String               // patient | clinician | device | system
+  timestamp         DateTime             @default(now())
+  previousStateHash String?
+  currentPayloadHash String?
+  parentEventId     String?
+  softwareVersion   String?
+  policyVersion     String?
+  signature         Json?                // { class, algorithm, key_id, signature }
+  reasonCode        String?
+  correlationId     String?
+  retentionClass    RetentionClass       @default(P2)
+  payload           Json                 @default("{}")
+  createdAt         DateTime             @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, aggregateId])
+  @@index([workspaceId, patientId])
+  @@index([eventType])
+  @@index([correlationId])
+}
+
+/// Correction workflow — preserves history, prevents reliance on wrong info, identifies dependents.
+model HealthCorrectionTrust {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  recordId          String   // original record ID
+  originalValue     Json
+  proposedValue     Json
+  reason            String?
+  evidence          Json?
+  reviewStatus      String   @default("pending") // pending | reviewed | approved | rejected
+  responsibleOrg    String?
+  correctedValue    Json?
+  effectiveDate     DateTime?
+  superseded        Boolean  @default(false)
+  dependentArtifacts Json    @default("[]") // [{ id, type, status: Unaffected | Recomputed | Requires review | Withdrawn | Superseded | Patient notification required | Research correction required | Regulatory report }]
+  notifiedRecipients String[] @default([])
+  patientMessage    String?  // "Your recorded medication dose was corrected from 10 mg to 20 mg after review by City Hospital on 1 September 2026. ..."
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([recordId])
+  @@index([reviewStatus])
 }
 
 /// N0VA LEGAL - revision history.

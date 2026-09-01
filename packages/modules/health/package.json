@@ -9,7 +9,8 @@
     "./components": "./src/components.tsx",
     "./safety": "./src/safety.ts",
     "./registry": "./src/registry.ts",
-    "./wallet": "./src/wallet.ts"
+    "./wallet": "./src/wallet.ts",
+    "./provenance": "./src/provenance.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

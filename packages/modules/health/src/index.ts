@@ -4,3 +4,4 @@ export { ClinicalSafetyOS, SAFETY_CLASS, AUTHORIZATION_MATRIX, FEATURE_SAFETY_MA
 export type { SafetyClassKey, ActionKind, RecommendationState } from "./safety";
 export { ModelRegistry, EVIDENCE_TIER, DEPLOYMENT_GATES, DRIFT_THRESHOLDS_EXAMPLE, FEATURE_STATUS, REGISTRY_API, datasetSchema, validationStudySchema, claimSchema, modelCardSchema, deploymentSchema, driftSignalSchema, changeControlSchema, clinicalReviewSchema } from "./registry";
 export { HealthWallet, DATA_DOMAIN, CONSENT_WHO, ENFORCEMENT_POINTS, CORE_PRINCIPLES, WALLET_DATA_MODEL_TEMPLATE, CONSENT_EVENT_LEDGER_TEMPLATE, walletConsentSchema, walletProxySchema, walletExportSchema, walletCorrectionSchema, walletRestrictionSchema } from "./wallet";
+export { HealthProvenanceFabric, TRUST_FABRIC_STAGES, PROVENANCE_LAYERS, DATA_ORIGIN, TRUST_LABELS, RETENTION_CLASSES, ACCEPTANCE_CRITERIA, observationTrustSchema, inferenceTrustSchema, actionTrustSchema } from "./provenance";

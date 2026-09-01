@@ -4,6 +4,7 @@ import { can, type Role } from "@n0va/authz";
 import { ClinicalSafetyOS, SAFETY_CLASS, AUTHORIZATION_MATRIX, FEATURE_SAFETY_MAP, classifyFeature, DEFAULT_ENVELOPES, SAFE_ABSTENTION_MESSAGE, FMEA_ROWS, GOVERNANCE_ROLES, DEGRADED_RESPONSES } from "./safety";
 import { ModelRegistry, EVIDENCE_TIER, DEPLOYMENT_GATES, DRIFT_THRESHOLDS_EXAMPLE, FEATURE_STATUS, REGISTRY_API } from "./registry";
 import { HealthWallet, DATA_DOMAIN, CONSENT_WHO, ENFORCEMENT_POINTS, CORE_PRINCIPLES, WALLET_DATA_MODEL_TEMPLATE, CONSENT_EVENT_LEDGER_TEMPLATE } from "./wallet";
+import { HealthProvenanceFabric, TRUST_FABRIC_STAGES, PROVENANCE_LAYERS, DATA_ORIGIN, TRUST_LABELS, RETENTION_CLASSES, ACCEPTANCE_CRITERIA } from "./provenance";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -317,6 +318,7 @@ export class HealthService {
   private get safety() { return new ClinicalSafetyOS(this.workspaceId, this.userId, this.role); }
   private get registry() { return new ModelRegistry(this.workspaceId, this.userId, this.role); }
   private get wallet() { return new HealthWallet(this.workspaceId, this.userId, this.role); }
+  private get provenance() { return new HealthProvenanceFabric(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -425,6 +427,32 @@ export class HealthService {
   async walletLedgerSummary(patientId: string) { return this.wallet.ledgerSummary(patientId); }
   async walletListAccessLedger(patientId: string, take?: number) { return this.wallet.listAccessLedger(patientId, take); }
   async walletDashboard(patientId: string) { return this.wallet.walletDashboard(patientId); }
+
+  // ── Provenance Fabric — HDPTF ───────────────────────────────────────
+  get trustFabricStages() { return TRUST_FABRIC_STAGES; }
+  get provenanceLayers() { return PROVENANCE_LAYERS; }
+  get dataOriginTaxonomy() { return DATA_ORIGIN; }
+  get trustLabels() { return TRUST_LABELS; }
+  get retentionClasses() { return RETENTION_CLASSES; }
+  get acceptanceCriteria() { return ACCEPTANCE_CRITERIA; }
+  async provenanceUpsertDeviceTrust(profile: Parameters<HealthProvenanceFabric["upsertDeviceTrust"]>[0]) { return this.provenance.upsertDeviceTrust(profile); }
+  async provenanceListDeviceTrust(deviceId?: string) { return this.provenance.listDeviceTrust(deviceId); }
+  async provenanceCreateObservation(input: Parameters<HealthProvenanceFabric["createObservationTrust"]>[0]) { return this.provenance.createObservationTrust(input); }
+  async provenanceListObservations(patientId?: string, take?: number) { return this.provenance.listObservations(patientId, take); }
+  async provenanceCreateInference(input: Parameters<HealthProvenanceFabric["createInferenceTrust"]>[0]) { return this.provenance.createInferenceTrust(input); }
+  async provenanceCreateAction(input: Parameters<HealthProvenanceFabric["createActionTrust"]>[0]) { return this.provenance.createActionTrust(input); }
+  async provenanceCreateOutcome(input: Parameters<HealthProvenanceFabric["createOutcomeTrust"]>[0]) { return this.provenance.createOutcomeTrust(input); }
+  async provenanceGetUpstream(resourceId: string, depth?: number) { return this.provenance.getUpstream(resourceId, depth); }
+  async provenanceGetDownstream(resourceId: string, depth?: number) { return this.provenance.getDownstream(resourceId, depth); }
+  async provenanceGetExplanation(resourceId: string) { return this.provenance.getExplanation(resourceId); }
+  async provenanceClinicalTrace(resourceId: string) { return this.provenance.clinicalDecisionTrace(resourceId); }
+  async provenanceIncidentPackage(resourceId: string) { return this.provenance.incidentPackage(resourceId); }
+  async provenanceListEvents(aggregateId?: string, take?: number) { return this.provenance.listProvenanceEvents(aggregateId, take); }
+  async provenanceRequestCorrection(input: Parameters<HealthProvenanceFabric["requestCorrection"]>[0]) { return this.provenance.requestCorrection(input); }
+  async provenanceApproveCorrection(correctionId: string, correctedValue: Record<string,unknown>, responsibleOrg?: string) { return this.provenance.approveCorrection(correctionId, correctedValue, responsibleOrg); }
+  async provenanceListCorrections(patientId?: string, take?: number) { return this.provenance.listCorrections(patientId, take); }
+  async provenanceImpactAnalysis(recordId: string) { return this.provenance.impactAnalysis(recordId); }
+  async provenanceGetProvenance(resourceId: string) { return this.provenance.getProvenance(resourceId); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {
