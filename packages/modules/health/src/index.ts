@@ -10,3 +10,4 @@ export { AdaptiveHealthLiteracy, READING_LEVELS, TEACH_BACK_TRIGGERS, AMBIGUITY_
 export { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API, delegationSchema, sharedCarePlanSchema, careTaskSchema, escalationTreeSchema, wellbeingCheckinSchema } from "./caregiver";
 export { MultimodalReasoningFabric, REASONING_FABRIC, SPECIALIZED_SERVICES, CONTRADICTION_SEVERITY, answerRequestSchema } from "./reasoning";
 export { AlertIntelligence, ALERT_ARCHITECTURE, PRIORITY_TIERS, BASELINE_METRICS, FHIR_ALERT_RESOURCES, candidateSchema, clusterSchema, baselineSchema } from "./alert-intelligence";
+export { TwinSafeguards, TWIN_BOUNDARIES, TWIN_CAPABILITIES, TWIN_DATA_CLASSES, TIME_HORIZONS, HIGH_IMPACT_PROHIBITED, COUNTERFACTUAL_ALLOWED_FOR, attributeEnvelopeSchema, simulationSchema, disputeSchema } from "./twin-safeguards";

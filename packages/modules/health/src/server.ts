@@ -9,6 +9,7 @@ import { PatientCommandCenter, CARE_CONTEXTS, COMMAND_CENTER_LAYOUT, PRIORITY_LE
 import { AdaptiveHealthLiteracy, READING_LEVELS, TEACH_BACK_TRIGGERS, AMBIGUITY_RISK_TIERS, VISUAL_FORMATS, CULTURAL_DIETARY_DIMENSIONS, LANGUAGE_LAYERS, COMMUNICATION_MODES, ACCESSIBILITY_PROFILES } from "./literacy";
 import { MultimodalReasoningFabric, REASONING_FABRIC, SPECIALIZED_SERVICES, CONTRADICTION_SEVERITY, answerRequestSchema } from "./reasoning";
 import { AlertIntelligence, ALERT_ARCHITECTURE, PRIORITY_TIERS, BASELINE_METRICS, FHIR_ALERT_RESOURCES } from "./alert-intelligence";
+import { TwinSafeguards, TWIN_BOUNDARIES, TWIN_CAPABILITIES, TWIN_DATA_CLASSES, TIME_HORIZONS, HIGH_IMPACT_PROHIBITED, COUNTERFACTUAL_ALLOWED_FOR } from "./twin-safeguards";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -328,6 +329,7 @@ export class HealthService {
   private get literacy() { return new AdaptiveHealthLiteracy(this.workspaceId, this.userId, this.role); }
   private get reasoning() { return new MultimodalReasoningFabric(this.workspaceId, this.userId, this.role); }
   private get alert() { return new AlertIntelligence(this.workspaceId, this.userId, this.role); }
+  private get twin() { return new TwinSafeguards(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -558,6 +560,26 @@ export class HealthService {
   async alertRecordOutcome(input: Parameters<AlertIntelligence["recordOutcome"]>[0]) { return this.alert.recordOutcome(input); }
   async alertGetMetrics(patientId?: string) { return this.alert.getMetrics(patientId); }
   alertExplainAlert(cluster: Parameters<AlertIntelligence["explainAlert"]>[0]) { return this.alert.explainAlert(cluster); }
+
+  // ── Digital Twin Safeguards — bounded, provenance-linked ──────────
+  get twinBoundaries() { return TWIN_BOUNDARIES; }
+  get twinCapabilities() { return TWIN_CAPABILITIES; }
+  get twinDataClasses() { return TWIN_DATA_CLASSES; }
+  get timeHorizons() { return TIME_HORIZONS; }
+  get highImpactProhibited() { return HIGH_IMPACT_PROHIBITED; }
+  get counterfactualAllowedFor() { return COUNTERFACTUAL_ALLOWED_FOR; }
+  async twinCreateAttribute(input: Parameters<TwinSafeguards["createAttribute"]>[0]) { return this.twin.createAttribute(input); }
+  async twinListAttributes(patientId?: string, take?: number) { return this.twin.listAttributes(patientId, take); }
+  async twinGetAttribute(attributeId: string) { return this.twin.getAttribute(attributeId); }
+  async twinListByHorizon(patientId: string, horizon?: string) { return this.twin.listByHorizon(patientId, horizon); }
+  async twinResetAttribute(attributeId: string, patientId: string) { return this.twin.resetAttribute(attributeId, patientId); }
+  async twinCorrectAttribute(attributeId: string, correctedValue: Record<string,unknown>, evidence?: Record<string,unknown>) { return this.twin.correctAttribute(attributeId, correctedValue, evidence); }
+  async twinDisputeAttribute(input: Parameters<TwinSafeguards["disputeAttribute"]>[0]) { return this.twin.disputeAttribute(input); }
+  async twinListDisputes(patientId?: string, take?: number) { return this.twin.listDisputes(patientId, take); }
+  async twinResolveDispute(disputeId: string, resolution: string, status?: string) { return this.twin.resolveDispute(disputeId, resolution, status); }
+  async twinCreateSimulation(input: Parameters<TwinSafeguards["createSimulation"]>[0]) { return this.twin.createSimulation(input); }
+  async twinListSimulations(patientId?: string, take?: number) { return this.twin.listSimulations(patientId, take); }
+  async twinCheckHighImpactAccess(attributeId: string, purpose: string) { return this.twin.checkHighImpactAccess(attributeId, purpose); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

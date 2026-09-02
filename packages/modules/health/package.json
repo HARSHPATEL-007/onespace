@@ -15,7 +15,8 @@
     "./literacy": "./src/literacy.ts",
     "./caregiver": "./src/caregiver.ts",
     "./reasoning": "./src/reasoning.ts",
-    "./alert-intelligence": "./src/alert-intelligence.ts"
+    "./alert-intelligence": "./src/alert-intelligence.ts",
+    "./twin-safeguards": "./src/twin-safeguards.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

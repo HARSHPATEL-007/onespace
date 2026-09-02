@@ -160,6 +160,9 @@ integrations    Integration[]
   healthPatientBaselines HealthPatientBaseline[]
   healthAlertSuppressionLogs HealthAlertSuppressionLog[]
   healthAlertOutcomes HealthAlertOutcome[]
+  healthTwinAttributes HealthTwinAttribute[]
+  healthTwinSimulations HealthTwinSimulation[]
+  healthTwinDisputes HealthTwinDispute[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4453,6 +4456,9 @@ model HealthPatient {
   patientBaselines HealthPatientBaseline[]
   suppressionLogs HealthAlertSuppressionLog[]
   alertOutcomes HealthAlertOutcome[]
+  twinAttributes HealthTwinAttribute[]
+  twinSimulations HealthTwinSimulation[]
+  twinDisputes HealthTwinDispute[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -7286,6 +7292,132 @@ model HealthAlertOutcome {
   @@index([workspaceId, patientId])
   @@index([alertId])
   @@index([outcome])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — PERSONAL HEALTH DIGITAL TWIN SAFEGUARDS
+// Bounded, provenance-linked personal health model, not definitive virtual copy. NIST AI RMF transparency, FDA CDS.
+// Every attribute shows observed/reported/calculated/inferred/simulated/projected/synthetic with confidence, uncertainty, freshness, provenance, intended use, human review.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum TwinOrigin {
+  OBSERVED
+  PATIENT_REPORTED
+  CAREGIVER_REPORTED
+  CLINICIAN_ENTERED
+  IMPORTED
+  CALCULATED
+  INFERRED
+  SIMULATED
+  PROJECTED
+  SYNTHETIC
+  UNKNOWN
+}
+
+enum TwinAttributeStatus {
+  ACTIVE
+  OBSERVED
+  ESTIMATED
+  INFERRED
+  SIMULATED
+  PROJECTED
+  RESEARCH_ONLY
+  CLINICAL_VALIDATION
+  DISPUTED
+  SUPERSEDED
+  EXPIRED
+  WITHDRAWN
+  RESTRICTED
+  REJECTED
+  UNABLE_TO_VERIFY
+}
+
+enum TwinCapabilityStatus {
+  PRODUCTION
+  CLINICAL_VALIDATION
+  RESEARCH
+  CONCEPTUAL
+}
+
+/// Bounded, provenance-linked twin attribute — time-versioned, purpose-limited.
+model HealthTwinAttribute {
+  id                String              @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  attributeId       String              @unique // twin-attribute-...
+  name              String              // e.g. cardiorespiratory_fitness_estimate
+  value             Json                // { value, unit }
+  origin            TwinOrigin          @default(OBSERVED)
+  status            TwinAttributeStatus @default(ACTIVE)
+  observedInputs    String[]            @default([]) // observation IDs
+  modelName         String?
+  modelVersion      String?
+  artifactDigest    String?
+  uncertainty       Json                @default("{}") // { confidence, interval, missing_inputs, known_bias_risks }
+  timeValidAt       DateTime?
+  timeHorizon       String?             // current_estimate, expires_at, etc.
+  timeExpiresAt     DateTime?
+  provenanceRef     String?
+  consentRef        String?
+  humanReview       Boolean             @default(false)
+  intendedUse       String?
+  capabilityStatus  TwinCapabilityStatus @default(PRODUCTION)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([origin])
+  @@index([status])
+  @@index([capabilityStatus])
+}
+
+/// Counterfactual simulation — assumptions explicit, not prediction, not treatment instruction.
+model HealthTwinSimulation {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  simulationId      String   @unique // sim-...
+  question          String   // What might change if activity increases?
+  baseline          String?  // previous_30_days
+  assumptions       String[] @default([]) // Medication remains unchanged, Activity increases by 20%, etc.
+  horizon           String?  // 8_weeks
+  output            Json     @default("{}") // { estimated_change, interval, confidence }
+  notAPrediction    Boolean  @default(true)
+  notATreatmentInstruction Boolean @default(true)
+  review            String?  // clinician_supervision_required_for_clinical_use
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([simulationId])
+}
+
+/// Dispute — “I do not agree that this representation is accurate, appropriate, or fair.”
+model HealthTwinDispute {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  attributeId       String?  // links to HealthTwinAttribute.attributeId
+  reason            String   // Wrong source data, Wrong interpretation, Missing context, Outdated, Cultural context ignored, Model not applicable, Privacy concern, Too sensitive, Patient does not want, Clinician disagreement, Research-use objection
+  status            String   @default("disputed") // disputed, reviewed, corrected, retained_with_qualification, withdrawn, requires_clinical_review, unable_to_verify, disagreement_recorded
+  resolution        String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  resolvedAt        DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([attributeId])
+  @@index([status])
 }
 
 /// N0VA LEGAL - revision history.
