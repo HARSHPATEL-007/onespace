@@ -7,6 +7,7 @@ import { HealthWallet, DATA_DOMAIN, CONSENT_WHO, ENFORCEMENT_POINTS, CORE_PRINCI
 import { HealthProvenanceFabric, TRUST_FABRIC_STAGES, PROVENANCE_LAYERS, DATA_ORIGIN, TRUST_LABELS, RETENTION_CLASSES, ACCEPTANCE_CRITERIA } from "./provenance";
 import { PatientCommandCenter, CARE_CONTEXTS, COMMAND_CENTER_LAYOUT, PRIORITY_LEVELS, TREND_MODULES, WHAT_CHANGED_CATEGORIES, RESULT_STATUS } from "./command-center";
 import { AdaptiveHealthLiteracy, READING_LEVELS, TEACH_BACK_TRIGGERS, AMBIGUITY_RISK_TIERS, VISUAL_FORMATS, CULTURAL_DIETARY_DIMENSIONS, LANGUAGE_LAYERS, COMMUNICATION_MODES, ACCESSIBILITY_PROFILES } from "./literacy";
+import { MultimodalReasoningFabric, REASONING_FABRIC, SPECIALIZED_SERVICES, CONTRADICTION_SEVERITY, answerRequestSchema } from "./reasoning";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -324,6 +325,7 @@ export class HealthService {
   private get provenance() { return new HealthProvenanceFabric(this.workspaceId, this.userId, this.role); }
   private get commandCenter() { return new PatientCommandCenter(this.workspaceId, this.userId, this.role); }
   private get literacy() { return new AdaptiveHealthLiteracy(this.workspaceId, this.userId, this.role); }
+  private get reasoning() { return new MultimodalReasoningFabric(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -496,6 +498,15 @@ export class HealthService {
   literacyDetectAmbiguity(input: Parameters<AdaptiveHealthLiteracy["detectAmbiguity"]>[0]) { return this.literacy.detectAmbiguity(input); }
   async literacyCreateClarification(patientId: string | null, riskLevel: string, questions: unknown[], emergencyScreen?: unknown) { return this.literacy.createClarificationSession(patientId, riskLevel, questions, emergencyScreen); }
   async literacyListClarifications(patientId?: string, take?: number) { return this.literacy.listClarifications(patientId, take); }
+
+  // ── Multimodal Reasoning Fabric ─────────────────────────────────────
+  get reasoningFabric() { return REASONING_FABRIC; }
+  get specializedServices() { return SPECIALIZED_SERVICES; }
+  get contradictionSeverity() { return CONTRADICTION_SEVERITY; }
+  async reasoningBuildPatientContext(patientId: string, encounterId?: string) { return this.reasoning.buildPatientContext(patientId, encounterId); }
+  async reasoningAnswer(input: Parameters<MultimodalReasoningFabric["answer"]>[0]) { return this.reasoning.answer(input); }
+  async reasoningListSessions(patientId?: string, take?: number) { return this.reasoning.listReasoningSessions(patientId, take); }
+  async reasoningGetSession(id: string) { return this.reasoning.getReasoningSession(id); }
 
   // ── Caregiver Coordination — Consent-Aware Care Coordination Network ──
   get caregiverRelationships() { return CAREGIVER_RELATIONSHIPS; }

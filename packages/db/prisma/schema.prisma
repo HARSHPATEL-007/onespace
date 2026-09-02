@@ -153,6 +153,8 @@ integrations    Integration[]
   healthCareTasks HealthCareTask[]
   healthEscalationTrees HealthEscalationTree[]
   healthCaregiverWellbeings HealthCaregiverWellbeing[]
+  healthEvidenceSources HealthEvidenceSource[]
+  healthReasoningSessions HealthReasoningSession[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4440,6 +4442,7 @@ model HealthPatient {
   careTasks HealthCareTask[]
   escalationTrees HealthEscalationTree[]
   caregiverWellbeings HealthCaregiverWellbeing[]
+  reasoningSessions HealthReasoningSession[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -6983,6 +6986,93 @@ model HealthCaregiverWellbeing {
 
   @@index([workspaceId, caregiverId])
   @@index([patientId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — MULTIMODAL PERSONAL HEALTH REASONING FABRIC
+// Coordinated multimodal fabric — not one general-purpose model. FHIR Clinical Reasoning + CDS Hooks, W3C PROV, FDA CDS.
+// Common patient context → Normalization → Temporal/Provenance Graph → Contradiction/Data-Quality → Evidence Retrieval → Specialized Services → Synthesis/Uncertainty → Safety/Consent/Human-Review → Role-specific Answer
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Governed source registry — organization, title, version, publication/review date, jurisdiction, population, topic, strength, quality, conflicts, applicability, expiration, license, retrieval timestamp.
+model HealthEvidenceSource {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  organization     String
+  publicationTitle String
+  version          String   @default("1.0")
+  publicationDate  DateTime?
+  reviewDate       DateTime?
+  jurisdiction     String?
+  population       String?
+  clinicalTopic    String?
+  recommendationStrength String?
+  evidenceQuality  String?
+  conflictsOfInterest String?
+  applicability    String?
+  expiration       DateTime?
+  license          String?
+  retrievalTimestamp DateTime @default(now())
+  sourceUrl        String?
+  isApproved       Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([clinicalTopic])
+}
+
+/// Unified multimodal reasoning session — stores full output contract + provenance + model chain.
+model HealthReasoningSession {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  encounterId       String?
+  question          String
+  scope             Json     @default("{}") // { time_range: { start, end }, modalities: [blood_pressure, medications, ...] }
+  purpose           String   @default("health_education") // health_education, etc.
+  consentRef        String?
+  requesterRole     String   @default("patient")
+  requesterIdentity String?  // verified
+  responsePreferences Json   @default("{}") // { language: en-IN, reading_level: plain, technical_detail: on_demand }
+  // Common patient context — structured package
+  patientContext    Json     @default("{}") // { patient: { id, age_context, relevant_anatomy }, encounter: { id, setting, purpose }, active_problems, medications, allergies, observations, laboratory_results, imaging, genomics, family_history, social_context, goals, preferences, consent, data_quality, contradictions, provenance_refs } with source/origin/timestamp/freshness/quality/confidence/consentStatus/clinicalStatus/provenanceRef/whetherClinicianReviewed
+  // Reasoning stages — 6
+  stageIntent       String?  // general education, explanation, trend, medication, symptom guidance, urgent triage, etc. + high-risk screening
+  stageRetrieval    Json     @default("{}")
+  stageNormalization Json    @default("{}")
+  stageBaseline     Json     @default("{}") // personal baseline median/range/variability/recent trend vs previous visit vs pre-treatment vs population vs clinician target
+  stageChanges      Json     @default("{}") // direction, magnitude, duration, persistence, variability, abrupt, treatment relationship, device change, missing, seasonal
+  stageContradictions Json  @default("[]") // [{ severity: informational/moderate/high/critical, example, behavior }]
+  // Evidence retrieval — governed
+  evidence          Json     @default("[]") // [{ source_title, organization, version, population, recommendation, applicability, limitations, retrieval_date }]
+  // Multimodal fusion — reliability and concordance
+  fusion            Json     @default("{}") // { device_signal: high quality, manual: not available, patient_report: moderate, clinician_note: recent signed, lab: final, imaging: radiologist reviewed, ai_image: assistive only, synthesis: which agree/disagree }
+  // Output contract — 6 sections
+  knownFacts        Json     @default("[]")
+  modelObservations Json     @default("[]")
+  possibleExplanations Json  @default("[]")
+  recommendedNextSteps Json @default("[]")
+  informationNeeded Json     @default("[]")
+  urgentHumanCare   Json     @default("[]")
+  contradictions    Json     @default("[]")
+  provenanceRefs    String[] @default([])
+  humanReview       Json     @default("{}") // { required: false, reason: null }
+  limitations       String[] @default([])
+  modelChain        Json     @default("[]") // [{ name, version, role, input, output, error, confidence, provenance, whether_decisive }]
+  status            String   @default("safe_to_present") // safe_to_present, needs_review, abstained
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
 }
 
 /// N0VA LEGAL - revision history.

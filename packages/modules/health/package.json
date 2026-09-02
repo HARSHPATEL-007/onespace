@@ -13,7 +13,8 @@
     "./provenance": "./src/provenance.ts",
     "./command-center": "./src/command-center.ts",
     "./literacy": "./src/literacy.ts",
-    "./caregiver": "./src/caregiver.ts"
+    "./caregiver": "./src/caregiver.ts",
+    "./reasoning": "./src/reasoning.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
