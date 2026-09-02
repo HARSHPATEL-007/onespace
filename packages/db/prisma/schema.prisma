@@ -155,6 +155,11 @@ integrations    Integration[]
   healthCaregiverWellbeings HealthCaregiverWellbeing[]
   healthEvidenceSources HealthEvidenceSource[]
   healthReasoningSessions HealthReasoningSession[]
+  healthAlertCandidates HealthAlertCandidate[]
+  healthAlertClusters HealthAlertCluster[]
+  healthPatientBaselines HealthPatientBaseline[]
+  healthAlertSuppressionLogs HealthAlertSuppressionLog[]
+  healthAlertOutcomes HealthAlertOutcome[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4443,6 +4448,11 @@ model HealthPatient {
   escalationTrees HealthEscalationTree[]
   caregiverWellbeings HealthCaregiverWellbeing[]
   reasoningSessions HealthReasoningSession[]
+  alertCandidates HealthAlertCandidate[]
+  alertClusters HealthAlertCluster[]
+  patientBaselines HealthPatientBaseline[]
+  suppressionLogs HealthAlertSuppressionLog[]
+  alertOutcomes HealthAlertOutcome[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -7073,6 +7083,209 @@ model HealthReasoningSession {
   @@index([workspaceId, patientId])
   @@index([status])
   @@index([createdAt(sort: Desc)])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — ALERT INTELLIGENCE AND RESPONSE SERVICE
+// Managed clinical events — not individual notifications. AHRQ specificity, Joint Commission governance, deduplication, clustering, baselines, fatigue prevention.
+// Signal Quality → Candidate → Deduplication → Baseline/Context → Priority/Actionability → Suppression/Cooldown → Routing/Escalation → Acknowledgement/Action → Outcome/Fatigue → Policy/Model Improvement
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum AlertCandidateType {
+  ELEVATED_BP
+  DISCONNECTED_SENSOR
+  MISSED_MEDICATION
+  MODEL_RISK_SCORE
+  LOW_QUALITY_SIGNAL
+  NEW_LAB_RESULT
+  PATIENT_REPORTED_SYMPTOM
+}
+
+enum AlertLifecycleStatus {
+  CANDIDATE
+  VALIDATED
+  DEDUPLICATED
+  CLUSTERED
+  PRIORITIZED
+  ROUTED
+  DELIVERED
+  ACKNOWLEDGED
+  ACTIONED
+  RESOLVED
+  OUTCOME_RECORDED
+  SUPPRESSED
+  SNOOZED
+  ESCALATED
+  EXPIRED
+  RETRACTED
+  FALSE_POSITIVE
+  DUPLICATE
+  DATA_QUALITY_ISSUE
+  PATIENT_DECLINED
+  UNABLE_TO_DELIVER
+  AWAITING_CLINICIAN_REVIEW
+  NO_OUTCOME_RECORDED
+}
+
+enum PriorityTier {
+  P0 // Immediate threat — emergency pathway
+  P1 // Urgent clinical risk — interrupt + escalation timer
+  P2 // Same-day review — prioritized task
+  P3 // Action due soon — worklist/patient task
+  P4 // Informational trend — dashboard, no interruption
+  P5 // Low-value/non-actionable — suppress/log/digest
+}
+
+enum AcknowledgementState {
+  DELIVERED
+  OPENED
+  SEEN
+  ACKNOWLEDGED
+  ACCEPTED
+  DEFERRED
+  REASSIGNED
+  ESCALATED
+  ACTION_INITIATED
+  RESOLVED
+  UNABLE_TO_ACT
+  FALSE_POSITIVE
+  PATIENT_DECLINED
+}
+
+/// Raw candidate event — not yet validated as alert.
+model HealthAlertCandidate {
+  id                String               @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  encounterId       String?
+  candidateType     AlertCandidateType
+  source            String?              // device, model, lab, patient_report
+  value             Json?                // { amount, unit, threshold }
+  quality           String?              // good, poor, uninterpretable
+  timestamp         DateTime             @default(now())
+  status            AlertLifecycleStatus @default(CANDIDATE)
+  provenanceRef     String?
+  policyVersion     String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([candidateType])
+  @@index([status])
+  @@index([timestamp(sort: Desc)])
+}
+
+/// Clustered alert — validated clinical narrative combining related candidates.
+model HealthAlertCluster {
+  id                String               @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  clusterId         String               @unique // cluster-...
+  type              String               @default("clinical_risk_cluster") // clinical_risk_cluster, etc.
+  title             String               // "Possible respiratory deterioration—bedside review required"
+  severity          String               @default("urgent") // urgent, etc.
+  urgency           String               @default("same_day") // same_day, immediate, etc.
+  actionability     String               @default("high")
+  status            AlertLifecycleStatus @default(CLUSTERED)
+  candidateIds      String[]             @default([])
+  reason            String?              // same patient, time window, clinical syndrome
+  scoring           Json                 @default("{}") // { clinical_urgency, confidence, persistence, patient_context, actionability }
+  priorityTier      PriorityTier         @default(P2)
+  priorityScore     Float?               // P = U×C×S×A×R
+  routing           Json                 @default("{}") // { primary_role, backup_role, shift, specialty }
+  policy            Json                 @default("{}") // { version, human_review_required, suppression_allowed }
+  provenanceRef     String?
+  explanationRef    String?
+  acknowledgementState AcknowledgementState?
+  acknowledgedById  String?
+  acknowledgedAt    DateTime?
+  outcome           String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([priorityTier])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+}
+
+/// Patient-specific baseline — median, range, period, observations, quality, confidence.
+model HealthPatientBaseline {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  metric            String   // morning_systolic_bp, etc.
+  baseline          Json     @default("{}") // { median, range: [124,140], period: 14_days, observations: 18, quality: acceptable, confidence: moderate }
+  adaptation        Json     @default("{}") // { enabled, max_daily_shift: 0.05, requires_clinician_approval_for: [critical_thresholds, post_discharge_period] }
+  lastAdaptedAt     DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, patientId, metric])
+  @@index([workspaceId, patientId])
+}
+
+/// Suppression and cooldown policy — every suppression needs reason, rule version, duration, candidates, override, review date, safety impact.
+model HealthAlertSuppressionLog {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  candidateId       String?
+  clusterId         String?
+  reason            String
+  ruleVersion       String?
+  duration          String? // 10 minutes, etc.
+  underlyingCandidates String[] @default([])
+  overrideAvailable Boolean  @default(true)
+  reviewDate        DateTime?
+  safetyImpact      String?
+  createdAt         DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([candidateId])
+  @@index([clusterId])
+}
+
+/// Outcome and fatigue analytics — links alert to clinical assessment, orders, outcomes, plus burden.
+model HealthAlertOutcome {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  alertId           String?  // HealthAlertCluster.clusterId or HealthAlert.id
+  candidateId       String?
+  outcome           String   // Confirmed clinically important, Confirmed but already known, Not clinically important, False positive, Unable to determine, Harmfully delayed, Preventive success, Patient declined, Data-quality failure
+  clinicalAssessment String?
+  repeatMeasurements String?
+  orders            String[] @default([])
+  medicationChanges String[] @default([])
+  messages          String[] @default([])
+  admissions        String[] @default([])
+  escalations       String[] @default([])
+  patientReportedOutcomes String?
+  adverseEvents     String?
+  resolution        String?
+  followUpInterval  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([alertId])
+  @@index([outcome])
 }
 
 /// N0VA LEGAL - revision history.

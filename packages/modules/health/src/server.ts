@@ -8,6 +8,7 @@ import { HealthProvenanceFabric, TRUST_FABRIC_STAGES, PROVENANCE_LAYERS, DATA_OR
 import { PatientCommandCenter, CARE_CONTEXTS, COMMAND_CENTER_LAYOUT, PRIORITY_LEVELS, TREND_MODULES, WHAT_CHANGED_CATEGORIES, RESULT_STATUS } from "./command-center";
 import { AdaptiveHealthLiteracy, READING_LEVELS, TEACH_BACK_TRIGGERS, AMBIGUITY_RISK_TIERS, VISUAL_FORMATS, CULTURAL_DIETARY_DIMENSIONS, LANGUAGE_LAYERS, COMMUNICATION_MODES, ACCESSIBILITY_PROFILES } from "./literacy";
 import { MultimodalReasoningFabric, REASONING_FABRIC, SPECIALIZED_SERVICES, CONTRADICTION_SEVERITY, answerRequestSchema } from "./reasoning";
+import { AlertIntelligence, ALERT_ARCHITECTURE, PRIORITY_TIERS, BASELINE_METRICS, FHIR_ALERT_RESOURCES } from "./alert-intelligence";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -326,6 +327,7 @@ export class HealthService {
   private get commandCenter() { return new PatientCommandCenter(this.workspaceId, this.userId, this.role); }
   private get literacy() { return new AdaptiveHealthLiteracy(this.workspaceId, this.userId, this.role); }
   private get reasoning() { return new MultimodalReasoningFabric(this.workspaceId, this.userId, this.role); }
+  private get alert() { return new AlertIntelligence(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -537,6 +539,25 @@ export class HealthService {
   async caregiverCreateWellbeingCheckin(input: Parameters<CareCoordination["createWellbeingCheckin"]>[0]) { return this.caregiver.createWellbeingCheckin(input); }
   caregiverWarmHandoffTemplate() { return this.caregiver.warmHandoffTemplate(); }
   async caregiverSharedTimeline(patientId: string, take?: number) { return this.caregiver.sharedTimeline(patientId, take); }
+
+  // ── Alert Intelligence — managed clinical events ────────────────────
+  get alertArchitecture() { return ALERT_ARCHITECTURE; }
+  get priorityTiers() { return PRIORITY_TIERS; }
+  get baselineMetrics() { return BASELINE_METRICS; }
+  get fhirAlertResources() { return FHIR_ALERT_RESOURCES; }
+  async alertCreateCandidate(input: Parameters<AlertIntelligence["createCandidate"]>[0]) { return this.alert.createCandidate(input); }
+  async alertListCandidates(patientId?: string, take?: number) { return this.alert.listCandidates(patientId, take); }
+  alertDeduplicate(candidates: Parameters<AlertIntelligence["deduplicate"]>[0], timeWindowMin?: number) { return this.alert.deduplicate(candidates, timeWindowMin); }
+  async alertCreateCluster(input: Parameters<AlertIntelligence["createCluster"]>[0]) { return this.alert.createCluster(input); }
+  async alertListClusters(patientId?: string, priorityTier?: string, take?: number) { return this.alert.listClusters(patientId, priorityTier, take); }
+  alertPriorityScore(input: Parameters<AlertIntelligence["priorityScore"]>[0]) { return this.alert.priorityScore(input); }
+  async alertUpsertBaseline(input: Parameters<AlertIntelligence["upsertBaseline"]>[0]) { return this.alert.upsertBaseline(input); }
+  async alertListBaselines(patientId?: string) { return this.alert.listBaselines(patientId); }
+  async alertSuppress(input: Parameters<AlertIntelligence["suppress"]>[0]) { return this.alert.suppress(input); }
+  async alertAcknowledge(clusterId: string, state: string, reason?: string) { return this.alert.acknowledge(clusterId, state, reason); }
+  async alertRecordOutcome(input: Parameters<AlertIntelligence["recordOutcome"]>[0]) { return this.alert.recordOutcome(input); }
+  async alertGetMetrics(patientId?: string) { return this.alert.getMetrics(patientId); }
+  alertExplainAlert(cluster: Parameters<AlertIntelligence["explainAlert"]>[0]) { return this.alert.explainAlert(cluster); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {
