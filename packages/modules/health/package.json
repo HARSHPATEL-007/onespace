@@ -12,7 +12,8 @@
     "./wallet": "./src/wallet.ts",
     "./provenance": "./src/provenance.ts",
     "./command-center": "./src/command-center.ts",
-    "./literacy": "./src/literacy.ts"
+    "./literacy": "./src/literacy.ts",
+    "./caregiver": "./src/caregiver.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

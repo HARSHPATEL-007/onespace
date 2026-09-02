@@ -7,6 +7,7 @@ import { HealthWallet, DATA_DOMAIN, CONSENT_WHO, ENFORCEMENT_POINTS, CORE_PRINCI
 import { HealthProvenanceFabric, TRUST_FABRIC_STAGES, PROVENANCE_LAYERS, DATA_ORIGIN, TRUST_LABELS, RETENTION_CLASSES, ACCEPTANCE_CRITERIA } from "./provenance";
 import { PatientCommandCenter, CARE_CONTEXTS, COMMAND_CENTER_LAYOUT, PRIORITY_LEVELS, TREND_MODULES, WHAT_CHANGED_CATEGORIES, RESULT_STATUS } from "./command-center";
 import { AdaptiveHealthLiteracy, READING_LEVELS, TEACH_BACK_TRIGGERS, AMBIGUITY_RISK_TIERS, VISUAL_FORMATS, CULTURAL_DIETARY_DIMENSIONS, LANGUAGE_LAYERS, COMMUNICATION_MODES, ACCESSIBILITY_PROFILES } from "./literacy";
+import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -323,6 +324,7 @@ export class HealthService {
   private get provenance() { return new HealthProvenanceFabric(this.workspaceId, this.userId, this.role); }
   private get commandCenter() { return new PatientCommandCenter(this.workspaceId, this.userId, this.role); }
   private get literacy() { return new AdaptiveHealthLiteracy(this.workspaceId, this.userId, this.role); }
+  private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -494,6 +496,36 @@ export class HealthService {
   literacyDetectAmbiguity(input: Parameters<AdaptiveHealthLiteracy["detectAmbiguity"]>[0]) { return this.literacy.detectAmbiguity(input); }
   async literacyCreateClarification(patientId: string | null, riskLevel: string, questions: unknown[], emergencyScreen?: unknown) { return this.literacy.createClarificationSession(patientId, riskLevel, questions, emergencyScreen); }
   async literacyListClarifications(patientId?: string, take?: number) { return this.literacy.listClarifications(patientId, take); }
+
+  // ── Caregiver Coordination — Consent-Aware Care Coordination Network ──
+  get caregiverRelationships() { return CAREGIVER_RELATIONSHIPS; }
+  get caregiverEcosystem() { return CAREGIVER_ECOSYSTEM; }
+  get delegationLifecycle() { return DELEGATION_LIFECYCLE; }
+  get careTaskStates() { return CARE_TASK_STATES; }
+  get medicationWorkflow() { return MEDICATION_WORKFLOW; }
+  get transportWorkflow() { return TRANSPORT_WORKFLOW; }
+  get escalationEventTypes() { return ESCALATION_EVENT_TYPES; }
+  get caregiverApi() { return CAREGIVER_API; }
+  async caregiverListCareTeams(patientId?: string) { return this.caregiver.listCareTeams(patientId); }
+  async caregiverCreateCareTeam(patientId: string, name?: string) { return this.caregiver.createCareTeam(patientId, name); }
+  async caregiverListCareTeamMembers(careTeamId?: string, patientId?: string) { return this.caregiver.listCareTeamMembers(careTeamId, patientId); }
+  async caregiverAddCareTeamMember(input: Parameters<CareCoordination["addCareTeamMember"]>[0]) { return this.caregiver.addCareTeamMember(input); }
+  async caregiverListDelegations(patientId?: string, status?: string) { return this.caregiver.listDelegations(patientId, status); }
+  async caregiverCreateDelegation(input: Parameters<CareCoordination["createDelegation"]>[0]) { return this.caregiver.createDelegation(input); }
+  async caregiverUpdateDelegation(id: string, patch: Parameters<CareCoordination["updateDelegation"]>[1]) { return this.caregiver.updateDelegation(id, patch); }
+  async caregiverRevokeDelegation(id: string) { return this.caregiver.revokeDelegation(id); }
+  async caregiverListSharedCarePlans(patientId?: string, careTeamId?: string) { return this.caregiver.listSharedCarePlans(patientId, careTeamId); }
+  async caregiverCreateSharedCarePlan(input: Parameters<CareCoordination["createSharedCarePlan"]>[0]) { return this.caregiver.createSharedCarePlan(input); }
+  async caregiverListCareTasks(patientId?: string, careTeamId?: string, status?: string) { return this.caregiver.listCareTasks(patientId, careTeamId, status); }
+  async caregiverCreateCareTask(input: Parameters<CareCoordination["createCareTask"]>[0]) { return this.caregiver.createCareTask(input); }
+  async caregiverUpdateCareTask(id: string, patch: Parameters<CareCoordination["updateCareTask"]>[1]) { return this.caregiver.updateCareTask(id, patch); }
+  async caregiverListEscalationTrees(patientId?: string) { return this.caregiver.listEscalationTrees(patientId); }
+  async caregiverCreateEscalationTree(input: Parameters<CareCoordination["createEscalationTree"]>[0]) { return this.caregiver.createEscalationTree(input); }
+  async caregiverAcknowledgeEscalation(id: string) { return this.caregiver.acknowledgeEscalation(id); }
+  async caregiverListWellbeing(patientId?: string, caregiverId?: string) { return this.caregiver.listWellbeing(patientId, caregiverId); }
+  async caregiverCreateWellbeingCheckin(input: Parameters<CareCoordination["createWellbeingCheckin"]>[0]) { return this.caregiver.createWellbeingCheckin(input); }
+  caregiverWarmHandoffTemplate() { return this.caregiver.warmHandoffTemplate(); }
+  async caregiverSharedTimeline(patientId: string, take?: number) { return this.caregiver.sharedTimeline(patientId, take); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

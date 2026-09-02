@@ -24,6 +24,7 @@ const TABS = [
   { id: "wallet", label: "Wallet" },
   { id: "provenance", label: "Provenance" },
   { id: "literacy", label: "Literacy" },
+  { id: "caregiver", label: "Caregivers" },
   { id: "patients", label: "UHR & Patients" },
   { id: "twin", label: "Bio-Digital Twin" },
   { id: "vitals", label: "Vitals & Mesh" },
@@ -168,6 +169,18 @@ export function WellnessBoard({
   const [clarifyInput, setClarifyInput] = useState("My sugar is high. What should I do?");
   const [clarifyResult, setClarifyResult] = useState<Record<string, unknown> | null>(null);
   const [fidelityDemo, setFidelityDemo] = useState({ original:"Take this tablet every night. It helps lower your blood pressure. It may cause dizziness, especially when standing.", adapted:"Take this tablet at night. It helps control your blood pressure." });
+  // caregiver state
+  const [careTeams, setCareTeams] = useState<Array<Record<string, unknown>>>([]);
+  const [careTeamMembers, setCareTeamMembers] = useState<Array<Record<string, unknown>>>([]);
+  const [delegations, setDelegations] = useState<Array<Record<string, unknown>>>([]);
+  const [sharedCarePlans, setSharedCarePlans] = useState<Array<Record<string, unknown>>>([]);
+  const [careTasks, setCareTasks] = useState<Array<Record<string, unknown>>>([]);
+  const [escalationTrees, setEscalationTrees] = useState<Array<Record<string, unknown>>>([]);
+  const [wellbeingChecks, setWellbeingChecks] = useState<Array<Record<string, unknown>>>([]);
+  const [delegationForm, setDelegationForm] = useState({ patientId:"", delegateEmail:"", delegateName:"", relationship:"INFORMAL_CAREGIVER", authorizedTasks:"VIEW, VIEW_MEDICATION_LIST" });
+  const [carePlanForm, setCarePlanForm] = useState({ patientId:"", title:"" });
+  const [careTaskForm, setCareTaskForm] = useState({ patientId:"", title:"" });
+  const [wellbeingForm, setWellbeingForm] = useState({ caregiverId:"caregiver-1", capacity:"manageable" });
 
   // fetch dashboard
   useEffect(() => {
@@ -282,6 +295,23 @@ export function WellnessBoard({
         if (alive && tb?.rows) setTeachBackRecords(tb.rows);
         const cl = await j(`/api/health/literacy/clarifications?patientId=${demoPatient}`);
         if (alive && cl?.rows) setClarificationSessions(cl.rows);
+        const ct = await j(`/api/health/caregiver/care-teams?patientId=${demoPatient}`);
+        if (alive && ct?.rows) setCareTeams(ct.rows);
+        const ctm = await j(`/api/health/caregiver/care-team-members?patientId=${demoPatient}`);
+        if (alive && ctm?.rows) setCareTeamMembers(ctm.rows);
+        const del = await j(`/api/health/caregiver/delegations?patientId=${demoPatient}`);
+        if (alive && del?.rows) setDelegations(del.rows);
+        const scp = await j(`/api/health/caregiver/shared-care-plans?patientId=${demoPatient}`);
+        if (alive && scp?.rows) setSharedCarePlans(scp.rows);
+        const ctask = await j(`/api/health/caregiver/tasks?patientId=${demoPatient}`);
+        if (alive && ctask?.rows) setCareTasks(ctask.rows);
+        const esc = await j(`/api/health/caregiver/escalations?patientId=${demoPatient}`);
+        if (alive && esc?.rows) setEscalationTrees(esc.rows);
+        const wb = await j(`/api/health/caregiver/wellbeing?patientId=${demoPatient}`);
+        if (alive && wb?.rows) setWellbeingChecks(wb.rows);
+        setDelegationForm(prev=> ({ ...prev, patientId: demoPatient }));
+        setCarePlanForm(prev=> ({ ...prev, patientId: demoPatient }));
+        setCareTaskForm(prev=> ({ ...prev, patientId: demoPatient }));
       }
     })();
     return () => { alive = false; };
@@ -1554,6 +1584,42 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
             <div style={{ marginTop:6, display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
               <div><b>Accessibility 4:</b> Low vision (screen-reader, large text, high contrast, reflow, sonification), Hearing (captions, transcripts, visual alarms), Motor (keyboard/switch, voice control, large touch), Cognitive (predictable, one task/screen, reduced choices, clear progress) — WCAG 2.2 AA + NHS — No info by color alone, large focus, keyboard every action</div>
               <div><b>Fidelity validator 15 validate / 9 block:</b> Validate patient/encounter, med name/dose, units, timing, negation, conditional, emergency, contraindications, provenance, model version, clinician approval, translation, reading-level, cultural, accessibility — Block if dose changed, uncertainty disappeared, may→will, contraindication removed, emergency weakened, translation changes meaning, patient-reported as measured, AI draft as clinician-authored, restricted data exposed, cannot identify source — Demo: <Button size="sm" onClick={async()=> { const r=await fetch("/api/health/literacy/fidelity-check",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ original:{ dose:"10 mg", uncertainty:"may", contraindications:["allergy"], emergencyInstructions:"chest pain" }, adapted: fidelityDemo.adapted })}); const j=await r.json().catch(()=>null); alert(j? JSON.stringify(j,null,2).slice(0,600) : "No result"); }}>Fidelity Check</Button></div>
+            </div>
+          </Section>
+        </div>
+      )}
+
+
+
+      {/* CAREGIVER - Consent-Aware Care Coordination Network */}
+      {tab === "caregiver" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Consent-Aware Care Coordination Network" subtitle="FHIR CareTeam, RelatedPerson, Consent, Provenance — patient remains center of control.">
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px,1fr))", gap:8 }}>
+              <Stat label="CARE TEAMS" value={String(careTeams.length)} hint={`${String(careTeamMembers.length)} members`} />
+              <Stat label="DELEGATIONS" value={String(delegations.length)} hint={`${String(delegations.filter(d=> String(d.status)==="ACTIVE").length)} active`} />
+              <Stat label="SHARED CARE PLANS" value={String(sharedCarePlans.length)} hint="3 visibility layers" />
+              <Stat label="SHARED TASKS" value={String(careTasks.length)} hint={`${String(careTasks.filter(t=> String(t.status)==="COMPLETED").length)} completed`} />
+            </div>
+          </Section>
+          <Section title="Delegation Lifecycle - 9 States + Least-Privilege">
+            <div style={{ fontSize:11, display:"flex", gap:4, flexWrap:"wrap", alignItems:"center", fontWeight:800 }}><span>REQUESTED</span><span>→</span><span>PATIENT_REVIEWED</span><span>→</span><span>VERIFIED</span><span>→</span><span>APPROVED</span><span>→</span><span>ACTIVE</span><span>→</span><span>REVOKED</span></div>
+            <div style={{ marginTop:6, display:"flex", gap:4 }}><input className="nv-input" placeholder="Patient ID (auto)" value={delegationForm.patientId} onChange={e=> setDelegationForm({...delegationForm, patientId:e.target.value})} style={{ flex:1, fontSize:11 }} /><input className="nv-input" placeholder="Delegate email" value={delegationForm.delegateEmail} onChange={e=> setDelegationForm({...delegationForm, delegateEmail:e.target.value})} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!delegationForm.patientId || (!delegationForm.delegateEmail && !delegationForm.delegateName)) return; const r=await fetch("/api/health/caregiver/delegations",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: delegationForm.patientId, delegateEmail: delegationForm.delegateEmail || undefined, delegateName: delegationForm.delegateName || undefined, relationship: delegationForm.relationship, authorizedTasks: delegationForm.authorizedTasks.split(",").map(s=> s.trim()).filter(Boolean), dataCategories:["GENERAL_MEDICAL"] })}); const j=await r.json().catch(()=>null); if(r.ok && j?.delegation) { setDelegations(prev=> [j.delegation, ...prev].slice(0,8)); } }}>Create Delegation</Button></div>
+            {delegations.length>0 && <div style={{ marginTop:6, maxHeight:80, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Delegate</th><th>Relationship</th><th>Status</th><th>Action</th></tr></thead><tbody>{delegations.slice(0,5).map((d:Record<string,unknown>,i:number)=> <tr key={String(d.id ?? i)}><td>{String(d.delegateName ?? d.delegateEmail ?? "—")}</td><td>{String(d.relationship)}</td><td>{String(d.status)}</td><td><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/caregiver/delegations/${String(d.id)}/revoke`,{method:"POST"}); if(r.ok) setDelegations(prev=> prev.map(x=> String((x as Record<string,unknown>).id)===String(d.id)? {...x, status:"REVOKED"} as Record<string,unknown>:x)); }}>Revoke</Button></td></tr>)}</tbody></table></div>}
+          </Section>
+          <Section title="Shared Care Plans - 3 Visibility Layers">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, fontSize:11 }}><div className="nv-card" style={{ padding:10, borderLeft:"3px solid #059669" }}><b>Shared</b><div>Visible to all authorized</div></div><div className="nv-card" style={{ padding:10, borderLeft:"3px solid #d97706" }}><b>Role-specific</b><div>Visible only to selected</div></div><div className="nv-card" style={{ padding:10, borderLeft:"3px solid #dc2626" }}><b>Private</b><div>Visible only to patient</div></div></div>
+            <div style={{ marginTop:6, display:"flex", gap:4 }}><input className="nv-input" placeholder="Patient ID (auto)" value={carePlanForm.patientId} onChange={e=> setCarePlanForm({...carePlanForm, patientId:e.target.value})} style={{ flex:1, fontSize:11 }} /><input className="nv-input" placeholder="Title e.g. Recovery at home" value={carePlanForm.title} onChange={e=> setCarePlanForm({...carePlanForm, title:e.target.value})} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!carePlanForm.patientId || !carePlanForm.title) return; const r=await fetch("/api/health/caregiver/shared-care-plans",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: carePlanForm.patientId, title: carePlanForm.title, goal:"Maintain safe recovery" })}); const j=await r.json().catch(()=>null); if(r.ok && j?.sharedCarePlan) { setSharedCarePlans(prev=> [j.sharedCarePlan, ...prev].slice(0,6)); } }}>Create Care Plan</Button></div>
+          </Section>
+          <Section title="Task Coordination - One Shared Record, 13 States">
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", fontSize:11 }}><span>PLANNED</span><span>→</span><span>ASSIGNED</span><span>→</span><span>ACCEPTED</span><span>→</span><span>COMPLETED</span><span> | Declined/Reassigned/Snoozed/Missed/Blocked/Escalated</span></div>
+            <div style={{ marginTop:6, display:"flex", gap:4 }}><input className="nv-input" placeholder="Patient ID (auto)" value={careTaskForm.patientId} onChange={e=> setCareTaskForm({...careTaskForm, patientId:e.target.value})} style={{ flex:1, fontSize:11 }} /><input className="nv-input" placeholder="Title e.g. Record morning weight" value={careTaskForm.title} onChange={e=> setCareTaskForm({...careTaskForm, title:e.target.value})} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!careTaskForm.patientId || !careTaskForm.title) return; const r=await fetch("/api/health/caregiver/tasks",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: careTaskForm.patientId, title: careTaskForm.title })}); const j=await r.json().catch(()=>null); if(r.ok && j?.task) { setCareTasks(prev=> [j.task, ...prev].slice(0,8)); } }}>Create Task</Button></div>
+            <div style={{ marginTop:6, maxHeight:100, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Title</th><th>Status</th><th>Action</th></tr></thead><tbody>{careTasks.length===0 && <tr><td colSpan={3} className="nv-empty">No shared tasks</td></tr>}{careTasks.slice(0,5).map((t:Record<string,unknown>,i:number)=> <tr key={String(t.id ?? i)}><td>{String(t.title).slice(0,24)}</td><td>{String(t.status)}</td><td><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/caregiver/tasks/${String(t.id)}/complete`,{method:"POST"}); if(r.ok) setCareTasks(prev=> prev.map(x=> String((x as Record<string,unknown>).id)===String(t.id)? {...x, status:"COMPLETED"} as Record<string,unknown>:x)); }}>Complete</Button></td></tr>)}</tbody></table></div>
+          </Section>
+          <Section title="Escalation + Wellbeing + Timeline">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Escalation Trees</b><div style={{ color:"var(--nv-color-text-faint)"}}>Event: missed_medication, abnormal_vital, fall_detected — tree step 1 patient in_app 15m → step 2 caregiver push 20m → step 3 pharmacist secure_message high-risk — stop when dose_confirmed/clinician_resolved/patient_declined</div><div style={{ marginTop:6, maxHeight:60, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Event</th><th>Status</th></tr></thead><tbody>{escalationTrees.length===0 && <tr><td colSpan={2} className="nv-empty">No escalations</td></tr>}{escalationTrees.slice(0,4).map((e:Record<string,unknown>,i:number)=> <tr key={String(e.id ?? i)}><td>{String(e.event)}</td><td>{String(e.status)}</td></tr>)}</tbody></table></div></div>
+              <div><b>Wellbeing (Zarit, not surveillance)</b><div style={{ display:"flex", gap:4, marginTop:4 }}><input className="nv-input" placeholder="Caregiver ID" value={wellbeingForm.caregiverId} onChange={e=> setWellbeingForm({...wellbeingForm, caregiverId:e.target.value})} style={{ flex:1, fontSize:11 }} /><select className="nv-select" value={wellbeingForm.capacity} onChange={e=> setWellbeingForm({...wellbeingForm, capacity:e.target.value})} style={{ width:120, fontSize:11 }}><option value="manageable">Manageable</option><option value="strained">Strained</option><option value="overloaded">Overloaded</option><option value="unsafe">Unsafe</option></select><Button size="sm" onClick={async()=> { const r=await fetch("/api/health/caregiver/wellbeing",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ caregiverId: wellbeingForm.caregiverId, capacity: wellbeingForm.capacity, patientId: delegationForm.patientId || undefined })}); const j=await r.json().catch(()=>null); if(r.ok && j?.wellbeing) setWellbeingChecks(prev=> [j.wellbeing, ...prev].slice(0,6)); }}>Check-in</Button></div></div>
             </div>
           </Section>
         </div>

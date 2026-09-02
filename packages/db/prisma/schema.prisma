@@ -146,6 +146,13 @@ integrations    Integration[]
   healthCommunicationProfiles HealthCommunicationProfile[]
   healthTeachBackRecords HealthTeachBackRecord[]
   healthClarificationSessions HealthClarificationSession[]
+  healthCareTeams HealthCareTeam[]
+  healthCareTeamMembers HealthCareTeamMember[]
+  healthDelegations HealthDelegation[]
+  healthSharedCarePlans HealthSharedCarePlan[]
+  healthCareTasks HealthCareTask[]
+  healthEscalationTrees HealthEscalationTree[]
+  healthCaregiverWellbeings HealthCaregiverWellbeing[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -382,6 +389,7 @@ createdCalendarEvents CalendarEvent[]
       communicationProfiles HealthCommunicationProfile[]
       teachBackRecords HealthTeachBackRecord[]
       clarificationSessions HealthClarificationSession[]
+      careTeamMemberships HealthCareTeamMember[]
       notificationRules NotificationRule[]
       userNotificationPrefs UserNotificationPrefs[]
       notificationDigests NotificationDigest[]
@@ -4425,6 +4433,13 @@ model HealthPatient {
   communicationProfiles HealthCommunicationProfile[]
   teachBackRecords HealthTeachBackRecord[]
   clarificationSessions HealthClarificationSession[]
+  careTeams HealthCareTeam[]
+  careTeamMembers HealthCareTeamMember[]
+  delegations HealthDelegation[]
+  sharedCarePlans HealthSharedCarePlan[]
+  careTasks HealthCareTask[]
+  escalationTrees HealthEscalationTree[]
+  caregiverWellbeings HealthCaregiverWellbeing[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -6669,6 +6684,305 @@ model HealthClarificationSession {
 
   @@index([workspaceId, patientId])
   @@index([riskLevel])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — CONSENT-AWARE CARE COORDINATION NETWORK
+// Shared operational workspace — patient remains center of control. FHIR CareTeam, RelatedPerson, Consent, Provenance.
+// Lease-privilege delegation, 3 visibility layers, warm handoffs, shared timeline, caregiver wellbeing as safety concern.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum CaregiverRelationship {
+  FAMILY_MEMBER
+  INFORMAL_CAREGIVER
+  PARENT
+  LEGAL_GUARDIAN
+  HEALTH_CARE_PROXY
+  POWER_OF_ATTORNEY_HOLDER
+  TRUSTED_CONTACT
+  HOME_HEALTH_NURSE
+  COMMUNITY_HEALTH_WORKER
+  TRANSPORT_PROVIDER
+  PHARMACIST
+  SPECIALIST
+  PRIMARY_CARE_CLINICIAN
+  EMERGENCY_RESPONDER
+  RESEARCH_COORDINATOR
+  SOCIAL_CARE_WORKER
+}
+
+enum CaregiverPermission {
+  VIEW
+  ADD_PATIENT_REPORTED_INFORMATION
+  CONFIRM_MEDICATION_ADMINISTRATION
+  REQUEST_REFILL
+  SCHEDULE_APPOINTMENT
+  RESCHEDULE_APPOINTMENT
+  ARRANGE_TRANSPORT
+  VIEW_PREPARATION_INSTRUCTIONS
+  VIEW_RESULTS
+  VIEW_MEDICATION_LIST
+  SEND_MESSAGES
+  RECEIVE_ALERTS
+  COMPLETE_CARE_TASKS
+  APPROVE_RESEARCH_PARTICIPATION
+  DOWNLOAD_RECORDS
+  MODIFY_CONSENT
+  ACT_DURING_INCAPACITY
+  USE_EMERGENCY_ACCESS
+}
+
+enum DelegationStatus {
+  REQUESTED
+  PATIENT_REVIEWED
+  VERIFIED
+  APPROVED
+  ACTIVE
+  EXPIRING_SOON
+  PAUSED
+  REVOKED
+  EXPIRED
+  ARCHIVED
+}
+
+enum CarePlanVisibility {
+  SHARED
+  ROLE_SPECIFIC
+  PRIVATE
+}
+
+enum CareTaskStatus {
+  PLANNED
+  ASSIGNED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  DECLINED
+  REASSIGNED
+  SNOOZED
+  MISSED
+  BLOCKED
+  ESCALATED
+  CANCELLED
+  REQUIRES_CLINICAL_REVIEW
+}
+
+enum MedicationTaskStatus {
+  PRESCRIBED
+  RECONCILED
+  PATIENT_CONFIRMED
+  CAREGIVER_NOTIFIED
+  DOSE_SCHEDULED
+  DOSE_ADMINISTERED_OR_SELF_REPORTED
+  MISSED_REFUSED_UNKNOWN
+  FOLLOW_UP_ACTION
+  CLINICIAN_REVIEW_IF_REQUIRED
+}
+
+enum TransportStatus {
+  TRANSPORT_NEEDED
+  REQUEST_CREATED
+  DRIVER_OR_SERVICE_ASSIGNED
+  PICKUP_CONFIRMED
+  PATIENT_EN_ROUTE
+  ARRIVED
+  APPOINTMENT_COMPLETED
+  RETURN_TRANSPORT_CONFIRMED
+}
+
+/// FHIR CareTeam — people and organizations involved in care.
+model HealthCareTeam {
+  id          String   @id @default(uuid())
+  workspaceId String
+  patientId   String
+  name        String   @default("Care Team")
+  status      String   @default("active") // active | inactive
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  members   HealthCareTeamMember[]
+  sharedCarePlans HealthSharedCarePlan[]
+  tasks     HealthCareTask[]
+
+  @@index([workspaceId, patientId])
+}
+
+/// RelatedPerson + CareTeam participant — relationship separate from permissions.
+model HealthCareTeamMember {
+  id               String                @id @default(uuid())
+  workspaceId      String
+  patientId        String
+  careTeamId       String?
+  relatedPersonId  String?               // FHIR RelatedPerson reference
+  userId           String?               // linked N0VA User if applicable
+  relationship     CaregiverRelationship
+  role             String?               // FHIR CareTeam participant role
+  permissions      CaregiverPermission[] @default([])
+  dataCategories   WalletDataDomain[]    @default([]) // reuse WalletDataDomain for category
+  isPrimary        Boolean               @default(false)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  careTeam  HealthCareTeam? @relation(fields: [careTeamId], references: [id], onDelete: SetNull)
+  user      User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([careTeamId])
+}
+
+/// Delegation lifecycle — task-specific, least-privilege, 9 states + 15 fields.
+model HealthDelegation {
+  id                           String           @id @default(uuid())
+  workspaceId                  String
+  patientId                    String
+  delegateId                   String?          // User or RelatedPerson
+  delegateEmail                String?
+  delegateName                 String?
+  relationship                 CaregiverRelationship
+  authorizedTasks              String[]         @default([]) // task-specific
+  dataCategories               WalletDataDomain[] @default([])
+  purpose                      String?          // FHIR Consent purpose
+  startTime                    DateTime?
+  endTime                      DateTime?
+  geography                    String?
+  language                     String?
+  communicationChannels        String[]         @default([])
+  emergencyPermissions         String[]         @default([])
+  conditions                   String?
+  patientNotificationPreference String?
+  legalDocumentReference       String?
+  reviewDate                   DateTime?
+  revocationMethod             String?
+  status                       DelegationStatus @default(REQUESTED)
+  createdById                  String?
+  createdAt                    DateTime         @default(now())
+  updatedAt                    DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([status])
+  @@index([delegateId])
+}
+
+/// Shared care plan — 3 visibility layers + structure Goal→Objective→Tasks→Owner→Due→Dependencies→Escalation→Evidence→Review.
+model HealthSharedCarePlan {
+  id                  String              @id @default(uuid())
+  workspaceId         String
+  patientId           String
+  careTeamId          String?
+  title               String
+  goal                String?             // Patient goal
+  objective           String?             // Clinical or practical objective
+  sharedSection       Json                @default("{}") // visible to all authorized
+  roleSpecificSection Json                @default("{}") // visible only to selected
+  privateSection      Json                @default("{}") // patient only unless separately shared — excluded from AI prompts, shared summaries, caregiver alerts, clinical workflows
+  visibility          CarePlanVisibility  @default(SHARED)
+  consentRef          String?             // consent-...
+  status              String              @default("active") // active | completed | archived
+  createdById         String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  careTeam  HealthCareTeam? @relation(fields: [careTeamId], references: [id], onDelete: SetNull)
+  tasks     HealthCareTask[]
+
+  @@index([workspaceId, patientId])
+  @@index([careTeamId])
+}
+
+/// Shared task record — one record across patient/caregiver/clinician views.
+model HealthCareTask {
+  id                  String         @id @default(uuid())
+  workspaceId         String
+  patientId           String?
+  careTeamId          String?
+  sharedCarePlanId    String?
+  title               String
+  patientGoal         String?
+  ownerId             String?        // owner
+  backupOwnerId       String?        // backup owner
+  sourceCarePlanId    String?
+  dueAt               DateTime?
+  location            String?
+  requiredEquipment   String?
+  instructions        String?        // preparation instructions
+  accessibilityNeeds  String?
+  consentScope        String?
+  evidenceOfCompletion String?
+  escalationRule      Json           @default("{}") // { after, recipient, wait, condition }
+  completionNote      String?
+  auditHistory        Json           @default("[]")
+  status              CareTaskStatus @default(PLANNED)
+  priority            Priority       @default(MEDIUM)
+  patientVisible      Boolean        @default(true)
+  createdById         String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  careTeam  HealthCareTeam? @relation(fields: [careTeamId], references: [id], onDelete: SetNull)
+  sharedCarePlan HealthSharedCarePlan? @relation(fields: [sharedCarePlanId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([careTeamId])
+  @@index([status])
+  @@index([dueAt])
+}
+
+/// Escalation tree — defined in care plan, visible to authorized participants.
+model HealthEscalationTree {
+  id          String   @id @default(uuid())
+  workspaceId String
+  patientId   String?
+  event       String   // missed_medication, abnormal_vital, fall_detected, etc.
+  trigger     Json     @default("{}") // { medication, scheduled_time, status }
+  tree        Json     @default("[]") // [{ step, recipient, channel, wait, condition }]
+  stopConditions String[] @default([])
+  status      String   @default("active") // active | acknowledged | resolved | escalated
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([event])
+}
+
+/// Caregiver wellbeing — workload dashboard + check-ins, Zarit Burden Interview, not surveillance.
+model HealthCaregiverWellbeing {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  caregiverId       String   // RelatedPerson or User
+  patientId         String?
+  tasksAssigned     Int      @default(0)
+  tasksCompleted    Int      @default(0)
+  tasksMissed       Int      @default(0)
+  avgTaskTimeMin    Float?
+  nightInterruptions Int     @default(0)
+  travelBurdenMin   Int?
+  patientsSupported Int      @default(1)
+  medicationComplexity String?
+  checkInResponse   Json     @default("{}") // { manageable_today, enough_help_7_days, hardest_task, enough_sleep, need_respite, feel_safe }
+  capacity          String?  // manageable | strained | overloaded | unsafe
+  zaritScore        Int?     // 0-88, perceived burden, not diagnosis
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, caregiverId])
+  @@index([patientId])
 }
 
 /// N0VA LEGAL - revision history.
