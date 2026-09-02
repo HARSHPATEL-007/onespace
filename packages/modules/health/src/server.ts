@@ -6,6 +6,7 @@ import { ModelRegistry, EVIDENCE_TIER, DEPLOYMENT_GATES, DRIFT_THRESHOLDS_EXAMPL
 import { HealthWallet, DATA_DOMAIN, CONSENT_WHO, ENFORCEMENT_POINTS, CORE_PRINCIPLES, WALLET_DATA_MODEL_TEMPLATE, CONSENT_EVENT_LEDGER_TEMPLATE } from "./wallet";
 import { HealthProvenanceFabric, TRUST_FABRIC_STAGES, PROVENANCE_LAYERS, DATA_ORIGIN, TRUST_LABELS, RETENTION_CLASSES, ACCEPTANCE_CRITERIA } from "./provenance";
 import { PatientCommandCenter, CARE_CONTEXTS, COMMAND_CENTER_LAYOUT, PRIORITY_LEVELS, TREND_MODULES, WHAT_CHANGED_CATEGORIES, RESULT_STATUS } from "./command-center";
+import { AdaptiveHealthLiteracy, READING_LEVELS, TEACH_BACK_TRIGGERS, AMBIGUITY_RISK_TIERS, VISUAL_FORMATS, CULTURAL_DIETARY_DIMENSIONS, LANGUAGE_LAYERS, COMMUNICATION_MODES, ACCESSIBILITY_PROFILES } from "./literacy";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -321,6 +322,7 @@ export class HealthService {
   private get wallet() { return new HealthWallet(this.workspaceId, this.userId, this.role); }
   private get provenance() { return new HealthProvenanceFabric(this.workspaceId, this.userId, this.role); }
   private get commandCenter() { return new PatientCommandCenter(this.workspaceId, this.userId, this.role); }
+  private get literacy() { return new AdaptiveHealthLiteracy(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -470,6 +472,28 @@ export class HealthService {
   async commandCenterCreateGoal(patientId: string, goalType: string, title: string, description?: string) { return this.commandCenter.createGoal(patientId, goalType, title, description); }
   async commandCenterActionCenter(patientId?: string) { return this.commandCenter.actionCenter(patientId); }
   async commandCenterWhatChangedAfterVisit(patientId: string, visitDate: string) { return this.commandCenter.whatChangedAfterVisit(patientId, visitDate); }
+
+  // ── Adaptive Health Literacy — Ani layer ────────────────────────────
+  get readingLevels() { return READING_LEVELS; }
+  get teachBackTriggers() { return TEACH_BACK_TRIGGERS; }
+  get ambiguityRiskTiers() { return AMBIGUITY_RISK_TIERS; }
+  get visualFormats() { return VISUAL_FORMATS; }
+  get culturalDietaryDimensions() { return CULTURAL_DIETARY_DIMENSIONS; }
+  get languageLayers() { return LANGUAGE_LAYERS; }
+  get communicationModes() { return COMMUNICATION_MODES; }
+  get accessibilityProfiles() { return ACCESSIBILITY_PROFILES; }
+  async literacyGetProfile(userId?: string) { return this.literacy.getProfile(userId); }
+  async literacyUpsertProfile(input: Parameters<AdaptiveHealthLiteracy["upsertProfile"]>[0]) { return this.literacy.upsertProfile(input); }
+  literacyAdaptReadingLevel(text: string, level: string, taskStress?: string) { return this.literacy.adaptReadingLevel(text, level as never, taskStress); }
+  literacyFidelityCheck(original: Parameters<AdaptiveHealthLiteracy["fidelityCheck"]>[0], adapted: string) { return this.literacy.fidelityCheck(original, adapted); }
+  literacyBuildStructuredResponse(input: Parameters<AdaptiveHealthLiteracy["buildStructuredResponse"]>[0]) { return this.literacy.buildStructuredResponse(input); }
+  async literacyRecordTeachBack(input: Parameters<AdaptiveHealthLiteracy["recordTeachBack"]>[0]) { return this.literacy.recordTeachBack(input); }
+  async literacyListTeachBack(patientId?: string, take?: number) { return this.literacy.listTeachBack(patientId, take); }
+  literacyShouldTriggerTeachBack(context: Parameters<AdaptiveHealthLiteracy["shouldTriggerTeachBack"]>[0]) { return this.literacy.shouldTriggerTeachBack(context); }
+  literacyTeachBackPrompt(topic: string) { return this.literacy.teachBackPrompt(topic); }
+  literacyDetectAmbiguity(input: Parameters<AdaptiveHealthLiteracy["detectAmbiguity"]>[0]) { return this.literacy.detectAmbiguity(input); }
+  async literacyCreateClarification(patientId: string | null, riskLevel: string, questions: unknown[], emergencyScreen?: unknown) { return this.literacy.createClarificationSession(patientId, riskLevel, questions, emergencyScreen); }
+  async literacyListClarifications(patientId?: string, take?: number) { return this.literacy.listClarifications(patientId, take); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

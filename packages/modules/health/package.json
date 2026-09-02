@@ -11,7 +11,8 @@
     "./registry": "./src/registry.ts",
     "./wallet": "./src/wallet.ts",
     "./provenance": "./src/provenance.ts",
-    "./command-center": "./src/command-center.ts"
+    "./command-center": "./src/command-center.ts",
+    "./literacy": "./src/literacy.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

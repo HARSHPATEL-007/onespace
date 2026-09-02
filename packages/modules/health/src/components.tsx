@@ -23,6 +23,7 @@ const TABS = [
   { id: "registry", label: "Registry & CVC" },
   { id: "wallet", label: "Wallet" },
   { id: "provenance", label: "Provenance" },
+  { id: "literacy", label: "Literacy" },
   { id: "patients", label: "UHR & Patients" },
   { id: "twin", label: "Bio-Digital Twin" },
   { id: "vitals", label: "Vitals & Mesh" },
@@ -158,6 +159,15 @@ export function WellnessBoard({
   const [commandCareContext, setCommandCareContext] = useState("STABLE_WELLNESS");
   const [newGoal, setNewGoal] = useState({ goalType:"health_goals", title:"" });
   const [explainLevel, setExplainLevel] = useState<"simple"|"helpful"|"detailed">("helpful");
+  // literacy state
+  const [literacyProfile, setLiteracyProfile] = useState<Record<string, unknown> | null>(null);
+  const [teachBackRecords, setTeachBackRecords] = useState<Array<Record<string, unknown>>>([]);
+  const [clarificationSessions, setClarificationSessions] = useState<Array<Record<string, unknown>>>([]);
+  const [readingLevel, setReadingLevel] = useState("PLAIN");
+  const [literacyLang, setLiteracyLang] = useState("gu-IN");
+  const [clarifyInput, setClarifyInput] = useState("My sugar is high. What should I do?");
+  const [clarifyResult, setClarifyResult] = useState<Record<string, unknown> | null>(null);
+  const [fidelityDemo, setFidelityDemo] = useState({ original:"Take this tablet every night. It helps lower your blood pressure. It may cause dizziness, especially when standing.", adapted:"Take this tablet at night. It helps control your blood pressure." });
 
   // fetch dashboard
   useEffect(() => {
@@ -266,6 +276,12 @@ export function WellnessBoard({
         if (alive && cg?.rows) setCommandGoals(cg.rows);
         const ac = await j(`/api/health/command-center/action-center?patientId=${demoPatient}`);
         if (alive && ac) setCommandActionCenter(ac);
+        const lp = await j(`/api/health/literacy/profile`);
+        if (alive && lp?.profile) setLiteracyProfile(lp.profile);
+        const tb = await j(`/api/health/literacy/teach-back?patientId=${demoPatient}`);
+        if (alive && tb?.rows) setTeachBackRecords(tb.rows);
+        const cl = await j(`/api/health/literacy/clarifications?patientId=${demoPatient}`);
+        if (alive && cl?.rows) setClarificationSessions(cl.rows);
       }
     })();
     return () => { alive = false; };
@@ -1482,6 +1498,62 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
   "medications": [], "appointments": [], "results": [], "trends": [], "messages": []
 }`}</pre><div style={{ marginTop:6 }}><b>AI rules 12:</b> Summarize not diagnose, prioritize within safety, cite records, distinguish observed vs interpretation, abstain when stale/missing/contradictory, ask clarifying, avoid lock-screen sensitive, never expose restricted to caregiver, never create order without auth, never silently change plan, never wellness→medical advice, allow correction, record version/provenance.</div></div>
               <div><div style={{ display:"grid", gap:4 }}><div><b>Rollout 4 phases</b><div style={{ color:"var(--nv-color-text-faint)"}}>1 Reliable aggregation (priorities, meds, appointments, results, messages, trends, freshness, correction, provenance) → 2 Action coordination (tasks, checklists, gaps, referrals, cost, caregiver, What Changed) → 3 Explainable intelligence (personalized prioritization, summaries, trend interpretation, safe recommendations, uncertainty) → 4 Longitudinal (cross-provider, research, digital-twin, goal optimization, predictive, family)</div></div><div style={{ marginTop:6 }}><b>Acceptance 13:</b> Identify most important action in seconds, understand why, see clinician reviewed, distinguish measured vs AI, see source/timestamp/quality, complete med/appointment tasks, understand what changed, correct record, see pending owners, view cost uncertainty, control caregiver visibility, use language/accessibility, reach human help, safe fallback.</div><div style={{ marginTop:6, padding:8, border:"1.5px solid #4f46e5", borderRadius:8, fontWeight:800, textAlign:"center", background:"var(--nv-color-surface-raised)" }}>Calm, trustworthy personal health operating system: reduce cognitive load, expose next meaningful action, never hide uncertainty behind polish.</div></div></div>
+            </div>
+          </Section>
+        </div>
+      )}
+
+
+
+      {/* LITERACY - Adaptive Health Literacy Layer */}
+      {tab === "literacy" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Adaptive Health Literacy Layer - Universal Precautions" subtitle="AHRQ teach-back, 5 reading levels, 3 language layers, 4 modes, WCAG 2.2 AA, NHS inclusion. Never adapt truth/safety/uncertainty.">
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", alignItems:"center", fontSize:11, fontWeight:800 }}>
+              <span style={{ padding:"4px 8px", borderRadius:999, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>Clinical Source</span><span>→</span><span style={{ padding:"4px 8px", borderRadius:999, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>Meaning</span><span>→</span><span style={{ padding:"4px 8px", borderRadius:999, background:"#fef3c7", border:"1px solid var(--nv-color-border)" }}>Safety Gate</span><span>→</span><span style={{ padding:"4px 8px", borderRadius:999, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>Policy Engine</span><span>→</span><span style={{ padding:"4px 8px", borderRadius:999, background:"#fef2f2", border:"1px solid var(--nv-color-border)" }}>Fidelity Check</span>
+            </div>
+            <div style={{ marginTop:6, padding:8, border:"1px solid #fecaca", borderRadius:8, background:"#fef2f2", fontSize:11, fontWeight:800, color:"#991b1b" }}>Never: change dose, remove contraindication, upgrade uncertainty, omit emergency, convert conditional to universal, translate without preserving meaning, present AI as clinician, infer cultural without consent.</div>
+          </Section>
+          <Section title="Communication Profile - Patient-Controlled">
+            <div style={{ fontSize:11 }}><pre style={{ background:"var(--nv-color-surface-raised)", padding:8, borderRadius:8, whiteSpace:"pre-wrap", fontFamily:"monospace" }}>{`{
+  "role": "patient",
+  "preferred_language": "gu-IN",
+  "fallback_languages": ["hi-IN", "en-IN"],
+  "reading_level": "plain",
+  "preferred_modalities": ["short_text","audio","visual"],
+  "accessibility": { "low_vision": true },
+  "cultural_preferences": { "dietary_pattern": "vegetarian" },
+  "teach_back": { "enabled": true, "preferred_method": "voice_or_text" },
+  "technical_detail": "on_demand"
+}`}</pre><div style={{ marginTop:6, display:"flex", gap:6 }}><select className="nv-select" value={literacyLang} onChange={e=> setLiteracyLang(e.target.value)} style={{ width:120, fontSize:11 }}><option value="gu-IN">gu-IN Gujarati</option><option value="hi-IN">hi-IN Hindi</option><option value="en-IN">en-IN English</option></select><select className="nv-select" value={readingLevel} onChange={e=> setReadingLevel(e.target.value)} style={{ width:120, fontSize:11 }}><option value="ESSENTIAL">Essential</option><option value="PLAIN">Plain</option><option value="DETAILED">Detailed</option><option value="CLINICAL">Clinical</option><option value="RESEARCH">Research</option></select><Button size="sm" onClick={async()=> { const r=await fetch("/api/health/literacy/profile",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ preferredLanguage: literacyLang, readingLevel, role:"PATIENT" })}); const j=await r.json().catch(()=>null); if(r.ok && j?.profile) setLiteracyProfile(j.profile); }}>Save Profile</Button></div></div>
+          </Section>
+          <Section title="Reading-Level Adaptation - 5 Levels">
+            <div style={{ overflowX:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Level</th><th>Style</th><th>Example</th></tr></thead><tbody><tr><td><Pill tone="success">Essential</Pill></td><td>One action, one reason</td><td style={{ fontSize:10 }}>Take this tablet at night. It helps control your blood pressure.</td></tr><tr><td><Pill tone="primary">Plain</Pill></td><td>Short explanation + next step</td><td style={{ fontSize:10 }}>Take this tablet every night. It helps lower your BP. Do not stop without asking care team.</td></tr><tr><td><Pill>Detailed</Pill></td><td>More context + risks</td><td style={{ fontSize:10 }}>This medicine relaxes blood vessels... May cause dizziness when standing.</td></tr><tr><td><Pill>Clinical</Pill></td><td>Technical</td><td style={{ fontSize:10 }}>Mechanism, guideline, lab targets, interactions</td></tr><tr><td><Pill tone="warning">Research</Pill></td><td>Methods</td><td style={{ fontSize:10 }}>Study design, endpoint, CI, model version, limitations</td></tr></tbody></table></div>
+          </Section>
+          <Section title="Content Rules - 11 + Teach-Back Engine">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11 }}><div>Put required action first</div><div>Use one idea per sentence</div><div>Prefer common words</div><div>Explain unavoidable medical terms</div><div>Use concrete times not vague phrases</div><div>Use numerals with units + plain interpretation</div><div>Separate what we know / may be happening / what to do</div><div>Limit high-priority instructions to small steps</div><div>Repeat critical safety in different form</div><div>Avoid shame/blame/jargon</div><div>Avoid false reassurance</div></div>
+            <div style={{ marginTop:6, padding:8, border:"1px dashed #059669", borderRadius:8, fontSize:11, background:"#ecfdf5" }}><b>What to do now:</b> Sit down, rest for five minutes, and repeat the reading.<br/><b>Why:</b> Your BP reading is higher than usual.<br/><b>Get urgent help:</b> If you have chest pain, severe trouble breathing, weakness on one side, or confusion.</div>
+            <div style={{ marginTop:6, fontSize:11 }}><b>Teach-Back Triggers 13:</b> new medication, dose change, discharge, complex plan, inhaler/device, fasting, emergency, consent, research, contradictory understanding, repeated missed steps, requests clarification, high-stakes pregnancy/pediatric/mental/substance — Prompts: I want to make sure I explained clearly. What will you do when you get home? — Handling: Correct→Confirm, Partial→Re-explain, Unsafe→Stop + escalate, No response→audio/visual/caregiver/interpreter</div>
+            <div style={{ marginTop:6, display:"flex", gap:4 }}><input className="nv-input" placeholder="Topic e.g. inhaler_use" value={clarifyInput} onChange={e=> setClarifyInput(e.target.value)} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { if(!clarifyInput) return; const pid=(patients[0] as Record<string,unknown> | undefined)?.id as string | undefined; const r=await fetch("/api/health/literacy/teach-back",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: pid, topic: clarifyInput.slice(0,20), instructionVersion:"education-2.4", method:"VOICE_OR_TEXT", result:"PARTIAL", misunderstoodElement:"breathing_timing" })}); const j=await r.json().catch(()=>null); if(r.ok && j?.teachBack) setTeachBackRecords(prev=> [j.teachBack, ...prev].slice(0,6)); }}>Record Teach-Back</Button></div>
+          </Section>
+          <Section title="Ambiguity Detection - 16 Fields + 5 Tiers">
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", fontSize:11 }}>{["patient identity","symptom meaning","time course","severity","dose/medicine name","units","body location","pregnancy status","age/child","existing diagnoses","allergies","device reading","intended audience","language/dialect","wants education vs action","about patient vs someone else"].map(f=> <Pill key={f}>{f}</Pill>)}</div>
+            <div style={{ marginTop:6, overflowX:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Tier</th><th>Ambiguity</th><th>Ani behavior</th></tr></thead><tbody><tr><td><Pill>LOW</Pill></td><td>Minor no safety impact</td><td>Answer + state assumption</td></tr><tr><td><Pill tone="warning">MODERATE</Pill></td><td>Missing context could change advice</td><td>Ask 1-2 questions</td></tr><tr><td><Pill tone="danger">HIGH</Pill></td><td>Medication/dose/pregnancy/child/serious symptom</td><td>Do not advise until clarified</td></tr><tr><td><span style={{ background:"#7f1d1d", color:"white", padding:"2px 6px", borderRadius:999, fontSize:10, fontWeight:800 }}>EMERGENCY</span></td><td>Potential immediate danger</td><td>Urgent safety instruction first</td></tr><tr><td><Pill>UNRESOLVABLE</Pill></td><td>Insufficient/conflicting</td><td>Abstain + route to human</td></tr></tbody></table></div>
+            <div style={{ marginTop:6, display:"flex", gap:4 }}><input className="nv-input" placeholder="Try e.g. My sugar is high" value={clarifyInput} onChange={e=> setClarifyInput(e.target.value)} style={{ flex:1, fontSize:11 }} /><Button size="sm" onClick={async()=> { const pid=(patients[0] as Record<string,unknown> | undefined)?.id as string | undefined; const r=await fetch("/api/health/literacy/clarify",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ text: clarifyInput, patientId: pid })}); const j=await r.json().catch(()=>null); setClarifyResult(j); if(j) setClarificationSessions(prev=> [...prev, j].slice(0,6) as unknown as Array<Record<string,unknown>>); }}>Clarify</Button></div>
+            {clarifyResult && <pre style={{ marginTop:6, background:"var(--nv-color-surface-raised)", padding:8, borderRadius:6, fontSize:11, maxHeight:120, overflowY:"auto" }}>{JSON.stringify(clarifyResult, null, 2).slice(0,800)}</pre>}
+          </Section>
+          <Section title="Visual, Cultural, Language, Modes, Accessibility, Fidelity">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Visual 12:</b> Body maps, anatomical illustrations, medication schedules, timelines, severity scales, trend charts, care-pathway diagrams, decision trees, step-by-step demos, color-independent status, dose/timing grids, appointment checklists — Body-map: front/back/left/right, zoom/pan, text labels, screen-reader, touch/keyboard/switch/voice, pain location/spread, symptom type, onset/duration, patient confirmation</div>
+              <div><b>Cultural 14:</b> vegetarian/vegan, Jain/halal/kosher, allergies, intolerances, regional foods, budget, cooking equipment, household patterns, fasting, work schedule, pregnancy/lactation, medical restrictions, meal timing, food availability — Gujarat: Gujarati + familiar foods only after patient confirms, still shows clinical basis/portion/interactions/uncertainty</div>
+            </div>
+            <div style={{ marginTop:6, display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Language 3 layers:</b> Interface (buttons/alerts), Clinical content (symptoms/tests/meds/plans), Conversation (dialect/code-switching/voice) — Preserve: clinical meaning, urgency, negation, dose, units, time, conditional, uncertainty, contraindications, emergency instructions — Safeguards: glossary, clinician-reviewed high-risk phrases, back-translation, human review consent/emergency, versioned assets, display original term, audio pronunciation — Uncertain: “This explanation was translated automatically. For medication or emergency, request human interpreter.”</div>
+              <div><b>Modes 4:</b> Patient (what happening/what to do/when/urgency/missing/human help), Caregiver (tasks/schedule/safety/permission/escalation, never full record), Clinician (evidence/timeline/trends/provenance/uncertainty/differential/contraindications/model version), Researcher (dataset/consent/de-id/provenance/missingness/bias) — Authorization-controlled</div>
+            </div>
+            <div style={{ marginTop:6, display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Accessibility 4:</b> Low vision (screen-reader, large text, high contrast, reflow, sonification), Hearing (captions, transcripts, visual alarms), Motor (keyboard/switch, voice control, large touch), Cognitive (predictable, one task/screen, reduced choices, clear progress) — WCAG 2.2 AA + NHS — No info by color alone, large focus, keyboard every action</div>
+              <div><b>Fidelity validator 15 validate / 9 block:</b> Validate patient/encounter, med name/dose, units, timing, negation, conditional, emergency, contraindications, provenance, model version, clinician approval, translation, reading-level, cultural, accessibility — Block if dose changed, uncertainty disappeared, may→will, contraindication removed, emergency weakened, translation changes meaning, patient-reported as measured, AI draft as clinician-authored, restricted data exposed, cannot identify source — Demo: <Button size="sm" onClick={async()=> { const r=await fetch("/api/health/literacy/fidelity-check",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ original:{ dose:"10 mg", uncertainty:"may", contraindications:["allergy"], emergencyInstructions:"chest pain" }, adapted: fidelityDemo.adapted })}); const j=await r.json().catch(()=>null); alert(j? JSON.stringify(j,null,2).slice(0,600) : "No result"); }}>Fidelity Check</Button></div>
             </div>
           </Section>
         </div>

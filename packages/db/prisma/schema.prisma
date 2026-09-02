@@ -143,6 +143,9 @@ integrations    Integration[]
   healthPriorityItems HealthPriorityItem[]
   healthWhatChangedEvents HealthWhatChangedEvent[]
   healthCommandCenterSnapshots HealthCommandCenterSnapshot[]
+  healthCommunicationProfiles HealthCommunicationProfile[]
+  healthTeachBackRecords HealthTeachBackRecord[]
+  healthClarificationSessions HealthClarificationSession[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -376,6 +379,9 @@ createdCalendarEvents CalendarEvent[]
       threadExports ThreadExport[]
       notificationEvents NotificationEvent[]
       healthSafetyReviews HealthSafetyReview[]
+      communicationProfiles HealthCommunicationProfile[]
+      teachBackRecords HealthTeachBackRecord[]
+      clarificationSessions HealthClarificationSession[]
       notificationRules NotificationRule[]
       userNotificationPrefs UserNotificationPrefs[]
       notificationDigests NotificationDigest[]
@@ -4416,6 +4422,9 @@ model HealthPatient {
   priorityItems HealthPriorityItem[]
   whatChangedEvents HealthWhatChangedEvent[]
   commandCenterSnapshots HealthCommandCenterSnapshot[]
+  communicationProfiles HealthCommunicationProfile[]
+  teachBackRecords HealthTeachBackRecord[]
+  clarificationSessions HealthClarificationSession[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -6542,6 +6551,124 @@ model HealthCommandCenterSnapshot {
 
   @@index([workspaceId, patientId])
   @@index([asOf(sort: Desc)])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — ADAPTIVE COMMUNICATION AND HEALTH LITERACY LAYER
+// Universal-precautions, teach-back (AHRQ), 5 reading levels, 3 language layers, 4 modes, WCAG 2.2 AA, NHS inclusion.
+// Changes how information is explained without changing clinical meaning. Never adapt truth/safety/uncertainty.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum ReadingLevel {
+  ESSENTIAL // One action and one reason
+  PLAIN // Short explanation and next step
+  DETAILED // More context and common risks
+  CLINICAL // Technical explanation
+  RESEARCH // Methods and evidence
+}
+
+enum CommunicationRole {
+  PATIENT
+  CAREGIVER
+  CLINICIAN
+  RESEARCHER
+}
+
+enum TeachBackMethod {
+  VOICE_OR_TEXT
+  SHOW_ME
+}
+
+enum TeachBackResult {
+  CORRECT
+  PARTIAL
+  UNSAFE
+  NO_RESPONSE
+}
+
+enum AmbiguityRiskTier {
+  LOW // Minor wording no safety impact — answer and state assumption
+  MODERATE // Missing context could change advice — ask 1-2 questions
+  HIGH // Medication/dose/pregnancy/child/serious symptom — do not advise until clarified
+  EMERGENCY // Potential immediate danger — urgent safety instruction first
+  UNRESOLVABLE // Insufficient/conflicting — abstain and route to human care
+}
+
+/// Communication profile — patient-controlled, editable, separate from diagnosis. Ani asks rather than assumes.
+model HealthCommunicationProfile {
+  id                 String            @id @default(uuid())
+  workspaceId        String
+  userId             String
+  patientId          String?           // optional link to HealthPatient if user is patient
+  role               CommunicationRole @default(PATIENT)
+  preferredLanguage  String            @default("gu-IN") // gu-IN, hi-IN, en-IN, etc.
+  fallbackLanguages  String[]          @default(["hi-IN","en-IN"])
+  readingLevel       ReadingLevel      @default(PLAIN)
+  preferredModalities String[]         @default(["short_text","audio","visual"])
+  accessibility      Json              @default("{}") // { low_vision, hearing_impairment, motor_impairment, cognitive_support }
+  culturalPreferences Json             @default("{}") // { dietary_pattern, religious_constraints, foods_to_avoid, family_involvement }
+  teachBack          Json              @default("{}") // { enabled, preferred_method, frequency }
+  technicalDetail    String            @default("on_demand") // on_demand | always | never
+  consentScope       String            @default("patient_communication")
+  safeMemory         Json              @default("{}") // preferred_language, preferred_name, units, reading_format, audio, accessibility, dietary, caregiver, teach_back_method, show_me_short_first
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([patientId])
+}
+
+/// Teach-back — communication-quality event, not clinical diagnosis.
+model HealthTeachBackRecord {
+  id                     String          @id @default(uuid())
+  workspaceId            String
+  patientId              String?
+  userId                 String?
+  teachBackId            String          @unique // tb-...
+  topic                  String          // inhaler_use, medication, discharge, etc.
+  instructionVersion     String          // education-2.4
+  method                 TeachBackMethod @default(VOICE_OR_TEXT)
+  result                 TeachBackResult @default(CORRECT)
+  misunderstoodElement   String?         // breathing_timing, etc.
+  reExplanationMethod    String?         // visual_animation, etc.
+  secondAttempt          String?         // correct, etc.
+  escalation             String?         // not_required, clinician, pharmacist
+  patientPreferenceUpdated Json         @default("{}") // { visual_explanations: true }
+  createdAt              DateTime        @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([topic])
+}
+
+/// Clarification — ambiguity detection with minimum-question principle + emergency screen.
+model HealthClarificationSession {
+  id                String             @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  userId            String?
+  riskLevel         AmbiguityRiskTier  @default(LOW)
+  clarificationRequired Boolean         @default(false)
+  questions         Json               @default("[]") // [{ id, text, type, required }]
+  emergencyScreen   Json?              // { show_now, message }
+  resolved          Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([riskLevel])
 }
 
 /// N0VA LEGAL - revision history.
