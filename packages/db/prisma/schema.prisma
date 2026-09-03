@@ -421,6 +421,11 @@ model Workspace {
   chatQuotaCounters            ChatQuotaCounter[]
   chatDeliveryDLQs             ChatDeliveryDLQ[]
   evidenceCitations            EvidenceCitation[]
+  claimNodes                   ClaimNode[]
+  claimEdges                   ClaimEdge[]
+  sourcePolicies               SourcePolicy[]
+  evidenceChallenges           EvidenceChallenge[]
+  answerRecords                AnswerRecord[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -3612,6 +3617,7 @@ model LearningSet {
   createdBy         User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
   items             LearningItem[]
   evidenceCitations EvidenceCitation[]
+  claimNodes        ClaimNode[]
   learnerConcepts   LearnerConcept[]
   studyPlans        StudyPlan[]
   quizAttempts      QuizAttempt[]
@@ -3710,6 +3716,74 @@ enum AppealStatus {
   OVERTURNED
 }
 
+/// N0VA BOOKLM+EDUCATION Epistemics — every generated output carries one of
+/// five epistemic states, stored as metadata (never mere wording).
+enum EpistemicState {
+  SOURCE_FACT
+  SOURCE_SYNTHESIS
+  MODEL_INFERENCE
+  SPECULATION
+  LEARNER_CONTRIBUTION
+}
+
+/// Learner-friendly verification labels for claim↔evidence entailment.
+enum VerificationLabel {
+  DIRECTLY_SUPPORTED
+  QUALIFIED_SUPPORT
+  SYNTHESIZED
+  REASONED_INFERENCE
+  UNCERTAIN
+  CONFLICTING
+  NOT_FOUND
+  REQUIRES_REVIEW
+}
+
+/// Canonical evidence span types.
+enum EvidenceType {
+  DEFINITION
+  OBSERVATION
+  STATISTIC
+  PROCEDURE
+  OPINION
+  CLAIM
+  EXAMPLE
+}
+
+/// Claim-graph edge vocabulary (claim↔claim and claim↔evidence).
+enum ClaimRelation {
+  SUPPORTS
+  PARTIALLY_SUPPORTS
+  CONTRADICTS
+  QUALIFIES
+  DEFINES
+  EXAMPLES
+  EXTENDS
+  DEPENDS_ON
+  SUPERSEDES
+  DERIVED_FROM
+  LEARNER_PROPOSED
+  REQUIRES_VERIFICATION
+}
+
+/// Hallucination-resistant answer modes.
+enum AnswerMode {
+  STRICT
+  GUIDED
+  EXPLORATORY
+  EXAM
+}
+
+/// Evidence challenge taxonomy (learner/instructor disputes).
+enum ChallengeCategory {
+  NOT_SUPPORTED
+  CORRELATION_NOT_CAUSATION
+  LOST_QUALIFIER
+  WRONG_DOMAIN
+  EXTRACTION_ERROR
+  OUTDATED_SOURCE
+  OTHER
+}
+
 /// Claim-level evidence graph: which sources support / contradict / qualify an answer.
 model EvidenceCitation {
   id               String          @id @default(uuid())
@@ -3733,12 +3807,157 @@ model EvidenceCitation {
   createdById      String?
   createdAt        DateTime        @default(now())
 
+  // Epistemics: canonical evidence object (all nullable/defaulted — backward compatible)
+  contentHash           String           @default("")
+  locatorHeading        String           @default("")
+  lineStart             Int?
+  lineEnd               Int?
+  evidenceType          EvidenceType     @default(CLAIM)
+  sourceType            String           @default("note")
+  extractionConfidence  Float            @default(0.5)
+  freshnessScore        Float?
+  sourceDate            DateTime?
+  epistemicState        EpistemicState    @default(SOURCE_FACT)
+  verificationLabel     VerificationLabel @default(DIRECTLY_SUPPORTED)
+  accessScope           String           @default("course-private")
+  language              String           @default("")
+  license               String           @default("")
+
   workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   set       LearningSet?  @relation(fields: [setId], references: [id], onDelete: Cascade)
   item      LearningItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  challenges EvidenceChallenge[]
 
   @@index([workspaceId, setId])
   @@index([workspaceId, itemId])
+  @@index([workspaceId, sourceDocId])
+}
+
+/// Atomic claim nodes: every grounded answer is decomposed into atomic claims
+/// before generation; coverage is measured at claim level.
+model ClaimNode {
+  id               String            @id @default(uuid())
+  workspaceId      String
+  setId            String?
+  answerId         String?
+  text             String
+  normalizedKey    String            @default("")
+  position         Int               @default(0)
+  epistemicState   EpistemicState    @default(SOURCE_FACT)
+  verificationLabel VerificationLabel @default(UNCERTAIN)
+  confidence       Float             @default(0.5)
+  weight           Float             @default(1.0)
+  createdById      String?
+  createdAt        DateTime          @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  set       LearningSet?   @relation(fields: [setId], references: [id], onDelete: Cascade)
+  answer    AnswerRecord?  @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, answerId])
+  @@index([workspaceId, setId])
+}
+
+/// Claim-graph edges: claim↔claim and claim↔evidence. Endpoints are
+/// polymorphic (fromType/fromId, toType/toId with types CLAIM | EVIDENCE)
+/// so one vocabulary covers derivation, support, and contradiction paths.
+model ClaimEdge {
+  id              String        @id @default(uuid())
+  workspaceId     String
+  setId           String?
+  answerId        String?
+  fromType        String        @default("CLAIM")
+  fromId          String
+  toType          String        @default("EVIDENCE")
+  toId            String
+  relation        ClaimRelation @default(SUPPORTS)
+  strength        Float         @default(0.5)
+  confidence      Float         @default(0.5)
+  direction       String        @default("forward")
+  evidenceSpan    String        @default("")
+  modelVersion    String        @default("")
+  validatedStatus String        @default("UNREVIEWED")
+  validatedById   String?
+  createdAt       DateTime      @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  answer    AnswerRecord? @relation(fields: [answerId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, answerId])
+  @@index([workspaceId, fromId])
+  @@index([workspaceId, toId])
+}
+
+/// Instructor governance console: source authority policy per course (set).
+model SourcePolicy {
+  id                    String   @id @default(uuid())
+  workspaceId           String
+  setId                 String
+  approvedSources       String[] @default([])
+  restrictedSources     String[] @default([])
+  requireTwoSources     Boolean  @default(false)
+  requireCurrentVersion Boolean  @default(false)
+  requireHumanReview    Boolean  @default(false)
+  examMode              Boolean  @default(false)
+  examExternalSources   Boolean  @default(false)
+  allowedInferenceLevel String   @default("marked")
+  minCoverage           Float    @default(0.5)
+  minIndependentSources Int      @default(1)
+  retrievalWeights      Json?
+  freshnessLambda       Json?
+  updatedById           String?
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, setId])
+}
+
+/// Learner/instructor evidence challenges: dispute a citation with reason.
+model EvidenceChallenge {
+  id          String            @id @default(uuid())
+  workspaceId String
+  evidenceId  String
+  setId       String?
+  category    ChallengeCategory @default(OTHER)
+  reason      String
+  learnerNote String            @default("")
+  status      AppealStatus      @default(OPEN)
+  userId      String
+  resolvedAt  DateTime?
+  createdAt   DateTime          @default(now())
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  evidence  EvidenceCitation  @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, evidenceId])
+  @@index([workspaceId, status])
+}
+
+/// Auditable grounded answers: question, mode, query type, multi-dimensional
+/// evidence-quality scores, source versions used, model/retrieval versions.
+model AnswerRecord {
+  id              String     @id @default(uuid())
+  workspaceId     String
+  setId           String?
+  question        String
+  mode            AnswerMode @default(GUIDED)
+  queryType       String     @default("general")
+  answer          String     @default("")
+  scores          Json?
+  versionsUsed    Json?
+  modelVersion    String     @default("")
+  retrievalVersion String    @default("")
+  refused         Boolean    @default(false)
+  createdById     String?
+  createdAt       DateTime   @default(now())
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  claims    ClaimNode[]
+  edges     ClaimEdge[]
+
+  @@index([workspaceId, setId])
 }
 
 /// Learner-specific knowledge graph nodes.

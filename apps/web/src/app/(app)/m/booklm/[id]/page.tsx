@@ -8,7 +8,8 @@ import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, addCitationAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction } from "../actions";
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction } from "../actions";
+import { PolicyService } from "@n0va/modules-booklm/policies";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -23,14 +24,15 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
   }
   if (!set) notFound();
 
-  const ev = new EvidenceService(workspaceId, userId);
+  const ev = new EvidenceService(workspaceId, userId, role);
+  const pol = new PolicyService(workspaceId, userId, role);
   const kg = new KnowledgeService(workspaceId, userId);
   const tu = new TutorService(workspaceId, userId, role);
   const as = new AssessmentService(workspaceId, userId, role);
   const an = new LearningAnalyticsService(workspaceId);
   const isInstructor = ["admin", "owner", "teacher"].includes(role);
 
-  const [docPicks, videoPicks, coverage, claims, graph, mastery, nextAction, sessions, memories, assessments, myGrades, cockpit] = await Promise.all([
+  const [docPicks, videoPicks, coverage, claims, graph, mastery, nextAction, sessions, memories, assessments, myGrades, cockpit, policy, challenges] = await Promise.all([
     svc.pickDocs(),
     svc.pickVideos(),
     ev.coverage(id).catch(() => null),
@@ -43,6 +45,8 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
     as.listAssessments(id).catch(() => []),
     as.myGrades().catch(() => []),
     an.learnerCockpit(id, userId).catch(() => null),
+    pol.effectivePolicy(id).catch(() => null),
+    ev.listChallenges(id).catch(() => []),
   ]);
   const dashboard = isInstructor ? await an.instructorDashboard(id).catch(() => null) : null;
 
@@ -82,9 +86,20 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
         myGrades={myGrades.map((g) => ({ id: g.id, totalPoints: g.totalPoints, maxPoints: g.maxPoints, explanation: g.explanation, approved: g.approved, assessment: g.assessment ? { title: g.assessment.title } : undefined }))}
         isInstructor={isInstructor}
         dashboard={dashboard}
+        policy={policy}
+        challenges={challenges.map((ch) => ({
+          id: ch.id, evidenceId: ch.evidenceId, category: ch.category,
+          reason: ch.reason, learnerNote: ch.learnerNote, status: ch.status,
+          evidence: ch.evidence,
+        }))}
         actions={{
           ask: askGroundedAction,
+          askV2: askGroundedActionV2,
           addCitation: addCitationAction,
+          challenge: challengeEvidenceAction,
+          resolveChallenge: resolveChallengeAction,
+          upsertPolicy: upsertPolicyAction,
+          getEval: getEvalAction,
           seed: seedConceptsAction,
           record: recordRetrievalAction,
           start: startTutorSessionAction,
