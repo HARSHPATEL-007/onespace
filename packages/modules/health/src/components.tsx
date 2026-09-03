@@ -48,6 +48,7 @@ const TABS = [
   { id: "careos", label: "N0VA Care" },
   { id: "clinical", label: "N0VA Clinical" },
   { id: "research", label: "N0VA Research" },
+  { id: "pubhealth", label: "Public Health" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2974,6 +2975,27 @@ Which measurements produced this estimate? Which model version? Did corrected re
               <div className="nv-card" style={{ padding:10 }}><b>Outputs + closeout</b><div style={{ color:"var(--nv-color-text-faint)"}}>Privacy and protocol review before publication. 14-step closeout preserving regulatory and reproducibility records.</div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.rsrchRegisterProtocol / rsrchDataset / rsrchGrantAccess / rsrchCohortRelease / rsrchTrial / rsrchEdc / rsrchAccession / rsrchAnalysis / rsrchPublish / rsrchCloseout / rsrchCommand. Full docs in research-governance.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "pubhealth" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="N0VA Public Health — Collective Action, Community Accountability" subtitle="Jurisdiction-aware surveillance and emergency coordination. Fast, evidence-based, proportionate, transparent, privacy-preserving, equity-aware — purpose-bound government information, never unrestricted analytics." action={<><Badge tone="primary">8 Products</Badge><Badge tone="warning">Authority-Gated</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Surveillance","Outbreaks","Cases","Immunization","Emergency","Resources","Equity","Comms"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              Case management, aggregate analytics, and public reporting are separate products — a public chart never drills to a case.
+              Emergency powers are scoped, reauthorized, and self-expiring. Unknown immunization status is never counted as unvaccinated.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Authority + signals</b><div style={{ color:"var(--nv-color-text-faint)"}}>Program, jurisdiction, purpose, role, and need checked before action. Anomalies stay anomalies until explicitly classified.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Outbreaks + cases</b><div style={{ color:"var(--nv-color-text-faint)"}}>Versioned case definitions preserved per classification. Lawful, minimal, expiring case and contact workflows.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Emergency mode</b><div style={{ color:"var(--nv-color-text-faint)"}}>Formal activation with scope and expiration. Access rolls back automatically — speed never becomes permanent surveillance.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Resources + equity</b><div style={{ color:"var(--nv-color-text-faint)"}}>Human-approved allocation with equity review and sunset. Disparities tracked without stigmatizing communities.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Comms + agreements</b><div style={{ color:"var(--nv-color-text-faint)"}}>Complete messages: known, uncertain, affected, actions, help, authority. Partner access ends with agreements.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>AI + quality</b><div style={{ color:"var(--nv-color-text-faint)"}}>Restrictive AI needs legal review and due process. Exchange quality visible to submitters and agencies alike.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.phJurisdiction / phSignal / phDashboard / phOutbreak / phCase / phImmunize / phActivateEmergency / phAllocate / phPublishMessage / phAgreement / phAiModel / phCommand. Full docs in public-health.ts.</div>
           </Section>
         </div>
       )}

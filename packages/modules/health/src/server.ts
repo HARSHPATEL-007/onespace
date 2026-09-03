@@ -26,6 +26,7 @@ import { PersonalCompanion, PRODUCT_PROMISE, PERSONAL_MODULES, HOME_SECTIONS, HO
 import { CareOperatingSystem, CARE_PROMISE, CARE_NOT_CLAIMS, WORKSPACE_PROVENANCE, WORKSPACE_HEADER, WORKSPACE_GUARDRAILS, ACCESS_STAGES, INTAKE_FIELDS, TRIAGE_STATES, ENCOUNTER_STAGES, ENCOUNTER_CLOSURE, DOCUMENTATION_PROVENANCE, MEDREC_WORKFLOW, MEDREC_SOURCES, DISCREPANCY_CATEGORIES, ORDER_LIFECYCLE, ORDER_DISPLAY, RESULT_LIFECYCLE, CRITICAL_RESULT_REQUIREMENTS, TASK_DISPOSITIONS, RPM_LIFECYCLE, MESSAGE_CLASSES, CDS_CATALOG, CDS_REQUIRED_FIELDS, CDS_STATES, ALLERGY_REVIEW_CHECKPOINTS, REFERRAL_ESCALATION_TRIGGERS, TRANSITION_FOLLOWUP, MATCH_SIGNALS, MATCH_OUTCOMES, MERGE_REQUIREMENTS, ATTRIBUTION_FIELDS, TRANSACTION_STATES, DOWNTIME_CAPABILITIES, DOWNTIME_RECOVERY, CARE_DASHBOARDS, CARE_API, CARE_VERSION, careClaimCheck, triageTransition, accessRoute, encounterClosureGaps, documentationSignOff, discrepancyDecision, orderTransition, orderEndpointFailure, criticalResultGaps, taskOwnerCheck, taskClosureValid, rpmEscalationGate, messageLabel, payerDenialTask, cdsTransition, mergePermitted, downtimeWriteAllowed, encounterSchema } from "./care-operating";
 import { ClinicalEnterpriseSystem, CLINICAL_PROMISE, CLINICAL_NOT_CLAIMS, CLAIM_EVIDENCE_CHAIN, AUTHORITY_LAYERS, COMMAND_WORKSPACES, WORKSPACE_CONTEXT, RECORD_SECTIONS, RECORD_ITEM_FIELDS, RECORD_STATUSES, INTEROP_MATRIX, INTEROP_LIFECYCLE, TRANSACTION_VISIBILITY, RECONCILIATION_VIEWS, ED_WORKFLOW, ED_TRACKING, ED_SAFETY, INPATIENT_WORKFLOWS, DAILY_CLINICAL_VIEW, DOCUMENTATION_CONTROLS, CLINICAL_MEDICATION_WORKFLOW, ALLERGY_TYPES, ALLERGY_REQUIRED, LAB_LIFECYCLE, CRITICAL_ASSURANCE, CRITICAL_MONITORS, IMAGING_WORKFLOWS, IMAGING_SEPARATION, DEVICE_REGISTRY_FIELDS, DEVICE_LIFECYCLE, DEVICE_RELIABILITY_CHECKS, CDS_CLASSES, CDS_RECORD_FIELDS, RECOMMENDATION_TRANSPARENCY, AI_INVENTORY_FIELDS, AI_MONITORS, AI_DEPLOYMENT_REQUIREMENTS, SAFETY_CASE_STRUCTURE, HF_PARTICIPANTS, HF_SCENARIOS, HF_METRICS, CHANGE_BOARD_SCOPE, CHANGE_RECORD_FIELDS, AVAILABILITY_TARGETS, RESILIENCE_MECHANISMS, DOWNTIME_BEFORE, DOWNTIME_DURING, CLINICAL_DOWNTIME_RECOVERY, IDENTITY_CONTROLS, BREAK_GLASS_REQUIREMENTS, AUDIT_EVENTS, AUDIT_PROPERTIES, QUALITY_DASHBOARDS, IMPROVEMENT_CYCLE, VENDOR_REGISTER_ENTITIES, VENDOR_ASSESSMENT, HOSPITAL_COMMITTEES, CAPABILITY_OWNERSHIP, CLINICAL_API, CLINICAL_VERSION, clinicalClaimCheck, recordStatusTransition, interopTransactionComplete, edThroughputGuard, dailyViewGaps, clinicalSignOff, allergyGaps, deviceReliabilityGaps, aiDeploymentGaps, downtimeRecoveryGaps, breakGlassGaps } from "./clinical-enterprise";
 import { ResearchGovernanceSystem, RESEARCH_PROMISE, RESEARCH_ARCHITECTURE, RESEARCH_DATA_LAYERS, RESEARCH_WORKSPACES, PROJECT_LIFECYCLE, DATA_CLASSES, DEID_STRATEGIES, DEID_REPORT_FIELDS, CONSENT_TYPES, WITHDRAWAL_ACTIONS, ACCESS_CONDITIONS, RESEARCH_ROLES, COHORT_RELEASE_FIELDS, DISCLOSURE_TECHNIQUES, DATA_VISIBILITY_LABELS, CLEANROOM_CONTROLS, TRIAL_LIFECYCLE, TRIAL_SEPARATION, EDC_CONTROLS, BIOBANK_LIFECYCLE, GENOMIC_CONTROLS, RWE_ELEMENTS, RWE_STUDY_PLAN, FEDERATED_CONTROLS, SYNTHETIC_LABEL_FIELDS, STAT_REQUIREMENTS, LINEAGE_STAGES, DUA_TRACKING, PUBLICATION_REVIEW, REVIEW_PIPELINE, REPRO_PACKAGE, MONITOR_SIGNALS, AUDIT_FIELDS, QUALITY_PROFILE, CLOSEOUT_STEPS, RESEARCH_API, RESEARCH_VERSION, rsrchLifecycleMove, rsrchProtocolAmend, rsrchClassify, rsrchDeidReport, rsrchWithdraw, rsrchAccessCheck, rsrchCohortRelease, rsrchDisclosure, rsrchTrialMove, rsrchEdcSign, rsrchSpecimenRelease, rsrchGenomicFlag, rsrchRweGrade, rsrchFederatedReport, rsrchSyntheticLabel, rsrchDuaExpiry, rsrchPublicationReview, rsrchReproducibility, rsrchCloseout, protocolSchema } from "./research-governance";
+import { PublicHealthSystem, PUBLIC_HEALTH_PROMISE, PUBLIC_ARCHITECTURE, EXCHANGE_DOMAINS, DATA_PRODUCTS, SURVEILLANCE_DOMAINS, SIGNAL_LIFECYCLE, SIGNAL_DISPLAY, EVENT_STATES, DASHBOARD_DOMAINS, DASHBOARD_CONTRACT, OUTBREAK_LIFECYCLE, OUTBREAK_SUPPORTS, CASE_WORKFLOW, CONTACT_WORKFLOW, CASE_GUARDRAILS, IMMUNIZATION_WORKFLOW, IMMUNIZATION_STATES, PREPAREDNESS_HAZARDS, READINESS_INVENTORY, EMERGENCY_ACTIVATION, EMERGENCY_SCOPE_FIELDS, ACTIVATION_CHECKLIST, CLOSURE_CHECKLIST, REPORTING_PIPELINE, SUBMITTER_STATES, ENVIRONMENTAL_SOURCES, COMMUNITY_DOMAINS, PUBLIC_EQUITY_MEASURES, EQUITY_DISPLAY, ALLOCATABLES, ALLOCATION_RULES, COMM_CHANNELS, MESSAGE_FIELDS, AGREEMENT_PARTIES, AGREEMENT_FIELDS, PUBLIC_AI_USES, PUBLIC_AI_FIELDS, DATA_QUALITY_FIELDS, PUBLIC_SECURITY_CONTROLS, PROHIBITED_USES, GOVERNANCE_BOARD, PUBLIC_API, PUBLIC_HEALTH_VERSION, phAuthorityCheck, phEventTransition, phStigmaCheck, phSmallCell, phImmunizationStatus, phEmergencyExpired, phAllocationReview, phMessageCheck, phDrillCheck, phAgreementActive, phAiRestrict, jurisdictionSchema } from "./public-health";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -361,6 +362,7 @@ export class HealthService {
   private get careos() { return new CareOperatingSystem(this.workspaceId, this.userId, this.role); }
   private get clinical() { return new ClinicalEnterpriseSystem(this.workspaceId, this.userId, this.role); }
   private get research() { return new ResearchGovernanceSystem(this.workspaceId, this.userId, this.role); }
+  private get pubhealth() { return new PublicHealthSystem(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -1227,6 +1229,41 @@ export class HealthService {
   async rsrchCloseout(input: Parameters<ResearchGovernanceSystem["closeoutProject"]>[0]) { return this.research.closeoutProject(input); }
   async rsrchWithdraw(participantRef: string, protocolId: string) { return this.research.withdrawConsent(participantRef, protocolId); }
   async rsrchCommand() { return this.research.commandView(); }
+
+  // ── N0VA Public Health — proportionate, transparent, accountable ──
+  get publicHealthPromise() { return PUBLIC_HEALTH_PROMISE; }
+  get publicDataProducts() { return DATA_PRODUCTS; }
+  get publicApi() { return PUBLIC_API; }
+  phAuthority(jurisdiction: Parameters<typeof phAuthorityCheck>[0], ctx: Parameters<typeof phAuthorityCheck>[1]) { return phAuthorityCheck(jurisdictionSchema.parse(jurisdiction), ctx); }
+  phEvent(from: string, to: string) { return phEventTransition(from, to); }
+  phStigma(config: Parameters<typeof phStigmaCheck>[0]) { return phStigmaCheck(config); }
+  phCell(n: number, minimumN: number, rare: boolean) { return phSmallCell(n, minimumN, rare); }
+  phImmunization(state: string) { return phImmunizationStatus(state); }
+  phEmergencyExpiry(expiresAt: string, reauthorized: boolean) { return phEmergencyExpired(expiresAt, reauthorized); }
+  phAllocation(rules: Record<string, unknown>) { return phAllocationReview(rules); }
+  phMessage(message: Record<string, unknown>) { return phMessageCheck(message); }
+  phDrill(role: Parameters<typeof phDrillCheck>[0]) { return phDrillCheck(role); }
+  phAgreementStatus(expiresAt: string) { return phAgreementActive(expiresAt); }
+  phAi(use: string, restrictive: boolean) { return phAiRestrict(use, restrictive); }
+  async phJurisdiction(input: Parameters<PublicHealthSystem["registerJurisdiction"]>[0]) { return this.pubhealth.registerJurisdiction(jurisdictionSchema.parse(input)); }
+  async phCheckAuthority(id: string, ctx: Parameters<PublicHealthSystem["checkAuthority"]>[1]) { return this.pubhealth.checkAuthority(id, ctx); }
+  async phSignal(input: Parameters<PublicHealthSystem["receiveSignal"]>[0]) { return this.pubhealth.receiveSignal(input); }
+  async phAdvanceSignal(id: string, to: string) { return this.pubhealth.advanceSignal(id, to); }
+  async phDashboard(input: Parameters<PublicHealthSystem["publishDashboard"]>[0]) { return this.pubhealth.publishDashboard(input); }
+  async phOutbreak(input: Parameters<PublicHealthSystem["declareOutbreak"]>[0]) { return this.pubhealth.declareOutbreak(input); }
+  async phCaseDefinition(id: string, definition: Parameters<PublicHealthSystem["versionCaseDefinition"]>[1]) { return this.pubhealth.versionCaseDefinition(id, definition); }
+  async phCase(input: Parameters<PublicHealthSystem["openCase"]>[0]) { return this.pubhealth.openCase(input); }
+  async phCloseCase(id: string, expires?: boolean) { return this.pubhealth.closeCase(id, expires); }
+  async phImmunize(input: Parameters<PublicHealthSystem["recordImmunization"]>[0]) { return this.pubhealth.recordImmunization(input); }
+  async phActivateEmergency(input: Parameters<PublicHealthSystem["activateEmergency"]>[0]) { return this.pubhealth.activateEmergency(input); }
+  async phReauthorize(id: string) { return this.pubhealth.reauthorizeEmergency(id); }
+  async phSweepEmergencies() { return this.pubhealth.sweepEmergencyExpiry(); }
+  async phDeactivate(id: string, closure: Record<string, boolean>) { return this.pubhealth.deactivateEmergency(id, closure); }
+  async phAllocate(input: Parameters<PublicHealthSystem["allocateResource"]>[0]) { return this.pubhealth.allocateResource(input); }
+  async phPublishMessage(input: Parameters<PublicHealthSystem["publishMessage"]>[0]) { return this.pubhealth.publishMessage(input); }
+  async phAgreement(input: Parameters<PublicHealthSystem["recordAgreement"]>[0]) { return this.pubhealth.recordAgreement(input); }
+  async phAiModel(input: Parameters<PublicHealthSystem["registerAiModel"]>[0]) { return this.pubhealth.registerAiModel(input); }
+  async phCommand() { return this.pubhealth.commandView(); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

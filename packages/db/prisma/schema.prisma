@@ -287,6 +287,17 @@ integrations    Integration[]
   healthResearchAnalyses HealthResearchAnalysis[]
   healthResearchPublications HealthResearchPublication[]
   healthResearchProjects HealthResearchProject[]
+  healthPublicJurisdictions HealthPublicJurisdiction[]
+  healthPublicSignals HealthPublicSignal[]
+  healthPublicDashboards HealthPublicDashboard[]
+  healthPublicOutbreaks HealthPublicOutbreak[]
+  healthPublicCases HealthPublicCase[]
+  healthPublicImmunizations HealthPublicImmunization[]
+  healthPublicEmergencies HealthPublicEmergency[]
+  healthPublicResources HealthPublicResource[]
+  healthPublicMessages HealthPublicMessage[]
+  healthPublicAgreements HealthPublicAgreement[]
+  healthPublicAi HealthPublicAi[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -13396,4 +13407,224 @@ model HealthResearchProject {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, projectId])
+}
+
+/// N0VA Public Health — jurisdiction-aware population-health and emergency
+/// coordination. Authority-gated actions, separated case/analytics/public
+/// products, self-expiring emergency powers, transparent allocation and
+/// communication. Proportionate, privacy-preserving, community-accountable.
+model HealthPublicJurisdiction {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  jurisdictionId     String
+  agency             String
+  program            String
+  legalAuthority     String   @default("")
+  permittedPurposes  String[] @default([])
+  dataScope          String[] @default([])
+  geography          String   @default("")
+  emergencyMode      Boolean  @default(false)
+  approvedPartners   String[] @default([])
+  prohibitedPartners String[] @default([])
+  retention          String   @default("configured-period")
+  reviewDate         DateTime?
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, jurisdictionId])
+}
+
+model HealthPublicSignal {
+  id          String   @id @default(uuid())
+  workspaceId String
+  signalId    String
+  domain      String
+  geography   String   @default("")
+  source      String   @default("")
+  quality     Json     @default("{}")
+  baseline    String   @default("")
+  eventState  String   @default("signal")
+  lifecycle   String[] @default([])
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, signalId])
+  @@index([workspaceId, eventState])
+}
+
+model HealthPublicDashboard {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  dashboardId      String
+  domain           String
+  geography        String   @default("")
+  period           String   @default("")
+  contract         Json     @default("{}")
+  suppressedGroups String[] @default([])
+  status           String   @default("published")
+  createdById      String?
+  createdAt        DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, dashboardId])
+}
+
+model HealthPublicOutbreak {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  outbreakId     String
+  signalId       String   @default("")
+  title          String
+  jurisdictionId String   @default("")
+  stage          String   @default("declaration")
+  caseDefinitions Json    @default("[]")
+  timeline       Json     @default("[]")
+  status         String   @default("active")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, outbreakId])
+}
+
+model HealthPublicCase {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  caseId         String
+  kind           String
+  jurisdictionId String   @default("")
+  authorityRef   String   @default("")
+  purpose        String   @default("")
+  patientRef     String   @default("")
+  stage          String   @default("")
+  status         String   @default("open")
+  expiresAt      DateTime?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, caseId])
+  @@index([workspaceId, status])
+}
+
+model HealthPublicImmunization {
+  id          String   @id @default(uuid())
+  workspaceId String
+  recordId    String
+  personRef   String
+  vaccine     String
+  state       String   @default("unknown")
+  countable   String   @default("unknown")
+  registryRef String   @default("")
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, recordId])
+}
+
+model HealthPublicEmergency {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  emergencyId     String
+  incident        String
+  authority       String   @default("")
+  jurisdictions   String[] @default([])
+  scope           String   @default("")
+  expiration      DateTime
+  commander       String   @default("")
+  partners        String[] @default([])
+  status          String   @default("active")
+  reauthorizations Int     @default(0)
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, emergencyId])
+  @@index([workspaceId, status])
+}
+
+model HealthPublicResource {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  allocationId  String
+  resource      String
+  quantity      Int      @default(0)
+  rules         Json     @default("{}")
+  approver      String   @default("")
+  status        String   @default("allocated")
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, allocationId])
+}
+
+model HealthPublicMessage {
+  id          String   @id @default(uuid())
+  workspaceId String
+  messageId   String
+  channel     String
+  message     Json     @default("{}")
+  status      String   @default("published")
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, messageId])
+}
+
+model HealthPublicAgreement {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  agreementId    String
+  parties        String[] @default([])
+  legalAuthority String   @default("")
+  purpose        String   @default("")
+  dataElements   String[] @default([])
+  fields         Json     @default("{}")
+  expiresAt      DateTime
+  status         String   @default("active")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, agreementId])
+}
+
+model HealthPublicAi {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  modelId      String
+  use          String
+  jurisdiction String   @default("")
+  population   String   @default("")
+  version      String   @default("1.0")
+  reviewer     String   @default("")
+  status       String   @default("registered")
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, modelId])
 }
