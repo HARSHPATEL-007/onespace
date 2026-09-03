@@ -106,4 +106,59 @@ export class LearningService {
     const vids = await prisma.video.findMany({ where: { workspaceId: this.workspaceId }, select: { id: true, title: true } });
     return vids.map((v) => ({ id: v.id, title: v.title, kind: "VIDEO" as const }));
   }
+
+  async updateGoal(setId: string, goal: string, difficulty: string): Promise<void> {
+    await prisma.learningSet.updateMany({ where: { id: setId, workspaceId: this.workspaceId }, data: { goal: goal.slice(0, 500), difficulty } });
+    await prisma.studyPlan.upsert({
+      where: { workspaceId_setId_userId: { workspaceId: this.workspaceId, setId, userId: this.userId } },
+      update: { goal: goal.slice(0, 500), difficulty, lastActiveAt: new Date() },
+      create: { workspaceId: this.workspaceId, setId, userId: this.userId, goal: goal.slice(0, 500), difficulty },
+    });
+  }
+
+  async saveNextAction(setId: string, nextAction: string, reason: string): Promise<void> {
+    await prisma.studyPlan.upsert({
+      where: { workspaceId_setId_userId: { workspaceId: this.workspaceId, setId, userId: this.userId } },
+      update: { nextAction: nextAction.slice(0, 500), nextActionReason: reason.slice(0, 500), lastActiveAt: new Date() },
+      create: { workspaceId: this.workspaceId, setId, userId: this.userId, nextAction: nextAction.slice(0, 500), nextActionReason: reason.slice(0, 500) },
+    });
+  }
+
+  async touchActivity(setId: string): Promise<void> {
+    const plan = await prisma.studyPlan.findUnique({
+      where: { workspaceId_setId_userId: { workspaceId: this.workspaceId, setId, userId: this.userId } },
+    });
+    if (!plan) {
+      await prisma.studyPlan.create({ data: { workspaceId: this.workspaceId, setId, userId: this.userId, streakDays: 1 } });
+      return;
+    }
+    const last = new Date(plan.lastActiveAt);
+    const now = new Date();
+    const sameDay = last.toDateString() === now.toDateString();
+    const yesterday = new Date(now.getTime() - 86_400_000).toDateString() === last.toDateString();
+    await prisma.studyPlan.update({
+      where: { id: plan.id },
+      data: { lastActiveAt: now, streakDays: sameDay ? plan.streakDays : yesterday ? plan.streakDays + 1 : 1 },
+    });
+  }
+
+  async listAnnotations(setId: string) {
+    return prisma.learningAnnotation.findMany({
+      where: { workspaceId: this.workspaceId, setId },
+      orderBy: { createdAt: "desc" }, take: 100,
+    });
+  }
+
+  async addAnnotation(setId: string | null, itemId: string | null, quote: string, comment: string) {
+    return prisma.learningAnnotation.create({
+      data: {
+        workspaceId: this.workspaceId, setId: setId || null, itemId: itemId || null,
+        userId: this.userId, quote: quote.slice(0, 2000), comment: comment.slice(0, 5000),
+      },
+    });
+  }
+
+  async resolveAnnotation(id: string, resolved: boolean) {
+    await prisma.learningAnnotation.updateMany({ where: { id, workspaceId: this.workspaceId }, data: { resolved } });
+  }
 }

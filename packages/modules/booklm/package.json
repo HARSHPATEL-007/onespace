@@ -6,7 +6,14 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./components": "./src/components.tsx"
+    "./components": "./src/components.tsx",
+    "./evidence": "./src/evidence.ts",
+    "./knowledge": "./src/knowledge.ts",
+    "./tutor": "./src/tutor.ts",
+    "./assessment": "./src/assessment.ts",
+    "./materials": "./src/materials.ts",
+    "./analytics": "./src/analytics.ts",
+    "./enhanced": "./src/enhanced.tsx"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
