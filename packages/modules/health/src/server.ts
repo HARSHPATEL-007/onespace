@@ -19,6 +19,7 @@ import { TransactionReliabilityLayer, TXN_ARCHITECTURE, TXN_STATES, TXN_API, FHI
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 import { PrivacyAnalyticsPlane, ANALYTICS_ZONES, PRIVACY_MODES, PRIVACY_ARCHITECTURE, TRANSFORMATION_GATEWAY, GATEWAY_PIPELINE, OUTPUT_CONTROLS, ROLLOUT_PHASES, PRIVACY_API, GENOMIC_ACCESS_LEVELS, CLEAN_ROOM_CONTROLS, FEDERATED_SITE_CHECKS, FL_MODEL_RISK_TESTS, CONFIDENTIAL_COMPUTE_CONTROLS, PRIVACY_OPS_TILES, scoreQueryRisk, enforceCohortSize, safeCountDisplay, binAge, monthOnly, safeHarborTransform, studyPseudonym, laplaceNoise, dpNoisyCount, testSyntheticDisclosure, queryAssessmentSchema, privacyPolicySchema, releaseLedgerSchema, privacyIncidentSchema, dpReleaseSchema, deidRecordSchema, syntheticCertSchema } from "./privacy-analytics";
 import { CyberResilienceProgram, PROTECTION_DIMENSIONS, RESILIENCE_PIPELINE, RESPONSE_LEVERS, CLINICAL_TIERS, RECOVERY_ORDER, ASSET_TYPES, SBOM_FIELDS, SBOM_GENERATION_TRIGGERS, SBOM_LINK_TARGETS, SUPPLY_CHAIN_CONTROLS, ARTIFACT_ADMISSION, VULN_LIFECYCLE, QUARANTINE_STATES, QUARANTINE_WORKFLOW, RANSOMWARE_PREVENT, RANSOMWARE_RESPONSE, BACKUP_TYPES, BACKUP_CONTROLS, BACKUP_PRINCIPLE, RECOVERY_VALIDATION, CONTINUITY_CAPABILITIES, TABLETOP_SCENARIOS, RED_TEAM_TARGETS, RED_TEAM_BOUNDARIES, DRILL_TYPES, DRILL_STAGES, POST_RESTORE_DEVICE_CHECKS, INTEGRITY_SIGNALS, VENDOR_REQUIREMENTS, VENDOR_ACCESS_RULES, CYBER_API, tierForService, canDeclareRecovered, productionReadinessGate, sbomLinkCheck, artifactAdmissionCheck, rankVulnerability, canTransitionVuln, validateFirmware, quarantineDecision, backupRestorable, recoveryChecklistGaps, assetSchema, sbomSchema, vulnSchema, vulnExceptionSchema, disclosureSchema, devicePatchSchema, compensatingSchema, firmwareSchema, backupSchema, exerciseSchema, vendorSchema, cyberIncidentSchema, CYBER_PROGRAM_VERSION } from "./cyber-resilience";
+import { ProviderIntelligencePlane, PROVIDER_PIPELINE, DASHBOARD_AUDIENCES, METRIC_DISPLAY_FIELDS, EXECUTIVE_TILES, EXECUTIVE_TILE_DETAIL, ACCESS_FUNNEL, ACCESS_MEASURES, ACCESS_STRATIFICATIONS, NOSHOW_OUTCOMES, NOSHOW_MEASURES, REFERRAL_FUNNEL, LEAKAGE_CAUSES, GAP_LIFECYCLE, GAP_MEASURES, ADHERENCE_MEASURES, ADHERENCE_LIMITATIONS, READMISSION_MEASURES, READMISSION_REVIEW_FIELDS, ALERT_MEASURES, DOCUMENTATION_DOMAINS, DOCUMENTATION_GUARDRAILS, ENGAGEMENT_MEASURES, ENGAGEMENT_STATES, RPM_FUNNEL, RPM_EXIT_REASONS, REVENUE_MEASURES, REVENUE_SAFEGUARDS, EQUITY_STRATIFIERS, EQUITY_MEASURES, EQUITY_SAFEGUARDS, EQUITY_WORKFLOW, MODEL_INVENTORY_FIELDS, MODEL_PERFORMANCE_MEASURES, MODEL_SAFETY_MEASURES, ATTRIBUTION_ROLES, ATTRIBUTION_VIEWS, ACTION_QUEUE_FLOW, ACTION_QUEUE_EXAMPLES, DENOMINATOR_QUALITY_FIELDS, PROVIDER_DASHBOARD_CONTROLS, PROVIDER_API, waitDistribution, funnelConversion, gapClosureState, alertQualityScore, disparityGaps, modelSafetyGate, attributionFairnessCheck, evaluateThreshold, denominatorShrinkageFlag, denominatorChangeWarning, metricDefinitionSchema, attributionSchema, thresholdSchema, modelRegistrationSchema, PROVIDER_ANALYTICS_VERSION } from "./provider-analytics";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -347,6 +348,7 @@ export class HealthService {
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
   private get privacy() { return new PrivacyAnalyticsPlane(this.workspaceId, this.userId, this.role); }
   private get cyber() { return new CyberResilienceProgram(this.workspaceId, this.userId, this.role); }
+  private get providers() { return new ProviderIntelligencePlane(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -953,6 +955,41 @@ export class HealthService {
   async cyberReportIncident(input: Parameters<CyberResilienceProgram["reportIncident"]>[0]) { return this.cyber.reportIncident(cyberIncidentSchema.parse(input)); }
   async cyberListIncidents(status?: string) { return this.cyber.listIncidents(status); }
   async cyberResolveIncident(id: string, resolution: string, owners?: Record<string, string>) { return this.cyber.resolveIncident(id, resolution, owners); }
+
+  // ── Provider and Organization Intelligence Plane ─────────────────
+  // Visible performance with context — never unadjusted rankings alone.
+  get providerPipeline() { return PROVIDER_PIPELINE; }
+  get providerDashboards() { return DASHBOARD_AUDIENCES; }
+  get metricDisplayFields() { return METRIC_DISPLAY_FIELDS; }
+  get executiveTiles() { return EXECUTIVE_TILES; }
+  get providerApi() { return PROVIDER_API; }
+  providerWaitDistribution(minutes: number[], threshold: number) { return waitDistribution(minutes, threshold); }
+  providerFunnelConversion(entered: number, completed: number) { return funnelConversion(entered, completed); }
+  providerGapState(state: string) { return gapClosureState(state); }
+  providerAlertQuality(q: Parameters<typeof alertQualityScore>[0]) { return alertQualityScore(q); }
+  providerDisparity(d: Parameters<typeof disparityGaps>[0]) { return disparityGaps(d); }
+  providerModelGate(input: Parameters<typeof modelSafetyGate>[0]) { return modelSafetyGate(input); }
+  providerDenominatorWarning(oldV: Parameters<typeof denominatorChangeWarning>[0], nextV: Parameters<typeof denominatorChangeWarning>[1]) { return denominatorChangeWarning(oldV, nextV); }
+  async providerRegisterMetric(input: Parameters<ProviderIntelligencePlane["registerMetric"]>[0]) { return this.providers.registerMetric(metricDefinitionSchema.parse(input)); }
+  async providerReviseMetric(metricId: string, patch: Parameters<ProviderIntelligencePlane["reviseMetric"]>[1]) { return this.providers.reviseMetric(metricId, patch); }
+  async providerListMetrics(status?: string) { return this.providers.listMetrics(status); }
+  async providerRecordObservation(input: Parameters<ProviderIntelligencePlane["recordObservation"]>[0]) { return this.providers.recordObservation(input); }
+  async providerListObservations(metricId?: string, take?: number) { return this.providers.listObservations(metricId, take); }
+  async providerRecordFunnel(input: Parameters<ProviderIntelligencePlane["recordFunnel"]>[0]) { return this.providers.recordFunnel(input); }
+  async providerRecordGap(input: Parameters<ProviderIntelligencePlane["recordGapClosure"]>[0]) { return this.providers.recordGapClosure(input); }
+  async providerUpsertThreshold(input: Parameters<ProviderIntelligencePlane["upsertThreshold"]>[0]) { return this.providers.upsertThreshold(thresholdSchema.parse(input)); }
+  async providerEvaluate(metric: string, value: number, volume: number, prev?: "normal" | "warning" | "critical") { return this.providers.evaluateMetric(metric, value, volume, prev); }
+  async providerOpenQueue(input: Parameters<ProviderIntelligencePlane["openActionQueue"]>[0]) { return this.providers.openActionQueue(input); }
+  async providerAdvanceQueue(queueId: string, to: string, disposition?: string) { return this.providers.advanceQueue(queueId, to, disposition); }
+  async providerListQueues(status?: string) { return this.providers.listQueues(status); }
+  providerAttribution(input: Parameters<ProviderIntelligencePlane["checkAttribution"]>[0]) { return this.providers.checkAttribution(attributionSchema.parse(input)); }
+  async providerEquityReview(input: Parameters<ProviderIntelligencePlane["recordEquityReview"]>[0]) { return this.providers.recordEquityReview(input); }
+  async providerAdvanceEquity(reviewId: string, to: string) { return this.providers.advanceEquityReview(reviewId, to); }
+  async providerRegisterModel(input: Parameters<ProviderIntelligencePlane["registerModel"]>[0]) { return this.providers.registerModel(modelRegistrationSchema.parse(input)); }
+  async providerModelReading(input: Parameters<ProviderIntelligencePlane["recordModelReading"]>[0]) { return this.providers.recordModelReading(input); }
+  async providerListModels(status?: string) { return this.providers.listModels(status); }
+  async providerDashboard(audience: string) { return this.providers.dashboard(audience); }
+  async providerEffectiveness(metricId: string, before: Parameters<ProviderIntelligencePlane["interventionEffectiveness"]>[1], after: Parameters<ProviderIntelligencePlane["interventionEffectiveness"]>[2]) { return this.providers.interventionEffectiveness(metricId, before, after); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

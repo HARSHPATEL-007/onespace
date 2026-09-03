@@ -227,6 +227,12 @@ integrations    Integration[]
   healthCyberRecoveries HealthCyberRecovery[]
   healthCyberIncidents HealthCyberIncident[]
   healthCyberExercises HealthCyberExercise[]
+  healthProviderMetrics HealthProviderMetric[]
+  healthProviderObservations HealthProviderObservation[]
+  healthProviderActionQueues HealthProviderActionQueue[]
+  healthProviderModels HealthProviderModel[]
+  healthProviderModelReadings HealthProviderModelReading[]
+  healthProviderEquityReviews HealthProviderEquityReview[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -11990,4 +11996,157 @@ model HealthCyberExercise {
 
   @@unique([workspaceId, exerciseId])
   @@index([workspaceId, kind])
+}
+
+/// N0VA HEALTH — Provider and Organization Intelligence Plane.
+/// Versioned metric definitions with full display context, funnel/gap
+/// observations, improvement action queues, model safety readings, and
+/// equity reviews. Unadjusted outcomes never rank alone.
+model HealthProviderMetric {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  metricId            String
+  name                String
+  definition          String   @default("")
+  population          String   @default("")
+  numerator           String   @default("")
+  denominator         String   @default("")
+  aggregation         String   @default("rate")
+  attribution         String   @default("")
+  exclusions          String[] @default([])
+  stratifications     String[] @default([])
+  refresh             String   @default("daily")
+  owner               String   @default("")
+  actionOwner         String   @default("")
+  version             String   @default("1.0")
+  qualityStatus       String   @default("DRAFT")
+  observationPeriod   String   @default("")
+  dataSources         String[] @default([])
+  dataCompleteness    Float    @default(1)
+  riskAdjustmentMethod String  @default("unadjusted")
+  comparisonBaseline  String   @default("")
+  suppressionRule     String   @default("suppress_under_11")
+  caveats             String[] @default([])
+  createdById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, metricId])
+  @@index([workspaceId, qualityStatus])
+}
+
+model HealthProviderObservation {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  observationId String
+  metricId     String
+  numerator    Int      @default(0)
+  denominator  Int      @default(0)
+  rate         Float    @default(0)
+  stratum      Json     @default("{}")
+  riskAdjusted Float?
+  ciLower      Float?
+  ciUpper      Float?
+  quality      Json     @default("{}")
+  attribution  String   @default("")
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, observationId])
+  @@index([workspaceId, metricId])
+}
+
+model HealthProviderActionQueue {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  queueId      String
+  metric       String
+  reason       String   @default("")
+  owner        String   @default("")
+  populationRef String  @default("")
+  status       String   @default("OPEN")
+  flow         String[] @default([])
+  disposition  String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, queueId])
+  @@index([workspaceId, status])
+}
+
+model HealthProviderModel {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  modelId           String
+  modelName         String
+  version           String   @default("1.0")
+  owner             String   @default("")
+  intendedUse       String   @default("")
+  prohibitedUse     String[] @default([])
+  population        String   @default("")
+  dataSources       String[] @default([])
+  trainingPeriod    String   @default("")
+  deploymentSites   String[] @default([])
+  clinicalWorkflow  String   @default("")
+  humanDecisionMaker String  @default("")
+  riskClassification String  @default("")
+  approvalStatus    String   @default("DRAFT")
+  reviewDate        DateTime?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, modelId])
+  @@index([workspaceId, approvalStatus])
+}
+
+model HealthProviderModelReading {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  readingId           String
+  modelId             String
+  calibrationError    Float    @default(0)
+  subgroupGap         Float    @default(0)
+  harmSignals         Int      @default(0)
+  unreviewedOutputRate Float   @default(0)
+  discrimination      Float?
+  overrideRate        Float?
+  drift               Json     @default("{}")
+  gateAction          String   @default("operate")
+  createdById         String?
+  createdAt           DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, readingId])
+  @@index([workspaceId, modelId])
+}
+
+model HealthProviderEquityReview {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  reviewId     String
+  disparity    String
+  stratifiers  String[] @default([])
+  gaps         Json     @default("{}")
+  stage        String   @default("observed_disparity")
+  owner        String   @default("")
+  intervention String   @default("")
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, reviewId])
+  @@index([workspaceId, stage])
 }

@@ -41,6 +41,7 @@ const TABS = [
   { id: "reliability", label: "Reliability" },
   { id: "privacy", label: "Privacy Analytics" },
   { id: "resilience", label: "Cyber Resilience" },
+  { id: "providers", label: "Provider Analytics" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2819,6 +2820,27 @@ Which measurements produced this estimate? Which model version? Did corrected re
               <div className="nv-card" style={{ padding:10 }}><b>Exercises + vendors</b><div style={{ color:"var(--nv-color-text-faint)"}}>Tabletops, bounded red-teams (retested after fix), DR drills with RTO/RPO measurement. Vendors: JIT, scoped, logged, auto-revoked.</div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.cyberRegisterAsset / cyberRecordSbom / cyberReportVuln / cyberPlanPatch / cyberFirmware / cyberQuarantine / cyberRecordBackup / cyberDeclareRestored / cyberValidateClinically / cyberReconcile / cyberExercise / cyberVendor / cyberDashboards / cyberReportIncident. Full docs in cyber-resilience.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "providers" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Provider & Organization Intelligence — Visible, Contextual, Actionable" subtitle="Performance AND context: volume, risk-adjusted outcomes, case mix, staffing, barriers, burden, completeness. Never rank on unadjusted outcomes alone — every metric carries its denominator, attribution, and caveats." action={<><Badge tone="primary">8 Audiences</Badge><Badge tone="warning">Queues + Owners</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Access","Continuity","Safety","Experience","Workforce","Finance","Equity","AI safety"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              Pipeline: sources → attribution → validation → versioned registry → risk adjustment → warehouse → role dashboards.
+              Thresholds use hysteresis; denominators flag shrinkage; gaps close only at clinical completion; models suspend on safety breach.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Access + no-shows</b><div style={{ color:"var(--nv-color-text-faint)"}}>Median, p90, long-wait tail by 12 stratifiers. No-shows separated from transport, tech, reminder, and clinic failures — barriers, not blame.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Referrals + gaps</b><div style={{ color:"var(--nv-color-text-faint)"}}>12-stage referral funnel with actionable leakage causes. Gap closure requires result, review, verification — never order-only.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Transitions + alerts</b><div style={{ color:"var(--nv-color-text-faint)"}}>Readmissions paired with follow-up, med-rec, and review fields. Alert value minus burden — never optimize override rate alone.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Burden + engagement</b><div style={{ color:"var(--nv-color-text-faint)"}}>Documentation as workload patterns with anti-ranking guardrails. Engagement as meaningful participation with barrier states.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Equity + revenue</b><div style={{ color:"var(--nv-color-text-faint)"}}>Governed stratification, small-cell suppression, disparity-to-impact workflow. Revenue tracked with clinical safeguards.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Models + action</b><div style={{ color:"var(--nv-color-text-faint)"}}>Inventory, calibration, drift, subgroup safety, auto-suspend. Every breach opens an owned queue through to re-measurement.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.providerRegisterMetric / providerRecordObservation / providerRecordFunnel / providerEvaluate / providerOpenQueue / providerAttribution / providerEquityReview / providerRegisterModel / providerModelReading / providerDashboard / providerEffectiveness. Full docs in provider-analytics.ts.</div>
           </Section>
         </div>
       )}
