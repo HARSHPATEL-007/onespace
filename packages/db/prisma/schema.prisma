@@ -263,6 +263,21 @@ integrations    Integration[]
   healthCareMessages HealthCareMessage[]
   healthCareCds HealthCareCds[]
   healthCareSafety HealthCareSafety[]
+  healthClinicalRecords HealthClinicalRecord[]
+  healthClinicalInterop HealthClinicalInterop[]
+  healthClinicalEncounters HealthClinicalEncounter[]
+  healthClinicalDocuments HealthClinicalDocument[]
+  healthClinicalMedications HealthClinicalMedication[]
+  healthClinicalResults HealthClinicalResult[]
+  healthClinicalImaging HealthClinicalImaging[]
+  healthClinicalDevices HealthClinicalDevice[]
+  healthClinicalCds HealthClinicalCds[]
+  healthClinicalAi HealthClinicalAi[]
+  healthClinicalSafetyCases HealthClinicalSafety[]
+  healthClinicalChanges HealthClinicalChange[]
+  healthClinicalDowntimes HealthClinicalDowntime[]
+  healthClinicalQuality HealthClinicalQuality[]
+  healthClinicalVendors HealthClinicalVendor[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -12866,4 +12881,311 @@ model HealthCareSafety {
 
   @@unique([workspaceId, safetyId])
   @@index([workspaceId, kind])
+}
+
+/// N0VA Clinical — enterprise clinical systems edition.
+/// Source-aware records, governed interop, ED/inpatient stays, verified
+/// documentation, medication/allergy safety, lab/imaging lifecycles,
+/// validated devices, classified CDS/AI, living safety cases, change control,
+/// downtime reconciliation, and vendor governance. Assurance over claims.
+model HealthClinicalRecord {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  itemId         String
+  patientRef     String
+  section        String
+  status         String   @default("preliminary")
+  sourceSystem   String   @default("")
+  author         String   @default("")
+  effectiveTime  DateTime?
+  payload        Json     @default("{}")
+  confidentiality String  @default("clinical")
+  history        Json     @default("[]")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, itemId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthClinicalInterop {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  transactionId String
+  partner       String   @default("")
+  direction     String   @default("inbound")
+  kind          String   @default("")
+  state         String   @default("accepted")
+  incorporated  Boolean  @default(false)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, transactionId])
+  @@index([workspaceId, partner])
+}
+
+model HealthClinicalEncounter {
+  id          String   @id @default(uuid())
+  workspaceId String
+  stayId      String
+  patientRef  String
+  setting     String
+  acuity      String   @default("")
+  stage       String   @default("")
+  tracking    Json     @default("{}")
+  safety      Json     @default("{}")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, stayId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthClinicalDocument {
+  id          String   @id @default(uuid())
+  workspaceId String
+  documentId  String
+  patientRef  String
+  title       String
+  aiDraft     Boolean  @default(false)
+  verified    Boolean  @default(false)
+  signer      String   @default("")
+  role        String   @default("")
+  status      String   @default("draft")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, documentId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthClinicalMedication {
+  id          String   @id @default(uuid())
+  workspaceId String
+  orderId     String
+  patientRef  String
+  medication  String
+  highAlert   Boolean  @default(false)
+  status      String   @default("ordered")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, orderId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthClinicalResult {
+  id          String   @id @default(uuid())
+  workspaceId String
+  resultId    String
+  patientRef  String
+  domain      String   @default("laboratory")
+  test        String
+  critical    Boolean  @default(false)
+  status      String   @default("preliminary_result")
+  owner       String   @default("")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, resultId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthClinicalImaging {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  studyId         String
+  patientRef      String
+  modality        String
+  aiAnalysis      Boolean  @default(false)
+  regulatoryClass String   @default("")
+  separation      String[] @default([])
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, studyId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthClinicalDevice {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  deviceId          String
+  identifier        String   @default("")
+  manufacturer      String   @default("")
+  model             String   @default("")
+  firmware          String   @default("")
+  intendedUse       String   @default("")
+  site              String   @default("")
+  patientAssociation String  @default("")
+  reliability       Json     @default("{}")
+  status            String   @default("registered")
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, deviceId])
+}
+
+model HealthClinicalCds {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  cdsId             String
+  name              String
+  cdsClass          String
+  intendedUser      String   @default("")
+  intendedUse       String   @default("")
+  inputs            String[] @default([])
+  evidence          String[] @default([])
+  regulatoryClass   String   @default("under_review")
+  humanReview       String   @default("required")
+  transparency      String[] @default([])
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, cdsId])
+}
+
+model HealthClinicalAi {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  modelId         String
+  model           String
+  version         String   @default("1.0")
+  owner           String   @default("")
+  intendedUse     String   @default("")
+  population      String   @default("")
+  sites           String[] @default([])
+  regulatoryClass String   @default("under_review")
+  status          String   @default("registered")
+  monitors        String[] @default([])
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, modelId])
+}
+
+model HealthClinicalSafety {
+  id          String   @id @default(uuid())
+  workspaceId String
+  caseId      String
+  kind        String
+  capability  String   @default("")
+  claim       String   @default("")
+  hazards     String[] @default([])
+  controls    String[] @default([])
+  evidence    String[] @default([])
+  residualRisk String  @default("")
+  monitoring  String[] @default([])
+  status      String   @default("active")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, caseId])
+}
+
+model HealthClinicalChange {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  changeId        String
+  scope           String
+  rationale       String   @default("")
+  riskClass       String   @default("")
+  rollback        String   @default("")
+  owner           String   @default("")
+  status          String   @default("submitted")
+  emergencyBypass Boolean  @default(false)
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, changeId])
+}
+
+model HealthClinicalDowntime {
+  id          String   @id @default(uuid())
+  workspaceId String
+  downtimeId  String
+  scope       String
+  commander   String   @default("")
+  phase       String   @default("before")
+  reconciled  Json     @default("{}")
+  status      String   @default("open")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, downtimeId])
+}
+
+model HealthClinicalQuality {
+  id          String   @id @default(uuid())
+  workspaceId String
+  signalId    String
+  dashboard   String
+  finding     String   @default("")
+  owner       String   @default("")
+  dueDate     DateTime?
+  cycle       String[] @default([])
+  status      String   @default("signal")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, signalId])
+}
+
+model HealthClinicalVendor {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  vendorId            String
+  entity              String
+  name                String
+  assessment          Json     @default("{}")
+  triggersRevalidation Boolean @default(false)
+  createdById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, vendorId])
 }

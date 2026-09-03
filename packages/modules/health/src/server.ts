@@ -24,6 +24,7 @@ import { TenantControlPlane, CONFIG_LEVELS, CONFIG_DOMAINS, DOMAIN_GUARDRAILS, C
 import { EditionPackaging, EDITIONS, PLATFORM_FOUNDATION, DATA_DOMAIN_SEPARATION, EDITION_CAPABILITIES, OPTIONAL_MODULES, UPGRADE_PATH, EXCHANGE_REQUIREMENTS, EXCHANGE_ENVELOPE, ENTITLEMENT_DIMENSIONS, REGULATORY_CLASSES, AI_RISK_CLASSES, LAUNCH_GATES, EDITION_API, upgradePathValid, entitlementCoherent, aiActivationGate, aniGuard, launchGateGaps, serviceExplanation, entitlementSchema, regulatorySchema, aiClassificationSchema, EDITION_PACKAGING_VERSION, type EditionKey, type AiRiskClass } from "./edition-packaging";
 import { PersonalCompanion, PRODUCT_PROMISE, PERSONAL_MODULES, HOME_SECTIONS, HOME_STATES, PROFILE_SOURCE_STATES, DATA_LABELS, GOAL_DOMAINS, GOAL_SAFEGUARDS, MED_PERMITTED, MED_RESTRICTED, MED_RECORD_STATES, DOCUMENT_TYPES, SUPPORTED_DEVICES, JOURNAL_DOMAINS, URGENT_PATTERNS, SHARING_DIMENSIONS, SHARING_FLOW, SENSITIVE_CATEGORIES, PROXY_TYPES, TIMELINE_MARKERS, EMERGENCY_FIELDS, PERSONAL_ANI_MODES, PERSONAL_ANI_PROHIBITED, ANI_PIPELINE, ANI_RESPONSE_STATES, CRISIS_TRIGGERS, PRIVACY_CONTROLS, ACCESSIBILITY_COVERAGE, SAFETY_TELEMETRY, PERSONAL_API, claimCheck, provenanceLabel, goalCheckIn, medicationGuard, missedDoseResponse, cancelAppointmentFlow, labelReading, detectUrgency, safetyModeMessage, pghdEnvelope, sharingScopeCheck, proxyMayView, emergencySummaryWarnings, personalAniGuard, syncStatusMessage, profileSchema, goalSchema, medicationSchema as personalMedicationSchema, appointmentSchema, documentSchema, deviceSchema as personalDeviceSchema, PERSONAL_VERSION } from "./personal-companion";
 import { CareOperatingSystem, CARE_PROMISE, CARE_NOT_CLAIMS, WORKSPACE_PROVENANCE, WORKSPACE_HEADER, WORKSPACE_GUARDRAILS, ACCESS_STAGES, INTAKE_FIELDS, TRIAGE_STATES, ENCOUNTER_STAGES, ENCOUNTER_CLOSURE, DOCUMENTATION_PROVENANCE, MEDREC_WORKFLOW, MEDREC_SOURCES, DISCREPANCY_CATEGORIES, ORDER_LIFECYCLE, ORDER_DISPLAY, RESULT_LIFECYCLE, CRITICAL_RESULT_REQUIREMENTS, TASK_DISPOSITIONS, RPM_LIFECYCLE, MESSAGE_CLASSES, CDS_CATALOG, CDS_REQUIRED_FIELDS, CDS_STATES, ALLERGY_REVIEW_CHECKPOINTS, REFERRAL_ESCALATION_TRIGGERS, TRANSITION_FOLLOWUP, MATCH_SIGNALS, MATCH_OUTCOMES, MERGE_REQUIREMENTS, ATTRIBUTION_FIELDS, TRANSACTION_STATES, DOWNTIME_CAPABILITIES, DOWNTIME_RECOVERY, CARE_DASHBOARDS, CARE_API, CARE_VERSION, careClaimCheck, triageTransition, accessRoute, encounterClosureGaps, documentationSignOff, discrepancyDecision, orderTransition, orderEndpointFailure, criticalResultGaps, taskOwnerCheck, taskClosureValid, rpmEscalationGate, messageLabel, payerDenialTask, cdsTransition, mergePermitted, downtimeWriteAllowed, encounterSchema } from "./care-operating";
+import { ClinicalEnterpriseSystem, CLINICAL_PROMISE, CLINICAL_NOT_CLAIMS, CLAIM_EVIDENCE_CHAIN, AUTHORITY_LAYERS, COMMAND_WORKSPACES, WORKSPACE_CONTEXT, RECORD_SECTIONS, RECORD_ITEM_FIELDS, RECORD_STATUSES, INTEROP_MATRIX, INTEROP_LIFECYCLE, TRANSACTION_VISIBILITY, RECONCILIATION_VIEWS, ED_WORKFLOW, ED_TRACKING, ED_SAFETY, INPATIENT_WORKFLOWS, DAILY_CLINICAL_VIEW, DOCUMENTATION_CONTROLS, CLINICAL_MEDICATION_WORKFLOW, ALLERGY_TYPES, ALLERGY_REQUIRED, LAB_LIFECYCLE, CRITICAL_ASSURANCE, CRITICAL_MONITORS, IMAGING_WORKFLOWS, IMAGING_SEPARATION, DEVICE_REGISTRY_FIELDS, DEVICE_LIFECYCLE, DEVICE_RELIABILITY_CHECKS, CDS_CLASSES, CDS_RECORD_FIELDS, RECOMMENDATION_TRANSPARENCY, AI_INVENTORY_FIELDS, AI_MONITORS, AI_DEPLOYMENT_REQUIREMENTS, SAFETY_CASE_STRUCTURE, HF_PARTICIPANTS, HF_SCENARIOS, HF_METRICS, CHANGE_BOARD_SCOPE, CHANGE_RECORD_FIELDS, AVAILABILITY_TARGETS, RESILIENCE_MECHANISMS, DOWNTIME_BEFORE, DOWNTIME_DURING, CLINICAL_DOWNTIME_RECOVERY, IDENTITY_CONTROLS, BREAK_GLASS_REQUIREMENTS, AUDIT_EVENTS, AUDIT_PROPERTIES, QUALITY_DASHBOARDS, IMPROVEMENT_CYCLE, VENDOR_REGISTER_ENTITIES, VENDOR_ASSESSMENT, HOSPITAL_COMMITTEES, CAPABILITY_OWNERSHIP, CLINICAL_API, CLINICAL_VERSION, clinicalClaimCheck, recordStatusTransition, interopTransactionComplete, edThroughputGuard, dailyViewGaps, clinicalSignOff, allergyGaps, deviceReliabilityGaps, aiDeploymentGaps, downtimeRecoveryGaps, breakGlassGaps } from "./clinical-enterprise";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -357,6 +358,7 @@ export class HealthService {
   private get editions() { return new EditionPackaging(this.workspaceId, this.userId, this.role); }
   private get personal() { return new PersonalCompanion(this.workspaceId, this.userId, this.role); }
   private get careos() { return new CareOperatingSystem(this.workspaceId, this.userId, this.role); }
+  private get clinical() { return new ClinicalEnterpriseSystem(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -1136,6 +1138,45 @@ export class HealthService {
   async careReconcileDowntime(id: string, offlineAt: string, currentAt: string) { return this.careos.reconcileDowntime(id, offlineAt, currentAt); }
   async careWorkspace(patientRef: string) { return this.careos.workspaceView(patientRef); }
   async careDashboard() { return this.careos.careDashboard(); }
+
+  // ── N0VA Clinical — enterprise assurance over claims ──────────────
+  get clinicalPromise() { return CLINICAL_PROMISE; }
+  get clinicalCommandWorkspaces() { return COMMAND_WORKSPACES; }
+  get clinicalApi() { return CLINICAL_API; }
+  clinicalClaim(text: string) { return clinicalClaimCheck(text); }
+  clinicalRecordMove(from: string, to: string) { return recordStatusTransition(from, to); }
+  clinicalInteropComplete(state: string) { return interopTransactionComplete(state); }
+  clinicalThroughputGuard(skipped: string[]) { return edThroughputGuard(skipped); }
+  clinicalDailyGaps(items: Parameters<typeof dailyViewGaps>[0]) { return dailyViewGaps(items); }
+  clinicalSignGate(doc: Parameters<typeof clinicalSignOff>[0]) { return clinicalSignOff(doc); }
+  clinicalAllergyGaps(entry: Record<string, unknown>) { return allergyGaps(entry); }
+  clinicalDeviceGaps(checks: Record<string, boolean>) { return deviceReliabilityGaps(checks); }
+  clinicalAiGaps(evidence: Record<string, boolean>) { return aiDeploymentGaps(evidence); }
+  clinicalDowntimeGaps(done: Record<string, boolean>) { return downtimeRecoveryGaps(done); }
+  clinicalBreakGlassGaps(req: Record<string, unknown>) { return breakGlassGaps(req); }
+  async clinicalRecordItem(input: Parameters<ClinicalEnterpriseSystem["recordItem"]>[0]) { return this.clinical.recordItem(input); }
+  async clinicalRecordTransition(id: string, to: string) { return this.clinical.transitionRecord(id, to); }
+  async clinicalInterop(input: Parameters<ClinicalEnterpriseSystem["interopTransaction"]>[0]) { return this.clinical.interopTransaction(input); }
+  async clinicalStay(input: Parameters<ClinicalEnterpriseSystem["openStay"]>[0]) { return this.clinical.openStay(input); }
+  async clinicalSignDocument(input: Parameters<ClinicalEnterpriseSystem["signClinicalDocument"]>[0]) { return this.clinical.signClinicalDocument(input); }
+  async clinicalOrderMedication(input: Parameters<ClinicalEnterpriseSystem["orderMedication"]>[0]) { return this.clinical.orderMedication(input); }
+  async clinicalAllergy(input: Parameters<ClinicalEnterpriseSystem["recordAllergy"]>[0]) { return this.clinical.recordAllergy(input); }
+  async clinicalLab(input: Parameters<ClinicalEnterpriseSystem["labResult"]>[0]) { return this.clinical.labResult(input); }
+  async clinicalImaging(input: Parameters<ClinicalEnterpriseSystem["imagingStudy"]>[0]) { return this.clinical.imagingStudy(input); }
+  async clinicalDevice(input: Parameters<ClinicalEnterpriseSystem["registerDevice"]>[0]) { return this.clinical.registerDevice(input); }
+  async clinicalValidateDevice(id: string, checks: Record<string, boolean>, association: string) { return this.clinical.validateDeviceData(id, checks, association); }
+  async clinicalCds(input: Parameters<ClinicalEnterpriseSystem["registerCds"]>[0]) { return this.clinical.registerCds(input); }
+  async clinicalAiModel(input: Parameters<ClinicalEnterpriseSystem["registerAiModel"]>[0]) { return this.clinical.registerAiModel(input); }
+  async clinicalDeployAi(id: string, evidence: Record<string, boolean>) { return this.clinical.deployAiModel(id, evidence); }
+  async clinicalSafetyCase(input: Parameters<ClinicalEnterpriseSystem["fileSafetyCase"]>[0]) { return this.clinical.fileSafetyCase(input); }
+  async clinicalHumanFactors(input: Parameters<ClinicalEnterpriseSystem["recordHumanFactors"]>[0]) { return this.clinical.recordHumanFactors(input); }
+  async clinicalChange(input: Parameters<ClinicalEnterpriseSystem["submitChange"]>[0]) { return this.clinical.submitChange(input); }
+  async clinicalDowntime(input: Parameters<ClinicalEnterpriseSystem["openDowntime"]>[0]) { return this.clinical.openDowntime(input); }
+  async clinicalCloseDowntime(id: string, reconciled: Record<string, boolean>) { return this.clinical.closeDowntime(id, reconciled); }
+  async clinicalBreakGlass(input: Parameters<ClinicalEnterpriseSystem["breakGlass"]>[0]) { return this.clinical.breakGlass(input); }
+  async clinicalQuality(input: Parameters<ClinicalEnterpriseSystem["qualitySignal"]>[0]) { return this.clinical.qualitySignal(input); }
+  async clinicalVendor(input: Parameters<ClinicalEnterpriseSystem["assessVendor"]>[0]) { return this.clinical.assessVendor(input); }
+  async clinicalCommand(workspace: string) { return this.clinical.commandView(workspace); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

@@ -46,6 +46,7 @@ const TABS = [
   { id: "editions", label: "Editions" },
   { id: "personal", label: "N0VA Personal" },
   { id: "careos", label: "N0VA Care" },
+  { id: "clinical", label: "N0VA Clinical" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2930,6 +2931,27 @@ Which measurements produced this estimate? Which model version? Did corrected re
               <div className="nv-card" style={{ padding:10 }}><b>Downtime + status</b><div style={{ color:"var(--nv-color-text-faint)"}}>Local capture with visible staleness; offline copies never overwrite newer records. Every transaction shows its state.</div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.careOpenEncounter / careTriageEncounter / careCloseEncounter / careStartMedRec / careCreateOrder / careReceiveResult / careAckResult / careCreateTask / careEnrollRpm / careSendMessage / careRegisterCds / careSafety / careWorkspace. Full docs in care-operating.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "clinical" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="N0VA Clinical — Governed Enterprise Operating Layer" subtitle="Assurance over claims: source-aware records, validated devices, classified CDS/AI, living safety cases, reconciled downtime. Technical integration is never confused with clinical assurance." action={<><Badge tone="primary">9 Workspaces</Badge><Badge tone="warning">Safety Cases</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Enterprise","Emergency","Inpatient","Procedural","Results","Safety","Informatics","Downtime"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              Unified interface, explicit authority: source systems, derived views, documentation, generated data, and AI content stay distinct.
+              History is preserved, never overwritten. Delivery is tracked separately from clinical incorporation.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Record + interop</b><div style={{ color:"var(--nv-color-text-faint)"}}>Status-preserving record transitions. Transactions tracked to applied/reconciled — delivery alone is not incorporation.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>ED + inpatient</b><div style={{ color:"var(--nv-color-text-faint)"}}>Throughput guards protect reassessment and safety checks. Daily views surface uncertainty instead of hiding gaps.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Meds + labs + imaging</b><div style={{ color:"var(--nv-color-text-faint)"}}>Allergy completeness enforced with originals preserved. Image analysis needs regulatory classification, not defaults.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Devices + CDS + AI</b><div style={{ color:"var(--nv-color-text-faint)"}}>10-check device reliability before clinical use. CDS transparent with overrides tracked. Models deploy only with full evidence.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Safety + change</b><div style={{ color:"var(--nv-color-text-faint)"}}>Living safety cases, human-factors validation, board-reviewed changes. Emergencies bypass timing — never assessment.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Downtime + vendors</b><div style={{ color:"var(--nv-color-text-faint)"}}>Recovery closes only on full reconciliation. Break-glass gated and audited. Vendors assessed with revalidation triggers.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.clinicalRecordItem / clinicalInterop / clinicalStay / clinicalOrderMedication / clinicalLab / clinicalImaging / clinicalDevice / clinicalCds / clinicalAiModel / clinicalSafetyCase / clinicalChange / clinicalDowntime / clinicalBreakGlass / clinicalQuality / clinicalCommand. Full docs in clinical-enterprise.ts.</div>
           </Section>
         </div>
       )}

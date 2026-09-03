@@ -29,7 +29,8 @@
     "./tenant-platform": "./src/tenant-platform.ts",
     "./edition-packaging": "./src/edition-packaging.ts",
     "./personal-companion": "./src/personal-companion.ts",
-    "./care-operating": "./src/care-operating.ts"
+    "./care-operating": "./src/care-operating.ts",
+    "./clinical-enterprise": "./src/clinical-enterprise.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
