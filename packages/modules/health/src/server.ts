@@ -23,6 +23,7 @@ import { ProviderIntelligencePlane, PROVIDER_PIPELINE, DASHBOARD_AUDIENCES, METR
 import { TenantControlPlane, CONFIG_LEVELS, CONFIG_DOMAINS, DOMAIN_GUARDRAILS, CONFIG_LIFECYCLE, CONFIG_CLASSES, APPROVAL_MATRIX, ISOLATION_LAYERS, ISOLATION_TIERS, ONBOARDING_STEPS, READINESS_SIGNALS, TERMINOLOGY_LAYERS, ROLE_NON_BYPASSABLES, DEVICE_ACTIVATION_GATES, RESIDENCY_COVERAGE, CANARY_STAGES, CANARY_MONITORS, COMPATIBILITY_CHECKS, ROLLBACK_SCOPE, DRIFT_SIGNALS, OFFBOARDING_STEPS, TENANT_OPS_TILES, TENANT_API, resolveEffective, guardrailCheck, canTransitionConfig, isolationCheck, readinessGaps, deviceActivationGaps, residencyCoverageGaps, configSchema, pathwaySchema, alertRuleSchema, consentPolicySchema, retentionRuleSchema, payerRuleSchema, roleTemplateSchema, deviceCatalogSchema, aiPolicySchema, residencySchema, integrationSchema, TENANT_PLATFORM_VERSION } from "./tenant-platform";
 import { EditionPackaging, EDITIONS, PLATFORM_FOUNDATION, DATA_DOMAIN_SEPARATION, EDITION_CAPABILITIES, OPTIONAL_MODULES, UPGRADE_PATH, EXCHANGE_REQUIREMENTS, EXCHANGE_ENVELOPE, ENTITLEMENT_DIMENSIONS, REGULATORY_CLASSES, AI_RISK_CLASSES, LAUNCH_GATES, EDITION_API, upgradePathValid, entitlementCoherent, aiActivationGate, aniGuard, launchGateGaps, serviceExplanation, entitlementSchema, regulatorySchema, aiClassificationSchema, EDITION_PACKAGING_VERSION, type EditionKey, type AiRiskClass } from "./edition-packaging";
 import { PersonalCompanion, PRODUCT_PROMISE, PERSONAL_MODULES, HOME_SECTIONS, HOME_STATES, PROFILE_SOURCE_STATES, DATA_LABELS, GOAL_DOMAINS, GOAL_SAFEGUARDS, MED_PERMITTED, MED_RESTRICTED, MED_RECORD_STATES, DOCUMENT_TYPES, SUPPORTED_DEVICES, JOURNAL_DOMAINS, URGENT_PATTERNS, SHARING_DIMENSIONS, SHARING_FLOW, SENSITIVE_CATEGORIES, PROXY_TYPES, TIMELINE_MARKERS, EMERGENCY_FIELDS, PERSONAL_ANI_MODES, PERSONAL_ANI_PROHIBITED, ANI_PIPELINE, ANI_RESPONSE_STATES, CRISIS_TRIGGERS, PRIVACY_CONTROLS, ACCESSIBILITY_COVERAGE, SAFETY_TELEMETRY, PERSONAL_API, claimCheck, provenanceLabel, goalCheckIn, medicationGuard, missedDoseResponse, cancelAppointmentFlow, labelReading, detectUrgency, safetyModeMessage, pghdEnvelope, sharingScopeCheck, proxyMayView, emergencySummaryWarnings, personalAniGuard, syncStatusMessage, profileSchema, goalSchema, medicationSchema as personalMedicationSchema, appointmentSchema, documentSchema, deviceSchema as personalDeviceSchema, PERSONAL_VERSION } from "./personal-companion";
+import { CareOperatingSystem, CARE_PROMISE, CARE_NOT_CLAIMS, WORKSPACE_PROVENANCE, WORKSPACE_HEADER, WORKSPACE_GUARDRAILS, ACCESS_STAGES, INTAKE_FIELDS, TRIAGE_STATES, ENCOUNTER_STAGES, ENCOUNTER_CLOSURE, DOCUMENTATION_PROVENANCE, MEDREC_WORKFLOW, MEDREC_SOURCES, DISCREPANCY_CATEGORIES, ORDER_LIFECYCLE, ORDER_DISPLAY, RESULT_LIFECYCLE, CRITICAL_RESULT_REQUIREMENTS, TASK_DISPOSITIONS, RPM_LIFECYCLE, MESSAGE_CLASSES, CDS_CATALOG, CDS_REQUIRED_FIELDS, CDS_STATES, ALLERGY_REVIEW_CHECKPOINTS, REFERRAL_ESCALATION_TRIGGERS, TRANSITION_FOLLOWUP, MATCH_SIGNALS, MATCH_OUTCOMES, MERGE_REQUIREMENTS, ATTRIBUTION_FIELDS, TRANSACTION_STATES, DOWNTIME_CAPABILITIES, DOWNTIME_RECOVERY, CARE_DASHBOARDS, CARE_API, CARE_VERSION, careClaimCheck, triageTransition, accessRoute, encounterClosureGaps, documentationSignOff, discrepancyDecision, orderTransition, orderEndpointFailure, criticalResultGaps, taskOwnerCheck, taskClosureValid, rpmEscalationGate, messageLabel, payerDenialTask, cdsTransition, mergePermitted, downtimeWriteAllowed, encounterSchema } from "./care-operating";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -355,6 +356,7 @@ export class HealthService {
   private get tenants() { return new TenantControlPlane(this.workspaceId, this.userId, this.role); }
   private get editions() { return new EditionPackaging(this.workspaceId, this.userId, this.role); }
   private get personal() { return new PersonalCompanion(this.workspaceId, this.userId, this.role); }
+  private get careos() { return new CareOperatingSystem(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -1089,6 +1091,51 @@ export class HealthService {
   async personalAniDraft(sessionId: string, action: string) { return this.personal.aniDraftAction(sessionId, action); }
   async personalPrivacy(kind: "export" | "deletion" | "closure") { return this.personal.privacyRequest(kind); }
   async personalHome() { return this.personal.homeDashboard(); }
+
+  // ── N0VA Care — clinic operating system, human-accountable ────────
+  get carePromise() { return CARE_PROMISE; }
+  get careWorkspaceHeader() { return WORKSPACE_HEADER; }
+  get careProvenance() { return WORKSPACE_PROVENANCE; }
+  get careApi() { return CARE_API; }
+  careClaim(text: string) { return careClaimCheck(text); }
+  careTriage(from: string, to: string) { return triageTransition(from, to); }
+  careAccessRoute(urgent: boolean, slot: string) { return accessRoute(urgent, slot); }
+  careClosureGaps(checklist: Record<string, boolean>) { return encounterClosureGaps(checklist); }
+  careSignGate(doc: Parameters<typeof documentationSignOff>[0]) { return documentationSignOff(doc); }
+  careDiscrepancy(d: string, source: string, owner: string, rationale: string) { return discrepancyDecision(d, source, owner, rationale); }
+  careOrderMove(from: string, to: string) { return orderTransition(from, to); }
+  careCriticalGaps(checks: Record<string, boolean>) { return criticalResultGaps(checks); }
+  careTaskOwner(task: Parameters<typeof taskOwnerCheck>[0]) { return taskOwnerCheck(task); }
+  careTaskClose(task: Parameters<typeof taskClosureValid>[0], disposition: string) { return taskClosureValid(task, disposition); }
+  careRpmGate(input: Parameters<typeof rpmEscalationGate>[0]) { return rpmEscalationGate(input); }
+  careMessageLabel(ai: boolean, reviewed: boolean, sender: string) { return messageLabel(ai, reviewed, sender); }
+  careMerge(outcome: string, approvals: number, reviewer: string) { return mergePermitted(outcome, approvals, reviewer); }
+  careDowntimeWrite(offlineAt: string, currentAt: string) { return downtimeWriteAllowed(offlineAt, currentAt); }
+  async careOpenEncounter(input: Parameters<CareOperatingSystem["openEncounter"]>[0]) { return this.careos.openEncounter(encounterSchema.parse(input)); }
+  async careTriageEncounter(id: string, to: string, urgent?: boolean) { return this.careos.triageEncounter(id, to, urgent); }
+  async careCloseEncounter(id: string, checklist: Record<string, boolean>) { return this.careos.closeEncounter(id, checklist); }
+  async careSignDocument(id: string, doc: Parameters<CareOperatingSystem["signDocument"]>[1]) { return this.careos.signDocument(id, doc); }
+  async careStartMedRec(input: Parameters<CareOperatingSystem["startMedRec"]>[0]) { return this.careos.startMedRec(input); }
+  async careDiscrepancyRecord(session: string, input: Parameters<CareOperatingSystem["recordDiscrepancy"]>[1]) { return this.careos.recordDiscrepancy(session, input); }
+  async careApproveMedRec(session: string, list: string[], approver: string) { return this.careos.approveMedRec(session, list, approver); }
+  async careCreateOrder(input: Parameters<CareOperatingSystem["createOrder"]>[0]) { return this.careos.createOrder(input); }
+  async careAdvanceOrder(id: string, to: string) { return this.careos.advanceOrder(id, to); }
+  async careEscalateOrder(id: string, trigger: string) { return this.careos.escalateOrder(id, trigger); }
+  async careReceiveResult(input: Parameters<CareOperatingSystem["receiveResult"]>[0]) { return this.careos.receiveResult(input); }
+  async careAckResult(id: string, checks: Record<string, boolean>, owner: string) { return this.careos.acknowledgeResult(id, checks, owner); }
+  async careCreateTask(input: Parameters<CareOperatingSystem["createTask"]>[0]) { return this.careos.createTask(input); }
+  async careCloseTask(id: string, disposition: string) { return this.careos.closeTask(id, disposition); }
+  async careEnrollRpm(input: Parameters<CareOperatingSystem["enrollRpm"]>[0]) { return this.careos.enrollRpm(input); }
+  async careRpmReading(id: string, reading: Record<string, unknown>, quality: boolean) { return this.careos.rpmReading(id, reading, quality); }
+  async careSendMessage(input: Parameters<CareOperatingSystem["sendMessage"]>[0]) { return this.careos.sendMessage(input); }
+  async carePayerDenial(input: Parameters<CareOperatingSystem["payerDenial"]>[0]) { return this.careos.payerDenial(input); }
+  async careRegisterCds(input: Parameters<CareOperatingSystem["registerCds"]>[0]) { return this.careos.registerCds(input); }
+  async careCdsInteract(id: string, to: string, reason?: string) { return this.careos.cdsInteract(id, to, reason); }
+  async careSafety(input: Parameters<CareOperatingSystem["safetyRecord"]>[0]) { return this.careos.safetyRecord(input); }
+  async careResolveDuplicate(id: string, outcome: string, reviewer: string, approvals?: number) { return this.careos.resolveDuplicate(id, outcome, reviewer, approvals); }
+  async careReconcileDowntime(id: string, offlineAt: string, currentAt: string) { return this.careos.reconcileDowntime(id, offlineAt, currentAt); }
+  async careWorkspace(patientRef: string) { return this.careos.workspaceView(patientRef); }
+  async careDashboard() { return this.careos.careDashboard(); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

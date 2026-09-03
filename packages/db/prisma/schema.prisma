@@ -254,6 +254,15 @@ integrations    Integration[]
   healthPersonalSharing HealthPersonalSharing[]
   healthPersonalTimeline HealthPersonalTimeline[]
   healthPersonalAni HealthPersonalAni[]
+  healthCareEncounters HealthCareEncounter[]
+  healthCareMedRecs HealthCareMedRec[]
+  healthCareOrders HealthCareOrder[]
+  healthCareResults HealthCareResult[]
+  healthCareCoordTasks HealthCareCoordTask[]
+  healthCareRpms HealthCareRpm[]
+  healthCareMessages HealthCareMessage[]
+  healthCareCds HealthCareCds[]
+  healthCareSafety HealthCareSafety[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -12645,4 +12654,216 @@ model HealthPersonalAni {
 
   @@unique([workspaceId, sessionId])
   @@index([workspaceId, userId])
+}
+
+/// N0VA Care — clinic and distributed-care operating system.
+/// Coordinated workspaces with provenance, governed med-rec, lifecycle-tracked
+/// orders/results/tasks, program-managed RPM, classified CDS, and safety
+/// controls. Human-accountable; never a hospital EHR by claim.
+model HealthCareEncounter {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  encounterId  String
+  patientRef   String
+  stage        String   @default("access")
+  triageState  String   @default("not_reviewed")
+  checklist    Json     @default("{}")
+  documents    Json     @default("[]")
+  attribution  Json     @default("{}")
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, encounterId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthCareMedRec {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  sessionId      String
+  patientRef     String
+  sources        String[] @default([])
+  discrepancies  Json     @default("[]")
+  approvedList   String[] @default([])
+  status         String   @default("sources_collected")
+  owner          String   @default("")
+  decisionHistory Json    @default("[]")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sessionId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthCareOrder {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  orderId       String
+  kind          String
+  patientRef    String
+  title         String
+  urgency       String   @default("routine")
+  receivingOrg  String   @default("")
+  owner         String   @default("")
+  status        String   @default("order_created")
+  authState     String   @default("not_required")
+  deadlines     Json     @default("{}")
+  reportReview  String   @default("pending")
+  failureReason String   @default("")
+  retryCount    Int      @default(0)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, orderId])
+  @@index([workspaceId, patientRef])
+  @@index([workspaceId, status])
+}
+
+model HealthCareResult {
+  id          String   @id @default(uuid())
+  workspaceId String
+  resultId    String
+  patientRef  String
+  kind        String
+  critical    Boolean  @default(false)
+  status      String   @default("received")
+  owner       String   @default("")
+  ack         Json     @default("{}")
+  payloadRef  String   @default("")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, resultId])
+  @@index([workspaceId, patientRef])
+  @@index([workspaceId, status])
+}
+
+model HealthCareCoordTask {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  taskId         String
+  patientRef     String
+  type           String
+  owner          String   @default("")
+  backupOwner    String   @default("")
+  priority       String   @default("routine")
+  dueAt          DateTime?
+  dependencies   String[] @default([])
+  patientVisible Boolean  @default(true)
+  safetyCritical Boolean  @default(false)
+  status         String   @default("open")
+  disposition    String   @default("")
+  escalation     Json     @default("{}")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, taskId])
+  @@index([workspaceId, patientRef])
+  @@index([workspaceId, status])
+}
+
+model HealthCareRpm {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  enrollmentId String
+  patientRef   String
+  deviceRef    String   @default("")
+  consentRef   String   @default("")
+  status       String   @default("consented")
+  readings     Json     @default("[]")
+  reviewer     String   @default("")
+  interventions Json    @default("[]")
+  exitReason   String   @default("")
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, enrollmentId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthCareMessage {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  messageId         String
+  patientRef        String   @default("")
+  classification    String
+  body              String   @default("")
+  owner             String   @default("")
+  priority          String   @default("routine")
+  deadlineAt        DateTime?
+  aiInvolved        Boolean  @default(false)
+  clinicianReviewed Boolean  @default(false)
+  senderLabel       String   @default("")
+  readState         String   @default("unread")
+  ackState          String   @default("unacknowledged")
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, messageId])
+  @@index([workspaceId, patientRef])
+}
+
+model HealthCareCds {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  functionId        String
+  functionKey       String
+  intendedUse       String   @default("")
+  intendedUser      String   @default("")
+  inputs            String[] @default([])
+  ruleVersion       String   @default("1.0")
+  evidence          String   @default("")
+  limitations       String[] @default([])
+  regulatoryClass   String   @default("")
+  humanReview       String   @default("required")
+  state             String   @default("available")
+  interactions      Json     @default("[]")
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, functionId])
+  @@index([workspaceId, functionKey])
+}
+
+model HealthCareSafety {
+  id          String   @id @default(uuid())
+  workspaceId String
+  safetyId    String
+  kind        String
+  patientRef  String   @default("")
+  detail      Json     @default("{}")
+  status      String   @default("open")
+  resolution  String   @default("")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, safetyId])
+  @@index([workspaceId, kind])
 }

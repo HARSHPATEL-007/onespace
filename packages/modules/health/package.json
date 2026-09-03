@@ -28,7 +28,8 @@
     "./provider-analytics": "./src/provider-analytics.ts",
     "./tenant-platform": "./src/tenant-platform.ts",
     "./edition-packaging": "./src/edition-packaging.ts",
-    "./personal-companion": "./src/personal-companion.ts"
+    "./personal-companion": "./src/personal-companion.ts",
+    "./care-operating": "./src/care-operating.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

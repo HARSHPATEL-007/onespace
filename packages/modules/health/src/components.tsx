@@ -45,6 +45,7 @@ const TABS = [
   { id: "tenants", label: "Tenant Platform" },
   { id: "editions", label: "Editions" },
   { id: "personal", label: "N0VA Personal" },
+  { id: "careos", label: "N0VA Care" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2908,6 +2909,27 @@ Which measurements produced this estimate? Which model version? Did corrected re
               <div className="nv-card" style={{ padding:10 }}><b>Emergency + privacy</b><div style={{ color:"var(--nv-color-text-faint)"}}>Freshness-warned emergency summary with limited lock-screen view. Export, deletion, access logs, truthful sync status.</div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.personalProfile / personalGoal / personalMedication / personalSchedule / personalCancel / personalDocument / personalReading / personalJournal / personalShare / personalProxy / personalTimeline / personalEmergency / personalAni / personalPrivacy / personalHome. Full docs in personal-companion.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "careos" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="N0VA Care — Shared Workspace for Coordinated Care" subtitle="Reliable coordination across people and organizations — without claiming to replace a full hospital EHR. Right action, right owner, status preserved across failures, human accountability." action={<><Badge tone="primary">12 Stages</Badge><Badge tone="warning">Owned Tasks</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Access","Intake","Encounter","Orders","Results","Meds","RPM","Tasks","Messages","Follow-up"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              Longitudinal view with source, author, verification, and freshness on every item. Urgency beats scheduling availability.
+              Closure is a checklist, not a signature. AI documentation stays a draft until a qualified signer reviews it.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Medication truth</b><div style={{ color:"var(--nv-color-text-faint)"}}>Governed one-source list: conflicts displayed with owners, never silently resolved. Allergy review at every checkpoint.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Orders + results</b><div style={{ color:"var(--nv-color-text-faint)"}}>Full lifecycles to review and care-plan update. Critical results need named owners and acknowledgement — delivery is not completion.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Tasks + messages</b><div style={{ color:"var(--nv-color-text-faint)"}}>One owner per next action; meaningful dispositions, no generic done on safety work. Automation never impersonates clinicians.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>RPM + CDS</b><div style={{ color:"var(--nv-color-text-faint)"}}>RPM as a consented program with gated escalation. CDS classified with evidence, uncertainty, and tracked overrides.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Safety + identity</b><div style={{ color:"var(--nv-color-text-faint)"}}>Duplicate detection with human-confirmed merges. Correct attribution across team, org, patient, caregiver, and AI.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Downtime + status</b><div style={{ color:"var(--nv-color-text-faint)"}}>Local capture with visible staleness; offline copies never overwrite newer records. Every transaction shows its state.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.careOpenEncounter / careTriageEncounter / careCloseEncounter / careStartMedRec / careCreateOrder / careReceiveResult / careAckResult / careCreateTask / careEnrollRpm / careSendMessage / careRegisterCds / careSafety / careWorkspace. Full docs in care-operating.ts.</div>
           </Section>
         </div>
       )}
