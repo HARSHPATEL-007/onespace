@@ -166,6 +166,9 @@ integrations    Integration[]
   healthPathwayDefinitions HealthPathwayDefinition[]
   healthPathwayEnrollments HealthPathwayEnrollment[]
   healthPathwayExceptions HealthPathwayException[]
+  healthWorkItems HealthWorkItem[]
+  healthWorkItemEvents HealthWorkItemEvent[]
+  healthWorkQueuePolicies HealthWorkQueuePolicy[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4464,6 +4467,7 @@ model HealthPatient {
   twinDisputes HealthTwinDispute[]
   pathwayEnrollments HealthPathwayEnrollment[]
   pathwayExceptions HealthPathwayException[]
+  workItems HealthWorkItem[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -7552,6 +7556,129 @@ model HealthPathwayException {
   @@index([workspaceId, patientId])
   @@index([exceptionType])
   @@index([status])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — UNIFIED CLINICAL WORK-QUEUE & INBOX ORCHESTRATION
+// One role-aware work environment — FHIR Task as workflow abstraction (Task.owner
+// = current accountable party, Task.focus = clinical request/resource acted upon).
+// Ingestion → Classification/safety → Dedup/link → Priority/SLA → Ownership/route
+// → Work/delegate/escalate → Resolution → Audit/outcome/burden/quality.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum WorkItemStatus {
+  RECEIVED
+  CLASSIFIED
+  VALIDATED
+  ROUTED
+  ASSIGNED
+  ACCEPTED
+  IN_PROGRESS
+  AWAITING_INFORMATION
+  AWAITING_EXTERNAL_PARTY
+  DELEGATED
+  ESCALATED
+  RESOLVED
+  CLOSED
+  DUPLICATE
+  RETRACTED
+  NOT_ACTIONABLE
+}
+
+enum WorkItemPriority {
+  STAT
+  URGENT
+  HIGH
+  ROUTINE
+  BATCH
+  INFORMATIONAL
+}
+
+/// Normalized, owned, time-bound work item — original event preserved via sourceRef.
+model HealthWorkItem {
+  id                 String           @id @default(uuid())
+  workspaceId        String
+  patientId          String?
+  type               String           // abnormal_lab, imaging_finding, patient_message, renewal_request, prior_auth, referral, discharge, device_failure, unresolved_alert, research_match, compliance_task
+  title              String
+  status             WorkItemStatus   @default(RECEIVED)
+  priority           WorkItemPriority @default(ROUTINE)
+  clinicalUrgency    String?          // immediate, same_day, next_business_day, routine, none
+  clinicalPriority   String?          // stored separately from administrative priority
+  adminPriority      String?
+  actionability      String?          // high / medium / low
+  owner              String?          // current accountable party (Task.owner)
+  requestedPerformer String?
+  queue              String           // abnormal_labs, imaging, messages, renewals, prior_auth, referrals, discharge, device, alerts, research, compliance
+  sourceRef          String?          // original event preserved — never disappears on merge/delegate/batch/route
+  relatedRefs        String[]         @default([])
+  dueAt              DateTime?
+  slaPolicy          String?          // sla policy id/version, e.g. lab-review-v4
+  delegation         Json             @default("{}") // { allowed, scope, requires_clinician_for[] }
+  evidence           Json             @default("[]")
+  patientVisibility  String           @default("care_team_only")
+  auditRef           String?
+  resolution         Json             @default("{}") // { reason, evidence } — required for CLOSED
+  acknowledgedAt     DateTime?
+  resolvedAt         DateTime?
+  closedAt           DateTime?
+  createdById        String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  events    HealthWorkItemEvent[]
+
+  @@index([workspaceId, queue])
+  @@index([workspaceId, status])
+  @@index([workspaceId, priority])
+  @@index([workspaceId, patientId])
+  @@index([owner])
+  @@index([dueAt])
+}
+
+/// Append-only audit trail — who was responsible, saw, changed; which rule routed; SLA met; patient informed; what happened after.
+model HealthWorkItemEvent {
+  id         String   @id @default(uuid())
+  workspaceId String
+  workItemId String
+  actorId    String?
+  action     String   // CREATED, CLASSIFIED, ROUTED, CLAIMED, ACCEPTED, STARTED, DELEGATED, REASSIGNED, INFO_REQUESTED, ESCALATED, BATCH_PREVIEWED, RESOLVED, REOPENED, DISPUTED, CLOSED, VIEWED
+  fromStatus String?
+  toStatus   String?
+  owner      String?
+  metadata   Json     @default("{}") // rule, template/model version, batch membership, patient communication, timer change reason, etc.
+  createdAt  DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workItem  HealthWorkItem @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, workItemId])
+  @@index([workItemId, createdAt])
+  @@index([action])
+}
+
+/// Queue SLA policy — acknowledgement + resolution/handoff timers per priority, business clock, pause conditions.
+model HealthWorkQueuePolicy {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  queue           String
+  priority        WorkItemPriority
+  ackMinutes      Int      // acknowledgement deadline
+  resolveMinutes  Int      // resolution or handoff deadline
+  businessHours   Json     @default("{}") // { business_hours, holidays }
+  pauseConditions String[] @default([])   // awaiting_patient, awaiting_payer, awaiting_external_clinician
+  version         String   @default("v1")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, queue, priority, version])
+  @@index([workspaceId, queue])
+  @@index([active])
 }
 
 /// N0VA LEGAL - revision history.

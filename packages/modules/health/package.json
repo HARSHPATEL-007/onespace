@@ -17,7 +17,8 @@
     "./reasoning": "./src/reasoning.ts",
     "./alert-intelligence": "./src/alert-intelligence.ts",
     "./twin-safeguards": "./src/twin-safeguards.ts",
-    "./pathways": "./src/pathways.ts"
+    "./pathways": "./src/pathways.ts",
+    "./work-queue": "./src/work-queue.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

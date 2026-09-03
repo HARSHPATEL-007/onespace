@@ -11,6 +11,7 @@ import { MultimodalReasoningFabric, REASONING_FABRIC, SPECIALIZED_SERVICES, CONT
 import { AlertIntelligence, ALERT_ARCHITECTURE, PRIORITY_TIERS, BASELINE_METRICS, FHIR_ALERT_RESOURCES } from "./alert-intelligence";
 import { TwinSafeguards, TWIN_BOUNDARIES, TWIN_CAPABILITIES, TWIN_DATA_CLASSES, TIME_HORIZONS, HIGH_IMPACT_PROHIBITED, COUNTERFACTUAL_ALLOWED_FOR } from "./twin-safeguards";
 import { ClosedLoopPathways, PATHWAY_EXECUTION_MODEL, PATHWAY_LIBRARY, FHIR_PATHWAY_RESOURCES, PATHWAY_API } from "./pathways";
+import { ClinicalWorkQueue, WORK_SOURCES, WORK_PIPELINE, WORK_LIFECYCLE, WORK_QUEUES, WORK_QUEUE_API, WORK_PRIORITY_LEVELS, FHIR_WORKQUEUE_RESOURCES, AUTOMATION_LEVELS } from "./work-queue";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -332,6 +333,7 @@ export class HealthService {
   private get alert() { return new AlertIntelligence(this.workspaceId, this.userId, this.role); }
   private get twin() { return new TwinSafeguards(this.workspaceId, this.userId, this.role); }
   private get pathways() { return new ClosedLoopPathways(this.workspaceId, this.userId, this.role); }
+  private get workQueue() { return new ClinicalWorkQueue(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -617,6 +619,39 @@ export class HealthService {
   async pathwayCareTeamDashboard() { return this.pathways.careTeamDashboard(); }
   async pathwaySafetyControls() { return this.pathways.safetyControls(); }
   async pathwayFhirMapping() { return this.pathways.fhirMapping(); }
+
+  // ── Unified Clinical Work-Queue & Inbox Orchestration ───────────────
+  get workSources() { return WORK_SOURCES; }
+  get workPipeline() { return WORK_PIPELINE; }
+  get workLifecycle() { return WORK_LIFECYCLE; }
+  get workQueues() { return WORK_QUEUES; }
+  get workQueueApi() { return WORK_QUEUE_API; }
+  get workPriorities() { return WORK_PRIORITY_LEVELS; }
+  get fhirWorkQueueResources() { return FHIR_WORKQUEUE_RESOURCES; }
+  get workAutomationLevels() { return AUTOMATION_LEVELS; }
+  async workCreateItem(input: Parameters<ClinicalWorkQueue["createWorkItem"]>[0]) { return this.workQueue.createWorkItem(input); }
+  async workListItems(opts?: Parameters<ClinicalWorkQueue["listWorkItems"]>[0]) { return this.workQueue.listWorkItems(opts); }
+  async workGetItem(id: string) { return this.workQueue.getWorkItem(id); }
+  async workTriage(input: Parameters<ClinicalWorkQueue["triage"]>[0]) { return this.workQueue.triage(input); }
+  workPriorityScore(input: Parameters<ClinicalWorkQueue["priorityScore"]>[0]) { return this.workQueue.priorityScore(input); }
+  async workClaim(id: string, owner?: string) { return this.workQueue.claim(id, owner); }
+  async workAccept(id: string) { return this.workQueue.accept(id); }
+  async workStart(id: string) { return this.workQueue.start(id); }
+  async workDelegate(id: string, input: Parameters<ClinicalWorkQueue["delegate"]>[1]) { return this.workQueue.delegate(id, input); }
+  async workReassign(id: string, input: Parameters<ClinicalWorkQueue["reassign"]>[1]) { return this.workQueue.reassign(id, input); }
+  async workRequestInformation(id: string, what: string, from?: string) { return this.workQueue.requestInformation(id, what, from); }
+  async workEscalate(id: string, input: Parameters<ClinicalWorkQueue["escalate"]>[1]) { return this.workQueue.escalate(id, input); }
+  async workBatchPreview(ids: string[], rule: string) { return this.workQueue.batchPreview(ids, rule); }
+  async workResolve(id: string, input: Parameters<ClinicalWorkQueue["resolve"]>[1]) { return this.workQueue.resolve(id, input); }
+  async workReopen(id: string, input: Parameters<ClinicalWorkQueue["reopen"]>[1]) { return this.workQueue.reopen(id, input); }
+  async workDispute(id: string, input: Parameters<ClinicalWorkQueue["dispute"]>[1]) { return this.workQueue.dispute(id, input); }
+  async workAuditTrail(id: string) { return this.workQueue.auditTrail(id); }
+  async workSlaBreaches() { return this.workQueue.slaBreaches(); }
+  async workWorkloads() { return this.workQueue.workloads(); }
+  async workQueueOutcomes(queue?: string) { return this.workQueue.queueOutcomes(queue); }
+  async workQueueDetail(queueId: string) { return this.workQueue.queueDetail(queueId); }
+  async workUpsertPolicy(input: Parameters<ClinicalWorkQueue["upsertPolicy"]>[0]) { return this.workQueue.upsertPolicy(input); }
+  async workListPolicies(queue?: string) { return this.workQueue.listPolicies(queue); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {
