@@ -36,6 +36,7 @@ const TABS = [
   { id: "devices", label: "Devices & IoT" },
   { id: "care", label: "Care & Pharmacy" },
   { id: "meds", label: "Med Safety" },
+  { id: "interop", label: "Interop" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -254,6 +255,31 @@ export function WellnessBoard({
       if (a.ok && aj?.rows) setMedAlerts(aj.rows);
     } catch { /* degrades gracefully */ }
   };
+  // interoperability control plane state
+  const [interopInterfaces, setInteropInterfaces] = useState<Array<Record<string, unknown>>>([]);
+  const [interopMessages, setInteropMessages] = useState<Array<Record<string, unknown>>>([]);
+  const [interopQuarantine, setInteropQuarantine] = useState<Array<Record<string, unknown>>>([]);
+  const [interopConflicts, setInteropConflicts] = useState<Array<Record<string, unknown>>>([]);
+  const [interopQuality, setInteropQuality] = useState<Record<string, unknown> | null>(null);
+  const [interopIncidents, setInteropIncidents] = useState<Array<Record<string, unknown>>>([]);
+  const [interopOutcome, setInteropOutcome] = useState<Record<string, unknown> | null>(null);
+  const [interopForm, setInteropForm] = useState({ interfaceId:"", protocol:"FHIR_R4", messageType:"Observation", rawPayload:'{"resourceType":"Observation","status":"final"}' });
+  const refreshInterop = async () => {
+    try {
+      const m = await fetch(`/api/health/interop/messages?take=30`, { cache: "no-store" });
+      const mj = await m.json().catch(()=>null);
+      if (m.ok && mj?.rows) setInteropMessages(mj.rows);
+      const q = await fetch(`/api/health/interop/quarantine?status=OPEN`, { cache: "no-store" });
+      const qj = await q.json().catch(()=>null);
+      if (q.ok && qj?.rows) setInteropQuarantine(qj.rows);
+      const c = await fetch(`/api/health/interop/conflicts?status=OPEN`, { cache: "no-store" });
+      const cj = await c.json().catch(()=>null);
+      if (c.ok && cj?.rows) setInteropConflicts(cj.rows);
+      const d = await fetch(`/api/health/interop/quality/dashboard`, { cache: "no-store" });
+      const dj = await d.json().catch(()=>null);
+      if (d.ok && dj) setInteropQuality(dj);
+    } catch { /* degrades gracefully */ }
+  };
 
   // fetch dashboard
   useEffect(() => {
@@ -437,6 +463,18 @@ export function WellnessBoard({
         if (alive && mt?.rows) setMedTapers(mt.rows);
         const mp = await j(`/api/health/medications/photos?patientId=${demoPatient}`);
         if (alive && mp?.rows) setMedPhotos(mp.rows);
+        const ii = await j(`/api/health/interop/interfaces`);
+        if (alive && ii?.rows) setInteropInterfaces(ii.rows);
+        const im = await j(`/api/health/interop/messages?take=20`);
+        if (alive && im?.rows) setInteropMessages(im.rows);
+        const iq = await j(`/api/health/interop/quarantine?status=OPEN`);
+        if (alive && iq?.rows) setInteropQuarantine(iq.rows);
+        const ic = await j(`/api/health/interop/conflicts?status=OPEN`);
+        if (alive && ic?.rows) setInteropConflicts(ic.rows);
+        const id = await j(`/api/health/interop/quality/dashboard`);
+        if (alive && id) setInteropQuality(id);
+        const ix = await j(`/api/health/interop/incidents?status=open`);
+        if (alive && ix?.rows) setInteropIncidents(ix.rows);
         setDelegationForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCarePlanForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCareTaskForm(prev=> ({ ...prev, patientId: demoPatient }));
@@ -2116,6 +2154,56 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
               <div><b>Photos ({String(medPhotos.length)})</b><div style={{ color:"var(--nv-color-text-faint)"}}>{medPhotos.length===0 ? "No medicine photographs — per-field confidence; unclear strength asks for retake, never appearance-based dosing." : medPhotos.slice(0,5).map((p:Record<string,unknown>)=> String(p.status)).join(" • ")}</div></div>
             </div>
             <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Caregivers: schedule view, administration confirm, missed/refused reports, side-effect records, refill requests, reminders, photo upload, taper tasks — never dose changes, stops, confidential data, or substitution approval. Controlled substances: jurisdiction registry, data presented for review, misuse never inferred from one signal. FHIR: MedicationRequest, Dispense, Administration, Statement, Knowledge, AllergyIntolerance, AdverseEvent, Observation, Condition, CarePlan, Task, Communication, Consent, Provenance, AuditEvent.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "interop" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Interoperability Control Plane — Prove It, Don't Assume It" subtitle="Raw immutable landing zone → parsing/normalization → terminology → validation → dedup/conflict → quarantine-or-ingest. Connected never implies interoperable; healthy means validated right data for the right patient — not merely data moving." action={<><Badge tone="primary">9 Protocols</Badge><Badge tone="warning">12 Validation Stages</Badge><Badge tone="success">Raw Immutable</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", fontSize:11, fontWeight:800 }}>{["Gateway","Protocol adapters","Raw landing zone","Parse + normalize","Terminology","Validation + rules","Dedup + conflict","Quarantine or ingest","Monitor + replay + audit"].map((s,i)=> <span key={s} style={{ display:"inline-flex", alignItems:"center", gap:4 }}><span style={{ padding:"4px 8px", borderRadius:999, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>{s}</span>{i<8 && <span style={{ color:"var(--nv-color-text-faint)"}}>→</span>}</span>)}</div>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:8 }}>{["FHIR R4/R5","HL7 v2/MLLP","DICOM DIMSE","DICOMweb","Pharmacy","Claims","Devices","Research"].map((s)=> <Pill key={s} tone="primary">{s}</Pill>)}</div>
+          </Section>
+          <Section title="Interface Registry — Every Partner, Protocol, Profile, Owner">
+            <div style={{ display:"flex", gap:4, marginBottom:6, flexWrap:"wrap" }}>
+              <input className="nv-input" placeholder="Interface ID (partner-ehr-lab-results-v4)" value={interopForm.interfaceId} onChange={e=> setInteropForm({...interopForm, interfaceId:e.target.value})} style={{ flex:1, minWidth:200, fontSize:11 }} />
+              <select className="nv-select" value={interopForm.protocol} onChange={e=> setInteropForm({...interopForm, protocol:e.target.value})} style={{ fontSize:11 }}>{["FHIR_R4","FHIR_R5","HL7_V2","DICOM_DIMSE","DICOMWEB","PHARMACY_FEED","CLAIMS_FEED","DEVICE","RESEARCH"].map(p=> <option key={p} value={p}>{p}</option>)}</select>
+              <Button size="sm" onClick={async()=> { if(!interopForm.interfaceId) return; const r=await fetch("/api/health/interop/interfaces",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ interfaceId: interopForm.interfaceId, partner: interopForm.interfaceId.split("-")[0] ?? "partner", protocol: interopForm.protocol })}); if(r.ok) { const j=await r.json().catch(()=>null); if(j?.row) setInteropInterfaces(prev=> [j.row, ...prev].slice(0,20)); } }}>Register Interface</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/interop/quality/dashboard`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) setInteropQuality(j); }}>Refresh Dashboard</Button>
+            </div>
+            <div style={{ maxHeight:150, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Interface</th><th>Partner</th><th>Protocol</th><th>Status</th><th>Conformance</th><th>Actions</th></tr></thead><tbody>{interopInterfaces.length===0 && <tr><td colSpan={6} className="nv-empty">No interfaces registered — add the first contract above</td></tr>}{interopInterfaces.slice(0,12).map((f:Record<string,unknown>,i:number)=> <tr key={String(f.id ?? i)}><td style={{ fontSize:10 }}><b>{String(f.interfaceId)}</b></td><td style={{ fontSize:10 }}>{String(f.partner)}</td><td><Pill tone="primary">{String(f.protocol)}</Pill></td><td>{String(f.status)}</td><td><Pill tone={String(f.conformanceStatus)==="PASS"?"success":String(f.conformanceStatus)==="FAIL"?"danger":"warning"}>{String(f.conformanceStatus)}</Pill></td><td style={{ display:"flex", gap:2, flexWrap:"wrap" }}>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/interop/interfaces/${String(f.id)}/health`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) alert(`Error rate ${String((j.observed as Record<string,unknown> | undefined)?.errorRate ?? "?")} — ${String(j.note ?? "")}`); }}>Health</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/interop/interfaces/${String(f.id)}/contract-test`,{method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"}); const j=await r.json().catch(()=>null); if(j) alert(`${String(((j.results as Array<unknown>) ?? []).length)} layers executed`); }}>Contract test</Button>
+            </td></tr>)}</tbody></table></div>
+          </Section>
+          <Section title="Landing Zone — Persist Raw First, ACK After, Validate Before Ingest">
+            <div style={{ display:"flex", gap:4, marginBottom:6, flexWrap:"wrap" }}>
+              <input className="nv-input" placeholder="Message type (Observation, ADT_A01, C-STORE…)" value={interopForm.messageType} onChange={e=> setInteropForm({...interopForm, messageType:e.target.value})} style={{ flex:1, minWidth:160, fontSize:11 }} />
+              <input className="nv-input" placeholder='Raw payload (JSON or HL7/DICOM text)' value={interopForm.rawPayload} onChange={e=> setInteropForm({...interopForm, rawPayload:e.target.value})} style={{ flex:2, minWidth:220, fontSize:11 }} />
+              <Button size="sm" onClick={async()=> { if(!interopForm.rawPayload || !interopForm.messageType) return; const r=await fetch("/api/health/interop/messages",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ protocol: interopForm.protocol, messageType: interopForm.messageType, rawPayload: interopForm.rawPayload })}); const j=await r.json().catch(()=>null); if(j) { setInteropOutcome(j); void refreshInterop(); } }}>Ingest Message</Button>
+            </div>
+            {interopOutcome && <div style={{ marginBottom:6, padding:8, border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)", fontSize:11 }}><b>Outcome: {String((interopOutcome as Record<string,unknown>).outcome ?? "—")}</b>{(interopOutcome as Record<string,unknown>).deduplicated ? " — duplicate suppressed, source preserved" : ""}<div style={{ marginTop:4, maxHeight:90, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Severity</th><th>Class</th><th>Detail</th><th>Location</th></tr></thead><tbody>{((((interopOutcome as Record<string,unknown>).operationOutcome as Record<string,unknown> | undefined)?.issue as Array<Record<string,unknown>>) ?? []).map((s,i)=> <tr key={i}><td><Pill tone={String(s.severity)==="error"||String(s.severity)==="fatal"?"danger":String(s.severity)==="warning"?"warning":"neutral"}>{String(s.severity)}</Pill></td><td style={{ fontSize:10 }}>{String(s.class)}</td><td style={{ fontSize:10, maxWidth:280 }}>{String((s.details as Record<string,unknown> | undefined)?.text ?? "")}</td><td style={{ fontSize:10 }}>{((s.location as string[]) ?? []).join(", ")}</td></tr>)}</tbody></table></div></div>}
+            <div style={{ maxHeight:180, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Type</th><th>Protocol</th><th>Status</th><th>Outcome</th><th>Actions</th></tr></thead><tbody>{interopMessages.length===0 && <tr><td colSpan={5} className="nv-empty">Landing zone empty — ingest a message above</td></tr>}{interopMessages.slice(0,12).map((m:Record<string,unknown>,i:number)=> <tr key={String(m.id ?? i)}><td style={{ fontSize:10 }}><b>{String(m.messageType)}</b></td><td>{String(m.protocol)}</td><td><Pill tone={String(m.status)==="INGESTED"?"success":String(m.status)==="QUARANTINED"||String(m.status)==="FAILED"?"danger":"neutral"}>{String(m.status)}</Pill></td><td style={{ fontSize:10 }}>{String(m.validationOutcome ?? "—")}</td><td style={{ display:"flex", gap:2, flexWrap:"wrap" }}>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/interop/messages/${String(m.id)}/replay`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ reason:"operator replay from cockpit", dryRun:true })}); const j=await r.json().catch(()=>null); if(j) alert(`Replay preview: ${String((((j.preview as Array<unknown>) ?? []).length))} affected`); }}>Replay</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/interop/messages/${String(m.id)}/quarantine`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ reason:"Malformed payload" })}); if(r.ok) void refreshInterop(); }}>Quarantine</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/interop/messages/${String(m.id)}/release`,{method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"}); if(!r.ok) { const j=await r.json().catch(()=>null); alert(j?.error ?? "Release failed"); } else void refreshInterop(); }}>Release</Button>
+            </td></tr>)}</tbody></table></div>
+          </Section>
+          <Section title="Quarantine, Conflicts, Incidents — Safety Mechanisms, Not Graveyards">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Quarantine ({String(interopQuarantine.length)} open)</b><div style={{ marginTop:4, maxHeight:110, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Reason</th><th>Severity</th><th>Action</th></tr></thead><tbody>{interopQuarantine.length===0 && <tr><td colSpan={3} className="nv-empty">Nothing quarantined</td></tr>}{interopQuarantine.slice(0,6).map((q:Record<string,unknown>,i:number)=> <tr key={String(q.id ?? i)}><td style={{ fontSize:10 }}>{String(q.reason)}</td><td><Pill tone={String(q.severity)==="critical"?"danger":"warning"}>{String(q.severity)}</Pill></td><td><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/interop/quarantine`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ quarantineId: String(q.id), decision:"RESOLVED", note:"reviewed in cockpit" })}); if(r.ok) void refreshInterop(); }}>Resolve</Button></td></tr>)}</tbody></table></div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Blocked from CDS, reporting, and patient views until an authorized reviewer releases.</div></div>
+              <div><b>Conflicts ({String(interopConflicts.length)} open)</b><div style={{ marginTop:4, maxHeight:110, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Type</th><th>Owner</th><th>Action</th></tr></thead><tbody>{interopConflicts.length===0 && <tr><td colSpan={3} className="nv-empty">No open conflicts</td></tr>}{interopConflicts.slice(0,6).map((c:Record<string,unknown>,i:number)=> <tr key={String(c.id ?? i)}><td style={{ fontSize:10, maxWidth:220 }}>{String(c.type)}</td><td style={{ fontSize:10 }}>{String(c.owner ?? "—")}</td><td><Button size="sm" variant="ghost" onClick={async()=> { const note = window.prompt("Resolution note (precedence documented, alternatives retained):"); if(!note) return; const r=await fetch(`/api/health/interop/conflicts/${String(c.id)}/resolve`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ resolution:"HUMAN_MERGED", note })}); if(r.ok) void refreshInterop(); }}>Resolve</Button></td></tr>)}</tbody></table></div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Precedence documents why — alternatives retained, never erased. Incidents open: {String(interopIncidents.length)}.</div></div>
+            </div>
+          </Section>
+          <Section title="Quality Dashboard — Dimensions Stay Separate">
+            {!interopQuality && <div className="nv-empty" style={{ fontSize:11 }}>Loading dashboard…</div>}
+            {interopQuality && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px,1fr))", gap:8, fontSize:11 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Messages ({String(((interopQuality as Record<string,unknown>).messages as Record<string,unknown> | undefined)?.total ?? 0)})</b><div style={{ color:"var(--nv-color-text-faint)"}}>{Object.entries((((interopQuality as Record<string,unknown>).messages as Record<string,unknown> | undefined)?.byStatus as Record<string,number>) ?? {}).slice(0,6).map(([k,v])=> `${k} ${v}`).join(" • ") || "—"}</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Validation outcomes</b><div style={{ color:"var(--nv-color-text-faint)"}}>{Object.entries((((interopQuality as Record<string,unknown>).validationOutcomes as Record<string,number>) ?? {})).slice(0,6).map(([k,v])=> `${k} ${v}`).join(" • ") || "—"}</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Quarantine open: {String(((interopQuality as Record<string,unknown>).quarantine as Record<string,unknown> | undefined)?.open ?? 0)}</b><div style={{ color:"var(--nv-color-text-faint)"}}>Terminology review backlog: {String(((interopQuality as Record<string,unknown>).terminology as Record<string,unknown> | undefined)?.reviewBacklog ?? 0)} • expiring maps: {String(((interopQuality as Record<string,unknown>).terminology as Record<string,unknown> | undefined)?.expiring ?? 0)}</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Subscriptions backlog: {String(((interopQuality as Record<string,unknown>).subscriptions as Record<string,unknown> | undefined)?.backlog ?? 0)}</b><div style={{ color:"var(--nv-color-text-faint)"}}>Open incidents: {String(((interopQuality as Record<string,unknown>).incidents as Record<string,unknown> | undefined)?.open ?? 0)} • open conflicts: {String(((interopQuality as Record<string,unknown>).conflicts as Record<string,unknown> | undefined)?.open ?? 0)}</div></div>
+            </div>}
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Completeness never masks identity or timeliness gaps. HL7: persist before ACK (AA/AE/AR), replay needs original message + ACK + idempotency + approval. DICOM: parse conformance statements first; viewer outage = operational incident, missing study affecting care = clinical work item. Terminology: ambiguous local codes stay uncertain, steward-approved, expiring — recompute downstream after correction. Duplicates: deterministic IDs first, never merge patients on name + DOB. Replay: dry-run → approve → execute, production blocked without explicit authorization.</div>
           </Section>
         </div>
       )}

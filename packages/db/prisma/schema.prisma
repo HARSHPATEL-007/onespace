@@ -180,6 +180,18 @@ integrations    Integration[]
   controlledSubstancePolicies ControlledSubstancePolicy[]
   affordabilityReviews AffordabilityReview[]
   medicationAllergies MedicationAllergy[]
+  interopInterfaces InteropInterface[]
+  interopMessages InteropMessage[]
+  interopValidations InteropValidation[]
+  interopMappings InteropMapping[]
+  interopTerminologyMaps InteropTerminologyMap[]
+  interopQuarantines InteropQuarantine[]
+  interopConflicts InteropConflict[]
+  interopReplays InteropReplay[]
+  interopBulkJobs InteropBulkJob[]
+  interopSubscriptions InteropSubscription[]
+  interopIncidents InteropIncident[]
+  interopConformanceReports InteropConformanceReport[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4489,6 +4501,8 @@ model HealthPatient {
   pathwayEnrollments HealthPathwayEnrollment[]
   pathwayExceptions HealthPathwayException[]
   workItems HealthWorkItem[]
+  interopMessages InteropMessage[]
+  interopConflicts InteropConflict[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -8021,6 +8035,425 @@ model MedicationAllergy {
 
   @@index([workspaceId, patientId, status])
   @@index([workspaceId, substance])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — INTEROPERABILITY CONTROL PLANE
+// Dedicated layer between external systems and the clinical data platform:
+// connectivity, transformation, terminology, validation, delivery, replay,
+// quarantine, rate limits, conformance, data quality. Raw transport layer is
+// immutable and never overwritten by normalization — reproducibility, safe replay.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum InteropProtocol {
+  FHIR_R4
+  FHIR_R5
+  HL7_V2
+  DICOM_DIMSE
+  DICOMWEB
+  PHARMACY_FEED
+  CLAIMS_FEED
+  DEVICE
+  RESEARCH
+}
+
+enum InteropMessageStatus {
+  RECEIVED
+  FRAME_VALIDATED
+  PERSISTED
+  ACKED
+  PARSED
+  PROFILE_VALIDATED
+  IDENTITY_RESOLVED
+  TERMINOLOGY_MAPPED
+  DEDUPED
+  BUSINESS_VALIDATED
+  NORMALIZED
+  INGESTED
+  QUARANTINED
+  SUPERSEDED
+  FAILED
+}
+
+enum InteropValidationOutcome {
+  VALID
+  VALID_WITH_WARNING
+  REPAIRABLE
+  QUARANTINE
+  UNSUPPORTED_VERSION
+  UNKNOWN_PROFILE
+  TERMINOLOGY_UNRESOLVED
+  IDENTITY_UNRESOLVED
+  DUPLICATE_CANDIDATE
+  CONFLICT_REVIEW
+}
+
+enum InteropQuarantineStatus {
+  OPEN
+  IN_REVIEW
+  RELEASED
+  RESOLVED
+  EXPIRED
+}
+
+enum InteropConflictStatus {
+  OPEN
+  SOURCE_PRECEDENCE
+  HUMAN_MERGED
+  PRESERVED_BOTH
+  SUPERSEDED
+  INVALID_SOURCE
+  PATIENT_CORRECTED
+  UNRESOLVED
+  ESCALATED
+}
+
+enum InteropReplayStatus {
+  DRAFT
+  PREVIEWED
+  APPROVED
+  RUNNING
+  COMPLETED
+  PARTIAL_FAILURE
+  ROLLED_BACK
+  BLOCKED
+}
+
+enum InteropConformanceStatus {
+  PASS
+  CONDITIONAL_PASS
+  FAIL
+  NOT_TESTED
+  UNSUPPORTED
+  DEGRADED
+  EXPIRED
+}
+
+/// Machine-readable interface contract per partner/protocol/direction.
+model InteropInterface {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  interfaceId      String          // e.g. partner-ehr-lab-results-v4
+  partner          String
+  environment      String          @default("production") // sandbox | certification | preprod | production
+  protocol         InteropProtocol
+  version          String?         // R4, 2.5.1, etc.
+  direction        String          @default("inbound") // inbound | outbound | bidirectional
+  endpoint         String?
+  resources        String[]        @default([]) // Observation, DiagnosticReport, ADT, ORU, ...
+  profilePackages  String[]        @default([]) // US-Core, partner-lab-ig
+  terminology      Json            @default("{}") // { systems: [...] }
+  security         Json            @default("{}") // { auth, encryption, scopes[] }
+  limits           Json            @default("{}") // rate limits per lane
+  retry            Json            @default("{}") // { max_attempts, backoff }
+  maintenance      Json            @default("{}") // windows
+  sla              String?
+  supportContact   String?
+  dataUsePurpose   String?
+  retention        String?
+  conformanceStatus InteropConformanceStatus @default(NOT_TESTED)
+  deprecationDate  DateTime?
+  status           String          @default("active") // active | suspended | retired
+  owner            String?
+  lastContractTest DateTime?
+  nextReview       DateTime?
+  createdById      String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages  InteropMessage[]
+  reports   InteropConformanceReport[]
+
+  @@unique([workspaceId, interfaceId])
+  @@index([workspaceId, partner])
+  @@index([workspaceId, protocol])
+  @@index([workspaceId, status])
+}
+
+/// Raw immutable landing zone row. Raw payload never overwritten after transformation.
+model InteropMessage {
+  id              String               @id @default(uuid())
+  workspaceId     String
+  interfaceId     String?
+  interfaceRef    InteropInterface?    @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
+  protocol        InteropProtocol
+  messageType     String               // Observation, ADT_A01, C-STORE, STOW-RS, ...
+  direction       String               @default("inbound")
+  rawPayload      String               // exact bytes received — immutable
+  rawHash         String               // sha256 for dedup + integrity
+  patientId       String?
+  status          InteropMessageStatus @default(RECEIVED)
+  validationOutcome InteropValidationOutcome?
+  normalizedRef   String?              // pointer to normalized resource(s)
+  ackCode         String?              // AA | AE | AR (HL7 v2)
+  ackAt           DateTime?
+  dedupKey        String?
+  idempotencyKey  String?              @unique
+  errorDetail     String?
+  receivedAt      DateTime             @default(now())
+  createdById     String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  workspace   Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient     HealthPatient?      @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  validations InteropValidation[]
+  quarantines InteropQuarantine[]
+
+  @@index([workspaceId, interfaceId])
+  @@index([workspaceId, protocol])
+  @@index([workspaceId, status])
+  @@index([workspaceId, patientId])
+  @@index([rawHash])
+  @@index([dedupKey])
+  @@index([receivedAt])
+}
+
+/// One validation pipeline run — stages + OperationOutcome issues.
+model InteropValidation {
+  id             String                   @id @default(uuid())
+  workspaceId    String
+  messageId      String
+  message        InteropMessage           @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  outcome        InteropValidationOutcome
+  stages         Json                     @default("[]") // [{ stage, pass, ms }]
+  issues         Json                     @default("[]") // OperationOutcome issues
+  mappingVersion String?
+  profile        String?
+  createdById    String?
+  createdAt      DateTime                 @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, messageId])
+  @@index([workspaceId, outcome])
+}
+
+/// Source→target resource mapping definition, versioned.
+model InteropMapping {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  name               String   // partner-ehr LabResult → Observation
+  sourceSystem       String
+  sourceResource     String
+  sourceVersion      String?
+  targetResource     String
+  targetVersion      String?
+  profile            String?
+  fieldMappings      Json     @default("[]") // [{ source, target, transform, confidence }]
+  terminologyVersion String?
+  active             Boolean  @default(true)
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, sourceSystem])
+  @@index([workspaceId, active])
+}
+
+/// Versioned code translation with confidence, steward, expiry. Ambiguous maps stay uncertain.
+model InteropTerminologyMap {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  sourceSystem   String   // partner-lab
+  sourceCode     String   // LOCAL-123
+  targetSystem   String   // http://loinc.org
+  targetCode     String?  // null while unresolved
+  mappingType    String   @default("possible") // exact | narrower | broader | possible
+  confidence     String   @default("low") // high | moderate | low
+  mappingVersion String   @default("2026.08")
+  reviewStatus   String   @default("pending") // pending | steward_approved | rejected
+  expiresAt      DateTime?
+  notes          String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sourceSystem, sourceCode, mappingVersion])
+  @@index([workspaceId, reviewStatus])
+  @@index([workspaceId, targetSystem])
+  @@index([expiresAt])
+}
+
+/// Quarantine — safety mechanism, not a data graveyard. Blocked from CDS/reporting/patient views until released.
+model InteropQuarantine {
+  id                String                  @id @default(uuid())
+  workspaceId       String
+  messageId         String
+  message           InteropMessage          @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reason            String                  // malformed_payload | unsupported_version | unknown_patient | ...
+  severity          String                  @default("high") // critical | high | moderate | low
+  owner             String?
+  sla               String?                 // same_day, etc.
+  downstreamBlocked Boolean                 @default(true)
+  retryAllowed      Boolean                 @default(false)
+  status            InteropQuarantineStatus @default(OPEN)
+  resolution        Json                    @default("{}")
+  resolvedAt        DateTime?
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, reason])
+  @@index([workspaceId, messageId])
+}
+
+/// Cross-system disagreement — precedence documents why, never erases alternatives.
+model InteropConflict {
+  id                  String                @id @default(uuid())
+  workspaceId         String
+  type                String                // medication_status_conflict | allergy_conflict | ...
+  recordRefs          String[]              @default([])
+  patientId           String?
+  severity            String                @default("clinical_review_required")
+  automaticResolution String                @default("blocked") // blocked | source_precedence
+  proposedResolution  Json?
+  owner               String?
+  status              InteropConflictStatus @default(OPEN)
+  resolutionNote      String?
+  createdById         String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, type])
+  @@index([workspaceId, patientId])
+}
+
+/// Replay job — dry-run, idempotent, authorized. Never production→production without protection.
+model InteropReplay {
+  id             String             @id @default(uuid())
+  workspaceId    String
+  scope          String             @default("single") // single | batch | time_window | partner | mapping_version
+  messageIds     String[]           @default([])
+  reason         String?
+  targetEnv      String             @default("sandbox")
+  mappingVersion String?
+  dryRun         Boolean            @default(true)
+  status         InteropReplayStatus @default(DRAFT)
+  approvedBy     String?
+  results        Json               @default("{}") // { delivered, failed, compared, duplicates_suppressed }
+  createdById    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, targetEnv])
+}
+
+/// Bulk Data async export job with integrity + scope + expiry tracking.
+model InteropBulkJob {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  interfaceId    String?
+  status         String   @default("kicked_off") // kicked_off | in_progress | completed | completed_with_warnings | failed | cancelled | expired
+  resourceTypes  String[] @default([])
+  groupRef       String?
+  scope          String?
+  jobRef         String?  // remote job identifier / status URL
+  files          Json     @default("[]") // [{ url, resource_type, count, sha256 }]
+  recordCount    Int      @default(0)
+  excludedRecords Int     @default(0)
+  warnings       String[] @default([])
+  expiresAt      DateTime?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, interfaceId])
+}
+
+/// Topic-based subscription with delivery/backlog/ordering/expiry monitoring.
+model InteropSubscription {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  interfaceId    String?
+  topic          String
+  criteria       String?
+  channel        String   @default("rest-hook") // rest-hook | websocket | polling
+  endpoint       String?
+  status         String   @default("active") // active | suspended | endpoint_unreachable | auth_failed | backlog_growing | rejected | expired | revoked | dead_lettered
+  lastDeliveryAt DateTime?
+  backlog        Int      @default(0)
+  failureState   String?
+  expiresAt      DateTime?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, topic])
+}
+
+/// Interface incident — viewer outage = operational incident; missing study affecting care = clinical work item.
+model InteropIncident {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  kind            String   // validation_failure | patient_match_degradation | missing_results | dicom_failure | viewer_outage | terminology_outage | subscription_backlog | bulk_corruption | duplicate_delivery | data_leakage | rate_limit_saturation | certificate_expiry | conformance_regression
+  partners        String[] @default([])
+  affectedRecords Int      @default(0)
+  clinicalRisk    String   @default("unknown") // critical | high | moderate | low | unknown
+  mitigation      String?
+  owner           String?
+  communications  Json     @default("[]")
+  replayPlan      String?
+  reconcilePlan   String?
+  rootCause       String?
+  correctiveAction String?
+  closureEvidence String?
+  status          String   @default("open") // open | mitigated | resolved | closed
+  startedAt       DateTime @default(now())
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, kind])
+}
+
+/// Evidence-based conformance report with expiry — never "conformant" from a few test messages.
+model InteropConformanceReport {
+  id          String                  @id @default(uuid())
+  workspaceId String
+  interfaceId String
+  interfaceRef InteropInterface       @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+  reportDate  DateTime                @default(now())
+  status      InteropConformanceStatus @default(NOT_TESTED)
+  protocol    String?
+  capabilities Json                   @default("{}")
+  failures    Json                    @default("[]")
+  warnings    String[]                @default([])
+  evidence    String[]                @default([]) // test-run refs
+  owner       String?
+  expiresAt   DateTime?
+  createdById String?
+  createdAt   DateTime                @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, interfaceId])
+  @@index([workspaceId, status])
+  @@index([expiresAt])
 }
 
 /// N0VA LEGAL - revision history.

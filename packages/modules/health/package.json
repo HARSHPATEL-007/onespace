@@ -19,7 +19,8 @@
     "./twin-safeguards": "./src/twin-safeguards.ts",
     "./pathways": "./src/pathways.ts",
     "./work-queue": "./src/work-queue.ts",
-    "./medication-safety": "./src/medication-safety.ts"
+    "./medication-safety": "./src/medication-safety.ts",
+    "./interoperability": "./src/interoperability.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

@@ -13,6 +13,7 @@ import { TwinSafeguards, TWIN_BOUNDARIES, TWIN_CAPABILITIES, TWIN_DATA_CLASSES, 
 import { ClosedLoopPathways, PATHWAY_EXECUTION_MODEL, PATHWAY_LIBRARY, FHIR_PATHWAY_RESOURCES, PATHWAY_API } from "./pathways";
 import { ClinicalWorkQueue, WORK_SOURCES, WORK_PIPELINE, WORK_LIFECYCLE, WORK_QUEUES, WORK_QUEUE_API, WORK_PRIORITY_LEVELS, FHIR_WORKQUEUE_RESOURCES, AUTOMATION_LEVELS } from "./work-queue";
 import { MedicationSafetyCockpit, MEDICATION_PIPELINE, FOUR_REALITIES, BPMH_SOURCES, MEDICATION_API, FHIR_MEDICATION_RESOURCES, ALERT_CLASSES } from "./medication-safety";
+import { InteropControlPlane, INTEROP_PIPELINE, INTEROP_PROTOCOLS, INTEROP_API, FHIR_INTEROP_RESOURCES, VALIDATION_PIPELINE } from "./interoperability";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -336,6 +337,7 @@ export class HealthService {
   private get pathways() { return new ClosedLoopPathways(this.workspaceId, this.userId, this.role); }
   private get workQueue() { return new ClinicalWorkQueue(this.workspaceId, this.userId, this.role); }
   private get medSafety() { return new MedicationSafetyCockpit(this.workspaceId, this.userId, this.role); }
+  private get interop() { return new InteropControlPlane(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -712,6 +714,56 @@ export class HealthService {
   async medCsPolicies(jurisdiction?: string, medicineClass?: string) { return this.medSafety.getControlledPolicy(jurisdiction, medicineClass); }
   async medCheckControlled(recordId: string, context: Parameters<MedicationSafetyCockpit["checkControlled"]>[1]) { return this.medSafety.checkControlled(recordId, context); }
   async medCockpitSummary(patientId: string) { return this.medSafety.cockpitSummary(patientId); }
+
+  // ── Interoperability Control Plane ────────────────────────────────
+  get interopPipeline() { return INTEROP_PIPELINE; }
+  get interopProtocols() { return INTEROP_PROTOCOLS; }
+  get interopApi() { return INTEROP_API; }
+  get fhirInteropResources() { return FHIR_INTEROP_RESOURCES; }
+  get interopValidationPipeline() { return VALIDATION_PIPELINE; }
+  async interopRegisterInterface(input: Parameters<InteropControlPlane["registerInterface"]>[0]) { return this.interop.registerInterface(input); }
+  async interopListInterfaces(protocol?: string, status?: string) { return this.interop.listInterfaces(protocol, status); }
+  async interopGetInterface(id: string) { return this.interop.getInterface(id); }
+  async interopGetContract(id: string) { return this.interop.getContract(id); }
+  async interopContractTest(id: string, input: Parameters<InteropControlPlane["runContractTest"]>[1]) { return this.interop.runContractTest(id, input); }
+  async interopConformanceReport(input: Parameters<InteropControlPlane["conformanceReport"]>[0]) { return this.interop.conformanceReport(input); }
+  async interopGetConformanceReport(interfaceRefId: string) { return this.interop.getConformanceReport(interfaceRefId); }
+  async interopInterfaceHealth(id: string) { return this.interop.interfaceHealth(id); }
+  async interopInterfaceMetrics(id: string) { return this.interop.interfaceMetrics(id); }
+  async interopIngest(input: Parameters<InteropControlPlane["ingestMessage"]>[0]) { return this.interop.ingestMessage(input); }
+  async interopListMessages(opts?: Parameters<InteropControlPlane["listMessages"]>[0]) { return this.interop.listMessages(opts); }
+  async interopGetMessage(id: string) { return this.interop.getMessage(id); }
+  async interopSupersedeMessage(id: string, reason: string) { return this.interop.supersedeMessage(id, reason); }
+  async interopQuarantineMessage(messageId: string, reason: string, severity?: string) { return this.interop.quarantineMessage(messageId, reason, severity); }
+  async interopListQuarantine(status?: string) { return this.interop.listQuarantine(status); }
+  async interopResolveQuarantine(id: string, input: Parameters<InteropControlPlane["resolveQuarantine"]>[1]) { return this.interop.resolveQuarantine(id, input); }
+  async interopCreateReplay(input: Parameters<InteropControlPlane["createReplay"]>[0]) { return this.interop.createReplay(input); }
+  async interopApproveReplay(id: string, approvedBy: string, allowProduction: boolean) { return this.interop.approveReplay(id, approvedBy, allowProduction); }
+  async interopExecuteReplay(id: string) { return this.interop.executeReplay(id); }
+  async interopListReplays(status?: string) { return this.interop.listReplays(status); }
+  async interopUpsertTerminologyMap(input: Parameters<InteropControlPlane["upsertTerminologyMap"]>[0]) { return this.interop.upsertTerminologyMap(input); }
+  async interopTranslateCode(sourceSystem: string, sourceCode: string) { return this.interop.translateCode(sourceSystem, sourceCode); }
+  async interopListTerminologyMaps(reviewStatus?: string, targetSystem?: string) { return this.interop.listTerminologyMaps(reviewStatus, targetSystem); }
+  async interopReviewTerminologyMap(id: string, input: Parameters<InteropControlPlane["reviewTerminologyMap"]>[1]) { return this.interop.reviewTerminologyMap(id, input); }
+  async interopUpsertMapping(input: Parameters<InteropControlPlane["upsertMapping"]>[0]) { return this.interop.upsertMapping(input); }
+  async interopListMappings(sourceSystem?: string) { return this.interop.listMappings(sourceSystem); }
+  async interopCreateConflict(input: Parameters<InteropControlPlane["createConflict"]>[0]) { return this.interop.createConflict(input); }
+  async interopListConflicts(status?: string, patientId?: string) { return this.interop.listConflicts(status, patientId); }
+  async interopResolveConflict(id: string, input: Parameters<InteropControlPlane["resolveConflict"]>[1]) { return this.interop.resolveConflict(id, input); }
+  async interopCreateBulkJob(input: Parameters<InteropControlPlane["createBulkJob"]>[0]) { return this.interop.createBulkJob(input); }
+  async interopUpdateBulkJob(id: string, input: Parameters<InteropControlPlane["updateBulkJob"]>[1]) { return this.interop.updateBulkJob(id, input); }
+  async interopCancelBulkJob(id: string) { return this.interop.cancelBulkJob(id); }
+  async interopListBulkJobs(status?: string) { return this.interop.listBulkJobs(status); }
+  async interopRegisterSubscription(input: Parameters<InteropControlPlane["registerSubscription"]>[0]) { return this.interop.registerSubscription(input); }
+  async interopListSubscriptions(status?: string) { return this.interop.listSubscriptions(status); }
+  async interopSubscriptionStatus(id: string, status: string, failureState?: string, backlog?: number) { return this.interop.updateSubscriptionStatus(id, status, failureState, backlog); }
+  async interopReconcileSubscription(id: string) { return this.interop.reconcileSubscription(id); }
+  async interopCheckRateLimit(input: Parameters<InteropControlPlane["checkRateLimit"]>[0]) { return this.interop.checkRateLimit(input); }
+  async interopResolveIdentity(input: Parameters<InteropControlPlane["resolveIdentity"]>[0]) { return this.interop.resolveIdentity(input); }
+  async interopCreateIncident(input: Parameters<InteropControlPlane["createIncident"]>[0]) { return this.interop.createIncident(input); }
+  async interopListIncidents(status?: string) { return this.interop.listIncidents(status); }
+  async interopResolveIncident(id: string, input: Parameters<InteropControlPlane["resolveIncident"]>[1]) { return this.interop.resolveIncident(id, input); }
+  async interopQualityDashboard() { return this.interop.qualityDashboard(); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {
