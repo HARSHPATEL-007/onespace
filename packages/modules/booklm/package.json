@@ -11,6 +11,7 @@
     "./knowledge": "./src/knowledge.ts",
     "./tutor": "./src/tutor.ts",
     "./assessment": "./src/assessment.ts",
+    "./pure": "./src/pure.ts",
     "./materials": "./src/materials.ts",
     "./analytics": "./src/analytics.ts",
     "./enhanced": "./src/enhanced.tsx"

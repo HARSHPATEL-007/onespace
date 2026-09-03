@@ -8,7 +8,7 @@ import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, addCitationAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction } from "../actions";
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, addCitationAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction } from "../actions";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -65,6 +65,7 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
           addItem: addLearningItemAction,
           removeItem: removeLearningItemAction,
           moveItem: moveLearningItemAction,
+          recordAttempt: recordQuizAttemptAction,
         }}
       />
       <BooklmEnhancements
@@ -93,6 +94,7 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
           createAssessment: createAssessmentAction,
           grade: submitGradeAction,
           appeal: appealGradeAction,
+          materials: getMaterialsAction,
         }}
       />
     </>

@@ -43,8 +43,9 @@ export const attemptSchema = z.object({
   accommodation: z.string().max(500).default(""),
 });
 
-export class AssessmentService {
-  constructor(
+export { buildAttemptResponses, type QuizAnswerEntry, type QuizQuestionLite } from "./pure";
+
+export class AssessmentService {  constructor(
     private readonly workspaceId: string,
     private readonly userId: string,
     private readonly role: string,

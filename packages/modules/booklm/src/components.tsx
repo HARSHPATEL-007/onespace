@@ -1,10 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Dialog, Dropdown, MenuItem } from "@n0va/ui";
 import type { LearningItem } from "@n0va/db";
 import type { LearningSetWithItems, SourcePick } from "./server";
+import { buildAttemptResponses } from "./pure";
+
+export interface QuizAttemptInput {
+  setId: string;
+  mode?: "PRACTICE" | "EXAM" | "OPEN_BOOK" | "CLOSED_BOOK" | "ORAL";
+  responses: { prompt: string; answer: string; picked: string; correct: boolean; responseTimeMs: number; confidence: number; conceptKey: string; itemId?: string }[];
+  durationSec: number;
+}
 
 export interface LearningActions {
   create?: (formData: FormData) => Promise<string | void>;
@@ -13,6 +21,8 @@ export interface LearningActions {
   addItem: (formData: FormData) => Promise<void>;
   removeItem: (formData: FormData) => Promise<void>;
   moveItem: (formData: FormData) => Promise<void>;
+  /** Persist a finished quiz attempt (feeds grades, spaced repetition, streaks). */
+  recordAttempt?: (input: QuizAttemptInput) => Promise<{ score: number; total: number } | void>;
 }
 
 export function LearningSets({ sets, actions }: { sets: LearningSetWithItems[]; actions: LearningActions }) {
@@ -102,6 +112,7 @@ type QuizQuestion = {
   prompt: string;
   answer: string;
   options: string[];
+  itemId: string;
 };
 
 function shuffle<T>(arr: T[]): T[] {
@@ -142,7 +153,7 @@ function buildQuiz(items: LearningItem[]): QuizQuestion[] {
       if (cand === answer || distractors.includes(cand)) continue;
       distractors.push(cand);
     }
-    return { prompt: questionPrompt(item), answer, options: shuffle([answer, ...distractors]) };
+    return { prompt: questionPrompt(item), answer, options: shuffle([answer, ...distractors]), itemId: item.id };
   });
 }
 
@@ -169,6 +180,12 @@ export function LearningSetView({
   const [quizScore, setQuizScore] = useState(0);
   const [quizResult, setQuizResult] = useState(false);
   const [quizNotice, setQuizNotice] = useState(false);
+  // Attempt telemetry: per-question timing + answers, persisted on completion
+  // so grades, spaced repetition, and streaks update even for self-study quizzes.
+  const quizMeta = useRef<{
+    startedAt: number; qStart: number;
+    answers: Record<number, { picked: string; correct: boolean; ms: number }>;
+  }>({ startedAt: 0, qStart: 0, answers: {} });
 
   const addForm = useMemo(() => {
     if (adding) {
@@ -230,8 +247,50 @@ export function LearningSetView({
     setQuizNotice(false);
   };
 
+  const beginQuiz = (questions: QuizQuestion[]) => {
+    quizMeta.current = { startedAt: Date.now(), qStart: Date.now(), answers: {} };
+    setQuiz(questions);
+    setQuizIndex(0);
+    setPick(null);
+    setQuizScore(0);
+    setQuizResult(false);
+    setQuizNotice(false);
+  };
+
+  const answerCurrent = (optIdx: number) => {
+    if (!q) return;
+    const ms = Date.now() - quizMeta.current.qStart;
+    const correct = optIdx === q.options.indexOf(q.answer);
+    quizMeta.current.answers[quizIndex] = { picked: q.options[optIdx] ?? "", correct, ms };
+    setPick(optIdx);
+    if (correct) setQuizScore((s) => s + 1);
+  };
+
+  const advanceQuiz = () => {
+    if (!quiz) return;
+    if (quizIndex >= quiz.length - 1) {
+      // Persist the attempt: feeds assessment history, SM-2 scheduling, streaks.
+      const meta = quizMeta.current;
+      const durationSec = Math.max(0, Math.round((Date.now() - meta.startedAt) / 1000));
+      const responses = buildAttemptResponses(quiz, meta.answers);
+      if (actions.recordAttempt) {
+        void actions.recordAttempt({ setId: set.id, mode: "PRACTICE", responses, durationSec })
+          .then(() => router.refresh())
+          .catch(() => undefined);
+      }
+      setQuizResult(true);
+    } else {
+      setQuizIndex((i) => i + 1);
+      setPick(null);
+      quizMeta.current.qStart = Date.now();
+    }
+  };
+
   const retryQuiz = () => {
-    setQuiz((cur) => (cur ? shuffle(cur.map((x) => ({ ...x, options: shuffle(x.options) }))) : cur));
+    const cur = quiz;
+    quizMeta.current = { startedAt: Date.now(), qStart: Date.now(), answers: {} };
+    setQuiz((cur2) => (cur2 ? shuffle(cur2.map((x) => ({ ...x, options: shuffle(x.options) }))) : cur2));
+    void cur;
     setQuizIndex(0);
     setPick(null);
     setQuizScore(0);
@@ -256,12 +315,7 @@ export function LearningSetView({
             setQuizNotice(true);
             return;
           }
-          setQuiz(buildQuiz(set.items));
-          setQuizIndex(0);
-          setPick(null);
-          setQuizScore(0);
-          setQuizResult(false);
-          setQuizNotice(false);
+          beginQuiz(buildQuiz(set.items));
         }}>
           🧠 Quiz
         </Button>
@@ -337,8 +391,8 @@ export function LearningSetView({
                     key={opt}
                     disabled={quizAnswered}
                     onClick={() => {
-                      setPick(i);
-                      if (i === q.options.indexOf(q.answer)) setQuizScore((s) => s + 1);
+                      if (pick !== null) return;
+                      answerCurrent(i);
                     }}
                     style={{
                       textAlign: "left",
@@ -374,10 +428,7 @@ export function LearningSetView({
             <div style={{ display: "flex", gap: 10 }}>
               <Button variant="ghost" size="sm" onClick={exitQuiz}>Exit</Button>
               {quizAnswered && (
-                <Button variant="secondary" size="sm" onClick={() => {
-                  if (quizIndex >= quiz.length - 1) setQuizResult(true);
-                  else { setQuizIndex((i) => i + 1); setPick(null); }
-                }}>
+                <Button variant="secondary" size="sm" onClick={advanceQuiz}>
                   {quizIndex >= quiz.length - 1 ? "See results" : "Next →"}
                 </Button>
               )}

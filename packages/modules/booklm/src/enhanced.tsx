@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@n0va/ui";
+import { materialsToMarkdown, type MaterialsKind } from "./pure";
 
 export interface CockpitData {
   goal: string; nextAction: string; nextActionReason: string; difficulty: string;
@@ -257,10 +258,11 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     createAssessment: (fd: FormData) => Promise<void>;
     grade: (fd: FormData) => Promise<void>;
     appeal: (fd: FormData) => Promise<void>;
+    materials: (setId: string, kind: MaterialsKind) => Promise<unknown>;
   };
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "grades" | "insights">("evidence");
+  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "grades" | "materials" | "insights">("evidence");
   const [disOnly, setDisOnly] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<{ mode: string; answer: string; segments?: { text: string; kind: string; itemTitle?: string }[] } | null>(null);
@@ -276,6 +278,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     { id: "concepts", label: "🕸 Concepts" },
     { id: "tutor", label: "🤖 Tutor" },
     { id: "grades", label: "📝 Grades" },
+    { id: "materials", label: "📦 Materials" },
     ...(isInstructor ? [{ id: "insights" as const, label: "📊 Insights" }] : []),
   ];
   return (
@@ -313,6 +316,9 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
           onGrade={(fd) => void actions.grade(fd).then(refresh)}
           onAppeal={(fd) => void actions.appeal(fd).then(refresh)} />
       )}
+      {tab === "materials" && (
+        <MaterialsPanel setId={setId} onGenerate={actions.materials} />
+      )}
       {tab === "insights" && dashboard && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
           <div>Attempts <b>{dashboard.attempts}</b> · avg score <b>{Math.round(dashboard.avgScore * 100)}%</b></div>
@@ -337,6 +343,160 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
           {dashboard.earlyWarnings.length === 0 && <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No early warnings. All tracked learners above thresholds.</div>}
         </div>
       )}
+    </div>
+  );
+}
+export type { MaterialsKind };
+
+/** Study-material export: deterministic generation (no LLM) + markdown download. */
+export function MaterialsPanel({
+  setId, onGenerate,
+}: {
+  setId: string;
+  onGenerate: (setId: string, kind: MaterialsKind) => Promise<unknown>;
+}) {
+  const [kind, setKind] = useState<MaterialsKind>("summary");
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<Record<string, any> | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const gen = (k: MaterialsKind) => {
+    setKind(k);
+    setLoading(true);
+    setCopied(false);
+    void onGenerate(setId, k)
+      .then((d) => { setData(d as Record<string, any>); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  const md = useMemo(() => materialsToMarkdown(kind, data), [kind, data]);
+
+  const download = () => {
+    if (!md) return;
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `booklm-${kind}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copy = () => {
+    if (!md) return;
+    void navigator.clipboard?.writeText(md).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => undefined);
+  };
+
+  const kinds: { id: MaterialsKind; label: string }[] = [
+    { id: "summary", label: "📄 Summary" },
+    { id: "glossary", label: "📖 Glossary" },
+    { id: "flashcards", label: "🎴 Flashcards" },
+    { id: "practice-test", label: "✏️ Practice test" },
+    { id: "revision-sheet", label: "🗂 Revision sheet" },
+    { id: "viva", label: "🎤 Viva questions" },
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {kinds.map((k) => (
+          <Button key={k.id} size="sm" variant={kind === k.id && data ? undefined : "secondary"} onClick={() => gen(k.id)}>
+            {k.label}
+          </Button>
+        ))}
+      </div>
+      {loading && <div style={{ fontSize: 13, color: "var(--nv-color-text-faint)" }}>Generating from your sources…</div>}
+      {!loading && !data && (
+        <div style={{ fontSize: 13, color: "var(--nv-color-text-faint)" }}>
+          Generate study materials from this set's sources — summaries, glossaries, flashcards, practice tests, revision sheets, viva questions. Deterministic, works offline.
+        </div>
+      )}
+      {!loading && data && (
+        <>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button variant="secondary" size="sm" onClick={download}>⬇ Export .md</Button>
+            <Button variant="ghost" size="sm" onClick={copy}>{copied ? "✓ Copied" : "⧉ Copy markdown"}</Button>
+          </div>
+          <MaterialsView kind={kind} data={data} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function MaterialsView({ kind, data }: { kind: MaterialsKind; data: Record<string, any> }) {
+  const font = { fontSize: 13, lineHeight: 1.6 } as const;
+  if (kind === "summary") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {(data.bullets ?? []).map((b: string, i: number) => (
+          <div key={i} className="nv-card" style={font}>• {b}</div>
+        ))}
+        {data.coverage && <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{data.coverage}</div>}
+      </div>
+    );
+  }
+  if (kind === "glossary") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {(data.terms ?? []).map((t: { term: string; definition: string }) => (
+          <div key={t.term} className="nv-card" style={font}><b>{t.term}</b> — {t.definition}</div>
+        ))}
+      </div>
+    );
+  }
+  if (kind === "flashcards") {
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
+        {(data.cards ?? []).map((c: { front: string; back: string; itemId: string }) => (
+          <details key={c.itemId} className="nv-card" style={font}>
+            <summary style={{ fontWeight: 700, cursor: "pointer" }}>{c.front}</summary>
+            <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{c.back}</div>
+          </details>
+        ))}
+      </div>
+    );
+  }
+  if (kind === "practice-test") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {(data.questions ?? []).map((q: { id: string; type: string; prompt: string; referenceAnswer: string }) => (
+          <div key={q.id} className="nv-card" style={font}>
+            <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>{q.id} · {q.type}</div>
+            <div style={{ fontWeight: 700 }}>{q.prompt}</div>
+            <details style={{ marginTop: 4 }}>
+              <summary style={{ fontSize: 12, cursor: "pointer" }}>Reference answer</summary>
+              <div style={{ fontSize: 12, marginTop: 4 }}>{q.referenceAnswer}</div>
+            </details>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (kind === "revision-sheet") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ fontWeight: 800, fontSize: 13 }}>Summary</div>
+        {(data.summary?.bullets ?? []).map((b: string, i: number) => (
+          <div key={i} className="nv-card" style={font}>• {b}</div>
+        ))}
+        <div style={{ fontWeight: 800, fontSize: 13, marginTop: 8 }}>Key terms</div>
+        {(data.glossary ?? []).map((t: any, i: number) => (
+          <div key={i} className="nv-card" style={font}>
+            <b>{typeof t === "string" ? t : t.term}</b>{typeof t === "string" ? "" : ` — ${t.definition}`}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {(data.questions ?? []).map((q: string, i: number) => (
+        <div key={i} className="nv-card" style={font}>🎤 {q}</div>
+      ))}
     </div>
   );
 }

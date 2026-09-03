@@ -179,20 +179,39 @@ export async function appealGradeAction(formData: FormData) {
 
 export async function recordQuizAttemptAction(input: {
   setId: string; mode?: "PRACTICE" | "EXAM" | "OPEN_BOOK" | "CLOSED_BOOK" | "ORAL";
-  responses: { prompt: string; answer: string; picked: string; correct: boolean; responseTimeMs: number; confidence: number; conceptKey: string }[];
+  responses: { prompt: string; answer: string; picked: string; correct: boolean; responseTimeMs: number; confidence: number; conceptKey: string; itemId?: string }[];
   durationSec: number;
 }) {
-  const parsed = attemptSchema.parse({ setId: input.setId, mode: input.mode ?? "PRACTICE", responses: input.responses, durationSec: input.durationSec });
+  const parsed = attemptSchema.parse({ setId: input.setId, mode: input.mode ?? "PRACTICE", responses: input.responses.map(({ itemId: _itemId, ...r }) => r), durationSec: input.durationSec });
   const attempt = await (await asSvc()).recordAttempt(parsed);
-  // Feed spaced-repetition engine: map conceptKey -> concept -> retrieval outcome
+  // Feed spaced-repetition engine: map each response to a concept (fuzzy match
+  // on conceptKey, item title, or label overlap) and record the retrieval outcome.
   try {
     const kg = await kgSvc();
     const g = await kg.graph(input.setId);
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     for (const r of input.responses) {
-      const c = g.concepts.find((x) => x.key === r.conceptKey);
+      const hay = norm(`${r.prompt} ${r.conceptKey}`);
+      const c = g.concepts.find((x) => x.key === r.conceptKey)
+        ?? g.concepts.find((x) => { const l = norm(x.label); return l.length > 3 && hay.includes(l); })
+        ?? g.concepts.find((x) => { const l = norm(x.label); return l.length > 3 && norm(r.prompt).includes(l); });
       if (c) await kg.recordRetrieval(c.id, r.correct, r.confidence, r.responseTimeMs);
     }
   } catch { /* adaptive update best-effort */ }
   await (await svc()).touchActivity(input.setId);
   return { score: attempt.score, total: attempt.total };
+}
+
+export async function getMaterialsAction(setId: string, kind: "summary" | "glossary" | "flashcards" | "practice-test" | "revision-sheet" | "viva") {
+  const { workspaceId } = await actionContext();
+  const { MaterialsService } = await import("@n0va/modules-booklm/materials");
+  const svc = new MaterialsService(workspaceId);
+  switch (kind) {
+    case "summary": return svc.summary(setId);
+    case "glossary": return svc.glossary(setId);
+    case "flashcards": return svc.flashcards(setId);
+    case "practice-test": return svc.practiceTest(setId);
+    case "revision-sheet": return svc.revisionSheet(setId);
+    case "viva": return svc.vivaQuestions(setId);
+  }
 }

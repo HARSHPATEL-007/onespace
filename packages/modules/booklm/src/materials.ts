@@ -81,3 +81,5 @@ export class MaterialsService {
     };
   }
 }
+
+export { materialsToMarkdown, type MaterialsKind } from "./pure";
