@@ -244,6 +244,8 @@ integrations    Integration[]
   healthEditionAi HealthEditionAi[]
   healthEditionExchanges HealthEditionExchange[]
   healthEditionLaunches HealthEditionLaunch[]
+  healthOutcomeMeasurements HealthOutcomeMeasurement[]
+  healthClaimReviews HealthClaimReview[]
   healthPersonalProfiles HealthPersonalProfile[]
   healthPersonalGoals HealthPersonalGoal[]
   healthPersonalMedications HealthPersonalMedication[]
@@ -12370,6 +12372,55 @@ model HealthTenantDrift {
 /// Capability entitlements as versioned policy, explicit regulatory and AI
 /// risk classification, authorized cross-edition exchange, launch gates.
 /// Technical availability never implies commercial, clinical, or legal enablement.
+model HealthOutcomeMeasurement {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  measurementId String
+  measureId    String
+  edition      String   @default("")
+  numerator    Float?
+  denominator  Float?
+  value        Float
+  unit         String   @default("")
+  stratum      Json     @default("{}")
+  riskAdjusted Boolean  @default(false)
+  ciLower      Float?
+  ciUpper      Float?
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  dataCompleteness Float @default(1)
+  caveats      String   @default("")
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, measurementId])
+  @@index([workspaceId, measureId])
+}
+
+model HealthClaimReview {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  claimId            String
+  claimText          String
+  context            String   @default("")
+  validationProtocol String   @default("")
+  population         String   @default("")
+  comparator         String   @default("")
+  confidenceInterval String   @default("")
+  regulatoryStatus   String   @default("")
+  permitted          Boolean  @default(false)
+  flags              String[] @default([])
+  reviewer           String   @default("")
+  createdById        String?
+  createdAt          DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, claimId])
+  @@index([workspaceId, permitted])
+}
 model HealthEditionEntitlement {
   id                 String   @id @default(uuid())
   workspaceId        String
@@ -12382,8 +12433,13 @@ model HealthEditionEntitlement {
   requires           String   @default("")
   addOn              String   @default("")
   region             String   @default("")
+  organization       String   @default("")
   specialty          String   @default("")
   userRole           String   @default("")
+  patientPopulation  String   @default("")
+  deviceCatalog      String   @default("")
+  aiModel            String   @default("")
+  dataDomain         String   @default("")
   effectiveDate      DateTime?
   expiry             DateTime?
   approvalRequirement String  @default("")

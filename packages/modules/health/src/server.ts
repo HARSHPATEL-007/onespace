@@ -27,6 +27,8 @@ import { CareOperatingSystem, CARE_PROMISE, CARE_NOT_CLAIMS, WORKSPACE_PROVENANC
 import { ClinicalEnterpriseSystem, CLINICAL_PROMISE, CLINICAL_NOT_CLAIMS, CLAIM_EVIDENCE_CHAIN, AUTHORITY_LAYERS, COMMAND_WORKSPACES, WORKSPACE_CONTEXT, RECORD_SECTIONS, RECORD_ITEM_FIELDS, RECORD_STATUSES, INTEROP_MATRIX, INTEROP_LIFECYCLE, TRANSACTION_VISIBILITY, RECONCILIATION_VIEWS, ED_WORKFLOW, ED_TRACKING, ED_SAFETY, INPATIENT_WORKFLOWS, DAILY_CLINICAL_VIEW, DOCUMENTATION_CONTROLS, CLINICAL_MEDICATION_WORKFLOW, ALLERGY_TYPES, ALLERGY_REQUIRED, LAB_LIFECYCLE, CRITICAL_ASSURANCE, CRITICAL_MONITORS, IMAGING_WORKFLOWS, IMAGING_SEPARATION, DEVICE_REGISTRY_FIELDS, DEVICE_LIFECYCLE, DEVICE_RELIABILITY_CHECKS, CDS_CLASSES, CDS_RECORD_FIELDS, RECOMMENDATION_TRANSPARENCY, AI_INVENTORY_FIELDS, AI_MONITORS, AI_DEPLOYMENT_REQUIREMENTS, SAFETY_CASE_STRUCTURE, HF_PARTICIPANTS, HF_SCENARIOS, HF_METRICS, CHANGE_BOARD_SCOPE, CHANGE_RECORD_FIELDS, AVAILABILITY_TARGETS, RESILIENCE_MECHANISMS, DOWNTIME_BEFORE, DOWNTIME_DURING, CLINICAL_DOWNTIME_RECOVERY, IDENTITY_CONTROLS, BREAK_GLASS_REQUIREMENTS, AUDIT_EVENTS, AUDIT_PROPERTIES, QUALITY_DASHBOARDS, IMPROVEMENT_CYCLE, VENDOR_REGISTER_ENTITIES, VENDOR_ASSESSMENT, HOSPITAL_COMMITTEES, CAPABILITY_OWNERSHIP, CLINICAL_API, CLINICAL_VERSION, clinicalClaimCheck, recordStatusTransition, interopTransactionComplete, edThroughputGuard, dailyViewGaps, clinicalSignOff, allergyGaps, deviceReliabilityGaps, aiDeploymentGaps, downtimeRecoveryGaps, breakGlassGaps } from "./clinical-enterprise";
 import { ResearchGovernanceSystem, RESEARCH_PROMISE, RESEARCH_ARCHITECTURE, RESEARCH_DATA_LAYERS, RESEARCH_WORKSPACES, PROJECT_LIFECYCLE, DATA_CLASSES, DEID_STRATEGIES, DEID_REPORT_FIELDS, CONSENT_TYPES, WITHDRAWAL_ACTIONS, ACCESS_CONDITIONS, RESEARCH_ROLES, COHORT_RELEASE_FIELDS, DISCLOSURE_TECHNIQUES, DATA_VISIBILITY_LABELS, CLEANROOM_CONTROLS, TRIAL_LIFECYCLE, TRIAL_SEPARATION, EDC_CONTROLS, BIOBANK_LIFECYCLE, GENOMIC_CONTROLS, RWE_ELEMENTS, RWE_STUDY_PLAN, FEDERATED_CONTROLS, SYNTHETIC_LABEL_FIELDS, STAT_REQUIREMENTS, LINEAGE_STAGES, DUA_TRACKING, PUBLICATION_REVIEW, REVIEW_PIPELINE, REPRO_PACKAGE, MONITOR_SIGNALS, AUDIT_FIELDS, QUALITY_PROFILE, CLOSEOUT_STEPS, RESEARCH_API, RESEARCH_VERSION, rsrchLifecycleMove, rsrchProtocolAmend, rsrchClassify, rsrchDeidReport, rsrchWithdraw, rsrchAccessCheck, rsrchCohortRelease, rsrchDisclosure, rsrchTrialMove, rsrchEdcSign, rsrchSpecimenRelease, rsrchGenomicFlag, rsrchRweGrade, rsrchFederatedReport, rsrchSyntheticLabel, rsrchDuaExpiry, rsrchPublicationReview, rsrchReproducibility, rsrchCloseout, protocolSchema } from "./research-governance";
 import { PublicHealthSystem, PUBLIC_HEALTH_PROMISE, PUBLIC_ARCHITECTURE, EXCHANGE_DOMAINS, DATA_PRODUCTS, SURVEILLANCE_DOMAINS, SIGNAL_LIFECYCLE, SIGNAL_DISPLAY, EVENT_STATES, DASHBOARD_DOMAINS, DASHBOARD_CONTRACT, OUTBREAK_LIFECYCLE, OUTBREAK_SUPPORTS, CASE_WORKFLOW, CONTACT_WORKFLOW, CASE_GUARDRAILS, IMMUNIZATION_WORKFLOW, IMMUNIZATION_STATES, PREPAREDNESS_HAZARDS, READINESS_INVENTORY, EMERGENCY_ACTIVATION, EMERGENCY_SCOPE_FIELDS, ACTIVATION_CHECKLIST, CLOSURE_CHECKLIST, REPORTING_PIPELINE, SUBMITTER_STATES, ENVIRONMENTAL_SOURCES, COMMUNITY_DOMAINS, PUBLIC_EQUITY_MEASURES, EQUITY_DISPLAY, ALLOCATABLES, ALLOCATION_RULES, COMM_CHANNELS, MESSAGE_FIELDS, AGREEMENT_PARTIES, AGREEMENT_FIELDS, PUBLIC_AI_USES, PUBLIC_AI_FIELDS, DATA_QUALITY_FIELDS, PUBLIC_SECURITY_CONTROLS, PROHIBITED_USES, GOVERNANCE_BOARD, PUBLIC_API, PUBLIC_HEALTH_VERSION, phAuthorityCheck, phEventTransition, phStigmaCheck, phSmallCell, phImmunizationStatus, phEmergencyExpired, phAllocationReview, phMessageCheck, phDrillCheck, phAgreementActive, phAiRestrict, jurisdictionSchema } from "./public-health";
+import { OutcomeAssurance, OUTCOME_MEASURES, OUTCOME_API, validateClaim, measurementSchema, claimReviewSchema } from "./measurement-framework";
+import { ReleaseSequencing, RELEASE_PHASES, FEATURE_RISK_TIERS, RELEASE_API, phaseGateStatus, featureCatalogSchema, type ReleasePhase } from "./release-sequencing";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -1050,6 +1052,9 @@ export class HealthService {
   editionLaunchGaps(edition: EditionKey, evidence: Record<string, boolean>) { return launchGateGaps(edition, evidence); }
   editionExplanation(edition: EditionKey) { return serviceExplanation(edition); }
   async editionGrant(input: Parameters<EditionPackaging["grantEntitlement"]>[0]) { return this.editions.grantEntitlement(entitlementSchema.parse(input)); }
+  async editionGrantDocument(input: Parameters<EditionPackaging["applyEntitlementDocument"]>[0]) { return this.editions.applyEntitlementDocument(input); }
+  async editionCheck(tenantId: string, edition: string, ctx: Parameters<EditionPackaging["evaluateEntitlement"]>[2]) { return this.editions.evaluateEntitlement(tenantId, edition, ctx); }
+  async editionCommercial(edition?: EditionKey) { return this.editions.commercialPackaging(edition); }
   async editionSetState(entitlementId: string, state: "enabled" | "restricted" | "disabled", actor: string) { return this.editions.setEntitlementState(entitlementId, state, actor); }
   async editionEntitlements(tenantId?: string, edition?: string) { return this.editions.listEntitlements(tenantId, edition); }
   async editionClassify(input: Parameters<EditionPackaging["classifyCapability"]>[0]) { return this.editions.classifyCapability(regulatorySchema.parse(input)); }
@@ -1059,6 +1064,25 @@ export class HealthService {
   async editionExchange(input: Parameters<EditionPackaging["authorizeExchange"]>[0]) { return this.editions.authorizeExchange(input); }
   async editionLaunch(edition: EditionKey, evidence: Record<string, boolean>, approver: string) { return this.editions.recordLaunchGate(edition, evidence, approver); }
   async editionPortfolioView() { return this.editions.portfolio(); }
+
+  // ── Measurement framework — evidence before guarantees ────────────
+  private get outcomes() { return new OutcomeAssurance(this.workspaceId, this.userId, this.role); }
+  private get releases() { return new ReleaseSequencing(this.workspaceId, this.userId, this.role); }
+  get outcomeMeasures() { return OUTCOME_MEASURES; }
+  get outcomeApi() { return OUTCOME_API; }
+  get releasePhases() { return RELEASE_PHASES; }
+  get featureRiskTiers() { return FEATURE_RISK_TIERS; }
+  get releaseApi() { return RELEASE_API; }
+  outcomeValidateClaim(input: Parameters<OutcomeAssurance["reviewClaim"]>[0]) { return validateClaim(claimReviewSchema.parse(input)); }
+  async outcomeRecord(input: Parameters<OutcomeAssurance["recordMeasurement"]>[0]) { return this.outcomes.recordMeasurement(measurementSchema.parse(input)); }
+  async outcomeReadings(measureId?: string, edition?: string) { return this.outcomes.listMeasurements(measureId, edition); }
+  async outcomeClaim(input: Parameters<OutcomeAssurance["reviewClaim"]>[0]) { return this.outcomes.reviewClaim(input); }
+  async outcomeClaims(permittedOnly?: boolean) { return this.outcomes.listClaimReviews(permittedOnly); }
+  async outcomeDashboard(edition?: string) { return this.outcomes.dashboard(edition); }
+  outcomePhaseGate(phase: ReleasePhase, evidence: Record<string, boolean>) { return phaseGateStatus(phase, evidence); }
+  async releaseFeature(input: Parameters<ReleaseSequencing["registerFeature"]>[0]) { return this.releases.registerFeature(featureCatalogSchema.parse(input)); }
+  async releaseFeatures(tier?: string, phase?: number) { return this.releases.listFeatures(tier, phase); }
+  async releaseCoverage() { return this.releases.catalogCoverage(); }
 
   // ── N0VA Personal — consumer companion, never a clinical substitute ──
   get personalPromise() { return PRODUCT_PROMISE; }

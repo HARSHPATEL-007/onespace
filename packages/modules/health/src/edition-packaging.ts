@@ -69,6 +69,11 @@ export type EditionKey = keyof typeof EDITIONS;
 
 // UHR is the specific unified health-record capability N0VA provides — never
 // marketed as a legally equivalent EHR without applicable certification.
+export const UHR_GLOSSARY = {
+  term: "UHR (Unified Health Record)",
+  definition:
+    "The specific unified health-record capability N0VA provides: a longitudinal, provenance-labeled workspace over patient data. It must not be marketed as a legally equivalent EHR unless the applicable certification and regulatory requirements are met.",
+} as const;
 
 // ── Shared platform foundation (shared services, separated exposure) ──
 export const PLATFORM_FOUNDATION = [
@@ -226,8 +231,13 @@ export const entitlementSchema = z.object({
   requires: z.string().default(""),
   addOn: z.string().default(""),
   region: z.string().default(""),
+  organization: z.string().default(""),
   specialty: z.string().default(""),
   userRole: z.string().default(""),
+  patientPopulation: z.string().default(""),
+  deviceCatalog: z.string().default(""),
+  aiModel: z.string().default(""),
+  dataDomain: z.string().default(""),
   effectiveDate: z.coerce.date().optional(),
   expiry: z.coerce.date().optional().nullable(),
   approvalRequirement: z.string().default(""),
@@ -246,6 +256,146 @@ export function entitlementCoherent(edition: EditionKey, capability: string, add
     return { coherent: true, reason: `licensed add-on — does not promote ${EDITIONS[edition].label} into another edition` };
   }
   return { coherent: false, reason: `capability ${capability} is neither native to ${EDITIONS[edition].label} nor a licensed add-on` };
+}
+
+// Bulk entitlement document — the tenant-level contract from the packaging
+// spec: one edition, N capability states, one version, one approver.
+// A feature being technically available never means it is commercially,
+// clinically, or legally enabled.
+export const entitlementDocumentSchema = z.object({
+  tenantId: z.string().min(1),
+  edition: z.enum(["NOVA_PERSONAL", "NOVA_CARE", "NOVA_CLINICAL", "NOVA_RESEARCH", "NOVA_PUBLIC_HEALTH"]),
+  entitlements: z.array(z.object({
+    capability: z.string().min(1),
+    state: z.enum(["enabled", "restricted", "disabled"]).default("enabled"),
+    scope: z.string().default("tenant"),
+    requires: z.string().default(""),
+    addOn: z.string().default(""),
+    region: z.string().default(""),
+    organization: z.string().default(""),
+    specialty: z.string().default(""),
+    userRole: z.string().default(""),
+    patientPopulation: z.string().default(""),
+    deviceCatalog: z.string().default(""),
+    aiModel: z.string().default(""),
+    dataDomain: z.string().default(""),
+    effectiveDate: z.coerce.date().optional(),
+    expiry: z.coerce.date().optional().nullable(),
+    approvalRequirement: z.string().default(""),
+    usageLimit: z.string().default(""),
+    residencyConstraint: z.string().default(""),
+  })).min(1),
+  effectiveVersion: z.string().default("2026.09.4"),
+  approvedBy: z.string().min(1),
+});
+
+export interface EntitlementCheckContext {
+  capability: string;
+  userRole?: string;
+  region?: string;
+  organization?: string;
+  specialty?: string;
+  patientPopulation?: string;
+  deviceCatalog?: string;
+  aiModel?: string;
+  dataDomain?: string;
+  residency?: string;
+  approvals?: Record<string, boolean>;
+}
+
+// Request-time enforcement: evaluate stored entitlement rows against the
+// caller's context. Disabled wins; restricted needs its named requirement;
+// dimension-scoped rows only match callers inside that scope; expired rows
+// never grant. No row → denied closed.
+export function checkEntitlement(
+  rows: Array<Record<string, unknown>>,
+  ctx: EntitlementCheckContext,
+): { allowed: boolean; state: string; reason: string } {
+  const now = Date.now();
+  const matching = rows.filter((r) => r.capability === ctx.capability);
+  if (matching.length === 0) {
+    return { allowed: false, state: "disabled", reason: `no entitlement grants ${ctx.capability} — denied closed` };
+  }
+  if (matching.some((r) => r.state === "disabled")) {
+    return { allowed: false, state: "disabled", reason: `${ctx.capability} is explicitly disabled for this tenant` };
+  }
+  const live = matching.filter((r) => {
+    if (r.expiry && new Date(r.expiry as string).getTime() <= now) return false;
+    if (r.effectiveDate && new Date(r.effectiveDate as string).getTime() > now) return false;
+    const dims: Array<[string, string | undefined]> = [
+      ["region", ctx.region], ["organization", ctx.organization],
+      ["specialty", ctx.specialty], ["userRole", ctx.userRole],
+      ["patientPopulation", ctx.patientPopulation], ["deviceCatalog", ctx.deviceCatalog],
+      ["aiModel", ctx.aiModel], ["dataDomain", ctx.dataDomain],
+    ];
+    return dims.every(([k, v]) => {
+      const scoped = r[k] as string | undefined;
+      if (!scoped) return true;
+      return v === scoped;
+    });
+  });
+  if (live.length === 0) {
+    return { allowed: false, state: "disabled", reason: `${ctx.capability} has no live, in-scope entitlement for this context` };
+  }
+  const restricted = live.filter((r) => r.state === "restricted");
+  if (restricted.length > 0) {
+    const unmet = restricted.filter((r) => {
+      const need = (r.requires as string) || (r.approvalRequirement as string);
+      if (!need) return true;
+      return !(ctx.approvals?.[need]);
+    });
+    if (unmet.length === live.length) {
+      const needs = [...new Set(unmet.map((r) => (r.requires as string) || (r.approvalRequirement as string) || "approval"))];
+      return { allowed: false, state: "restricted", reason: `${ctx.capability} is restricted — missing: ${needs.join("; ")}` };
+    }
+    const met = live.find((r) => {
+      if (r.state !== "restricted") return false;
+      const need = (r.requires as string) || (r.approvalRequirement as string);
+      return !need || ctx.approvals?.[need];
+    });
+    if (met) return { allowed: true, state: "restricted", reason: `${ctx.capability} granted under restriction (${(met.requires as string) || (met.approvalRequirement as string)})` };
+  }
+  const enabled = live.find((r) => r.state === "enabled");
+  if (enabled) {
+    if (ctx.residency && enabled.residencyConstraint && ctx.residency !== enabled.residencyConstraint) {
+      return { allowed: false, state: "disabled", reason: `${ctx.capability} residency constraint not satisfied` };
+    }
+    return { allowed: true, state: "enabled", reason: `${ctx.capability} enabled (${(enabled.scope as string) || "tenant"} scope)` };
+  }
+  return { allowed: false, state: "restricted", reason: `${ctx.capability} has no satisfied grant` };
+}
+
+// ── Commercial packaging ────────────────────────────────────────────
+// Module availability never implies edition equivalence: adding RPM to
+// N0VA Personal does not make it N0VA Care; analytics on N0VA Care does
+// not create a hospital-grade clinical platform.
+export const COMMERCIAL_BASIS: Record<EditionKey, string> = {
+  NOVA_PERSONAL: "Free, premium, family, device, or partner subscription",
+  NOVA_CARE: "Per clinician, per site, per active patient, or hybrid",
+  NOVA_CLINICAL: "Enterprise contract, implementation, availability, and module fees",
+  NOVA_RESEARCH: "Project, cohort, workspace, study, or sponsor contract",
+  NOVA_PUBLIC_HEALTH: "Government or agency contract, population, region, or program",
+};
+
+export const SERVICE_LEVELS: Record<EditionKey, { availability: string; support: string; release: string; continuity: string }> = {
+  NOVA_PERSONAL: { availability: "High, with consumer fallback", support: "Self-service plus support", release: "Frequent controlled releases", continuity: "Consumer-grade fallback" },
+  NOVA_CARE: { availability: "High during clinic operations", support: "Business-hours or extended support", release: "Tenant-staged releases", continuity: "Tenant-staged recovery" },
+  NOVA_CLINICAL: { availability: "Mission-critical", support: "24/7 operations and escalation", release: "Validated enterprise releases", continuity: "Regional failover, formal incident command, tested continuity" },
+  NOVA_RESEARCH: { availability: "Contract-defined", support: "Project and platform support", release: "Study-controlled releases", continuity: "Contract-defined recovery" },
+  NOVA_PUBLIC_HEALTH: { availability: "Emergency and policy-driven", support: "Government operations center", release: "Governed regional releases", continuity: "Regional failover, formal incident command, tested continuity" },
+};
+
+const NON_PROMOTING_ADDONS: Array<{ edition: EditionKey; capability: string; notEdition: EditionKey }> = [
+  { edition: "NOVA_PERSONAL", capability: "rpm", notEdition: "NOVA_CARE" },
+  { edition: "NOVA_CARE", capability: "advanced_analytics", notEdition: "NOVA_CLINICAL" },
+];
+
+export function moduleEquivalenceCheck(edition: EditionKey, capability: string): { equivalent: false; note: string } {
+  const rule = NON_PROMOTING_ADDONS.find((r) => r.edition === edition && r.capability === capability);
+  if (rule) {
+    return { equivalent: false as const, note: `${capability} on ${EDITIONS[edition].label} is a licensed module — it does not make it ${EDITIONS[rule.notEdition].label}` };
+  }
+  return { equivalent: false as const, note: `Modules never promote ${EDITIONS[edition].label} into another edition` };
 }
 
 // ── Regulatory classification — every clinical/AI capability ──────────
@@ -385,7 +535,9 @@ export class EditionPackaging {
           workspaceId: this.workspaceId, entitlementId: id, tenantId: parsed.tenantId,
           edition: parsed.edition, capability: parsed.capability, state: parsed.state,
           scope: parsed.scope, requires: parsed.requires, addOn: parsed.addOn,
-          region: parsed.region, specialty: parsed.specialty, userRole: parsed.userRole,
+          region: parsed.region, organization: parsed.organization, specialty: parsed.specialty, userRole: parsed.userRole,
+          patientPopulation: parsed.patientPopulation, deviceCatalog: parsed.deviceCatalog,
+          aiModel: parsed.aiModel, dataDomain: parsed.dataDomain,
           effectiveDate: parsed.effectiveDate ?? null, expiry: parsed.expiry ?? null,
           approvalRequirement: parsed.approvalRequirement, usageLimit: parsed.usageLimit,
           residencyConstraint: parsed.residencyConstraint, approvedBy: parsed.approvedBy,
@@ -419,6 +571,92 @@ export class EditionPackaging {
     if (tenantId) all = all.filter((e) => (e as Record<string, unknown>).tenantId === tenantId);
     if (edition) all = all.filter((e) => (e as Record<string, unknown>).edition === edition);
     return all;
+  }
+
+  // ── Bulk entitlement document — the tenant commercial contract ─────
+  // Applies the spec-shaped document (tenant + edition + N capability
+  // states + version + approver) as individual versioned policy rows.
+  // Each row is coherence-checked so a module can never promote an edition.
+  async applyEntitlementDocument(input: z.infer<typeof entitlementDocumentSchema>) {
+    await this.assert("CREATE");
+    const parsed = entitlementDocumentSchema.parse(input);
+    const applied: unknown[] = [];
+    const rejected: Array<{ capability: string; reason: string }> = [];
+    for (const e of parsed.entitlements) {
+      const coherence = entitlementCoherent(parsed.edition, e.capability, e.addOn ? [e.addOn] : []);
+      if (!coherence.coherent) {
+        rejected.push({ capability: e.capability, reason: coherence.reason });
+        continue;
+      }
+      if (e.expiry && e.expiry.getTime() <= Date.now()) {
+        rejected.push({ capability: e.capability, reason: "expiry must be in the future" });
+        continue;
+      }
+      if (e.state === "restricted" && !e.requires && !e.approvalRequirement) {
+        rejected.push({ capability: e.capability, reason: "restricted capabilities must name their requirement" });
+        continue;
+      }
+      const id = `ent-${crypto.randomUUID().slice(0, 8)}`;
+      const row = await safe(
+        () => (prisma as unknown as EditionTables).healthEditionEntitlement.create({
+          data: {
+            workspaceId: this.workspaceId, entitlementId: id, tenantId: parsed.tenantId,
+            edition: parsed.edition, capability: e.capability, state: e.state,
+            scope: e.scope, requires: e.requires, addOn: e.addOn,
+            region: e.region, organization: e.organization, specialty: e.specialty, userRole: e.userRole,
+            patientPopulation: e.patientPopulation, deviceCatalog: e.deviceCatalog,
+            aiModel: e.aiModel, dataDomain: e.dataDomain,
+            effectiveDate: e.effectiveDate ?? null, expiry: e.expiry ?? null,
+            approvalRequirement: e.approvalRequirement, usageLimit: e.usageLimit,
+            residencyConstraint: e.residencyConstraint, approvedBy: parsed.approvedBy,
+            effectiveVersion: parsed.effectiveVersion, createdById: this.userId,
+          },
+        }) as Promise<never>,
+        null,
+      );
+      const stored: StoredRow = {
+        id, workspaceId: this.workspaceId, tenantId: parsed.tenantId,
+        edition: parsed.edition, ...(e as unknown as Record<string, unknown>),
+        approvedBy: parsed.approvedBy, effectiveVersion: parsed.effectiveVersion,
+      };
+      if (!row) memPush(memEntitlements, this.workspaceId, stored);
+      applied.push((row as unknown) ?? stored);
+    }
+    await this.audit("editions.entitlement.document_applied", parsed.tenantId, {
+      edition: parsed.edition, applied: applied.length, rejected: rejected.length,
+      effectiveVersion: parsed.effectiveVersion, approvedBy: parsed.approvedBy,
+    });
+    return {
+      tenantId: parsed.tenantId, edition: parsed.edition,
+      effectiveVersion: parsed.effectiveVersion, approvedBy: parsed.approvedBy,
+      applied, rejected,
+    };
+  }
+
+  // ── Request-time enforcement — technical availability ≠ enablement ──
+  async evaluateEntitlement(tenantId: string, edition: string, ctx: EntitlementCheckContext) {
+    await this.assert("READ");
+    const rows = await this.listEntitlements(tenantId, edition);
+    return checkEntitlement(rows as Array<Record<string, unknown>>, ctx);
+  }
+
+  // ── Commercial packaging — basis, service levels, equivalence ──────
+  async commercialPackaging(edition?: EditionKey) {
+    await this.assert("READ");
+    const keys = (edition ? [edition] : Object.keys(EDITIONS)) as EditionKey[];
+    return {
+      version: EDITION_PACKAGING_VERSION,
+      editions: keys.map((k) => ({
+        edition: k, label: EDITIONS[k].label,
+        commercialBasis: COMMERCIAL_BASIS[k],
+        serviceLevel: SERVICE_LEVELS[k],
+        dataDomain: EDITIONS[k].dataDomain,
+        deployment: EDITIONS[k].deployment,
+      })),
+      optionalModules: [...OPTIONAL_MODULES],
+      note: "Module availability never implies edition equivalence.",
+      generatedAt: new Date().toISOString(),
+    };
   }
 
   // ── Regulatory classification — explicit for every capability ─────
@@ -569,7 +807,8 @@ export class EditionPackaging {
 
 // ── Static reference exports ──────────────────────────────────────────
 export const EDITION_API = [
-  "grantEntitlement", "setEntitlementState", "listEntitlements",
+  "grantEntitlement", "applyEntitlementDocument", "evaluateEntitlement",
+  "setEntitlementState", "listEntitlements",
   "classifyCapability", "classifyAi", "activateAi", "listAi",
-  "authorizeExchange", "recordLaunchGate", "portfolio",
+  "authorizeExchange", "recordLaunchGate", "commercialPackaging", "portfolio",
 ] as const;

@@ -32,7 +32,9 @@
     "./care-operating": "./src/care-operating.ts",
     "./clinical-enterprise": "./src/clinical-enterprise.ts",
     "./research-governance": "./src/research-governance.ts",
-    "./public-health": "./src/public-health.ts"
+    "./public-health": "./src/public-health.ts",
+    "./measurement-framework": "./src/measurement-framework.ts",
+    "./release-sequencing": "./src/release-sequencing.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
