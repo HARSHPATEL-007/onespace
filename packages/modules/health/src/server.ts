@@ -18,6 +18,7 @@ import { OfflineEdgeRuntime, OFFLINE_MODES, OFFLINE_API, FHIR_OFFLINE_RESOURCES,
 import { TransactionReliabilityLayer, TXN_ARCHITECTURE, TXN_STATES, TXN_API, FHIR_TXN_RESOURCES, SAGA_DEFINITIONS } from "./transaction-reliability";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 import { PrivacyAnalyticsPlane, ANALYTICS_ZONES, PRIVACY_MODES, PRIVACY_ARCHITECTURE, TRANSFORMATION_GATEWAY, GATEWAY_PIPELINE, OUTPUT_CONTROLS, ROLLOUT_PHASES, PRIVACY_API, GENOMIC_ACCESS_LEVELS, CLEAN_ROOM_CONTROLS, FEDERATED_SITE_CHECKS, FL_MODEL_RISK_TESTS, CONFIDENTIAL_COMPUTE_CONTROLS, PRIVACY_OPS_TILES, scoreQueryRisk, enforceCohortSize, safeCountDisplay, binAge, monthOnly, safeHarborTransform, studyPseudonym, laplaceNoise, dpNoisyCount, testSyntheticDisclosure, queryAssessmentSchema, privacyPolicySchema, releaseLedgerSchema, privacyIncidentSchema, dpReleaseSchema, deidRecordSchema, syntheticCertSchema } from "./privacy-analytics";
+import { CyberResilienceProgram, PROTECTION_DIMENSIONS, RESILIENCE_PIPELINE, RESPONSE_LEVERS, CLINICAL_TIERS, RECOVERY_ORDER, ASSET_TYPES, SBOM_FIELDS, SBOM_GENERATION_TRIGGERS, SBOM_LINK_TARGETS, SUPPLY_CHAIN_CONTROLS, ARTIFACT_ADMISSION, VULN_LIFECYCLE, QUARANTINE_STATES, QUARANTINE_WORKFLOW, RANSOMWARE_PREVENT, RANSOMWARE_RESPONSE, BACKUP_TYPES, BACKUP_CONTROLS, BACKUP_PRINCIPLE, RECOVERY_VALIDATION, CONTINUITY_CAPABILITIES, TABLETOP_SCENARIOS, RED_TEAM_TARGETS, RED_TEAM_BOUNDARIES, DRILL_TYPES, DRILL_STAGES, POST_RESTORE_DEVICE_CHECKS, INTEGRITY_SIGNALS, VENDOR_REQUIREMENTS, VENDOR_ACCESS_RULES, CYBER_API, tierForService, canDeclareRecovered, productionReadinessGate, sbomLinkCheck, artifactAdmissionCheck, rankVulnerability, canTransitionVuln, validateFirmware, quarantineDecision, backupRestorable, recoveryChecklistGaps, assetSchema, sbomSchema, vulnSchema, vulnExceptionSchema, disclosureSchema, devicePatchSchema, compensatingSchema, firmwareSchema, backupSchema, exerciseSchema, vendorSchema, cyberIncidentSchema, CYBER_PROGRAM_VERSION } from "./cyber-resilience";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -345,6 +346,7 @@ export class HealthService {
   private get txn() { return new TransactionReliabilityLayer(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
   private get privacy() { return new PrivacyAnalyticsPlane(this.workspaceId, this.userId, this.role); }
+  private get cyber() { return new CyberResilienceProgram(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -906,6 +908,51 @@ export class HealthService {
   async privacyReportIncident(input: Parameters<PrivacyAnalyticsPlane["reportIncident"]>[0]) { return this.privacy.reportIncident(privacyIncidentSchema.parse(input)); }
   async privacyListIncidents(status?: string) { return this.privacy.listIncidents(status); }
   async privacyResolveIncident(id: string, resolution: string) { return this.privacy.resolveIncident(id, resolution); }
+
+  // ── Cybersecurity and Clinical Resilience Program ────────────────
+  // Distrust, isolate, restore, and clinically validate every component;
+  // a cybersecurity event must never become a silent patient-safety event.
+  get protectionDimensions() { return PROTECTION_DIMENSIONS; }
+  get resiliencePipeline() { return RESILIENCE_PIPELINE; }
+  get responseLevers() { return RESPONSE_LEVERS; }
+  get clinicalTiers() { return CLINICAL_TIERS; }
+  get recoveryOrder() { return RECOVERY_ORDER; }
+  get cyberApi() { return CYBER_API; }
+  tierForService(service: string) { return tierForService(service); }
+  cyberRecoveryBlockers(deps: Parameters<typeof canDeclareRecovered>[0]) { return canDeclareRecovered(deps); }
+  rankCyberVuln(factors: Record<string, number>) { return rankVulnerability(factors); }
+  checkFirmware(input: Parameters<typeof validateFirmware>[0]) { return validateFirmware(firmwareSchema.parse(input)); }
+  decideQuarantine(trigger: string, criticality: string, lifeCritical: boolean, trustworthy: boolean) { return quarantineDecision(trigger, criticality, lifeCritical, trustworthy); }
+  checkBackupRestorable(input: Parameters<typeof backupRestorable>[0]) { return backupRestorable(input); }
+  async cyberRegisterAsset(input: Parameters<CyberResilienceProgram["registerAsset"]>[0]) { return this.cyber.registerAsset(assetSchema.parse(input)); }
+  async cyberListAssets(opts?: Parameters<CyberResilienceProgram["listAssets"]>[0]) { return this.cyber.listAssets(opts); }
+  async cyberRecordSbom(input: Parameters<CyberResilienceProgram["recordSbom"]>[0]) { return this.cyber.recordSbom(sbomSchema.parse(input)); }
+  async cyberListSboms() { return this.cyber.listSboms(); }
+  async cyberReportVuln(input: Parameters<CyberResilienceProgram["reportVulnerability"]>[0]) { return this.cyber.reportVulnerability(vulnSchema.parse(input)); }
+  async cyberTransitionVuln(vulnId: string, to: string) { return this.cyber.transitionVuln(vulnId, to); }
+  async cyberGrantException(input: Parameters<CyberResilienceProgram["grantException"]>[0]) { return this.cyber.grantException(vulnExceptionSchema.parse(input)); }
+  async cyberListVulns(status?: string) { return this.cyber.listVulns(status); }
+  async cyberDisclosure(input: Parameters<CyberResilienceProgram["disclosureIntake"]>[0]) { return this.cyber.disclosureIntake(disclosureSchema.parse(input)); }
+  async cyberPlanPatch(input: Parameters<CyberResilienceProgram["planDevicePatch"]>[0]) { return this.cyber.planDevicePatch(devicePatchSchema.parse(input)); }
+  async cyberAdvancePatch(patchId: string, to: string, approver?: string) { return this.cyber.advancePatch(patchId, to, approver); }
+  async cyberCompensating(input: Parameters<CyberResilienceProgram["recordCompensating"]>[0]) { return this.cyber.recordCompensating(compensatingSchema.parse(input)); }
+  async cyberFirmware(input: Parameters<CyberResilienceProgram["validateFirmware"]>[0]) { return this.cyber.validateFirmware(firmwareSchema.parse(input)); }
+  async cyberQuarantine(input: Parameters<CyberResilienceProgram["quarantineDevice"]>[0]) { return this.cyber.quarantineDevice(input); }
+  async cyberRevalidate(quarantineId: string, checks: Record<string, boolean>) { return this.cyber.revalidateDevice(quarantineId, checks); }
+  async cyberListQuarantines(state?: string) { return this.cyber.listQuarantines(state); }
+  async cyberRecordBackup(input: Parameters<CyberResilienceProgram["recordBackup"]>[0]) { return this.cyber.recordBackup(backupSchema.parse(input)); }
+  async cyberDeclareRestored(input: Parameters<CyberResilienceProgram["declareRestored"]>[0]) { return this.cyber.declareRestored(input); }
+  async cyberValidateClinically(recoveryId: string, by: string, checks: Record<string, boolean>) { return this.cyber.declareClinicallyValidated(recoveryId, by, checks); }
+  async cyberReconcile(recoveryId: string, events: Parameters<CyberResilienceProgram["reconcileDowntime"]>[1]) { return this.cyber.reconcileDowntime(recoveryId, events); }
+  async cyberContinuity() { return this.cyber.continuityStatus(); }
+  async cyberExercise(input: Parameters<CyberResilienceProgram["recordExercise"]>[0]) { return this.cyber.recordExercise(exerciseSchema.parse(input)); }
+  async cyberListExercises(kind?: string) { return this.cyber.listExercises(kind); }
+  async cyberVendor(input: Parameters<CyberResilienceProgram["reviewVendor"]>[0]) { return this.cyber.reviewVendor(vendorSchema.parse(input)); }
+  async cyberIntegrity(signal: Parameters<CyberResilienceProgram["reportIntegritySignal"]>[0]) { return this.cyber.reportIntegritySignal(signal); }
+  async cyberDashboards() { return this.cyber.dashboards(); }
+  async cyberReportIncident(input: Parameters<CyberResilienceProgram["reportIncident"]>[0]) { return this.cyber.reportIncident(cyberIncidentSchema.parse(input)); }
+  async cyberListIncidents(status?: string) { return this.cyber.listIncidents(status); }
+  async cyberResolveIncident(id: string, resolution: string, owners?: Record<string, string>) { return this.cyber.resolveIncident(id, resolution, owners); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

@@ -40,6 +40,7 @@ const TABS = [
   { id: "offline", label: "Offline & Edge" },
   { id: "reliability", label: "Reliability" },
   { id: "privacy", label: "Privacy Analytics" },
+  { id: "resilience", label: "Cyber Resilience" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2797,6 +2798,27 @@ Which measurements produced this estimate? Which model version? Did corrected re
               <div className="nv-card" style={{ padding:10 }}><b>Ledger + withdrawal</b><div style={{ color:"var(--nv-color-text-faint)"}}>Every release records what, whom, purpose, risk, recipient, expiry. Withdrawal propagates to downstream artifacts.</div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.privacyUpsertPolicy / privacyAssessQuery / privacyRelease / privacyDpCount / privacyConsumeBudget / privacyPseudonymize / privacyDeidentify / privacyCertifySynthetic / privacyCleanRoomRequest / privacyAuthorizeGenomic / privacyLineage / privacyPropagateWithdrawal / privacyOpsDashboard / privacyReportIncident. Full docs in privacy-analytics.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "resilience" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Cybersecurity & Clinical Resilience — Distrust, Isolate, Restore, Validate" subtitle="Prevent compromise AND continue safe care. Risk-based recovery: Tier 0 life-safety (minutes) does not share objectives with Tier 4 research (days). Technical restoration and clinical validation are separate states." action={<><Badge tone="primary">5 Dimensions</Badge><Badge tone="warning">Tiered RTO/RPO</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Confidentiality","Integrity","Availability","Authenticity","Clinical continuity"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              Pipeline: inventory + SBOM → threat intel → supply-chain → monitoring → response (quarantine / revoke / isolate / degrade / fallback) → immutable recovery → validated restoration → reconciliation → improvement.
+              No asset enters production without owner, support status, criticality, recovery target, security contact, and fallback. Quarantine never silently disconnects a life-critical device.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Assets + SBOM</b><div style={{ color:"var(--nv-color-text-faint)"}}>Authoritative inventory (20 types) with production-readiness gate. SBOM per artifact linked to deployment, firmware, vulns, controls.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Vulns + disclosure</b><div style={{ color:"var(--nv-color-text-faint)"}}>Ranked by exploitability, exposure, clinical impact — not severity alone. Ordered lifecycle; exceptions expire, never permanent.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Devices + firmware</b><div style={{ color:"var(--nv-color-text-faint)"}}>Staged, clinically approved patching; time-limited compensating controls; signature-gated firmware; safety-aware quarantine.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Ransomware + backups</b><div style={{ color:"var(--nv-color-text-faint)"}}>3-2-1 backups (immutable + offline). Never restore recent-but-compromised copies — integrity, malware, and dependency order first.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Recovery + continuity</b><div style={{ color:"var(--nv-color-text-faint)"}}>Dependency-ordered restore; restored ≠ validated until clinicians verify meds, allergies, results, identity, audit. Visible stale-data warnings.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Exercises + vendors</b><div style={{ color:"var(--nv-color-text-faint)"}}>Tabletops, bounded red-teams (retested after fix), DR drills with RTO/RPO measurement. Vendors: JIT, scoped, logged, auto-revoked.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.cyberRegisterAsset / cyberRecordSbom / cyberReportVuln / cyberPlanPatch / cyberFirmware / cyberQuarantine / cyberRecordBackup / cyberDeclareRestored / cyberValidateClinically / cyberReconcile / cyberExercise / cyberVendor / cyberDashboards / cyberReportIncident. Full docs in cyber-resilience.ts.</div>
           </Section>
         </div>
       )}

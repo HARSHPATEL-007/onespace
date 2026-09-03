@@ -23,7 +23,8 @@
     "./interoperability": "./src/interoperability.ts",
     "./offline-edge": "./src/offline-edge.ts",
     "./transaction-reliability": "./src/transaction-reliability.ts",
-    "./privacy-analytics": "./src/privacy-analytics.ts"
+    "./privacy-analytics": "./src/privacy-analytics.ts",
+    "./cyber-resilience": "./src/cyber-resilience.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

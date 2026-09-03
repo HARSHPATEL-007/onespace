@@ -220,6 +220,13 @@ integrations    Integration[]
   healthPrivacyReleases HealthPrivacyRelease[]
   healthPrivacyBudgets HealthPrivacyBudget[]
   healthPrivacyIncidents HealthPrivacyIncident[]
+  healthCyberAssets HealthCyberAsset[]
+  healthCyberSboms HealthCyberSbom[]
+  healthCyberVulns HealthCyberVuln[]
+  healthCyberQuarantines HealthCyberQuarantine[]
+  healthCyberRecoveries HealthCyberRecovery[]
+  healthCyberIncidents HealthCyberIncident[]
+  healthCyberExercises HealthCyberExercise[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -11813,4 +11820,174 @@ model HealthPrivacyIncident {
 
   @@unique([workspaceId, incidentId])
   @@index([workspaceId, status])
+}
+
+/// N0VA HEALTH — Cybersecurity and Clinical Resilience Program.
+/// Authoritative asset/integration/device/firmware inventory, SBOMs,
+/// vulnerability lifecycle, device quarantine, recovery with separate
+/// technical vs clinical validation, exercises, and cyber incidents.
+/// A cybersecurity event must never become a silent patient-safety event.
+model HealthCyberAsset {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  assetId            String
+  assetType          String
+  owner              String
+  environment        String   @default("production")
+  clinicalCriticality String  @default("medium")
+  patientData        Boolean  @default(false)
+  networkZone        String   @default("default")
+  vendor             String   @default("")
+  firmware           String   @default("")
+  sbomRef            String   @default("")
+  supportStatus      String   @default("supported")
+  patchWindow        String   @default("configured")
+  rto                String   @default("configured")
+  rpo                String   @default("configured")
+  fallback           String   @default("")
+  securityContact    String   @default("")
+  lastValidation     String   @default("")
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, assetId])
+  @@index([workspaceId, environment])
+  @@index([workspaceId, clinicalCriticality])
+}
+
+/// Software bill of materials per deployable artifact.
+model HealthCyberSbom {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  sbomId          String
+  artifact        String
+  artifactDigest  String   @default("")
+  format          String   @default("configured")
+  generatedAt     DateTime @default(now())
+  components      Json     @default("[]")
+  signer          String   @default("")
+  signature       String   @default("")
+  vulnerabilityScan String @default("completed")
+  createdById     String?
+  createdAt       DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sbomId])
+  @@index([workspaceId, artifact])
+}
+
+/// Vulnerability with risk ranking beyond severity + ordered lifecycle.
+model HealthCyberVuln {
+  id          String   @id @default(uuid())
+  workspaceId String
+  vulnId      String
+  assetId     String
+  title       String
+  severity    String   @default("HIGH")
+  factors     Json     @default("{}")
+  riskScore   Int      @default(0)
+  riskLevel   String   @default("MODERATE")
+  status      String   @default("DISCOVERED")
+  assignee    String   @default("")
+  evidence    String   @default("")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, vulnId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, riskLevel])
+}
+
+/// Device quarantine with clinical-safety-aware states.
+model HealthCyberQuarantine {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  quarantineId       String
+  deviceId           String
+  trigger            String
+  state              String   @default("OBSERVATION")
+  clinicalCriticality String  @default("medium")
+  lifeCritical       Boolean  @default(false)
+  clinicianMessage   String   @default("")
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, quarantineId])
+  @@index([workspaceId, state])
+}
+
+/// Recovery record: technical restoration and clinical validation are separate states.
+model HealthCyberRecovery {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  recoveryId         String
+  service            String
+  tier               String   @default("TIER_4")
+  technicalRestored  Boolean  @default(false)
+  clinicallyValidated Boolean @default(false)
+  validatedBy        String?
+  rtoMinutes         Int?
+  rpoMinutes         Int?
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, recoveryId])
+  @@index([workspaceId, service])
+}
+
+/// Cybersecurity incident with clinical-aware response actions.
+model HealthCyberIncident {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  incidentId     String
+  kind           String
+  severity       String   @default("HIGH")
+  assetId        String?
+  detail         String   @default("")
+  status         String   @default("OPEN")
+  responseActions String[] @default([])
+  resolution     String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, incidentId])
+  @@index([workspaceId, status])
+}
+
+/// Tabletop, red-team, and disaster-recovery drill records.
+model HealthCyberExercise {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  exerciseId       String
+  kind             String
+  scenario         String
+  participants     String[] @default([])
+  findings         String[] @default([])
+  improvementOwners Json    @default("{}")
+  retestDate       DateTime?
+  status           String   @default("PLANNED")
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, exerciseId])
+  @@index([workspaceId, kind])
 }
