@@ -12,6 +12,7 @@ import { AlertIntelligence, ALERT_ARCHITECTURE, PRIORITY_TIERS, BASELINE_METRICS
 import { TwinSafeguards, TWIN_BOUNDARIES, TWIN_CAPABILITIES, TWIN_DATA_CLASSES, TIME_HORIZONS, HIGH_IMPACT_PROHIBITED, COUNTERFACTUAL_ALLOWED_FOR } from "./twin-safeguards";
 import { ClosedLoopPathways, PATHWAY_EXECUTION_MODEL, PATHWAY_LIBRARY, FHIR_PATHWAY_RESOURCES, PATHWAY_API } from "./pathways";
 import { ClinicalWorkQueue, WORK_SOURCES, WORK_PIPELINE, WORK_LIFECYCLE, WORK_QUEUES, WORK_QUEUE_API, WORK_PRIORITY_LEVELS, FHIR_WORKQUEUE_RESOURCES, AUTOMATION_LEVELS } from "./work-queue";
+import { MedicationSafetyCockpit, MEDICATION_PIPELINE, FOUR_REALITIES, BPMH_SOURCES, MEDICATION_API, FHIR_MEDICATION_RESOURCES, ALERT_CLASSES } from "./medication-safety";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -334,6 +335,7 @@ export class HealthService {
   private get twin() { return new TwinSafeguards(this.workspaceId, this.userId, this.role); }
   private get pathways() { return new ClosedLoopPathways(this.workspaceId, this.userId, this.role); }
   private get workQueue() { return new ClinicalWorkQueue(this.workspaceId, this.userId, this.role); }
+  private get medSafety() { return new MedicationSafetyCockpit(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -652,6 +654,64 @@ export class HealthService {
   async workQueueDetail(queueId: string) { return this.workQueue.queueDetail(queueId); }
   async workUpsertPolicy(input: Parameters<ClinicalWorkQueue["upsertPolicy"]>[0]) { return this.workQueue.upsertPolicy(input); }
   async workListPolicies(queue?: string) { return this.workQueue.listPolicies(queue); }
+
+  // ── Medication Safety Cockpit ───────────────────────────────────────
+  get medicationPipeline() { return MEDICATION_PIPELINE; }
+  get medicationRealities() { return FOUR_REALITIES; }
+  get bpmhSources() { return BPMH_SOURCES; }
+  get medicationApi() { return MEDICATION_API; }
+  get fhirMedicationResources() { return FHIR_MEDICATION_RESOURCES; }
+  get medicationAlertClasses() { return ALERT_CLASSES; }
+  async medListRecords(patientId?: string, status?: string) { return this.medSafety.listRecords(patientId, status); }
+  async medGetRecord(id: string) { return this.medSafety.getRecord(id); }
+  async medCreateRecord(input: Parameters<MedicationSafetyCockpit["createRecord"]>[0]) { return this.medSafety.createRecord(input); }
+  async medImportPharmacy(input: Parameters<MedicationSafetyCockpit["importPharmacy"]>[0]) { return this.medSafety.importPharmacy(input); }
+  async medImportClaims(input: Parameters<MedicationSafetyCockpit["importClaims"]>[0]) { return this.medSafety.importClaims(input); }
+  async medSubmitPhoto(input: Parameters<MedicationSafetyCockpit["submitPhoto"]>[0]) { return this.medSafety.submitPhoto(input); }
+  async medLinkPhoto(photoId: string, recordId: string, reviewerNote?: string) { return this.medSafety.linkPhoto(photoId, recordId, reviewerNote); }
+  async medListPhotos(patientId?: string, status?: string) { return this.medSafety.listPhotos(patientId, status); }
+  async medReconciliation(patientId: string) { return this.medSafety.getReconciliation(patientId); }
+  async medDetectDuplicates(patientId: string) { return this.medSafety.detectDuplicates(patientId); }
+  async medResolveDuplicate(recordId: string, resolution: string, note?: string) { return this.medSafety.resolveDuplicate(recordId, resolution, note); }
+  async medConfirm(recordId: string, input: Parameters<MedicationSafetyCockpit["confirmMedication"]>[1]) { return this.medSafety.confirmMedication(recordId, input); }
+  async medCorrect(recordId: string, input: Parameters<MedicationSafetyCockpit["correctMedication"]>[1]) { return this.medSafety.correctMedication(recordId, input); }
+  async medDispute(recordId: string, input: Parameters<MedicationSafetyCockpit["disputeMedication"]>[1]) { return this.medSafety.disputeMedication(recordId, input); }
+  async medSafetyChecks(patientId: string, context?: Parameters<MedicationSafetyCockpit["runSafetyChecks"]>[1]) { return this.medSafety.runSafetyChecks(patientId, context); }
+  async medListAlerts(patientId?: string, status?: string) { return this.medSafety.listAlerts(patientId, status); }
+  async medReviewAlert(id: string, decision: "ACKNOWLEDGED"|"RESOLVED"|"DISMISSED_WITH_REASON", reviewer: string, note?: string) { return this.medSafety.reviewAlert(id, decision, reviewer, note); }
+  async medDeprescribing(patientId: string) { return this.medSafety.deprescribingReview(patientId); }
+  async medProposeChange(input: Parameters<MedicationSafetyCockpit["proposeChange"]>[0]) { return this.medSafety.proposeChange(input); }
+  async medAuthorizeChange(id: string, authorizedBy: string) { return this.medSafety.authorizeChange(id, authorizedBy); }
+  async medExplainChange(id: string, explanation: string) { return this.medSafety.explainChange(id, explanation); }
+  async medConfirmChange(id: string, confirmation: Record<string, unknown>) { return this.medSafety.confirmChange(id, confirmation); }
+  async medSendToPharmacy(id: string) { return this.medSafety.sendToPharmacy(id); }
+  async medActivateChange(id: string) { return this.medSafety.activateChange(id); }
+  async medMarkUnconfirmed(id: string, reason: string) { return this.medSafety.markUnconfirmed(id, reason); }
+  async medGetChange(id: string) { return this.medSafety.getChange(id); }
+  async medListChanges(patientId?: string, status?: string) { return this.medSafety.listChanges(patientId, status); }
+  async medRenew(recordId: string, requestedBy: string) { return this.medSafety.renewMedication(recordId, requestedBy); }
+  async medCreateTaper(patientId: string, input: Parameters<MedicationSafetyCockpit["createTaper"]>[1]) { return this.medSafety.createTaper(patientId, input); }
+  async medActivateTaper(id: string) { return this.medSafety.activateTaper(id); }
+  async medConfirmTaper(id: string, confirmed: boolean) { return this.medSafety.confirmTaper(id, confirmed); }
+  async medListTapers(patientId?: string, status?: string) { return this.medSafety.listTapers(patientId, status); }
+  async medTitrate(input: Parameters<MedicationSafetyCockpit["titrate"]>[0]) { return this.medSafety.titrate(input); }
+  async medMissedDose(input: Parameters<MedicationSafetyCockpit["missedDoseGuidance"]>[0]) { return this.medSafety.missedDoseGuidance(input); }
+  async medStartAffordability(patientId: string, input: Parameters<MedicationSafetyCockpit["startAffordabilityReview"]>[1]) { return this.medSafety.startAffordabilityReview(patientId, input); }
+  async medDecideAffordability(id: string, options: Array<Record<string, unknown>>, selectedBy: string) { return this.medSafety.decideAffordability(id, options, selectedBy); }
+  async medConfirmAffordability(id: string) { return this.medSafety.confirmAffordability(id); }
+  async medListAffordability(patientId?: string, status?: string) { return this.medSafety.listAffordability(patientId, status); }
+  async medSendPharmacyMessage(patientId: string, input: Parameters<MedicationSafetyCockpit["sendPharmacyMessage"]>[1]) { return this.medSafety.sendPharmacyMessage(patientId, input); }
+  async medAckPharmacyMessage(id: string) { return this.medSafety.acknowledgePharmacyMessage(id); }
+  async medListPharmacyMessages(patientId?: string, status?: string) { return this.medSafety.listPharmacyMessages(patientId, status); }
+  async medReportAdverseEvent(input: Parameters<MedicationSafetyCockpit["reportAdverseEvent"]>[0]) { return this.medSafety.reportAdverseEvent(input); }
+  async medSubmitAdverseEvent(id: string, systemRef: string) { return this.medSafety.submitAdverseEvent(id, systemRef); }
+  async medListAdverseEvents(patientId?: string) { return this.medSafety.listAdverseEvents(patientId); }
+  async medAddAllergy(input: Parameters<MedicationSafetyCockpit["addAllergy"]>[0]) { return this.medSafety.addAllergy(input); }
+  async medListAllergies(patientId: string) { return this.medSafety.listAllergies(patientId); }
+  async medUpsertCsPolicy(input: Parameters<MedicationSafetyCockpit["upsertControlledPolicy"]>[0]) { return this.medSafety.upsertControlledPolicy(input); }
+  async medCsPolicies(jurisdiction?: string, medicineClass?: string) { return this.medSafety.getControlledPolicy(jurisdiction, medicineClass); }
+  async medCheckControlled(recordId: string, context: Parameters<MedicationSafetyCockpit["checkControlled"]>[1]) { return this.medSafety.checkControlled(recordId, context); }
+  async medCockpitSummary(patientId: string) { return this.medSafety.cockpitSummary(patientId); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

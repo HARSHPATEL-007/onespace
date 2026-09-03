@@ -35,6 +35,7 @@ const TABS = [
   { id: "vitals", label: "Vitals & Mesh" },
   { id: "devices", label: "Devices & IoT" },
   { id: "care", label: "Care & Pharmacy" },
+  { id: "meds", label: "Med Safety" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -229,6 +230,30 @@ export function WellnessBoard({
       if (r.ok && j?.rows) setWorkItems(j.rows);
     } catch { /* degrades gracefully */ }
   };
+  // medication safety cockpit state
+  const [medRecords, setMedRecords] = useState<Array<Record<string, unknown>>>([]);
+  const [medSummary, setMedSummary] = useState<Record<string, unknown> | null>(null);
+  const [medAlerts, setMedAlerts] = useState<Array<Record<string, unknown>>>([]);
+  const [medChanges, setMedChanges] = useState<Array<Record<string, unknown>>>([]);
+  const [medTapers, setMedTapers] = useState<Array<Record<string, unknown>>>([]);
+  const [medPhotos, setMedPhotos] = useState<Array<Record<string, unknown>>>([]);
+  const [medRecon, setMedRecon] = useState<Record<string, unknown> | null>(null);
+  const [medForm, setMedForm] = useState({ patientId:"", canonicalName:"", ingredient:"", strength:"", status:"PRESCRIBED" });
+  const refreshMeds = async (patientId?: string) => {
+    try {
+      const pid = patientId || medForm.patientId;
+      if (!pid) return;
+      const r = await fetch(`/api/health/medications?patientId=${pid}&take=50`, { cache: "no-store" });
+      const j = await r.json().catch(()=>null);
+      if (r.ok && j?.rows) setMedRecords(j.rows);
+      const s = await fetch(`/api/health/medications/summary?patientId=${pid}`, { cache: "no-store" });
+      const sj = await s.json().catch(()=>null);
+      if (s.ok && sj) setMedSummary(sj);
+      const a = await fetch(`/api/health/medications/alerts?patientId=${pid}&status=OPEN`, { cache: "no-store" });
+      const aj = await a.json().catch(()=>null);
+      if (a.ok && aj?.rows) setMedAlerts(aj.rows);
+    } catch { /* degrades gracefully */ }
+  };
 
   // fetch dashboard
   useEffect(() => {
@@ -399,6 +424,19 @@ export function WellnessBoard({
         const qo = await j(`/api/health/queue-outcomes`);
         if (alive && qo) setQueueOutcomes(qo);
         setWorkForm(prev=> ({ ...prev, patientId: demoPatient }));
+        setMedForm(prev=> ({ ...prev, patientId: demoPatient }));
+        const mr = await j(`/api/health/medications?patientId=${demoPatient}&take=20`);
+        if (alive && mr?.rows) setMedRecords(mr.rows);
+        const ms = await j(`/api/health/medications/summary?patientId=${demoPatient}`);
+        if (alive && ms) setMedSummary(ms);
+        const ma = await j(`/api/health/medications/alerts?patientId=${demoPatient}&status=OPEN`);
+        if (alive && ma?.rows) setMedAlerts(ma.rows);
+        const mc = await j(`/api/health/medications/changes?patientId=${demoPatient}`);
+        if (alive && mc?.rows) setMedChanges(mc.rows);
+        const mt = await j(`/api/health/medications/tapers?patientId=${demoPatient}`);
+        if (alive && mt?.rows) setMedTapers(mt.rows);
+        const mp = await j(`/api/health/medications/photos?patientId=${demoPatient}`);
+        if (alive && mp?.rows) setMedPhotos(mp.rows);
         setDelegationForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCarePlanForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCareTaskForm(prev=> ({ ...prev, patientId: demoPatient }));
@@ -2025,6 +2063,59 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
               <div><b>Automation (L0–L3) + Fairness + FHIR</b><div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:4 }}><Pill>L0 Observe</Pill><Pill tone="primary">L1 Assist (human confirms)</Pill><Pill tone="warning">L2 Protocol execute (audit + undo)</Pill><Pill tone="danger">L3 Human required</Pill></div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Every automated action shows rule/model, version, inputs, exclusions, review status, undo path. Stratify by specialty, setting, language, geography, age, disability, insurance, caregiver, digital access, shift — never deprioritize by vulnerability. FHIR: Task, Communication, ServiceRequest, DiagnosticReport, Observation, MedicationRequest/Dispense, Coverage, Claim, Appointment, CarePlan, Consent, Device, ResearchStudy, Provenance, AuditEvent.</div></div>
             </div>
             <div style={{ marginTop:8, padding:8, border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)", fontSize:11 }}><b>Patient communication:</b> <span style={{ color:"var(--nv-color-text-faint)"}}>“Your care team received a result that needs review. They have not yet documented a final interpretation. You will be contacted if action is needed.” — understandable language, no internal triage labels, review status shown, expected response time, urgent instructions where relevant, correction path, delivery + acknowledgement tracked, duplicates avoided, caregiver permissions respected.</span></div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "meds" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Medication Safety Cockpit — One Reconciled, Patient-Confirmed Picture" subtitle="Prescriptions + dispensing + claims + photographs + caregiver reports + actual use → BPMH → reconciliation → safety graph → pharmacist/clinician review → patient confirmation → pharmacy coordination → adverse-event tracking." action={<><Badge tone="primary">4 Realities</Badge><Badge tone="warning">12 BPMH Sources</Badge><Badge tone="success">FHIR Meds</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", fontSize:11, fontWeight:800 }}>{["Normalization","Best Possible Medication History","Reconciliation + discrepancies","Safety graph","Pharmacist + clinician review","Patient confirmation","Updated plan","Pharmacy + caregiver + follow-up","Adverse-event tracking"].map((s,i)=> <span key={s} style={{ display:"inline-flex", alignItems:"center", gap:4 }}><span style={{ padding:"4px 8px", borderRadius:999, background:"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>{s}</span>{i<8 && <span style={{ color:"var(--nv-color-text-faint)"}}>→</span>}</span>)}</div>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:8 }}>{["Prescribed: ordered","Dispensed: supplied","Reported: patient/caregiver says taken","Administered: documented given"].map((s)=> <Pill key={s} tone="primary">{s}</Pill>)}</div>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Never assume prescribed means taken, dispensed means understood, or detected means dangerous. A medicine is not “currently taking” from an old prescription or claims row alone.</div>
+          </Section>
+          <Section title="Live Medication List — Reconciled">
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px,1fr))", gap:8, marginBottom:8 }}>
+              <Stat label="CONFIRMED CURRENT" value={String(medRecords.filter(m=> String(m.status)==="PATIENT_CONFIRMED_CURRENT").length)} hint={`${String(medRecords.length)} records loaded`} />
+              <Stat label="UNCERTAIN / UNKNOWN" value={String(medRecords.filter(m=> ["UNCERTAIN","UNKNOWN"].includes(String(m.status))).length)} hint="safety-sensitive guidance held" tone="danger" />
+              <Stat label="OPEN ALERTS" value={String(medAlerts.length)} hint={`${String(medAlerts.filter(a=> ["CRITICAL","HIGH"].includes(String(a.severity))).length)} critical/high`} tone={medAlerts.some(a=> String(a.severity)==="CRITICAL") ? "danger" : undefined} />
+              <Stat label="PENDING CHANGES" value={String(medChanges.filter(c=> !["ACTIVE","CANCELLED","DECLINED","SUPERSEDED"].includes(String(c.status))).length)} hint="authorization + confirmation required" />
+            </div>
+            <div style={{ display:"flex", gap:4, marginBottom:6, flexWrap:"wrap" }}>
+              <input className="nv-input" placeholder="Patient ID (auto)" value={medForm.patientId} onChange={e=> setMedForm({...medForm, patientId:e.target.value})} style={{ flex:1, minWidth:120, fontSize:11 }} />
+              <input className="nv-input" placeholder="Name" value={medForm.canonicalName} onChange={e=> setMedForm({...medForm, canonicalName:e.target.value})} style={{ flex:1, minWidth:120, fontSize:11 }} />
+              <input className="nv-input" placeholder="Ingredient" value={medForm.ingredient} onChange={e=> setMedForm({...medForm, ingredient:e.target.value})} style={{ flex:1, minWidth:120, fontSize:11 }} />
+              <input className="nv-input" placeholder="Strength" value={medForm.strength} onChange={e=> setMedForm({...medForm, strength:e.target.value})} style={{ width:110, fontSize:11 }} />
+              <select className="nv-select" value={medForm.status} onChange={e=> setMedForm({...medForm, status:e.target.value})} style={{ fontSize:11 }}>{["PRESCRIBED","DISPENSED","PATIENT_REPORTED_CURRENT","CAREGIVER_REPORTED","ADMINISTERED","UNCERTAIN","HISTORICAL","UNKNOWN"].map(s=> <option key={s} value={s}>{s}</option>)}</select>
+              <Button size="sm" onClick={async()=> { if(!medForm.patientId || !medForm.canonicalName || !medForm.ingredient) return; const r=await fetch("/api/health/medications",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: medForm.patientId, canonicalName: medForm.canonicalName, ingredient: medForm.ingredient, strength: medForm.strength || undefined, status: medForm.status })}); if(r.ok) void refreshMeds(); }}>Add Record</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { if(!medForm.patientId) return; const r=await fetch(`/api/health/medications/safety-checks?patientId=${medForm.patientId}`,{ cache:"no-store" }); if(r.ok) void refreshMeds(); }}>Run Safety Checks</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { if(!medForm.patientId) return; const r=await fetch(`/api/health/patients/${medForm.patientId}/medications/reconciliation`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) setMedRecon(j); }}>Load Reconciliation</Button>
+            </div>
+            <div style={{ maxHeight:240, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Medicine</th><th>Ingredient</th><th>Strength</th><th>Status</th><th>Indication</th><th>Actions</th></tr></thead><tbody>{medRecords.length===0 && <tr><td colSpan={6} className="nv-empty">No medication records yet — add one above or import pharmacy/claims</td></tr>}{medRecords.slice(0,15).map((m:Record<string,unknown>,i:number)=> <tr key={String(m.id ?? i)}><td><b>{String(m.canonicalName)}</b></td><td style={{ fontSize:10 }}>{String(m.ingredient)}</td><td style={{ fontSize:10 }}>{String(m.strength ?? "—")}</td><td><Pill tone={String(m.status)==="PATIENT_CONFIRMED_CURRENT"?"success":["UNCERTAIN","UNKNOWN"].includes(String(m.status))?"danger":"neutral"}>{String(m.status)}</Pill></td><td style={{ fontSize:10, maxWidth:140 }}>{String(m.indication ?? "unknown")}</td><td style={{ display:"flex", gap:2, flexWrap:"wrap" }}>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/medications/${String(m.id)}/confirm`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ answers:{ taking_now:true }, confirmedBy:"patient" })}); if(r.ok) void refreshMeds(); }}>Confirm</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/medications/${String(m.id)}/renew`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({})}); const j=await r.json().catch(()=>null); if(!r.ok) alert(j?.error ?? "Renew failed"); else void refreshMeds(); }}>Renew</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const ev = window.prompt("Missed-dose event (missed/late/refused/vomited/unknown/could_not_obtain/device_failure):","missed"); if(!ev) return; const r=await fetch(`/api/health/medications/${String(m.id)}/missed-dose`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ eventType: ev })}); const j=await r.json().catch(()=>null); if(j) alert(String(j.guidance ?? "No guidance")); }}>Missed-dose</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const reason = window.prompt("Dispute reason:"); if(!reason) return; const r=await fetch(`/api/health/medications/${String(m.id)}/dispute`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ reason })}); if(r.ok) void refreshMeds(); }}>Dispute</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const symptom = window.prompt("Adverse symptom:"); if(!symptom) return; const r=await fetch(`/api/health/medications/${String(m.id)}/adverse-event`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: medForm.patientId, symptom })}); if(r.ok) void refreshMeds(); }}>Report AE</Button>
+            </td></tr>)}</tbody></table></div>
+            {medRecon && <div style={{ marginTop:6, padding:8, border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)", fontSize:11 }}><b>Reconciliation — realities:</b> <span style={{ color:"var(--nv-color-text-faint)"}}>{(() => { const c = (medRecon as Record<string,unknown>).counts as Record<string,number> | undefined; return c ? `prescribed ${c.prescribed} • dispensed ${c.dispensed} • reported ${c.reported} • administered ${c.administered} • uncertain ${c.uncertain}` : ""; })()}</span><div style={{ marginTop:4, maxHeight:100, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Kind</th><th>Detail</th></tr></thead><tbody>{(((medRecon as Record<string,unknown>).discrepancies as Array<Record<string,unknown>>) ?? []).map((d,i)=> <tr key={i}><td><Pill tone="warning">{String(d.kind)}</Pill></td><td style={{ fontSize:10 }}>{String(d.detail)}</td></tr>)}</tbody></table></div></div>}
+          </Section>
+          <Section title="Safety Alerts — Why, Evidence, Reviewer, Notification, Block State">
+            <div style={{ maxHeight:160, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Class</th><th>Severity</th><th>Why</th><th>Notified</th><th>Blocked</th><th>Action</th></tr></thead><tbody>{medAlerts.length===0 && <tr><td colSpan={6} className="nv-empty">No open alerts — run safety checks above</td></tr>}{medAlerts.slice(0,10).map((a:Record<string,unknown>,i:number)=> <tr key={String(a.id ?? i)}><td style={{ fontSize:10 }}>{String(a.alertClass)}</td><td><Pill tone={String(a.severity)==="CRITICAL"?"danger":String(a.severity)==="HIGH"?"warning":"neutral"}>{String(a.severity)}</Pill></td><td style={{ fontSize:10, maxWidth:260 }}>{String(a.why ?? "").slice(0,120)}</td><td>{a.patientNotified ? "yes" : "no"}</td><td>{a.actionBlocked ? "yes" : "no"}</td><td><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/medications/alerts/${String(a.id)}/review`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ decision:"RESOLVED" })}); if(r.ok) void refreshMeds(); }}>Resolve</Button></td></tr>)}</tbody></table></div>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Renal: method + trend + dialysis identified; dose changes need authorized approval. Hepatic: trend-based, never one test → failure. Pregnancy/lactation: patient-confirmed, purpose-limited, never inferred. Age: risk explained, never age-as-frailty.</div>
+          </Section>
+          <Section title="Changes, Tapers, Pharmacy, Affordability">
+            <div style={{ maxHeight:130, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Type</th><th>Status</th><th>Reason</th><th>Actions</th></tr></thead><tbody>{medChanges.length===0 && <tr><td colSpan={4} className="nv-empty">No proposed changes</td></tr>}{medChanges.slice(0,8).map((c:Record<string,unknown>,i:number)=> <tr key={String(c.id ?? i)}><td>{String(c.changeType)}</td><td><Pill tone={String(c.status)==="ACTIVE"?"success":String(c.status)==="PROPOSED"?"warning":"primary"}>{String(c.status)}</Pill></td><td style={{ fontSize:10, maxWidth:200 }}>{String(c.reason ?? "").slice(0,80)}</td><td style={{ display:"flex", gap:2, flexWrap:"wrap" }}>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/medications/changes/${String(c.id)}/authorize`,{method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"}); if(r.ok) void refreshMeds(); }}>Authorize</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/medications/changes/${String(c.id)}/confirm`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ accepted:"accepted" })}); if(r.ok) void refreshMeds(); }}>Pt-confirm</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/medications/changes/${String(c.id)}/send`,{method:"POST"}); if(r.ok) void refreshMeds(); }}>To pharmacy</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/medications/changes/${String(c.id)}/activate`,{method:"POST"}); if(r.ok) void refreshMeds(); }}>Activate</Button>
+            </td></tr>)}</tbody></table></div>
+            <div style={{ marginTop:6, display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Tapers ({String(medTapers.length)})</b><div style={{ color:"var(--nv-color-text-faint)"}}>{medTapers.length===0 ? "No taper plans — authorized, versioned, monitored, expiring; never from general information." : medTapers.slice(0,5).map((t:Record<string,unknown>)=> `${String(t.kind)} ${String(t.status)}${t.patientConfirmed ? " ✓pt" : ""}`).join(" • ")}</div></div>
+              <div><b>Photos ({String(medPhotos.length)})</b><div style={{ color:"var(--nv-color-text-faint)"}}>{medPhotos.length===0 ? "No medicine photographs — per-field confidence; unclear strength asks for retake, never appearance-based dosing." : medPhotos.slice(0,5).map((p:Record<string,unknown>)=> String(p.status)).join(" • ")}</div></div>
+            </div>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Caregivers: schedule view, administration confirm, missed/refused reports, side-effect records, refill requests, reminders, photo upload, taper tasks — never dose changes, stops, confidential data, or substitution approval. Controlled substances: jurisdiction registry, data presented for review, misuse never inferred from one signal. FHIR: MedicationRequest, Dispense, Administration, Statement, Knowledge, AllergyIntolerance, AdverseEvent, Observation, Condition, CarePlan, Task, Communication, Consent, Provenance, AuditEvent.</div>
           </Section>
         </div>
       )}

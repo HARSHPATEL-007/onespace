@@ -169,6 +169,17 @@ integrations    Integration[]
   healthWorkItems HealthWorkItem[]
   healthWorkItemEvents HealthWorkItemEvent[]
   healthWorkQueuePolicies HealthWorkQueuePolicy[]
+  medicationRecords MedicationRecord[]
+  medicationPhotos MedicationPhoto[]
+  medicationConfirmations MedicationConfirmation[]
+  medicationChanges MedicationChange[]
+  medicationTapers MedicationTaper[]
+  medicationAlerts MedicationAlert[]
+  medicationAdverseEvents MedicationAdverseEvent[]
+  pharmacyMessages PharmacyMessage[]
+  controlledSubstancePolicies ControlledSubstancePolicy[]
+  affordabilityReviews AffordabilityReview[]
+  medicationAllergies MedicationAllergy[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4421,6 +4432,16 @@ model HealthPatient {
   encounters HealthEncounter[]
   carePlans HealthCarePlan[]
   medications HealthMedication[]
+  medicationRecords MedicationRecord[]
+  medicationPhotos MedicationPhoto[]
+  medicationConfirmations MedicationConfirmation[]
+  medicationChanges MedicationChange[]
+  medicationTapers MedicationTaper[]
+  medicationAlerts MedicationAlert[]
+  medicationAdverseEvents MedicationAdverseEvent[]
+  pharmacyMessages PharmacyMessage[]
+  affordabilityReviews AffordabilityReview[]
+  medicationAllergies MedicationAllergy[]
   labs      HealthLabResult[]
   imaging   HealthImagingStudy[]
   devices   HealthDevicePatient[]
@@ -7679,6 +7700,327 @@ model HealthWorkQueuePolicy {
   @@unique([workspaceId, queue, priority, version])
   @@index([workspaceId, queue])
   @@index([active])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — MEDICATION SAFETY COCKPIT
+// One reconciled, patient-confirmed medication picture across prescriptions,
+// dispensing, claims, photographs, caregiver reports, and actual use.
+// FHIR separation preserved: MedicationRequest (prescribed) vs MedicationDispense
+// (supplied) vs MedicationStatement (reported) vs MedicationAdministration (given).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum MedicationRecordStatus {
+  PRESCRIBED
+  DISPENSED
+  PATIENT_REPORTED_CURRENT
+  CAREGIVER_REPORTED
+  ADMINISTERED
+  PATIENT_CONFIRMED_CURRENT
+  PATIENT_STOPPED
+  CLINICIAN_DISCONTINUED
+  UNCERTAIN
+  HISTORICAL
+  DUPLICATE
+  REFUSED
+  UNABLE_TO_OBTAIN
+  UNKNOWN
+}
+
+enum MedicationChangeStatus {
+  PROPOSED
+  AUTHORIZED
+  SAFETY_CHECKED
+  EXPLAINED
+  PATIENT_CONFIRMED
+  PHARMACY_SENT
+  ACTIVE
+  UNCONFIRMED
+  DECLINED
+  SUPERSEDED
+  CANCELLED
+}
+
+enum MedicationAlertSeverity {
+  CRITICAL
+  HIGH
+  MODERATE
+  LOW
+}
+
+/// Canonical reconciled medication — never "currently taking" from an old Rx/claims row alone.
+model MedicationRecord {
+  id              String                 @id @default(uuid())
+  workspaceId     String
+  patientId       String
+  canonicalName   String                 // configured_standard_name
+  ingredient      String                 // configured_ingredient (lowercased at write)
+  ingredients     String[]               @default([]) // combination products
+  therapeuticClass String?
+  strength        String?                // configured_strength
+  form            String?                // tablet
+  route           String?                // oral
+  directions      Json                   @default("{}") // { dose, frequency, timing, as_needed }
+  status          MedicationRecordStatus @default(UNKNOWN)
+  sources         Json                   @default("[]") // [{ type, ref, timestamp, confidence }]
+  indication      String?                // documented_or_unknown
+  prescriber      String?
+  pharmacy        String?
+  reconciliation  Json                   @default("{}") // { last_reviewed, reviewer, discrepancies[] }
+  safetyContext   Json                   @default("{}") // { renal_check, hepatic_check, pregnancy_check, lactation_check }
+  missedDoseRule  String?                // medicine-specific instruction, source-controlled
+  timeCritical    Boolean                @default(false)
+  renalRisk       Boolean                @default(false) // requires renal dosing review
+  hepatotoxic     Boolean                @default(false)
+  pregnancyRisk   Boolean                @default(false)
+  controlledClass String?                // schedule/category when applicable
+  createdById     String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+  @@index([workspaceId, ingredient])
+}
+
+/// Photograph reconciliation pipeline — confidence per field, never infer dose from appearance.
+model MedicationPhoto {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String
+  recordId      String?
+  imageRef      String   // storage ref, never raw bytes in DB
+  ocr           Json     @default("{}")
+  extracted     Json     @default("{}") // { brand, ingredient, strength, form, confidence per field }
+  status        String   @default("CAPTURED") // CAPTURED | QUALITY_CHECKED | EXTRACTED | MATCHED | DUPLICATE | UNCLEAR | CONFIRMED | REVIEW_REQUIRED | LINKED
+  reviewerNote  String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+  @@index([recordId])
+}
+
+/// Patient confirmation — timestamped, never silently replaced by a later feed.
+model MedicationConfirmation {
+  id          String   @id @default(uuid())
+  workspaceId String
+  patientId   String
+  recordId    String
+  answers     Json     @default("{}") // taking_now, strength, frequency, last_taken, indication, stopped_by_clinician, side_effects, affordability, helper, ...
+  teachBack   Json     @default("{}") // { question, response, understood }
+  confirmedBy String   // patient | caregiver:<id> | clinician:<id>
+  confirmedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, recordId])
+  @@index([workspaceId, patientId])
+}
+
+/// Medication change — proposed → authorized → safety-checked → explained → patient-confirmed → pharmacy → active.
+model MedicationChange {
+  id                 String                 @id @default(uuid())
+  workspaceId        String
+  patientId          String
+  recordId           String?
+  changeType         String                 // start | stop | hold | renew | taper | titrate | dose_change | substitution
+  payload            Json                   @default("{}")
+  reason             String?
+  authorizedBy       String?
+  safetyCheck        Json                   @default("{}")
+  patientExplanation String?
+  patientConfirmation Json                  @default("{}") // { what_changed, why, start_date, understanding, accepted|declined|needs_clarification, at }
+  pharmacyStatus     String                 @default("PENDING") // PENDING | SENT | ACKNOWLEDGED | DISPENSED | FAILED
+  status             MedicationChangeStatus @default(PROPOSED)
+  createdById        String?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+  @@index([recordId])
+}
+
+/// Clinician-approved taper/titration schedule — executable plan with monitoring + expiry.
+model MedicationTaper {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  patientId        String
+  recordId         String
+  changeId         String?
+  kind             String   @default("TAPER") // TAPER | TITRATION
+  reason           String?
+  approvedBy       String?
+  steps            Json     @default("[]") // [{ start, dose, duration, monitoring[] }]
+  pauseRules       String[] @default([])
+  contactRules     String[] @default([])
+  patientConfirmed Boolean  @default(false)
+  caregiverAccess  String   @default("task_only")
+  status           String   @default("DRAFT") // DRAFT | ACTIVE | PAUSED | COMPLETED | EXPIRED | CANCELLED
+  expiresAt        DateTime?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+  @@index([recordId])
+}
+
+/// Medication safety alert — why, evidence, reviewer, notification + block state.
+model MedicationAlert {
+  id             String                   @id @default(uuid())
+  workspaceId    String
+  patientId      String
+  recordId       String?
+  alertClass     String                   // critical_allergy_conflict | serious_interaction | duplicate_ingredient | dose_out_of_range | renal_adjustment_needed | hepatic_concern | pregnancy_concern | lactation_concern | monitoring_overdue | taper_interruption | high_risk_missed_dose | controlled_substance_rule | duplicate_prescription | dispense_mismatch | affordability_barrier | adverse_event | unable_to_obtain
+  severity       MedicationAlertSeverity  @default(MODERATE)
+  why            String?
+  evidence       Json                     @default("[]")
+  source         String?
+  confidence     String?                  // high | moderate | low
+  reviewer       String?
+  patientNotified Boolean                 @default(false)
+  actionBlocked  Boolean                  @default(false)
+  reviewedAt     DateTime?
+  status         String                   @default("OPEN") // OPEN | ACKNOWLEDGED | RESOLVED | DISMISSED_WITH_REASON
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+  @@index([workspaceId, alertClass])
+}
+
+/// Structured adverse-event workflow — uncertainty preserved, causality not required to report.
+model MedicationAdverseEvent {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String
+  recordId      String?
+  symptom       String
+  onsetAt       DateTime?
+  severity      String   @default("MODERATE") // MILD | MODERATE | SEVERE | LIFE_THREATENING
+  outcome       String?
+  hospitalized  Boolean  @default(false)
+  actionTaken   String?
+  dechallenge   String?
+  rechallenge   String?
+  reporter      String?
+  reportId      String?  // authorized safety-system identifier (e.g. MedWatch)
+  reportStatus  String   @default("DRAFT") // DRAFT | SUBMITTED | ACKNOWLEDGED | FOLLOW_UP
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, reportStatus])
+  @@index([recordId])
+}
+
+/// Secure pharmacy exchange — sender, recipient, purpose, deadline, owner, audit.
+model PharmacyMessage {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  patientId        String
+  recordId         String?
+  direction        String   // TO_PHARMACY | FROM_PHARMACY
+  purpose          String   // new_prescription | renewal | clarification | substitution | availability | prior_auth | mismatch | interaction | synchronization | packaging | delivery | adherence | adverse_event | reconciliation
+  body             String?
+  patientAuthorized Boolean @default(false)
+  status           String   @default("PENDING") // PENDING | SENT | ACKNOWLEDGED | RESOLVED | FAILED
+  responseDeadline DateTime?
+  owner            String?  // clinical owner
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+}
+
+/// Jurisdiction-aware controlled-substance policy registry — versioned, official source.
+model ControlledSubstancePolicy {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  jurisdiction  String   // configured
+  medicineClass String   // configured
+  rules         Json     @default("[]") // [configured_prescription_validity, configured_refill_limit, configured_monitoring_requirement, configured_pdmp_check]
+  source        String?  // official_regulatory_reference
+  effectiveDate DateTime?
+  reviewedAt    DateTime?
+  owner         String?  // pharmacy_compliance
+  version       String   @default("v1")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, jurisdiction, medicineClass, version])
+  @@index([workspaceId, jurisdiction])
+  @@index([active])
+}
+
+/// Affordability barrier → covered options → prescriber/pharmacist decision → patient confirm → pharmacy.
+model AffordabilityReview {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  patientId        String
+  recordId         String?
+  barrier          Json     @default("{}") // { copay, coverage, deductible, formulary, quantity_limits, price, assistance, access, transport, ... }
+  options          Json     @default("[]") // [{ option, clinical_note, reviewed_by }]
+  selectedBy       String?
+  patientConfirmed Boolean  @default(false)
+  status           String   @default("OPEN") // OPEN | ROUTED | DECIDED | CONFIRMED | CLOSED
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+}
+
+/// Allergy / intolerance — FHIR AllergyIntolerance equivalent for conflict checks.
+model MedicationAllergy {
+  id          String   @id @default(uuid())
+  workspaceId String
+  patientId   String
+  substance   String   // lowercased at write
+  reaction    String?
+  severity    String   @default("MODERATE") // MILD | MODERATE | SEVERE
+  status      String   @default("ACTIVE") // ACTIVE | INACTIVE | UNCONFIRMED
+  source      String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId, status])
+  @@index([workspaceId, substance])
 }
 
 /// N0VA LEGAL - revision history.

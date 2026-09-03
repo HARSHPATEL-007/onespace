@@ -18,7 +18,8 @@
     "./alert-intelligence": "./src/alert-intelligence.ts",
     "./twin-safeguards": "./src/twin-safeguards.ts",
     "./pathways": "./src/pathways.ts",
-    "./work-queue": "./src/work-queue.ts"
+    "./work-queue": "./src/work-queue.ts",
+    "./medication-safety": "./src/medication-safety.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
