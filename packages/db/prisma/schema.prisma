@@ -239,6 +239,21 @@ integrations    Integration[]
   healthTenantPathways HealthTenantPathway[]
   healthTenantIntegrations HealthTenantIntegration[]
   healthTenantDrifts HealthTenantDrift[]
+  healthEditionEntitlements HealthEditionEntitlement[]
+  healthEditionRegulatory HealthEditionRegulatory[]
+  healthEditionAi HealthEditionAi[]
+  healthEditionExchanges HealthEditionExchange[]
+  healthEditionLaunches HealthEditionLaunch[]
+  healthPersonalProfiles HealthPersonalProfile[]
+  healthPersonalGoals HealthPersonalGoal[]
+  healthPersonalMedications HealthPersonalMedication[]
+  healthPersonalAppointments HealthPersonalAppointment[]
+  healthPersonalDocuments HealthPersonalDocument[]
+  healthPersonalDevices HealthPersonalDevice[]
+  healthPersonalJournal HealthPersonalJournal[]
+  healthPersonalSharing HealthPersonalSharing[]
+  healthPersonalTimeline HealthPersonalTimeline[]
+  healthPersonalAni HealthPersonalAni[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -12305,4 +12320,329 @@ model HealthTenantDrift {
 
   @@unique([workspaceId, driftId])
   @@index([workspaceId, status])
+}
+
+/// N0VA HEALTH — Product Packaging: five bounded editions over one platform.
+/// Capability entitlements as versioned policy, explicit regulatory and AI
+/// risk classification, authorized cross-edition exchange, launch gates.
+/// Technical availability never implies commercial, clinical, or legal enablement.
+model HealthEditionEntitlement {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  entitlementId      String
+  tenantId           String
+  edition            String
+  capability         String
+  state              String   @default("enabled")
+  scope              String   @default("tenant")
+  requires           String   @default("")
+  addOn              String   @default("")
+  region             String   @default("")
+  specialty          String   @default("")
+  userRole           String   @default("")
+  effectiveDate      DateTime?
+  expiry             DateTime?
+  approvalRequirement String  @default("")
+  usageLimit         String   @default("")
+  residencyConstraint String  @default("")
+  approvedBy         String   @default("")
+  effectiveVersion   String   @default("2026.09.1")
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, entitlementId])
+  @@index([workspaceId, tenantId])
+  @@index([workspaceId, edition])
+}
+
+model HealthEditionRegulatory {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  classificationId   String
+  capability         String
+  edition            String
+  regulatoryClass    String
+  riskRationale      String   @default("")
+  intendedUse        String   @default("")
+  prohibitedUse      String[] @default([])
+  certificationMapping String[] @default([])
+  reviewer           String   @default("")
+  reviewDate         DateTime?
+  createdById        String?
+  createdAt          DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, classificationId])
+  @@index([workspaceId, capability])
+}
+
+model HealthEditionAi {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  aiId             String
+  aiFunction       String
+  edition          String
+  riskClass        String
+  modelVersions    String[] @default([])
+  humanApproval    String   @default("required")
+  patientDisclosure String  @default("configured")
+  prohibitedUse    String[] @default([])
+  fallback         String   @default("manual_workflow")
+  approvedBy       String   @default("")
+  active           Boolean  @default(false)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, aiId])
+  @@index([workspaceId, edition])
+}
+
+model HealthEditionExchange {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  exchangeId   String
+  fromEdition  String
+  toEdition    String
+  purpose      String
+  authorizer   String   @default("")
+  consentRef   String   @default("")
+  legalBasis   String   @default("")
+  requirements String[] @default([])
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, exchangeId])
+}
+
+model HealthEditionLaunch {
+  id         String   @id @default(uuid())
+  workspaceId String
+  launchId   String
+  edition    String
+  evidence   Json     @default("{}")
+  gaps       String[] @default([])
+  approved   Boolean  @default(false)
+  approver   String   @default("")
+  createdById String?
+  createdAt  DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, launchId])
+  @@index([workspaceId, edition])
+}
+
+/// N0VA Personal — consumer-controlled health and wellness companion.
+/// User-owned records with provenance, non-punitive goals, reminder-only
+/// medications, guarded appointments, labeled device data, bounded Ani,
+/// granular sharing, and emergency summaries. Never a substitute for care.
+model HealthPersonalProfile {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  userId           String
+  profile          Json     @default("{}")
+  emergencySummary Json     @default("{}")
+  privacySettings  Json     @default("{}")
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+}
+
+model HealthPersonalGoal {
+  id          String   @id @default(uuid())
+  workspaceId String
+  goalId      String
+  userId      String
+  domain      String
+  title       String
+  target      String   @default("")
+  status      String   @default("active")
+  adaptations String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, goalId])
+  @@index([workspaceId, userId])
+}
+
+model HealthPersonalMedication {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  medicationId String
+  userId       String
+  name         String
+  dosage       String   @default("")
+  schedule     String   @default("")
+  state        String   @default("user_entered")
+  prescriber   String   @default("")
+  pharmacy     String   @default("")
+  photoRef     String   @default("")
+  doseLog      Json     @default("[]")
+  sideEffects  Json     @default("[]")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, medicationId])
+  @@index([workspaceId, userId])
+}
+
+model HealthPersonalAppointment {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  appointmentId      String
+  userId             String
+  title              String
+  scheduledAt        DateTime
+  criticality        String   @default("routine")
+  status             String   @default("scheduled")
+  preparation        String[] @default([])
+  transportNotes     String   @default("")
+  accessibilityNeeds String[] @default([])
+  caregiverAttending String   @default("")
+  telehealthReady    Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, appointmentId])
+  @@index([workspaceId, userId])
+}
+
+model HealthPersonalDocument {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  documentId        String
+  userId            String
+  title             String
+  documentType      String
+  source            String   @default("patient_upload")
+  recordedAt        DateTime?
+  clinicianAuthored Boolean  @default(false)
+  reviewed          Boolean  @default(false)
+  currentlyValid    Boolean  @default(true)
+  viewers           String[] @default([])
+  storageRef        String   @default("")
+  accessHistory     Json     @default("[]")
+  createdById       String?
+  createdAt         DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, documentId])
+  @@index([workspaceId, userId])
+}
+
+model HealthPersonalDevice {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  deviceId         String
+  userId           String
+  kind             String
+  model            String   @default("")
+  firmware         String   @default("")
+  calibrationStatus String  @default("unknown")
+  connectivity     String   @default("unknown")
+  readings         Json     @default("[]")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, deviceId])
+  @@index([workspaceId, userId])
+}
+
+model HealthPersonalJournal {
+  id         String   @id @default(uuid())
+  workspaceId String
+  entryId    String
+  userId     String
+  domain     String
+  text       String   @default("")
+  severity   Int?
+  correctsId String?
+  createdAt  DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, entryId])
+  @@index([workspaceId, userId])
+}
+
+model HealthPersonalSharing {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  shareId       String
+  userId        String
+  kind          String
+  categories    String[] @default([])
+  recipient     String   @default("")
+  purpose       String   @default("")
+  expiresAt     DateTime?
+  oneTime       Boolean  @default(false)
+  status        String   @default("ACTIVE")
+  scope         Json     @default("{}")
+  accessHistory Json     @default("[]")
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, shareId])
+  @@index([workspaceId, userId])
+}
+
+model HealthPersonalTimeline {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  eventId      String
+  userId       String
+  kind         String
+  marker       String
+  title        String
+  refId        String   @default("")
+  conflictWith String?
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, eventId])
+  @@index([workspaceId, userId])
+}
+
+model HealthPersonalAni {
+  id         String   @id @default(uuid())
+  workspaceId String
+  sessionId  String
+  userId     String
+  mode       String
+  messages   Json     @default("[]")
+  state      String   @default("general_wellness")
+  reviewer   String   @default("")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sessionId])
+  @@index([workspaceId, userId])
 }

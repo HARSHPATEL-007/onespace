@@ -21,6 +21,8 @@ import { PrivacyAnalyticsPlane, ANALYTICS_ZONES, PRIVACY_MODES, PRIVACY_ARCHITEC
 import { CyberResilienceProgram, PROTECTION_DIMENSIONS, RESILIENCE_PIPELINE, RESPONSE_LEVERS, CLINICAL_TIERS, RECOVERY_ORDER, ASSET_TYPES, SBOM_FIELDS, SBOM_GENERATION_TRIGGERS, SBOM_LINK_TARGETS, SUPPLY_CHAIN_CONTROLS, ARTIFACT_ADMISSION, VULN_LIFECYCLE, QUARANTINE_STATES, QUARANTINE_WORKFLOW, RANSOMWARE_PREVENT, RANSOMWARE_RESPONSE, BACKUP_TYPES, BACKUP_CONTROLS, BACKUP_PRINCIPLE, RECOVERY_VALIDATION, CONTINUITY_CAPABILITIES, TABLETOP_SCENARIOS, RED_TEAM_TARGETS, RED_TEAM_BOUNDARIES, DRILL_TYPES, DRILL_STAGES, POST_RESTORE_DEVICE_CHECKS, INTEGRITY_SIGNALS, VENDOR_REQUIREMENTS, VENDOR_ACCESS_RULES, CYBER_API, tierForService, canDeclareRecovered, productionReadinessGate, sbomLinkCheck, artifactAdmissionCheck, rankVulnerability, canTransitionVuln, validateFirmware, quarantineDecision, backupRestorable, recoveryChecklistGaps, assetSchema, sbomSchema, vulnSchema, vulnExceptionSchema, disclosureSchema, devicePatchSchema, compensatingSchema, firmwareSchema, backupSchema, exerciseSchema, vendorSchema, cyberIncidentSchema, CYBER_PROGRAM_VERSION } from "./cyber-resilience";
 import { ProviderIntelligencePlane, PROVIDER_PIPELINE, DASHBOARD_AUDIENCES, METRIC_DISPLAY_FIELDS, EXECUTIVE_TILES, EXECUTIVE_TILE_DETAIL, ACCESS_FUNNEL, ACCESS_MEASURES, ACCESS_STRATIFICATIONS, NOSHOW_OUTCOMES, NOSHOW_MEASURES, REFERRAL_FUNNEL, LEAKAGE_CAUSES, GAP_LIFECYCLE, GAP_MEASURES, ADHERENCE_MEASURES, ADHERENCE_LIMITATIONS, READMISSION_MEASURES, READMISSION_REVIEW_FIELDS, ALERT_MEASURES, DOCUMENTATION_DOMAINS, DOCUMENTATION_GUARDRAILS, ENGAGEMENT_MEASURES, ENGAGEMENT_STATES, RPM_FUNNEL, RPM_EXIT_REASONS, REVENUE_MEASURES, REVENUE_SAFEGUARDS, EQUITY_STRATIFIERS, EQUITY_MEASURES, EQUITY_SAFEGUARDS, EQUITY_WORKFLOW, MODEL_INVENTORY_FIELDS, MODEL_PERFORMANCE_MEASURES, MODEL_SAFETY_MEASURES, ATTRIBUTION_ROLES, ATTRIBUTION_VIEWS, ACTION_QUEUE_FLOW, ACTION_QUEUE_EXAMPLES, DENOMINATOR_QUALITY_FIELDS, PROVIDER_DASHBOARD_CONTROLS, PROVIDER_API, waitDistribution, funnelConversion, gapClosureState, alertQualityScore, disparityGaps, modelSafetyGate, attributionFairnessCheck, evaluateThreshold, denominatorShrinkageFlag, denominatorChangeWarning, metricDefinitionSchema, attributionSchema, thresholdSchema, modelRegistrationSchema, PROVIDER_ANALYTICS_VERSION } from "./provider-analytics";
 import { TenantControlPlane, CONFIG_LEVELS, CONFIG_DOMAINS, DOMAIN_GUARDRAILS, CONFIG_LIFECYCLE, CONFIG_CLASSES, APPROVAL_MATRIX, ISOLATION_LAYERS, ISOLATION_TIERS, ONBOARDING_STEPS, READINESS_SIGNALS, TERMINOLOGY_LAYERS, ROLE_NON_BYPASSABLES, DEVICE_ACTIVATION_GATES, RESIDENCY_COVERAGE, CANARY_STAGES, CANARY_MONITORS, COMPATIBILITY_CHECKS, ROLLBACK_SCOPE, DRIFT_SIGNALS, OFFBOARDING_STEPS, TENANT_OPS_TILES, TENANT_API, resolveEffective, guardrailCheck, canTransitionConfig, isolationCheck, readinessGaps, deviceActivationGaps, residencyCoverageGaps, configSchema, pathwaySchema, alertRuleSchema, consentPolicySchema, retentionRuleSchema, payerRuleSchema, roleTemplateSchema, deviceCatalogSchema, aiPolicySchema, residencySchema, integrationSchema, TENANT_PLATFORM_VERSION } from "./tenant-platform";
+import { EditionPackaging, EDITIONS, PLATFORM_FOUNDATION, DATA_DOMAIN_SEPARATION, EDITION_CAPABILITIES, OPTIONAL_MODULES, UPGRADE_PATH, EXCHANGE_REQUIREMENTS, EXCHANGE_ENVELOPE, ENTITLEMENT_DIMENSIONS, REGULATORY_CLASSES, AI_RISK_CLASSES, LAUNCH_GATES, EDITION_API, upgradePathValid, entitlementCoherent, aiActivationGate, aniGuard, launchGateGaps, serviceExplanation, entitlementSchema, regulatorySchema, aiClassificationSchema, EDITION_PACKAGING_VERSION, type EditionKey, type AiRiskClass } from "./edition-packaging";
+import { PersonalCompanion, PRODUCT_PROMISE, PERSONAL_MODULES, HOME_SECTIONS, HOME_STATES, PROFILE_SOURCE_STATES, DATA_LABELS, GOAL_DOMAINS, GOAL_SAFEGUARDS, MED_PERMITTED, MED_RESTRICTED, MED_RECORD_STATES, DOCUMENT_TYPES, SUPPORTED_DEVICES, JOURNAL_DOMAINS, URGENT_PATTERNS, SHARING_DIMENSIONS, SHARING_FLOW, SENSITIVE_CATEGORIES, PROXY_TYPES, TIMELINE_MARKERS, EMERGENCY_FIELDS, ANI_MODES, ANI_PROHIBITED, ANI_PIPELINE, ANI_RESPONSE_STATES, CRISIS_TRIGGERS, PRIVACY_CONTROLS, ACCESSIBILITY_COVERAGE, SAFETY_TELEMETRY, PERSONAL_API, claimCheck, provenanceLabel, goalCheckIn, medicationGuard, missedDoseResponse, cancelAppointmentFlow, labelReading, detectUrgency, safetyModeMessage, pghdEnvelope, sharingScopeCheck, proxyMayView, emergencySummaryWarnings, personalAniGuard, syncStatusMessage, profileSchema, goalSchema, medicationSchema, appointmentSchema, documentSchema, deviceSchema, PERSONAL_VERSION } from "./personal-companion";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -351,6 +353,8 @@ export class HealthService {
   private get cyber() { return new CyberResilienceProgram(this.workspaceId, this.userId, this.role); }
   private get providers() { return new ProviderIntelligencePlane(this.workspaceId, this.userId, this.role); }
   private get tenants() { return new TenantControlPlane(this.workspaceId, this.userId, this.role); }
+  private get editions() { return new EditionPackaging(this.workspaceId, this.userId, this.role); }
+  private get personal() { return new PersonalCompanion(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -1024,6 +1028,67 @@ export class HealthService {
   async tenantResolveDrift(driftId: string, resolution: "RESTORED" | "EXCEPTION_APPROVED", note?: string) { return this.tenants.resolveDrift(driftId, resolution, note); }
   async tenantOffboard(tenantId: string, completed: Record<string, boolean>) { return this.tenants.offboardTenant(tenantId, completed); }
   async tenantOps(tenantId?: string) { return this.tenants.opsDashboard(tenantId); }
+
+  // ── Product Packaging — five bounded editions over one platform ──
+  // Technical availability never implies commercial/clinical/legal enablement.
+  get editionPortfolio() { return EDITIONS; }
+  get platformFoundation() { return PLATFORM_FOUNDATION; }
+  get editionApi() { return EDITION_API; }
+  editionCapabilities(edition: EditionKey) { return EDITION_CAPABILITIES[edition]; }
+  editionUpgradePath(from: EditionKey, to: EditionKey) { return upgradePathValid(from, to); }
+  editionEntitlementCoherent(edition: EditionKey, capability: string, addOns: string[]) { return entitlementCoherent(edition, capability, addOns); }
+  editionAiGate(edition: EditionKey, riskClass: AiRiskClass, approvals: Record<string, boolean>) { return aiActivationGate(edition, riskClass, approvals); }
+  editionAniGuard(action: string) { return aniGuard(action); }
+  editionLaunchGaps(edition: EditionKey, evidence: Record<string, boolean>) { return launchGateGaps(edition, evidence); }
+  editionExplanation(edition: EditionKey) { return serviceExplanation(edition); }
+  async editionGrant(input: Parameters<EditionPackaging["grantEntitlement"]>[0]) { return this.editions.grantEntitlement(entitlementSchema.parse(input)); }
+  async editionSetState(entitlementId: string, state: "enabled" | "restricted" | "disabled", actor: string) { return this.editions.setEntitlementState(entitlementId, state, actor); }
+  async editionEntitlements(tenantId?: string, edition?: string) { return this.editions.listEntitlements(tenantId, edition); }
+  async editionClassify(input: Parameters<EditionPackaging["classifyCapability"]>[0]) { return this.editions.classifyCapability(regulatorySchema.parse(input)); }
+  async editionClassifyAi(input: Parameters<EditionPackaging["classifyAi"]>[0]) { return this.editions.classifyAi(aiClassificationSchema.parse(input)); }
+  async editionActivateAi(aiId: string, approvals: Record<string, boolean>) { return this.editions.activateAi(aiId, approvals); }
+  async editionAiList(edition?: string) { return this.editions.listAi(edition); }
+  async editionExchange(input: Parameters<EditionPackaging["authorizeExchange"]>[0]) { return this.editions.authorizeExchange(input); }
+  async editionLaunch(edition: EditionKey, evidence: Record<string, boolean>, approver: string) { return this.editions.recordLaunchGate(edition, evidence, approver); }
+  async editionPortfolioView() { return this.editions.portfolio(); }
+
+  // ── N0VA Personal — consumer companion, never a clinical substitute ──
+  get personalPromise() { return PRODUCT_PROMISE; }
+  get personalModules() { return PERSONAL_MODULES; }
+  get personalApi() { return PERSONAL_API; }
+  personalClaimCheck(text: string) { return claimCheck(text); }
+  personalProvenance(item: Parameters<typeof provenanceLabel>[0]) { return provenanceLabel(item); }
+  personalGoalCheckIn(missed: number) { return goalCheckIn(missed); }
+  personalMedGuard(action: string) { return medicationGuard(action); }
+  personalMissedDose(known: boolean, urgent: boolean) { return missedDoseResponse(known, urgent); }
+  personalCancelFlow(criticality: string) { return cancelAppointmentFlow(criticality); }
+  personalLabelReading(input: Parameters<typeof labelReading>[0]) { return labelReading(input); }
+  personalUrgency(text: string) { return detectUrgency(text); }
+  personalPghd(input: Parameters<typeof pghdEnvelope>[0]) { return pghdEnvelope(input); }
+  personalScope(requested: string[], granted: string[]) { return sharingScopeCheck(requested, granted); }
+  personalProxy(category: string, proxy: Parameters<PersonalCompanion["checkProxy"]>[1]) { return this.personal.checkProxy(category, proxy); }
+  personalAniGuard(action: string) { return personalAniGuard(action); }
+  personalSyncStatus(lastAttempt: string, reached: boolean) { return syncStatusMessage(lastAttempt, reached); }
+  async personalProfile(input: Parameters<PersonalCompanion["upsertProfile"]>[0]) { return this.personal.upsertProfile(profileSchema.parse(input)); }
+  async personalGoal(input: Parameters<PersonalCompanion["createGoal"]>[0]) { return this.personal.createGoal(goalSchema.parse(input)); }
+  async personalGoalStatus(goalId: string, status: "active" | "paused" | "completed" | "abandoned") { return this.personal.setGoalStatus(goalId, status); }
+  async personalMedication(input: Parameters<PersonalCompanion["addMedication"]>[0]) { return this.personal.addMedication(medicationSchema.parse(input)); }
+  async personalMedicationAction(medicationId: string, action: string, detail?: Record<string, unknown>) { return this.personal.medicationAction(medicationId, action, detail); }
+  async personalSchedule(input: Parameters<PersonalCompanion["scheduleAppointment"]>[0]) { return this.personal.scheduleAppointment(appointmentSchema.parse(input)); }
+  async personalCancel(appointmentId: string) { return this.personal.cancelAppointment(appointmentId); }
+  async personalDocument(input: Parameters<PersonalCompanion["storeDocument"]>[0]) { return this.personal.storeDocument(documentSchema.parse(input)); }
+  async personalPairDevice(input: Parameters<PersonalCompanion["pairDevice"]>[0]) { return this.personal.pairDevice(deviceSchema.parse(input)); }
+  async personalReading(input: Parameters<PersonalCompanion["recordReading"]>[0]) { return this.personal.recordReading(input); }
+  async personalJournal(input: Parameters<PersonalCompanion["journalEntry"]>[0]) { return this.personal.journalEntry(input); }
+  async personalShare(input: Parameters<PersonalCompanion["shareData"]>[0]) { return this.personal.shareData(input); }
+  async personalRevoke(shareId: string) { return this.personal.revokeShare(shareId); }
+  async personalProxy(input: Parameters<PersonalCompanion["authorizeProxy"]>[0]) { return this.personal.authorizeProxy(input); }
+  async personalTimeline(input: Parameters<PersonalCompanion["timelineEvent"]>[0]) { return this.personal.timelineEvent(input); }
+  personalEmergency(items: Parameters<PersonalCompanion["emergencySummary"]>[0]) { return this.personal.emergencySummary(items); }
+  async personalAni(input: Parameters<PersonalCompanion["aniMessage"]>[0]) { return this.personal.aniMessage(input); }
+  async personalAniDraft(sessionId: string, action: string) { return this.personal.aniDraftAction(sessionId, action); }
+  async personalPrivacy(kind: "export" | "deletion" | "closure") { return this.personal.privacyRequest(kind); }
+  async personalHome() { return this.personal.homeDashboard(); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

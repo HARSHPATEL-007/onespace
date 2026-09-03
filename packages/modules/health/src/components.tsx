@@ -43,6 +43,8 @@ const TABS = [
   { id: "resilience", label: "Cyber Resilience" },
   { id: "providers", label: "Provider Analytics" },
   { id: "tenants", label: "Tenant Platform" },
+  { id: "editions", label: "Editions" },
+  { id: "personal", label: "N0VA Personal" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2863,6 +2865,49 @@ Which measurements produced this estimate? Which model version? Did corrected re
               <div className="nv-card" style={{ padding:10 }}><b>Devices + AI + roles</b><div style={{ color:"var(--nv-color-text-faint)"}}>Catalog activation gates, per-capability AI policies with disable switches, role templates that cannot bypass least privilege.</div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.tenantRegister / tenantSaveDraft / tenantTransition / tenantAlertRule / tenantPathway / tenantIntegration / tenantIsolationTest / tenantSimulate / tenantDrift / tenantOffboard / tenantOps. Full docs in tenant-platform.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "editions" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Product Packaging — Five Bounded Products, One Platform" subtitle="Personal, Care, Clinical, Research, Public Health. Shared foundations, separated exposure. Technical availability never implies commercial, clinical, or legal enablement." action={<><Badge tone="primary">5 Editions</Badge><Badge tone="warning">Entitlements</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Personal","Care","Clinical","Research","Public Health"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              Entitlements grant capabilities as versioned policy — modules never promote one edition into another.
+              Every clinical/AI capability carries a regulatory class; AI is packaged by risk class with activation gates.
+              Cross-edition data moves only with explicit authorization, consent or legal basis, and provenance.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Personal + Ani</b><div style={{ color:"var(--nv-color-text-faint)"}}>Wellness companion with labeled guidance, escalation, delegated scopes. Ani modes configured; diagnosis, med changes, and critical-result dismissal prohibited.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Care + Clinical</b><div style={{ color:"var(--nv-color-text-faint)"}}>Clinic operations with referral safety and downtime workflows. Hospital grade adds safety case, device governance, 24/7 validated releases.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Research + Public Health</b><div style={{ color:"var(--nv-color-text-faint)"}}>Controlled cohorts, IRB, clean rooms, withdrawal propagation. Surveillance under legal authority with small-cell protection and sunset rules.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>AI by risk class</b><div style={{ color:"var(--nv-color-text-faint)"}}>Wellness to autonomous-clinical tiers. Personal gets wellness AI only; CDS needs clinical+regulatory+safety+governance approval.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Exchange + launch</b><div style={{ color:"var(--nv-color-text-faint)"}}>Forward upgrade paths with per-leg requirements. Launch gates block high-risk claims until evidence exists.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Clarity</b><div style={{ color:"var(--nv-color-text-faint)"}}>Every user sees a plain explanation of which service they are using — wellness, care, clinical, research, or public health.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.editionGrant / editionEntitlements / editionClassify / editionClassifyAi / editionActivateAi / editionExchange / editionLaunch / editionPortfolioView. Full docs in edition-packaging.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "personal" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="N0VA Personal — Organized, Informed, Supported" subtitle="A consumer companion, not a substitute for professional care. Organize, understand, and act on your health information while clinical decisions stay with qualified care teams." action={<><Badge tone="primary">13 Modules</Badge><Badge tone="warning">Safety Mode</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Today","Meds","Visits","Devices","Goals","Records","Messages","Ani"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              No single health score. Every item shows source, freshness, verification, viewers, and correction path.
+              Medications remind — never prescribe. Critical appointments are never silently cancelled. Device data is labeled measured, estimated, or user-entered.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Profile + goals</b><div style={{ color:"var(--nv-color-text-faint)"}}>Provenance on every item. Goals pausable, adaptive, non-punitive — missed targets prompt realism checks, not failure.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Meds + visits</b><div style={{ color:"var(--nv-color-text-faint)"}}>Restricted actions blocked by default; missed-dose gets general safety guidance. Critical cancellation requires a safe alternative.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Devices + journal</b><div style={{ color:"var(--nv-color-text-faint)"}}>Labeled readings with calibration and review status. Urgent symptoms shift to safety mode with emergency direction.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Sharing + proxies</b><div style={{ color:"var(--nv-color-text-faint)"}}>Granular, previewed, revocable. Summaries never expand silently. Sensitive categories need explicit scope.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Ani companion</b><div style={{ color:"var(--nv-color-text-faint)"}}>Eight bounded modes, 16 prohibited independent actions, visible draft→review→approve boundary, AI-labeled outputs.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Emergency + privacy</b><div style={{ color:"var(--nv-color-text-faint)"}}>Freshness-warned emergency summary with limited lock-screen view. Export, deletion, access logs, truthful sync status.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.personalProfile / personalGoal / personalMedication / personalSchedule / personalCancel / personalDocument / personalReading / personalJournal / personalShare / personalProxy / personalTimeline / personalEmergency / personalAni / personalPrivacy / personalHome. Full docs in personal-companion.ts.</div>
           </Section>
         </div>
       )}

@@ -26,7 +26,9 @@
     "./privacy-analytics": "./src/privacy-analytics.ts",
     "./cyber-resilience": "./src/cyber-resilience.ts",
     "./provider-analytics": "./src/provider-analytics.ts",
-    "./tenant-platform": "./src/tenant-platform.ts"
+    "./tenant-platform": "./src/tenant-platform.ts",
+    "./edition-packaging": "./src/edition-packaging.ts",
+    "./personal-companion": "./src/personal-companion.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
