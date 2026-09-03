@@ -10,6 +10,7 @@ import { AdaptiveHealthLiteracy, READING_LEVELS, TEACH_BACK_TRIGGERS, AMBIGUITY_
 import { MultimodalReasoningFabric, REASONING_FABRIC, SPECIALIZED_SERVICES, CONTRADICTION_SEVERITY, answerRequestSchema } from "./reasoning";
 import { AlertIntelligence, ALERT_ARCHITECTURE, PRIORITY_TIERS, BASELINE_METRICS, FHIR_ALERT_RESOURCES } from "./alert-intelligence";
 import { TwinSafeguards, TWIN_BOUNDARIES, TWIN_CAPABILITIES, TWIN_DATA_CLASSES, TIME_HORIZONS, HIGH_IMPACT_PROHIBITED, COUNTERFACTUAL_ALLOWED_FOR } from "./twin-safeguards";
+import { ClosedLoopPathways, PATHWAY_EXECUTION_MODEL, PATHWAY_LIBRARY, FHIR_PATHWAY_RESOURCES, PATHWAY_API } from "./pathways";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -330,6 +331,7 @@ export class HealthService {
   private get reasoning() { return new MultimodalReasoningFabric(this.workspaceId, this.userId, this.role); }
   private get alert() { return new AlertIntelligence(this.workspaceId, this.userId, this.role); }
   private get twin() { return new TwinSafeguards(this.workspaceId, this.userId, this.role); }
+  private get pathways() { return new ClosedLoopPathways(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -580,6 +582,41 @@ export class HealthService {
   async twinCreateSimulation(input: Parameters<TwinSafeguards["createSimulation"]>[0]) { return this.twin.createSimulation(input); }
   async twinListSimulations(patientId?: string, take?: number) { return this.twin.listSimulations(patientId, take); }
   async twinCheckHighImpactAccess(attributeId: string, purpose: string) { return this.twin.checkHighImpactAccess(attributeId, purpose); }
+
+  // ── Closed-Loop Care Pathways ─────────────────────────────────────
+  get pathwayExecutionModel() { return PATHWAY_EXECUTION_MODEL; }
+  get pathwayLibrary() { return PATHWAY_LIBRARY; }
+  get fhirPathwayResources() { return FHIR_PATHWAY_RESOURCES; }
+  get pathwayApi() { return PATHWAY_API; }
+  async pathwayListDefinitions() { return this.pathways.listPathwayDefinitions(); }
+  async pathwayCreateDefinition(input: Parameters<ClosedLoopPathways["createPathwayDefinition"]>[0]) { return this.pathways.createPathwayDefinition(input); }
+  async pathwayGetDefinition(pathwayId: string, version?: string) { return this.pathways.getPathwayDefinition(pathwayId, version); }
+  async pathwayCheckEligibility(pathwayId: string, patientId: string) { return this.pathways.checkEligibility(pathwayId, patientId); }
+  async pathwayEnroll(input: Parameters<ClosedLoopPathways["enroll"]>[0]) { return this.pathways.enroll(input); }
+  async pathwayListEnrollments(patientId?: string, pathwayId?: string, status?: string) { return this.pathways.listEnrollments(patientId, pathwayId, status); }
+  async pathwayGetEnrollment(id: string) { return this.pathways.getEnrollment(id); }
+  async pathwayUpdateEnrollment(id: string, patch: Parameters<ClosedLoopPathways["updateEnrollment"]>[1]) { return this.pathways.updateEnrollment(id, patch); }
+  async pathwayBaseline(patientId: string, enrollmentId?: string) { return this.pathways.baseline(patientId, enrollmentId); }
+  async pathwayStratifyRisk(patientId: string, inputs: Record<string,unknown>) { return this.pathways.stratifyRisk(patientId, inputs); }
+  async pathwayGenerateTasks(enrollmentId: string) { return this.pathways.generateTasks(enrollmentId); }
+  async pathwayScheduleFollowUp(enrollmentId: string, type?: string) { return this.pathways.scheduleFollowUp(enrollmentId, type); }
+  async pathwayEscalate(enrollmentId: string, trigger: string) { return this.pathways.escalate(enrollmentId, trigger); }
+  async pathwayMeasureOutcome(enrollmentId: string) { return this.pathways.measureOutcome(enrollmentId); }
+  async pathwayCompleteEnrollment(enrollmentId: string, outcome?: string) { return this.pathways.completeEnrollment(enrollmentId, outcome); }
+  async pathwayListExceptions(patientId?: string, pathwayId?: string) { return this.pathways.listExceptions(patientId, pathwayId); }
+  async pathwayCreateException(input: Parameters<ClosedLoopPathways["createException"]>[0]) { return this.pathways.createException(input); }
+  async pathwayClinicianOverride(enrollmentId: string, action: string, reason: string, newPlan?: string) { return this.pathways.clinicianOverride(enrollmentId, action, reason, newPlan); }
+  async pathwayPauseEnrollment(enrollmentId: string, reason: string) { return this.pathways.pauseEnrollment(enrollmentId, reason); }
+  async pathwayResumeEnrollment(enrollmentId: string) { return this.pathways.resumeEnrollment(enrollmentId); }
+  async pathwayWithdrawEnrollment(enrollmentId: string, reason: string) { return this.pathways.withdrawEnrollment(enrollmentId, reason); }
+  async pathwayResolveException(exceptionId: string, resolution: string, outcome: string) { return this.pathways.resolveException(exceptionId, resolution, outcome); }
+  async pathwayFinancialReport(patientId?: string) { return this.pathways.financialReport(patientId); }
+  async pathwayQualityReport(patientId?: string) { return this.pathways.qualityReport(patientId); }
+  async pathwayEquityReport(patientId?: string) { return this.pathways.equityReport(patientId); }
+  async pathwayPatientDashboard(patientId: string) { return this.pathways.patientDashboard(patientId); }
+  async pathwayCareTeamDashboard() { return this.pathways.careTeamDashboard(); }
+  async pathwaySafetyControls() { return this.pathways.safetyControls(); }
+  async pathwayFhirMapping() { return this.pathways.fhirMapping(); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

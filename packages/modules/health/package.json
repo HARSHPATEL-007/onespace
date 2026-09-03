@@ -16,7 +16,8 @@
     "./caregiver": "./src/caregiver.ts",
     "./reasoning": "./src/reasoning.ts",
     "./alert-intelligence": "./src/alert-intelligence.ts",
-    "./twin-safeguards": "./src/twin-safeguards.ts"
+    "./twin-safeguards": "./src/twin-safeguards.ts",
+    "./pathways": "./src/pathways.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

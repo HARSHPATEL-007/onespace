@@ -163,6 +163,9 @@ integrations    Integration[]
   healthTwinAttributes HealthTwinAttribute[]
   healthTwinSimulations HealthTwinSimulation[]
   healthTwinDisputes HealthTwinDispute[]
+  healthPathwayDefinitions HealthPathwayDefinition[]
+  healthPathwayEnrollments HealthPathwayEnrollment[]
+  healthPathwayExceptions HealthPathwayException[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4459,6 +4462,8 @@ model HealthPatient {
   twinAttributes HealthTwinAttribute[]
   twinSimulations HealthTwinSimulation[]
   twinDisputes HealthTwinDispute[]
+  pathwayEnrollments HealthPathwayEnrollment[]
+  pathwayExceptions HealthPathwayException[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -7417,6 +7422,135 @@ model HealthTwinDispute {
 
   @@index([workspaceId, patientId])
   @@index([attributeId])
+  @@index([status])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — CLOSED-LOOP CARE PATHWAYS
+// Versioned, executable care program — FHIR PlanDefinition → ActivityDefinition → CarePlan, AHRQ coordination.
+// Eligibility → Verification → Invitation → Enrollment → Baseline → Goals/Risk → Interventions → Tasks/Appointments → Monitoring → Alert/Escalation → Outcome → Completion/Continuation/Re-entry → Quality/Financial/Equity Reporting
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum PathwayDefinitionStatus {
+  DRAFT
+  CLINICAL_VALIDATION
+  ACTIVE
+  RETIRED
+}
+
+enum EnrollmentStatus {
+  NOT_ELIGIBLE
+  POTENTIALLY_ELIGIBLE
+  AWAITING_VERIFICATION
+  INVITED
+  ENROLLED
+  BASELINE_INCOMPLETE
+  ACTIVE
+  PAUSED
+  ESCALATED
+  CLINICIAN_OVERRIDE
+  COMPLETED
+  UNSUCCESSFUL_COMPLETION
+  WITHDRAWN
+  LOST_TO_FOLLOW_UP
+  RE_ENROLLMENT_ELIGIBLE
+}
+
+/// Versioned, executable care program — PlanDefinition is reusable, CarePlan is patient-specific applied plan.
+model HealthPathwayDefinition {
+  id          String                    @id @default(uuid())
+  workspaceId String
+  pathwayId   String                    // e.g. diabetes-type2-v3
+  title       String                    // Type 2 diabetes support
+  version     String                    @default("1.0.0") // semantic version
+  status      PathwayDefinitionStatus   @default(DRAFT)
+  jurisdiction String?                  // configured_region
+  owner       String?                   // endocrinology_program
+  purpose     String?                   // support_monitoring_and_clinician_coordinated_care
+  eligibility Json                      @default("{}") // { conditions, exclusions, required_data }
+  consent     Json                      @default("{}") // { required, caregiver_sharing, research_use }
+  steps       Json                      @default("[]")
+  outcomes    Json                      @default("[]")
+  exceptions  Json                      @default("[]")
+  clinicianOverride Boolean              @default(true)
+  reporting   Json                      @default("{}") // { quality_measures, financial_rules }
+  evidenceSources String[]              @default([])
+  population  String?
+  effectiveDate DateTime?
+  retirementDate DateTime?
+  changeLog   String?
+  validationStatus String?
+  qualityMeasures String[]             @default([])
+  financialRules String[]               @default([])
+  exceptionRules String[]               @default([])
+  modelDependencies String[]            @default([])
+  rollbackVersion String?
+  createdById String?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, pathwayId, version])
+  @@index([workspaceId, pathwayId])
+  @@index([status])
+}
+
+/// Patient enrollment — state machine 15 states, distinguishes not eligible vs eligible not enrolled vs enrolled inactive vs completed vs lost to follow-up.
+model HealthPathwayEnrollment {
+  id                String           @id @default(uuid())
+  workspaceId       String
+  patientId         String
+  pathwayId         String
+  pathwayVersion    String           @default("1.0.0")
+  status            EnrollmentStatus @default(POTENTIALLY_ELIGIBLE)
+  candidateId       String?          // elig-...
+  enrolledAt        DateTime?
+  consentRef        String?          // consent-...
+  goals             String[]         @default([])
+  barriers          String[]         @default([])
+  caregiverId       String?          // authorized-caregiver-token
+  reviewOwnerId     String?          // care-manager-token
+  baseline          Json             @default("{}")
+  riskTier          String?          // Low/Moderate/High/Critical
+  activeInterventions String[]       @default([])
+  completionCriteria Json            @default("{}")
+  outcome           Json             @default("{}")
+  version           String           @default("1.0.0") // pathway version at enrollment — existing patients remain attached unless controlled migration approved
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, patientId, pathwayId])
+  @@index([workspaceId, pathwayId])
+  @@index([status])
+  @@index([patientId])
+}
+
+/// Exception — expected pathway states, not technical failures. 22 types.
+model HealthPathwayException {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  patientId         String?
+  pathwayId         String?
+  enrollmentId      String?
+  exceptionType     String   // Patient declines, Patient unavailable, Patient lacks transport, Language mismatch, Medication unavailable, etc. — 22 types
+  severity          String   @default("moderate") // low/moderate/high
+  assignedOwner     String?
+  resolutionOptions String[] @default([])
+  dueAt             DateTime?
+  status            String   @default("open") // open, resolved, adapted, transferred, patient_declined, unable_to_contact, clinician_closed, emergency_superseded, awaiting_external_service, requires_review
+  outcome           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, patientId])
+  @@index([exceptionType])
   @@index([status])
 }
 
