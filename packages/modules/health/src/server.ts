@@ -20,6 +20,7 @@ import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGAT
 import { PrivacyAnalyticsPlane, ANALYTICS_ZONES, PRIVACY_MODES, PRIVACY_ARCHITECTURE, TRANSFORMATION_GATEWAY, GATEWAY_PIPELINE, OUTPUT_CONTROLS, ROLLOUT_PHASES, PRIVACY_API, GENOMIC_ACCESS_LEVELS, CLEAN_ROOM_CONTROLS, FEDERATED_SITE_CHECKS, FL_MODEL_RISK_TESTS, CONFIDENTIAL_COMPUTE_CONTROLS, PRIVACY_OPS_TILES, scoreQueryRisk, enforceCohortSize, safeCountDisplay, binAge, monthOnly, safeHarborTransform, studyPseudonym, laplaceNoise, dpNoisyCount, testSyntheticDisclosure, queryAssessmentSchema, privacyPolicySchema, releaseLedgerSchema, privacyIncidentSchema, dpReleaseSchema, deidRecordSchema, syntheticCertSchema } from "./privacy-analytics";
 import { CyberResilienceProgram, PROTECTION_DIMENSIONS, RESILIENCE_PIPELINE, RESPONSE_LEVERS, CLINICAL_TIERS, RECOVERY_ORDER, ASSET_TYPES, SBOM_FIELDS, SBOM_GENERATION_TRIGGERS, SBOM_LINK_TARGETS, SUPPLY_CHAIN_CONTROLS, ARTIFACT_ADMISSION, VULN_LIFECYCLE, QUARANTINE_STATES, QUARANTINE_WORKFLOW, RANSOMWARE_PREVENT, RANSOMWARE_RESPONSE, BACKUP_TYPES, BACKUP_CONTROLS, BACKUP_PRINCIPLE, RECOVERY_VALIDATION, CONTINUITY_CAPABILITIES, TABLETOP_SCENARIOS, RED_TEAM_TARGETS, RED_TEAM_BOUNDARIES, DRILL_TYPES, DRILL_STAGES, POST_RESTORE_DEVICE_CHECKS, INTEGRITY_SIGNALS, VENDOR_REQUIREMENTS, VENDOR_ACCESS_RULES, CYBER_API, tierForService, canDeclareRecovered, productionReadinessGate, sbomLinkCheck, artifactAdmissionCheck, rankVulnerability, canTransitionVuln, validateFirmware, quarantineDecision, backupRestorable, recoveryChecklistGaps, assetSchema, sbomSchema, vulnSchema, vulnExceptionSchema, disclosureSchema, devicePatchSchema, compensatingSchema, firmwareSchema, backupSchema, exerciseSchema, vendorSchema, cyberIncidentSchema, CYBER_PROGRAM_VERSION } from "./cyber-resilience";
 import { ProviderIntelligencePlane, PROVIDER_PIPELINE, DASHBOARD_AUDIENCES, METRIC_DISPLAY_FIELDS, EXECUTIVE_TILES, EXECUTIVE_TILE_DETAIL, ACCESS_FUNNEL, ACCESS_MEASURES, ACCESS_STRATIFICATIONS, NOSHOW_OUTCOMES, NOSHOW_MEASURES, REFERRAL_FUNNEL, LEAKAGE_CAUSES, GAP_LIFECYCLE, GAP_MEASURES, ADHERENCE_MEASURES, ADHERENCE_LIMITATIONS, READMISSION_MEASURES, READMISSION_REVIEW_FIELDS, ALERT_MEASURES, DOCUMENTATION_DOMAINS, DOCUMENTATION_GUARDRAILS, ENGAGEMENT_MEASURES, ENGAGEMENT_STATES, RPM_FUNNEL, RPM_EXIT_REASONS, REVENUE_MEASURES, REVENUE_SAFEGUARDS, EQUITY_STRATIFIERS, EQUITY_MEASURES, EQUITY_SAFEGUARDS, EQUITY_WORKFLOW, MODEL_INVENTORY_FIELDS, MODEL_PERFORMANCE_MEASURES, MODEL_SAFETY_MEASURES, ATTRIBUTION_ROLES, ATTRIBUTION_VIEWS, ACTION_QUEUE_FLOW, ACTION_QUEUE_EXAMPLES, DENOMINATOR_QUALITY_FIELDS, PROVIDER_DASHBOARD_CONTROLS, PROVIDER_API, waitDistribution, funnelConversion, gapClosureState, alertQualityScore, disparityGaps, modelSafetyGate, attributionFairnessCheck, evaluateThreshold, denominatorShrinkageFlag, denominatorChangeWarning, metricDefinitionSchema, attributionSchema, thresholdSchema, modelRegistrationSchema, PROVIDER_ANALYTICS_VERSION } from "./provider-analytics";
+import { TenantControlPlane, CONFIG_LEVELS, CONFIG_DOMAINS, DOMAIN_GUARDRAILS, CONFIG_LIFECYCLE, CONFIG_CLASSES, APPROVAL_MATRIX, ISOLATION_LAYERS, ISOLATION_TIERS, ONBOARDING_STEPS, READINESS_SIGNALS, TERMINOLOGY_LAYERS, ROLE_NON_BYPASSABLES, DEVICE_ACTIVATION_GATES, RESIDENCY_COVERAGE, CANARY_STAGES, CANARY_MONITORS, COMPATIBILITY_CHECKS, ROLLBACK_SCOPE, DRIFT_SIGNALS, OFFBOARDING_STEPS, TENANT_OPS_TILES, TENANT_API, resolveEffective, guardrailCheck, canTransitionConfig, isolationCheck, readinessGaps, deviceActivationGaps, residencyCoverageGaps, configSchema, pathwaySchema, alertRuleSchema, consentPolicySchema, retentionRuleSchema, payerRuleSchema, roleTemplateSchema, deviceCatalogSchema, aiPolicySchema, residencySchema, integrationSchema, TENANT_PLATFORM_VERSION } from "./tenant-platform";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -349,6 +350,7 @@ export class HealthService {
   private get privacy() { return new PrivacyAnalyticsPlane(this.workspaceId, this.userId, this.role); }
   private get cyber() { return new CyberResilienceProgram(this.workspaceId, this.userId, this.role); }
   private get providers() { return new ProviderIntelligencePlane(this.workspaceId, this.userId, this.role); }
+  private get tenants() { return new TenantControlPlane(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -990,6 +992,38 @@ export class HealthService {
   async providerListModels(status?: string) { return this.providers.listModels(status); }
   async providerDashboard(audience: string) { return this.providers.dashboard(audience); }
   async providerEffectiveness(metricId: string, before: Parameters<ProviderIntelligencePlane["interventionEffectiveness"]>[1], after: Parameters<ProviderIntelligencePlane["interventionEffectiveness"]>[2]) { return this.providers.interventionEffectiveness(metricId, before, after); }
+
+  // ── Tenant Configuration and Policy Control Plane ────────────────
+  // Bounded customization: guardrails always win over local overrides.
+  get configLevels() { return CONFIG_LEVELS; }
+  get configDomains() { return CONFIG_DOMAINS; }
+  get domainGuardrails() { return DOMAIN_GUARDRAILS; }
+  get configLifecycle() { return CONFIG_LIFECYCLE; }
+  get configClasses() { return CONFIG_CLASSES; }
+  get tenantApprovalMatrix() { return APPROVAL_MATRIX; }
+  get isolationLayers() { return ISOLATION_LAYERS; }
+  get isolationTiers() { return ISOLATION_TIERS; }
+  get tenantApi() { return TENANT_API; }
+  tenantEffective(chain: Parameters<typeof resolveEffective>[0], key: string) { return resolveEffective(chain, key); }
+  tenantGuardrails(domain: string, proposed: Record<string, unknown>) { return guardrailCheck(domain, proposed); }
+  tenantIsolation(layers: Record<string, boolean>) { return isolationCheck(layers); }
+  tenantDeviceGaps(entry: Record<string, boolean>) { return deviceActivationGaps(entry); }
+  tenantResidencyGaps(covered: Record<string, boolean>) { return residencyCoverageGaps(covered); }
+  async tenantRegister(input: Parameters<TenantControlPlane["registerTenant"]>[0]) { return this.tenants.registerTenant(input); }
+  async tenantOnboarding(tenantId: string, completed: Record<string, boolean>, readiness: Record<string, boolean>) { return this.tenants.updateOnboarding(tenantId, completed, readiness); }
+  async tenantSaveDraft(input: Parameters<TenantControlPlane["saveDraft"]>[0]) { return this.tenants.saveDraft(configSchema.parse(input)); }
+  async tenantTransition(configId: string, to: string, actor?: string) { return this.tenants.transitionConfig(configId, to, actor); }
+  async tenantListConfigs(tenantId?: string, status?: string) { return this.tenants.listConfigs(tenantId, status); }
+  async tenantEffectiveValue(tenantId: string, key: string, overrides?: Parameters<TenantControlPlane["effectiveValue"]>[2]) { return this.tenants.effectiveValue(tenantId, key, overrides); }
+  async tenantAlertRule(input: Parameters<TenantControlPlane["upsertAlertRule"]>[0]) { return this.tenants.upsertAlertRule(alertRuleSchema.parse(input)); }
+  async tenantPathway(input: Parameters<TenantControlPlane["publishPathway"]>[0]) { return this.tenants.publishPathway(pathwaySchema.parse(input)); }
+  async tenantIntegration(input: Parameters<TenantControlPlane["registerIntegration"]>[0]) { return this.tenants.registerIntegration(integrationSchema.parse(input)); }
+  async tenantIsolationTest(layers: Record<string, boolean>) { return this.tenants.isolationSelfTest(layers); }
+  async tenantSimulate(scenario: string, context?: Record<string, unknown>) { return this.tenants.simulate(scenario, context); }
+  async tenantDrift(input: Parameters<TenantControlPlane["reportDrift"]>[0]) { return this.tenants.reportDrift(input); }
+  async tenantResolveDrift(driftId: string, resolution: "RESTORED" | "EXCEPTION_APPROVED", note?: string) { return this.tenants.resolveDrift(driftId, resolution, note); }
+  async tenantOffboard(tenantId: string, completed: Record<string, boolean>) { return this.tenants.offboardTenant(tenantId, completed); }
+  async tenantOps(tenantId?: string) { return this.tenants.opsDashboard(tenantId); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

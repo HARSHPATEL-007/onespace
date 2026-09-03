@@ -233,6 +233,12 @@ integrations    Integration[]
   healthProviderModels HealthProviderModel[]
   healthProviderModelReadings HealthProviderModelReading[]
   healthProviderEquityReviews HealthProviderEquityReview[]
+  healthTenantRecords HealthTenantRecord[]
+  healthTenantConfigs HealthTenantConfig[]
+  healthTenantAlertRules HealthTenantAlertRule[]
+  healthTenantPathways HealthTenantPathway[]
+  healthTenantIntegrations HealthTenantIntegration[]
+  healthTenantDrifts HealthTenantDrift[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -12149,4 +12155,154 @@ model HealthProviderEquityReview {
 
   @@unique([workspaceId, reviewId])
   @@index([workspaceId, stage])
+}
+
+/// N0VA HEALTH — Tenant Configuration and Policy Control Plane.
+/// Versioned, immutable-after-approval configuration with explicit
+/// inheritance, guardrailed domains, isolation tiers, and lifecycle ops.
+/// No tenant may disable foundational safety, privacy, or audit controls.
+model HealthTenantRecord {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  tenantId      String
+  name          String
+  region        String   @default("")
+  isolationTier String   @default("LOGICAL_SHARED")
+  orgStructure  Json     @default("{}")
+  onboarding    Json     @default("{}")
+  readiness     Json     @default("{}")
+  status        String   @default("ONBOARDING")
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, tenantId])
+  @@index([workspaceId, status])
+}
+
+model HealthTenantConfig {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  configId          String
+  tenantId          String
+  version           String   @default("2026.09.1")
+  parentVersion     String   @default("")
+  status            String   @default("DRAFT")
+  effectiveFrom     DateTime?
+  effectiveUntil    DateTime?
+  domains           Json     @default("{}")
+  businessReason    String   @default("")
+  requester         String   @default("")
+  riskClassification String  @default("B_OPERATIONAL")
+  testEvidence      String   @default("")
+  rollbackVersion   String   @default("")
+  owner             String   @default("")
+  reviewDate        DateTime?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, configId])
+  @@index([workspaceId, tenantId])
+  @@index([workspaceId, status])
+}
+
+model HealthTenantAlertRule {
+  id                    String   @id @default(uuid())
+  workspaceId           String
+  alertRuleId           String
+  version               String   @default("1.0")
+  trigger               String
+  severity              String   @default("warning")
+  primaryRoute          String   @default("")
+  backupRoute           String   @default("")
+  acknowledgementDeadline String @default("")
+  escalation            String[] @default([])
+  patientNotification   String   @default("after_clinician_review")
+  duplicateWindow       String   @default("10_minutes")
+  approval              String   @default("single")
+  cannotDisable         Boolean  @default(false)
+  enabled               Boolean  @default(true)
+  createdById           String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, alertRuleId, version])
+  @@index([workspaceId, trigger])
+}
+
+model HealthTenantPathway {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  pathwayId         String
+  version           String   @default("1.0")
+  population        Json     @default("{}")
+  steps             Json     @default("[]")
+  escalation        Json     @default("{}")
+  safetyConstraints String[] @default([])
+  migrationPolicy   String   @default("clinician_review")
+  approvedBy        String   @default("")
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, pathwayId, version])
+}
+
+model HealthTenantIntegration {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  endpointId        String
+  tenantId          String
+  kind              String
+  environment       String   @default("production")
+  region            String   @default("")
+  protocol          String   @default("")
+  authentication    String   @default("mutual_tls")
+  certificate       String   @default("")
+  allowedResources  String[] @default([])
+  dataClassification String  @default("")
+  messageMapping    String   @default("")
+  schemaVersion     String   @default("")
+  downtimeBehavior  String   @default("queue_and_alert")
+  healthStatus      String   @default("unknown")
+  expiresAt         DateTime?
+  vendorContact     String   @default("")
+  allowlisted       Boolean  @default(false)
+  approvedBy        String   @default("")
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, endpointId])
+  @@index([workspaceId, tenantId])
+}
+
+model HealthTenantDrift {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  driftId      String
+  signal       String
+  detail       String   @default("")
+  runtimeValue String   @default("")
+  approvedValue String  @default("")
+  status       String   @default("OPEN")
+  createdById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, driftId])
+  @@index([workspaceId, status])
 }

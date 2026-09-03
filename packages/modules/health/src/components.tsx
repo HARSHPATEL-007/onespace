@@ -42,6 +42,7 @@ const TABS = [
   { id: "privacy", label: "Privacy Analytics" },
   { id: "resilience", label: "Cyber Resilience" },
   { id: "providers", label: "Provider Analytics" },
+  { id: "tenants", label: "Tenant Platform" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2841,6 +2842,27 @@ Which measurements produced this estimate? Which model version? Did corrected re
               <div className="nv-card" style={{ padding:10 }}><b>Models + action</b><div style={{ color:"var(--nv-color-text-faint)"}}>Inventory, calibration, drift, subgroup safety, auto-suspend. Every breach opens an owned queue through to re-measurement.</div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.providerRegisterMetric / providerRecordObservation / providerRecordFunnel / providerEvaluate / providerOpenQueue / providerAttribution / providerEquityReview / providerRegisterModel / providerModelReading / providerDashboard / providerEffectiveness. Full docs in provider-analytics.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "tenants" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Tenant Configuration & Policy Control Plane — Bounded Customization" subtitle="Versioned, typed, policy-controlled configuration with explicit inheritance. Guardrails always win over local overrides — no tenant can disable safety, privacy, audit, or isolation controls." action={<><Badge tone="primary">6 Levels</Badge><Badge tone="warning">14 Domains</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Global","Regional","Tenant","Facility","Specialty","Workflow"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              Lifecycle: draft → validation → testing → approval → canary → active → monitored. Approval freezes the version; changes create new versions.
+              Isolation enforced across 12 layers, fail-closed. Drift blocks unsafe divergence. Offboarding preserves records and audit.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Hierarchy + classes</b><div style={{ color:"var(--nv-color-text-faint)"}}>Every value shows source, version, approver, rollback target. Classes A–D route lightweight to security+privacy+legal+owner approval.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Pathways + alerts</b><div style={{ color:"var(--nv-color-text-faint)"}}>Versioned pathways with migration policy — active patients never silently moved. Foundational alerts cannot be disabled.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Residency + integrations</b><div style={{ color:"var(--nv-color-text-faint)"}}>Placement covering databases to vendor endpoints. Endpoints need allowlist, certificate, testing, approval.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Canary + rollback</b><div style={{ color:"var(--nv-color-text-faint)"}}>Six staged rings with 12 monitors. Rollback covers policy, workflows, mappings, AI, retention, caches — never UI-only.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Simulator + drift</b><div style={{ color:"var(--nv-color-text-faint)"}}>What-if decisions before approval. Runtime divergence detected, unsafe behavior blocked, restored or exceptioned.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Devices + AI + roles</b><div style={{ color:"var(--nv-color-text-faint)"}}>Catalog activation gates, per-capability AI policies with disable switches, role templates that cannot bypass least privilege.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.tenantRegister / tenantSaveDraft / tenantTransition / tenantAlertRule / tenantPathway / tenantIntegration / tenantIsolationTest / tenantSimulate / tenantDrift / tenantOffboard / tenantOps. Full docs in tenant-platform.ts.</div>
           </Section>
         </div>
       )}

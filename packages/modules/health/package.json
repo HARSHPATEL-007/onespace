@@ -25,7 +25,8 @@
     "./transaction-reliability": "./src/transaction-reliability.ts",
     "./privacy-analytics": "./src/privacy-analytics.ts",
     "./cyber-resilience": "./src/cyber-resilience.ts",
-    "./provider-analytics": "./src/provider-analytics.ts"
+    "./provider-analytics": "./src/provider-analytics.ts",
+    "./tenant-platform": "./src/tenant-platform.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
