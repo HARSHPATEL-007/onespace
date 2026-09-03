@@ -325,7 +325,7 @@ export function emergencySummaryWarnings(items: Array<{ field: string; verified:
 }
 
 // ── Ani companion — modes, pipeline, prohibitions, attribution ────────
-export const ANI_MODES: Record<string, { functions: string[]; guardrail: string }> = {
+export const PERSONAL_ANI_MODES: Record<string, { functions: string[]; guardrail: string }> = {
   wellness_coaching: { functions: ["goals", "habits", "routines"], guardrail: "No diagnosis or treatment claims" },
   medication_reminders: { functions: ["reminders", "logging", "refill_prompts"], guardrail: "No independent dose changes" },
   appointment_support: { functions: ["booking", "preparation", "reminders"], guardrail: "No unsafe cancellation" },
@@ -335,7 +335,7 @@ export const ANI_MODES: Record<string, { functions: string[]; guardrail: string 
   emotional_support: { functions: ["reflection", "grounding", "resources"], guardrail: "Crisis escalation" },
   care_plan_reinforcement: { functions: ["repeat_approved_instructions"], guardrail: "No override of clinician plan" },
 };
-export const ANI_PROHIBITED = [
+export const PERSONAL_ANI_PROHIBITED = [
   "diagnose", "rule_out_emergency", "change_medication", "interpret_critical_as_safe",
   "override_clinician", "cancel_critical_followup", "release_discharge",
   "approve_referral_closure", "make_emergency_decision", "share_sensitive_with_caregiver",
@@ -352,7 +352,7 @@ export const ANI_RESPONSE_STATES = [
 ] as const;
 
 export function personalAniGuard(action: string): { permitted: boolean; reason: string } {
-  if ((ANI_PROHIBITED as readonly string[]).includes(action)) {
+  if ((PERSONAL_ANI_PROHIBITED as readonly string[]).includes(action)) {
     return { permitted: false, reason: `Ani must not independently ${action.replace(/_/g, " ")}. Draft for human review instead — boundary stays visible.` };
   }
   return { permitted: true, reason: "Within configured Ani modes; attributable, reviewable, AI-labeled." };
@@ -696,7 +696,7 @@ export class PersonalCompanion {
   // ── Ani sessions — bounded, attributed, labeled ───────────────────
   async aniMessage(input: { sessionId?: string; mode: string; message: string; context?: Record<string, unknown> }) {
     await this.assert("CREATE");
-    if (!ANI_MODES[input.mode]) throw new Error(`Unknown Ani mode: ${input.mode}`);
+    if (!PERSONAL_ANI_MODES[input.mode]) throw new Error(`Unknown Ani mode: ${input.mode}`);
     const urgency = detectUrgency(input.message);
     const sessionId = input.sessionId ?? `ani-${crypto.randomUUID().slice(0, 8)}`;
     if (urgency.urgent) {
@@ -707,7 +707,7 @@ export class PersonalCompanion {
     memPush(memAni, this.workspaceId, record);
     await safe(() => (prisma as unknown as PersonalTables).healthPersonalAni.create({ data: { workspaceId: this.workspaceId, sessionId, userId: this.userId, mode: input.mode, messages: [record], state: "general_wellness", reviewer: "" } }) as Promise<never>, null).catch(() => null);
     await this.audit("personal.ani.message", sessionId, { mode: input.mode });
-    return { sessionId, pipeline: [...ANI_PIPELINE], state: "general_wellness" as const, label: PATIENT_AI_LABEL, guardrail: ANI_MODES[input.mode]!.guardrail };
+    return { sessionId, pipeline: [...ANI_PIPELINE], state: "general_wellness" as const, label: PATIENT_AI_LABEL, guardrail: PERSONAL_ANI_MODES[input.mode]!.guardrail };
   }
 
   async aniDraftAction(sessionId: string, action: string) {
