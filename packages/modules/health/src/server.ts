@@ -25,6 +25,7 @@ import { EditionPackaging, EDITIONS, PLATFORM_FOUNDATION, DATA_DOMAIN_SEPARATION
 import { PersonalCompanion, PRODUCT_PROMISE, PERSONAL_MODULES, HOME_SECTIONS, HOME_STATES, PROFILE_SOURCE_STATES, DATA_LABELS, GOAL_DOMAINS, GOAL_SAFEGUARDS, MED_PERMITTED, MED_RESTRICTED, MED_RECORD_STATES, DOCUMENT_TYPES, SUPPORTED_DEVICES, JOURNAL_DOMAINS, URGENT_PATTERNS, SHARING_DIMENSIONS, SHARING_FLOW, SENSITIVE_CATEGORIES, PROXY_TYPES, TIMELINE_MARKERS, EMERGENCY_FIELDS, PERSONAL_ANI_MODES, PERSONAL_ANI_PROHIBITED, ANI_PIPELINE, ANI_RESPONSE_STATES, CRISIS_TRIGGERS, PRIVACY_CONTROLS, ACCESSIBILITY_COVERAGE, SAFETY_TELEMETRY, PERSONAL_API, claimCheck, provenanceLabel, goalCheckIn, medicationGuard, missedDoseResponse, cancelAppointmentFlow, labelReading, detectUrgency, safetyModeMessage, pghdEnvelope, sharingScopeCheck, proxyMayView, emergencySummaryWarnings, personalAniGuard, syncStatusMessage, profileSchema, goalSchema, medicationSchema as personalMedicationSchema, appointmentSchema, documentSchema, deviceSchema as personalDeviceSchema, PERSONAL_VERSION } from "./personal-companion";
 import { CareOperatingSystem, CARE_PROMISE, CARE_NOT_CLAIMS, WORKSPACE_PROVENANCE, WORKSPACE_HEADER, WORKSPACE_GUARDRAILS, ACCESS_STAGES, INTAKE_FIELDS, TRIAGE_STATES, ENCOUNTER_STAGES, ENCOUNTER_CLOSURE, DOCUMENTATION_PROVENANCE, MEDREC_WORKFLOW, MEDREC_SOURCES, DISCREPANCY_CATEGORIES, ORDER_LIFECYCLE, ORDER_DISPLAY, RESULT_LIFECYCLE, CRITICAL_RESULT_REQUIREMENTS, TASK_DISPOSITIONS, RPM_LIFECYCLE, MESSAGE_CLASSES, CDS_CATALOG, CDS_REQUIRED_FIELDS, CDS_STATES, ALLERGY_REVIEW_CHECKPOINTS, REFERRAL_ESCALATION_TRIGGERS, TRANSITION_FOLLOWUP, MATCH_SIGNALS, MATCH_OUTCOMES, MERGE_REQUIREMENTS, ATTRIBUTION_FIELDS, TRANSACTION_STATES, DOWNTIME_CAPABILITIES, DOWNTIME_RECOVERY, CARE_DASHBOARDS, CARE_API, CARE_VERSION, careClaimCheck, triageTransition, accessRoute, encounterClosureGaps, documentationSignOff, discrepancyDecision, orderTransition, orderEndpointFailure, criticalResultGaps, taskOwnerCheck, taskClosureValid, rpmEscalationGate, messageLabel, payerDenialTask, cdsTransition, mergePermitted, downtimeWriteAllowed, encounterSchema } from "./care-operating";
 import { ClinicalEnterpriseSystem, CLINICAL_PROMISE, CLINICAL_NOT_CLAIMS, CLAIM_EVIDENCE_CHAIN, AUTHORITY_LAYERS, COMMAND_WORKSPACES, WORKSPACE_CONTEXT, RECORD_SECTIONS, RECORD_ITEM_FIELDS, RECORD_STATUSES, INTEROP_MATRIX, INTEROP_LIFECYCLE, TRANSACTION_VISIBILITY, RECONCILIATION_VIEWS, ED_WORKFLOW, ED_TRACKING, ED_SAFETY, INPATIENT_WORKFLOWS, DAILY_CLINICAL_VIEW, DOCUMENTATION_CONTROLS, CLINICAL_MEDICATION_WORKFLOW, ALLERGY_TYPES, ALLERGY_REQUIRED, LAB_LIFECYCLE, CRITICAL_ASSURANCE, CRITICAL_MONITORS, IMAGING_WORKFLOWS, IMAGING_SEPARATION, DEVICE_REGISTRY_FIELDS, DEVICE_LIFECYCLE, DEVICE_RELIABILITY_CHECKS, CDS_CLASSES, CDS_RECORD_FIELDS, RECOMMENDATION_TRANSPARENCY, AI_INVENTORY_FIELDS, AI_MONITORS, AI_DEPLOYMENT_REQUIREMENTS, SAFETY_CASE_STRUCTURE, HF_PARTICIPANTS, HF_SCENARIOS, HF_METRICS, CHANGE_BOARD_SCOPE, CHANGE_RECORD_FIELDS, AVAILABILITY_TARGETS, RESILIENCE_MECHANISMS, DOWNTIME_BEFORE, DOWNTIME_DURING, CLINICAL_DOWNTIME_RECOVERY, IDENTITY_CONTROLS, BREAK_GLASS_REQUIREMENTS, AUDIT_EVENTS, AUDIT_PROPERTIES, QUALITY_DASHBOARDS, IMPROVEMENT_CYCLE, VENDOR_REGISTER_ENTITIES, VENDOR_ASSESSMENT, HOSPITAL_COMMITTEES, CAPABILITY_OWNERSHIP, CLINICAL_API, CLINICAL_VERSION, clinicalClaimCheck, recordStatusTransition, interopTransactionComplete, edThroughputGuard, dailyViewGaps, clinicalSignOff, allergyGaps, deviceReliabilityGaps, aiDeploymentGaps, downtimeRecoveryGaps, breakGlassGaps } from "./clinical-enterprise";
+import { ResearchGovernanceSystem, RESEARCH_PROMISE, RESEARCH_ARCHITECTURE, RESEARCH_DATA_LAYERS, RESEARCH_WORKSPACES, PROJECT_LIFECYCLE, DATA_CLASSES, DEID_STRATEGIES, DEID_REPORT_FIELDS, CONSENT_TYPES, WITHDRAWAL_ACTIONS, ACCESS_CONDITIONS, RESEARCH_ROLES, COHORT_RELEASE_FIELDS, DISCLOSURE_TECHNIQUES, DATA_VISIBILITY_LABELS, CLEANROOM_CONTROLS, TRIAL_LIFECYCLE, TRIAL_SEPARATION, EDC_CONTROLS, BIOBANK_LIFECYCLE, GENOMIC_CONTROLS, RWE_ELEMENTS, RWE_STUDY_PLAN, FEDERATED_CONTROLS, SYNTHETIC_LABEL_FIELDS, STAT_REQUIREMENTS, LINEAGE_STAGES, DUA_TRACKING, PUBLICATION_REVIEW, REVIEW_PIPELINE, REPRO_PACKAGE, MONITOR_SIGNALS, AUDIT_FIELDS, QUALITY_PROFILE, CLOSEOUT_STEPS, RESEARCH_API, RESEARCH_VERSION, rsrchLifecycleMove, rsrchProtocolAmend, rsrchClassify, rsrchDeidReport, rsrchWithdraw, rsrchAccessCheck, rsrchCohortRelease, rsrchDisclosure, rsrchTrialMove, rsrchEdcSign, rsrchSpecimenRelease, rsrchGenomicFlag, rsrchRweGrade, rsrchFederatedReport, rsrchSyntheticLabel, rsrchDuaExpiry, rsrchPublicationReview, rsrchReproducibility, rsrchCloseout, protocolSchema } from "./research-governance";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -359,6 +360,7 @@ export class HealthService {
   private get personal() { return new PersonalCompanion(this.workspaceId, this.userId, this.role); }
   private get careos() { return new CareOperatingSystem(this.workspaceId, this.userId, this.role); }
   private get clinical() { return new ClinicalEnterpriseSystem(this.workspaceId, this.userId, this.role); }
+  private get research() { return new ResearchGovernanceSystem(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -1177,6 +1179,54 @@ export class HealthService {
   async clinicalQuality(input: Parameters<ClinicalEnterpriseSystem["qualitySignal"]>[0]) { return this.clinical.qualitySignal(input); }
   async clinicalVendor(input: Parameters<ClinicalEnterpriseSystem["assessVendor"]>[0]) { return this.clinical.assessVendor(input); }
   async clinicalCommand(workspace: string) { return this.clinical.commandView(workspace); }
+
+  // ── N0VA Research — governed evidence, never a clinical export ────
+  get researchPromise() { return RESEARCH_PROMISE; }
+  get researchLifecycle() { return PROJECT_LIFECYCLE; }
+  get researchDataClasses() { return DATA_CLASSES; }
+  get researchApi() { return RESEARCH_API; }
+  rsrchLifecycle(from: string, to: string) { return rsrchLifecycleMove(from, to); }
+  rsrchAmend(current: Parameters<typeof rsrchProtocolAmend>[0], next: Parameters<typeof rsrchProtocolAmend>[1]) { return rsrchProtocolAmend(current, next); }
+  rsrchClassifyData(f: Parameters<typeof rsrchClassify>[0]) { return rsrchClassify(f); }
+  rsrchDeid(report: Record<string, unknown>) { return rsrchDeidReport(report); }
+  rsrchWithdrawPlan() { return rsrchWithdraw(); }
+  rsrchAccess(conditions: Record<string, boolean>) { return rsrchAccessCheck(conditions); }
+  rsrchCohort(inclusion: number, minimumN: number, rare: boolean) { return rsrchCohortRelease(inclusion, minimumN, rare); }
+  rsrchQuery(prior: number, small: number, budget: number, spent: number) { return rsrchDisclosure(prior, small, budget, spent); }
+  rsrchTrialStep(from: string, to: string) { return rsrchTrialMove(from, to); }
+  rsrchSign(identity: string, linked: boolean, transferable: boolean) { return rsrchEdcSign(identity, linked, transferable); }
+  rsrchSpecimen(checks: Parameters<typeof rsrchSpecimenRelease>[0]) { return rsrchSpecimenRelease(checks); }
+  rsrchGenomic(analysis: Parameters<typeof rsrchGenomicFlag>[0]) { return this.research.genomicFlags(analysis); }
+  rsrchRwe(plan: Record<string, boolean>, use: string) { return this.research.rweGrade(plan, use); }
+  rsrchFederated(sites: Parameters<typeof rsrchFederatedReport>[0]) { return this.research.federatedReport(sites); }
+  rsrchSynthetic(label: Record<string, unknown>) { return rsrchSyntheticLabel(label); }
+  rsrchDua(agreementExpiry: string, accessEnd: string) { return rsrchDuaExpiry(agreementExpiry, accessEnd); }
+  rsrchPublication(checks: Record<string, boolean>) { return rsrchPublicationReview(checks); }
+  rsrchRepro(pkg: Record<string, unknown>) { return rsrchReproducibility(pkg); }
+  rsrchCloseoutSteps(done: Record<string, boolean>) { return rsrchCloseout(done); }
+  async rsrchRegisterProtocol(input: Parameters<ResearchGovernanceSystem["registerProtocol"]>[0]) { return this.research.registerProtocol(protocolSchema.parse(input)); }
+  async rsrchAmendProtocol(id: string, next: Parameters<ResearchGovernanceSystem["amendProtocol"]>[1]) { return this.research.amendProtocol(id, next); }
+  async rsrchProtocols(status?: string) { return this.research.listProtocols(status); }
+  async rsrchDataset(input: Parameters<ResearchGovernanceSystem["registerDataset"]>[0]) { return this.research.registerDataset(input); }
+  async rsrchGrantAccess(input: Parameters<ResearchGovernanceSystem["grantAccess"]>[0]) { return this.research.grantAccess(input); }
+  async rsrchSweepAccess() { return this.research.revokeExpiredAccess(); }
+  async rsrchCohortRelease(input: Parameters<ResearchGovernanceSystem["releaseCohort"]>[0]) { return this.research.releaseCohort(input); }
+  async rsrchLogQuery(input: Parameters<ResearchGovernanceSystem["logQuery"]>[0]) { return this.research.logQuery(input); }
+  async rsrchCreateTrial(input: Parameters<ResearchGovernanceSystem["createTrial"]>[0]) { return this.research.createTrial(input); }
+  async rsrchMoveParticipant(trialId: string, ref: string, to: string) { return this.research.moveParticipant(trialId, ref, to); }
+  async rsrchAdverseEvent(trialId: string, event: Record<string, unknown>) { return this.research.adverseEvent(trialId, event); }
+  async rsrchLockTrial(trialId: string) { return this.research.lockTrialData(trialId); }
+  async rsrchEdc(input: Parameters<ResearchGovernanceSystem["edcSign"]>[0]) { return this.research.edcSign(input); }
+  async rsrchAccession(input: Parameters<ResearchGovernanceSystem["accessionSpecimen"]>[0]) { return this.research.accessionSpecimen(input); }
+  async rsrchReleaseSpecimen(id: string, checks: Parameters<ResearchGovernanceSystem["releaseSpecimen"]>[1]) { return this.research.releaseSpecimen(id, checks); }
+  async rsrchAnalysis(input: Parameters<ResearchGovernanceSystem["registerAnalysis"]>[0]) { return this.research.registerAnalysis(input); }
+  async rsrchCorrectAnalysis(id: string, reason: string, impact: string) { return this.research.correctAnalysis(id, reason, impact); }
+  async rsrchReproducibility(id: string, pkg: Record<string, unknown>) { return this.research.attachReproducibility(id, pkg); }
+  async rsrchPublish(input: Parameters<ResearchGovernanceSystem["submitPublication"]>[0]) { return this.research.submitPublication(input); }
+  rsrchMonitor(kind: string) { return this.research.monitorSignal(kind); }
+  async rsrchCloseout(input: Parameters<ResearchGovernanceSystem["closeoutProject"]>[0]) { return this.research.closeoutProject(input); }
+  async rsrchWithdraw(participantRef: string, protocolId: string) { return this.research.withdrawConsent(participantRef, protocolId); }
+  async rsrchCommand() { return this.research.commandView(); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

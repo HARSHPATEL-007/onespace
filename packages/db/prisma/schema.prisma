@@ -278,6 +278,15 @@ integrations    Integration[]
   healthClinicalDowntimes HealthClinicalDowntime[]
   healthClinicalQuality HealthClinicalQuality[]
   healthClinicalVendors HealthClinicalVendor[]
+  healthResearchProtocols HealthResearchProtocol[]
+  healthResearchDatasets HealthResearchDataset[]
+  healthResearchAccess HealthResearchAccess[]
+  healthResearchCohorts HealthResearchCohort[]
+  healthResearchTrials HealthResearchTrial[]
+  healthResearchBiobank HealthResearchBiobank[]
+  healthResearchAnalyses HealthResearchAnalysis[]
+  healthResearchPublications HealthResearchPublication[]
+  healthResearchProjects HealthResearchProject[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -13188,4 +13197,203 @@ model HealthClinicalVendor {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, vendorId])
+}
+
+/// N0VA Research — controlled research, trial, biobanking, and evidence
+/// environment. Protocols version on amendment, datasets carry documented
+/// risk classification, access auto-expires, cohorts release with disclosure
+/// review, trials lock, analyses version instead of overwriting, closeout
+/// preserves regulatory and reproducibility records.
+model HealthResearchProtocol {
+  id                   String   @id @default(uuid())
+  workspaceId          String
+  protocolId           String
+  version              String   @default("1.0")
+  title                String
+  principalInvestigator String  @default("")
+  sponsor              String   @default("")
+  institution          String   @default("")
+  studyType            String   @default("real_world_evidence")
+  status               String   @default("draft")
+  inclusion            String[] @default([])
+  exclusion            String[] @default([])
+  dataDomains          String[] @default([])
+  consentModel         String   @default("")
+  irbStatus            String   @default("pending")
+  dataAccess           String   @default("controlled")
+  geography            String   @default("")
+  analysisPlan         String   @default("")
+  approvedOutputs      String[] @default([])
+  expiresAt            DateTime?
+  createdById          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, protocolId, version])
+  @@index([workspaceId, status])
+}
+
+model HealthResearchDataset {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  datasetId     String
+  title         String
+  classification String  @default("R2")
+  deidReport    Json     @default("{}")
+  quality       Json     @default("{}")
+  protocolId    String   @default("")
+  expiresAt     DateTime?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, datasetId])
+  @@index([workspaceId, protocolId])
+}
+
+model HealthResearchAccess {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  accessId      String
+  investigator  String
+  role          String   @default("principal_investigator")
+  institution   String   @default("")
+  protocolId    String   @default("")
+  datasetId     String   @default("")
+  conditions    Json     @default("{}")
+  expiresAt     DateTime
+  region        String   @default("")
+  purpose       String   @default("")
+  status        String   @default("active")
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, accessId])
+  @@index([workspaceId, protocolId])
+  @@index([workspaceId, status])
+}
+
+model HealthResearchCohort {
+  id          String   @id @default(uuid())
+  workspaceId String
+  cohortId    String
+  protocolId  String   @default("")
+  logic       String   @default("")
+  inclusion   Int      @default(0)
+  exclusion   Int      @default(0)
+  missingness Json     @default("{}")
+  reviewer    String   @default("")
+  releasedAt  DateTime @default(now())
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, cohortId])
+  @@index([workspaceId, protocolId])
+}
+
+model HealthResearchTrial {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  trialId       String
+  protocolId    String   @default("")
+  title         String
+  sites         String[] @default([])
+  participants  Json     @default("[]")
+  adverseEvents Json     @default("[]")
+  deviations    Json     @default("[]")
+  status        String   @default("setup")
+  dataLock      Boolean  @default(false)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, trialId])
+}
+
+model HealthResearchBiobank {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  specimenId     String
+  participantRef String   @default("")
+  specimenType   String
+  site           String   @default("")
+  consentRef     String   @default("")
+  custody        Json     @default("[]")
+  status         String   @default("stored")
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, specimenId])
+}
+
+model HealthResearchAnalysis {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  analysisId    String
+  protocolId    String   @default("")
+  datasetId     String   @default("")
+  plan          Json     @default("{}")
+  codeRef       String   @default("")
+  outputKind    String   @default("")
+  version       Int      @default(1)
+  reproPackage  Json     @default("{}")
+  status        String   @default("registered")
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, analysisId])
+  @@index([workspaceId, protocolId])
+}
+
+model HealthResearchPublication {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  publicationId String
+  protocolId    String   @default("")
+  analysisId    String   @default("")
+  draftRef      String   @default("")
+  checks        Json     @default("{}")
+  status        String   @default("draft")
+  pipeline      String[] @default([])
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, publicationId])
+}
+
+model HealthResearchProject {
+  id          String   @id @default(uuid())
+  workspaceId String
+  projectId   String
+  protocolId  String   @default("")
+  stage       String   @default("concept")
+  closeout    Json     @default("{}")
+  status      String   @default("open")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, projectId])
 }

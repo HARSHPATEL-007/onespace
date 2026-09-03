@@ -47,6 +47,7 @@ const TABS = [
   { id: "personal", label: "N0VA Personal" },
   { id: "careos", label: "N0VA Care" },
   { id: "clinical", label: "N0VA Clinical" },
+  { id: "research", label: "N0VA Research" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2952,6 +2953,27 @@ Which measurements produced this estimate? Which model version? Did corrected re
               <div className="nv-card" style={{ padding:10 }}><b>Downtime + vendors</b><div style={{ color:"var(--nv-color-text-faint)"}}>Recovery closes only on full reconciliation. Break-glass gated and audited. Vendors assessed with revalidation triggers.</div></div>
             </div>
             <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.clinicalRecordItem / clinicalInterop / clinicalStay / clinicalOrderMedication / clinicalLab / clinicalImaging / clinicalDevice / clinicalCds / clinicalAiModel / clinicalSafetyCase / clinicalChange / clinicalDowntime / clinicalBreakGlass / clinicalQuality / clinicalCommand. Full docs in clinical-enterprise.ts.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "research" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="N0VA Research — Governed Evidence Without Weakening Trust" subtitle="Controlled research, trials, biobanking, and evidence generation — never a clinical export button. Every dataset a justified purpose, every user an accountable authorization, every analysis a reproducible trail." action={<><Badge tone="primary">15 Stages</Badge><Badge tone="warning">R0–R6 Classes</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Cohorts","Trials","EDC","Biobank","Genomics","RWE","Federated","Synthetic"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              De-identification is a documented risk decision, not blanket permission. Amendments version — never silently broaden.
+              Access auto-expires; queries tracked for sequence risk; corrections version instead of overwriting.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Protocols + access</b><div style={{ color:"var(--nv-color-text-faint)"}}>Lifecycle-gated protocols with IRB, minimization, DUA. Ten-condition access checks with automatic expiry sweeps.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Cohorts + disclosure</b><div style={{ color:"var(--nv-color-text-faint)"}}>Release packages with minimum sizes and rare-individual blocking. Query budgets stop reconstructive sequences.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Trials + EDC</b><div style={{ color:"var(--nv-color-text-faint)"}}>Participant lifecycles frozen at data lock. Part 11-aligned signatures: unique, linked, non-transferable.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Biobank + genomics</b><div style={{ color:"var(--nv-color-text-faint)"}}>Five-gate specimen release. Enhanced genomic controls with kinship and re-identification flagging.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>RWE + federated</b><div style={{ color:"var(--nv-color-text-faint)"}}>Exploratory vs regulatory-grade classification. Site-transparent federated reports — never silent exclusion.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Outputs + closeout</b><div style={{ color:"var(--nv-color-text-faint)"}}>Privacy and protocol review before publication. 14-step closeout preserving regulatory and reproducibility records.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.rsrchRegisterProtocol / rsrchDataset / rsrchGrantAccess / rsrchCohortRelease / rsrchTrial / rsrchEdc / rsrchAccession / rsrchAnalysis / rsrchPublish / rsrchCloseout / rsrchCommand. Full docs in research-governance.ts.</div>
           </Section>
         </div>
       )}

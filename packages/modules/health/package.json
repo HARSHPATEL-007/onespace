@@ -30,7 +30,8 @@
     "./edition-packaging": "./src/edition-packaging.ts",
     "./personal-companion": "./src/personal-companion.ts",
     "./care-operating": "./src/care-operating.ts",
-    "./clinical-enterprise": "./src/clinical-enterprise.ts"
+    "./clinical-enterprise": "./src/clinical-enterprise.ts",
+    "./research-governance": "./src/research-governance.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",
