@@ -22,7 +22,8 @@
     "./medication-safety": "./src/medication-safety.ts",
     "./interoperability": "./src/interoperability.ts",
     "./offline-edge": "./src/offline-edge.ts",
-    "./transaction-reliability": "./src/transaction-reliability.ts"
+    "./transaction-reliability": "./src/transaction-reliability.ts",
+    "./privacy-analytics": "./src/privacy-analytics.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

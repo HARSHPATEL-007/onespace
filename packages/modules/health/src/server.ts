@@ -17,6 +17,7 @@ import { InteropControlPlane, INTEROP_PIPELINE, INTEROP_PROTOCOLS, INTEROP_API, 
 import { OfflineEdgeRuntime, OFFLINE_MODES, OFFLINE_API, FHIR_OFFLINE_RESOURCES, SYNC_STATUS_WORDS } from "./offline-edge";
 import { TransactionReliabilityLayer, TXN_ARCHITECTURE, TXN_STATES, TXN_API, FHIR_TXN_RESOURCES, SAGA_DEFINITIONS } from "./transaction-reliability";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
+import { PrivacyAnalyticsPlane, ANALYTICS_ZONES, PRIVACY_MODES, PRIVACY_ARCHITECTURE, TRANSFORMATION_GATEWAY, GATEWAY_PIPELINE, OUTPUT_CONTROLS, ROLLOUT_PHASES, PRIVACY_API, GENOMIC_ACCESS_LEVELS, CLEAN_ROOM_CONTROLS, FEDERATED_SITE_CHECKS, FL_MODEL_RISK_TESTS, CONFIDENTIAL_COMPUTE_CONTROLS, PRIVACY_OPS_TILES, scoreQueryRisk, enforceCohortSize, safeCountDisplay, binAge, monthOnly, safeHarborTransform, studyPseudonym, laplaceNoise, dpNoisyCount, testSyntheticDisclosure, queryAssessmentSchema, privacyPolicySchema, releaseLedgerSchema, privacyIncidentSchema, dpReleaseSchema, deidRecordSchema, syntheticCertSchema } from "./privacy-analytics";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
 // Covers: UHR, 12-layer biometric mesh, clinical intelligence, mental health,
@@ -343,6 +344,7 @@ export class HealthService {
   private get offlineEdge() { return new OfflineEdgeRuntime(this.workspaceId, this.userId, this.role); }
   private get txn() { return new TransactionReliabilityLayer(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
+  private get privacy() { return new PrivacyAnalyticsPlane(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
     if (!(await can(this.workspaceId, this.role, MODULE, action))) throw new Error(`Missing ${action} permission for health`);
@@ -858,6 +860,52 @@ export class HealthService {
   async txnPatientStatus(aggregateType: string, aggregateId: string) { return this.txn.patientStatusView(aggregateType, aggregateId); }
   async txnClinicianStatus(sagaId: string) { return this.txn.clinicianStatusView(sagaId); }
   async txnOperationsStatus() { return this.txn.operationsView(); }
+
+  // ── Privacy-Preserving Analytics Plane ───────────────────────────
+  // Policy-before-access: every dataset/query/model/output carries a privacy
+  // mode; noisy outputs are labeled approximate; small cells suppressed.
+  get analyticsZones() { return ANALYTICS_ZONES; }
+  get privacyModes() { return PRIVACY_MODES; }
+  get privacyArchitecture() { return PRIVACY_ARCHITECTURE; }
+  get transformationGateway() { return TRANSFORMATION_GATEWAY; }
+  get gatewayPipeline() { return GATEWAY_PIPELINE; }
+  get outputControls() { return OUTPUT_CONTROLS; }
+  get rolloutPhases() { return ROLLOUT_PHASES; }
+  get privacyApi() { return PRIVACY_API; }
+  get genomicAccessLevels() { return GENOMIC_ACCESS_LEVELS; }
+  get cleanRoomControls() { return CLEAN_ROOM_CONTROLS; }
+  get federatedSiteChecks() { return FEDERATED_SITE_CHECKS; }
+  get flModelRiskTests() { return FL_MODEL_RISK_TESTS; }
+  get confidentialComputeControls() { return CONFIDENTIAL_COMPUTE_CONTROLS; }
+  get privacyOpsTiles() { return PRIVACY_OPS_TILES; }
+  scorePrivacyQuery(input: Parameters<typeof scoreQueryRisk>[0], k?: number) { return scoreQueryRisk(queryAssessmentSchema.parse(input), k ?? 20); }
+  enforceCohort(count: number, k: number) { return enforceCohortSize(count, k); }
+  safeCount(count: number, k: number) { return safeCountDisplay(count, k); }
+  async privacyUpsertPolicy(input: Parameters<PrivacyAnalyticsPlane["upsertPolicy"]>[0]) { return this.privacy.upsertPolicy(privacyPolicySchema.parse(input)); }
+  async privacyListPolicies() { return this.privacy.listPolicies(); }
+  async privacyAssessQuery(input: Parameters<PrivacyAnalyticsPlane["assessQuery"]>[0], opts?: Parameters<PrivacyAnalyticsPlane["assessQuery"]>[1]) { return this.privacy.assessQuery(input, opts); }
+  async privacyDetectDifferencing(fp: string, ids: string[], lookback?: number) { return this.privacy.detectDifferencing(fp, ids, lookback); }
+  async privacyRelease(input: Parameters<PrivacyAnalyticsPlane["releaseOutput"]>[0]) { return this.privacy.releaseOutput(releaseLedgerSchema.parse(input)); }
+  async privacyListReleases(take?: number) { return this.privacy.listReleases(take); }
+  async privacyConsumeBudget(input: Parameters<PrivacyAnalyticsPlane["consumeBudget"]>[0]) { return this.privacy.consumeBudget(input); }
+  async privacyListBudgets() { return this.privacy.listBudgets(); }
+  async privacyDeidentify(input: Parameters<PrivacyAnalyticsPlane["deidentify"]>[0]) { return this.privacy.deidentify(input); }
+  async privacyPseudonymize(ids: string[], studyId: string, purpose: string) { return this.privacy.pseudonymize(ids, studyId, purpose); }
+  async privacyDpCount(input: Parameters<PrivacyAnalyticsPlane["dpCountRelease"]>[0]) { return this.privacy.dpCountRelease(input); }
+  privacyFederatedRound(sites: string[], analysisId: string) { return this.privacy.federatedRoundSpec(sites, analysisId); }
+  privacyFederatedLearningRound(pkg: string, sites: string[]) { return this.privacy.federatedLearningRoundSpec(pkg, sites); }
+  privacySecureAggregation(participants: string[], threshold: number) { return this.privacy.secureAggregationSpec(participants, threshold); }
+  async privacyCertifySynthetic(input: Parameters<PrivacyAnalyticsPlane["certifySynthetic"]>[0]) { return this.privacy.certifySynthetic(input); }
+  testSynthetic(input: Parameters<typeof testSyntheticDisclosure>[0]) { return testSyntheticDisclosure(input); }
+  async privacyAttest(workload: Parameters<PrivacyAnalyticsPlane["attestConfidential"]>[0]) { return this.privacy.attestConfidential(workload); }
+  async privacyCleanRoomRequest(project: Parameters<PrivacyAnalyticsPlane["cleanRoomRequest"]>[0]) { return this.privacy.cleanRoomRequest(project); }
+  async privacyAuthorizeGenomic(access: Parameters<PrivacyAnalyticsPlane["authorizeGenomic"]>[0]) { return this.privacy.authorizeGenomic(access); }
+  async privacyLineage(id: string) { return this.privacy.lineage(id); }
+  async privacyPropagateWithdrawal(patientId: string, scope?: string[]) { return this.privacy.propagateWithdrawal(patientId, scope); }
+  async privacyOpsDashboard() { return this.privacy.opsDashboard(); }
+  async privacyReportIncident(input: Parameters<PrivacyAnalyticsPlane["reportIncident"]>[0]) { return this.privacy.reportIncident(privacyIncidentSchema.parse(input)); }
+  async privacyListIncidents(status?: string) { return this.privacy.listIncidents(status); }
+  async privacyResolveIncident(id: string, resolution: string) { return this.privacy.resolveIncident(id, resolution); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

@@ -215,6 +215,11 @@ integrations    Integration[]
   txnDlq HealthTxnDlq[]
   txnReconciliations HealthTxnReconciliation[]
   txnDependencies HealthTxnDependency[]
+  healthPrivacyPolicies HealthPrivacyPolicy[]
+  healthPrivacyQueries HealthPrivacyQuery[]
+  healthPrivacyReleases HealthPrivacyRelease[]
+  healthPrivacyBudgets HealthPrivacyBudget[]
+  healthPrivacyIncidents HealthPrivacyIncident[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -11684,4 +11689,128 @@ model BiometricConsent {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
+}
+
+/// N0VA HEALTH — Privacy-Preserving Analytics Plane.
+/// Policy selected BEFORE data access; every release recorded in the ledger
+/// with risk, budget, recipient, and expiry. No assumption that
+/// de-identification alone makes health data safe.
+model HealthPrivacyPolicy {
+  id                 String   @id @default(uuid())
+  workspaceId        String
+  policyId           String
+  purpose            String
+  dataScope          String[] @default([])
+  allowedUsers       String[] @default([])
+  jurisdiction       String   @default("configured")
+  privacyMode        String
+  minimumCohortSize  Int      @default(20)
+  quasiIdentifierRules Json   @default("{}")
+  privacyBudget      Json     @default("{}")
+  genomicData        String   @default("excluded")
+  reidentification   Json     @default("{}")
+  outputDestination  String   @default("internal_dashboard")
+  expiresAt          DateTime
+  approver           String
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, policyId])
+  @@index([workspaceId, privacyMode])
+}
+
+/// Query-level re-identification risk assessment (pre-execution record).
+model HealthPrivacyQuery {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  queryId        String
+  purpose        String   @default("unspecified")
+  assessment     Json     @default("{}")
+  riskScore      Int      @default(0)
+  riskLevel      String   @default("LOW")
+  drivers        String[] @default([])
+  decision       String   @default("allow")
+  requiredAction String   @default("execute_under_policy")
+  policyVersion  String   @default("2026.09")
+  createdById    String?
+  createdAt      DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, queryId])
+  @@index([workspaceId, riskLevel])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+/// Release-level privacy ledger: what data, by whom, for what purpose, disclosure risk.
+model HealthPrivacyRelease {
+  id                     String   @id @default(uuid())
+  workspaceId            String
+  releaseId              String
+  queryId                String
+  requester              String
+  purpose                String
+  dataset                String
+  privacyMode            String
+  recordsEligible        Int      @default(0)
+  cohortThreshold        Int      @default(20)
+  suppressionApplied     Boolean  @default(false)
+  epsilonConsumed        String   @default("configured")
+  riskScore              Int      @default(0)
+  humanReview            String   @default("approved")
+  recipient              String   @default("clean-room-workspace")
+  expiresAt              DateTime
+  reidentificationProhibited Boolean @default(true)
+  createdById            String?
+  createdAt              DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, releaseId])
+  @@index([workspaceId, dataset])
+  @@index([workspaceId, createdAt(sort: Desc)])
+}
+
+/// Privacy-loss accounting per dataset + principal + period (composition tracking).
+model HealthPrivacyBudget {
+  id          String   @id @default(uuid())
+  workspaceId String
+  dataset     String
+  principal   String
+  period      String   @default("calendar_quarter")
+  consumed    Float    @default(0)
+  limit       Float    @default(10)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, dataset, principal, period])
+  @@index([workspaceId, dataset])
+}
+
+/// Privacy incident: re-identification attempt, disclosure, bypass, withdrawal failure.
+model HealthPrivacyIncident {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  incidentId     String
+  kind           String
+  severity       String   @default("HIGH")
+  queryId        String?
+  releaseId      String?
+  detail         String   @default("")
+  status         String   @default("OPEN")
+  responseActions String[] @default([])
+  resolution     String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, incidentId])
+  @@index([workspaceId, status])
 }

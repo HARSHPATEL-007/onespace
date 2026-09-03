@@ -39,6 +39,7 @@ const TABS = [
   { id: "interop", label: "Interop" },
   { id: "offline", label: "Offline & Edge" },
   { id: "reliability", label: "Reliability" },
+  { id: "privacy", label: "Privacy Analytics" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -2776,6 +2777,27 @@ Which measurements produced this estimate? Which model version? Did corrected re
               </table>
             </Section>
           )}
+        </div>
+      )}
+
+      {tab === "privacy" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Privacy-Preserving Analytics Plane — Policy Before Access" subtitle="Clinical care data is separated from analytical use. Every query selects a privacy mode BEFORE data access; risk is scored, budgeted, and recorded in a release-level ledger. De-identification alone is never assumed safe." action={<><Badge tone="primary">11 Modes</Badge><Badge tone="warning">Risk + Budget + Ledger</Badge><Badge tone="success">2026.09</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>{["Identifiable clinical","Coded research","De-identified analytics","Restricted genomic","Synthetic development","Clean-room","Public release"].map((s)=> <Pill key={s} tone="neutral">{s}</Pill>)}</div>
+            <div style={{ marginTop:8, fontSize:12, color:"var(--nv-color-text-faint)", lineHeight:1.6 }}>
+              Gateway: authenticate → purpose/consent → classification → risk estimation → cohort rule → differencing check → transformation → controlled execution → output validation → human review → release → ledger.
+              Small cells suppressed (configurable k, default 20). Noisy DP outputs are always labeled approximate — never exact. Genomic data requires special consent + restricted modes.
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px,1fr))", gap:8, fontSize:12, marginTop:10 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Query risk scoring</b><div style={{ color:"var(--nv-color-text-faint)"}}>18 signals → Low / Moderate / High / Critical. High blocks or routes to review; Critical blocks + creates incident.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Differencing protection</b><div style={{ color:"var(--nv-color-text-faint)"}}>Repeated similar queries compared — a 1-patient difference between two aggregates is blocked or budget-controlled.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Privacy budgets</b><div style={{ color:"var(--nv-color-text-faint)"}}>Per-dataset, per-user epsilon accounting with composition tracking. Exhaustion blocks until next period.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Federated + clean rooms</b><div style={{ color:"var(--nv-color-text-faint)"}}>Data stays local; secure aggregation; results — not raw rows. Federated models tested for membership inference + inversion.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Synthetic + confidential</b><div style={{ color:"var(--nv-color-text-faint)"}}>Synthetic tested for memorization/linkage before release. TEE attestation gates key release.</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Ledger + withdrawal</b><div style={{ color:"var(--nv-color-text-faint)"}}>Every release records what, whom, purpose, risk, recipient, expiry. Withdrawal propagates to downstream artifacts.</div></div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Server API: HealthService.privacyUpsertPolicy / privacyAssessQuery / privacyRelease / privacyDpCount / privacyConsumeBudget / privacyPseudonymize / privacyDeidentify / privacyCertifySynthetic / privacyCleanRoomRequest / privacyAuthorizeGenomic / privacyLineage / privacyPropagateWithdrawal / privacyOpsDashboard / privacyReportIncident. Full docs in privacy-analytics.ts.</div>
+          </Section>
         </div>
       )}
 
