@@ -21,7 +21,8 @@
     "./work-queue": "./src/work-queue.ts",
     "./medication-safety": "./src/medication-safety.ts",
     "./interoperability": "./src/interoperability.ts",
-    "./offline-edge": "./src/offline-edge.ts"
+    "./offline-edge": "./src/offline-edge.ts",
+    "./transaction-reliability": "./src/transaction-reliability.ts"
   },
   "dependencies": {
     "@n0va/db": "workspace:*",

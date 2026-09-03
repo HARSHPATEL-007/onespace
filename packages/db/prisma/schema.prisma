@@ -204,6 +204,17 @@ integrations    Integration[]
   offlineRetentionPolicies OfflineRetentionPolicy[]
   offlineSecurityIncidents OfflineSecurityIncident[]
   offlineDeviceReports OfflineDeviceReport[]
+  txnSagas HealthTxnSaga[]
+  txnSteps HealthTxnStep[]
+  txnCommands HealthTxnCommand[]
+  txnOutbox HealthTxnOutbox[]
+  txnInbox HealthTxnInbox[]
+  txnEvents HealthTxnEvent[]
+  txnCheckpoints HealthTxnCheckpoint[]
+  txnCompensations HealthTxnCompensation[]
+  txnDlq HealthTxnDlq[]
+  txnReconciliations HealthTxnReconciliation[]
+  txnDependencies HealthTxnDependency[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4515,6 +4526,8 @@ model HealthPatient {
   workItems HealthWorkItem[]
   interopMessages InteropMessage[]
   interopConflicts InteropConflict[]
+  txnSagas HealthTxnSaga[]
+  txnEvents HealthTxnEvent[]
   offlineEmergencySummaries OfflineEmergencySummary[]
   offlineEmergencyAccesses OfflineEmergencyAccess[]
   offlineOutboxEvents OfflineOutboxEvent[]
@@ -8832,6 +8845,385 @@ model OfflineDeviceReport {
 
   @@index([workspaceId, deviceId])
   @@index([createdAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — EVENT-DRIVEN TRANSACTION RELIABILITY
+// Healthcare Transaction Reliability Layer: cross-module operations stay safe when
+// services fail, messages duplicate, networks break, or humans must intervene.
+// "Accepted / in progress / partially completed / needs review / completed" are
+// visible states, never hidden implementation details. Local transactions + durable
+// events + idempotent participants + explicit compensation + approval gates +
+// reconciliation. Never confuse "request accepted" with "patient safe".
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum TxnSagaStatus {
+  RECEIVED
+  VALIDATING
+  AWAITING_AUTHORIZATION
+  AWAITING_PATIENT_CONFIRMATION
+  ACCEPTED
+  IN_PROGRESS
+  PARTIALLY_COMPLETED
+  AWAITING_DEPENDENCY
+  AWAITING_HUMAN_REVIEW
+  COMPENSATING
+  RECONCILIATION_REQUIRED
+  COMPLETED
+  COMPLETED_WITH_EXCEPTION
+  FAILED_SAFELY
+  CANCELLED
+}
+
+enum TxnStepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  RETRYING
+  AWAITING_CHECKPOINT
+  COMPENSATED
+  SKIPPED
+  NOT_STARTED
+  UNKNOWN_OUTCOME
+}
+
+enum TxnOutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+  DEAD
+}
+
+enum TxnInboxStatus {
+  RECEIVED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum TxnCheckpointDecision {
+  PENDING
+  APPROVED
+  DECLINED
+  EXPIRED
+}
+
+enum TxnCompensationKind {
+  TECHNICAL_UNDO
+  CLINICAL_CORRECTION
+  PATIENT_NOTIFICATION
+  ADMINISTRATIVE_CORRECTION
+  FORWARD_RECOVERY
+}
+
+enum TxnCompensationStatus {
+  PLANNED
+  EXECUTING
+  COMPLETED
+  FAILED
+}
+
+enum TxnDlqStatus {
+  OPEN
+  ASSIGNED
+  DRY_RUN
+  REDRIVEN
+  RESOLVED
+  EXPIRED
+}
+
+/// Saga instance — one orchestrated multi-step clinical business process.
+model HealthTxnSaga {
+  id            String        @id @default(uuid())
+  workspaceId   String
+  sagaId        String        // txn-... / saga-...
+  commandType   String        // create_medication_order, create_referral, ...
+  aggregateType String        // medication_plan, referral, discharge_plan, ...
+  aggregateId   String
+  patientId     String?
+  initiator     String?
+  purpose       String        @default("care_delivery")
+  priority      String        @default("routine") // critical | urgent | high | routine | administrative | analytics
+  status        TxnSagaStatus @default(RECEIVED)
+  currentStep   String?
+  deadline      DateTime?
+  owner         String?
+  lastError     String?
+  auditRef      String?
+  consentRef    String?
+  correlationId String?
+  createdById   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  steps     HealthTxnStep[]
+  checkpoints HealthTxnCheckpoint[]
+  compensations HealthTxnCompensation[]
+
+  @@unique([workspaceId, sagaId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, commandType])
+  @@index([workspaceId, patientId])
+  @@index([workspaceId, aggregateType, aggregateId])
+  @@index([deadline])
+}
+
+/// One saga step — local action, checkpoint gate, retry, or compensation link.
+model HealthTxnStep {
+  id             String        @id @default(uuid())
+  workspaceId    String
+  sagaId         String
+  saga           HealthTxnSaga @relation(fields: [sagaId], references: [id], onDelete: Cascade)
+  seq            Int
+  name           String        // validate_patient, pharmacy_notify, patient_confirmation, ...
+  kind           String        @default("local_action") // local_action | human_checkpoint | compensation | notification | reconciliation
+  status         TxnStepStatus @default(PENDING)
+  attempts       Int           @default(0)
+  maxAttempts    Int           @default(3)
+  owner          String?
+  result         Json          @default("{}")
+  compensationFor String?      // step id this compensates, if kind == compensation
+  decidedBy      String?
+  decidedAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([sagaId, seq])
+  @@index([workspaceId, sagaId])
+  @@index([workspaceId, status])
+}
+
+/// Idempotency registry — repeat key returns original result, never duplicates side effects.
+model HealthTxnCommand {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  idempotencyKey String   // tenant:command:aggregate:nonce
+  commandType    String
+  aggregateType  String
+  aggregateId    String
+  requestHash    String
+  actor          String?
+  firstSeenAt    DateTime @default(now())
+  response       Json     @default("{}")
+  resultRef      String?  // saga id
+  status         String   @default("accepted") // accepted | in_progress | completed | failed
+  expiresAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, commandType])
+  @@index([workspaceId, aggregateType, aggregateId])
+  @@index([expiresAt])
+}
+
+/// Transactional outbox — DB update + event insert commit atomically; publisher sends later.
+model HealthTxnOutbox {
+  id             String         @id @default(uuid())
+  workspaceId    String
+  eventId        String         // event-...
+  aggregateType  String
+  aggregateId    String
+  eventType      String         // referral.created, pharmacy.notify, ...
+  payload        Json           @default("{}")
+  schemaVersion  String         @default("1.0")
+  causationId    String?
+  correlationId  String?
+  sagaId         String?
+  status         TxnOutboxStatus @default(PENDING)
+  attemptCount   Int            @default(0)
+  nextAttemptAt  DateTime?
+  publishedAt    DateTime?
+  payloadHash    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, eventId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, aggregateType, aggregateId])
+  @@index([nextAttemptAt])
+}
+
+/// Consumer inbox — processed-event registry; duplicates return prior result.
+model HealthTxnInbox {
+  id          String        @id @default(uuid())
+  workspaceId String
+  consumer    String        // pharmacy-notification-service, ...
+  eventId     String        // event-...
+  eventHash   String?
+  status      TxnInboxStatus @default(RECEIVED)
+  resultRef   String?
+  attempts    Int           @default(0)
+  receivedAt  DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, consumer, eventId])
+  @@index([workspaceId, consumer])
+  @@index([workspaceId, status])
+}
+
+/// Append-only, hash-chained event history — corrections are new events, never edits.
+model HealthTxnEvent {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  eventId           String   // event-...
+  eventType         String
+  schemaVersion     String   @default("1.0")
+  aggregateType     String
+  aggregateId       String
+  patientId         String?
+  actor             String?
+  sagaId            String?
+  causationId       String?
+  correlationId     String?
+  purpose           String   @default("clinical_care")
+  consentRef        String?
+  source            String?
+  payload           Json     @default("{}")
+  payloadHash       String?
+  previousHash      String?
+  signature         String?
+  dataClassification String  @default("phi")
+  retentionClass    String   @default("clinical")
+  createdAt         DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, eventId])
+  @@index([workspaceId, aggregateType, aggregateId])
+  @@index([workspaceId, sagaId])
+  @@index([workspaceId, patientId])
+  @@index([workspaceId, eventType])
+  @@index([createdAt])
+}
+
+/// Human approval checkpoint — mandatory for treatment/rights/understanding actions.
+model HealthTxnCheckpoint {
+  id            String                @id @default(uuid())
+  workspaceId   String
+  sagaId        String
+  saga          HealthTxnSaga         @relation(fields: [sagaId], references: [id], onDelete: Cascade)
+  step          String                // patient_confirmation, clinician_approval, ...
+  requiredRole  String                // patient, clinician, pharmacist, ...
+  fallbackRole  String?
+  evidence      Json                  @default("[]")
+  decision      TxnCheckpointDecision @default(PENDING)
+  decidedBy     String?
+  decidedAt     DateTime?
+  expiresAt     DateTime?
+  auditRef      String?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, sagaId])
+  @@index([workspaceId, decision])
+  @@index([expiresAt])
+}
+
+/// Compensation — technical undo vs clinical correction vs forward recovery (never silent delete).
+model HealthTxnCompensation {
+  id        String                 @id @default(uuid())
+  workspaceId String
+  sagaId    String
+  saga      HealthTxnSaga          @relation(fields: [sagaId], references: [id], onDelete: Cascade)
+  stepId    String?
+  kind      TxnCompensationKind
+  action    String                 // keep_order_retry_pharmacy, send_correction, escalate_owner, ...
+  detail    Json                   @default("{}")
+  status    TxnCompensationStatus  @default(PLANNED)
+  owner     String?
+  auditRef  String?
+  createdById String?
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, sagaId])
+  @@index([workspaceId, status])
+}
+
+/// Dead-letter queue — encrypted, owned, SLA'd; critical-clinical escalates immediately.
+model HealthTxnDlq {
+  id          String      @id @default(uuid())
+  workspaceId String
+  category    String      // critical-clinical-dlq | medication-dlq | referral-dlq | ...
+  eventRef    String?     // outbox event id
+  payload     Json        @default("{}")
+  metadata    Json        @default("{}")
+  reason      String
+  priority    String      @default("routine") // critical | urgent | high | routine
+  owner       String?
+  sla         String?
+  status      TxnDlqStatus @default(OPEN)
+  redriveCount Int        @default(0)
+  lastRedrive DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, category])
+  @@index([workspaceId, priority])
+}
+
+/// Reconciliation run — intended vs recorded vs external vs patient-visible vs audit.
+model HealthTxnReconciliation {
+  id          String   @id @default(uuid())
+  workspaceId String
+  scope       String   // saga id, aggregate ref, or cadence label (continuous|urgent|hourly|daily|deep)
+  status      String   @default("running") // running | completed | issues_found
+  findings    Json     @default("[]") // [{ kind, ref, detail, resolution }]
+  resolved    Int      @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, scope])
+}
+
+/// Service dependency policy — required/optional deps, degraded + emergency fallback.
+model HealthTxnDependency {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  module           String   // medication_service, ...
+  required         String[] @default([])
+  optional         String[] @default([])
+  degradedModes    Json     @default("{}") // { dependency: { behavior, patient_message, max_stale_time } }
+  emergencyFallback String?
+  cacheable        String[] @default([])
+  maxStaleTime     String?
+  humanFallback    String?
+  recoveryAction   String?
+  patientMessage   String?
+  active           Boolean  @default(true)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, module])
+  @@index([workspaceId, active])
 }
 
 /// N0VA LEGAL - revision history.

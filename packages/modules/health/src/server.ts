@@ -15,6 +15,7 @@ import { ClinicalWorkQueue, WORK_SOURCES, WORK_PIPELINE, WORK_LIFECYCLE, WORK_QU
 import { MedicationSafetyCockpit, MEDICATION_PIPELINE, FOUR_REALITIES, BPMH_SOURCES, MEDICATION_API, FHIR_MEDICATION_RESOURCES, ALERT_CLASSES } from "./medication-safety";
 import { InteropControlPlane, INTEROP_PIPELINE, INTEROP_PROTOCOLS, INTEROP_API, FHIR_INTEROP_RESOURCES, VALIDATION_PIPELINE } from "./interoperability";
 import { OfflineEdgeRuntime, OFFLINE_MODES, OFFLINE_API, FHIR_OFFLINE_RESOURCES, SYNC_STATUS_WORDS } from "./offline-edge";
+import { TransactionReliabilityLayer, TXN_ARCHITECTURE, TXN_STATES, TXN_API, FHIR_TXN_RESOURCES, SAGA_DEFINITIONS } from "./transaction-reliability";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -340,6 +341,7 @@ export class HealthService {
   private get medSafety() { return new MedicationSafetyCockpit(this.workspaceId, this.userId, this.role); }
   private get interop() { return new InteropControlPlane(this.workspaceId, this.userId, this.role); }
   private get offlineEdge() { return new OfflineEdgeRuntime(this.workspaceId, this.userId, this.role); }
+  private get txn() { return new TransactionReliabilityLayer(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -815,6 +817,47 @@ export class HealthService {
   async offlineResolveSecurityIncident(id: string, input: Parameters<OfflineEdgeRuntime["resolveSecurityIncident"]>[1]) { return this.offlineEdge.resolveSecurityIncident(id, input); }
   async offlineRecordReport(input: Parameters<OfflineEdgeRuntime["recordReport"]>[0]) { return this.offlineEdge.recordReport(input); }
   async offlineObservability(deviceId?: string) { return this.offlineEdge.getObservability(deviceId); }
+
+  // ── Event-Driven Transaction Reliability ─────────────────────────
+  get txnArchitecture() { return TXN_ARCHITECTURE; }
+  get txnStates() { return TXN_STATES; }
+  get txnApi() { return TXN_API; }
+  get fhirTxnResources() { return FHIR_TXN_RESOURCES; }
+  get sagaDefinitions() { return SAGA_DEFINITIONS; }
+  async txnStartSaga(input: Parameters<TransactionReliabilityLayer["startSaga"]>[0]) { return this.txn.startSaga(input); }
+  async txnGetSaga(id: string) { return this.txn.getSaga(id); }
+  async txnListSagas(status?: string, commandType?: string, patientId?: string) { return this.txn.listSagas(status, commandType, patientId); }
+  async txnAdvanceStep(input: Parameters<TransactionReliabilityLayer["advanceStep"]>[0]) { return this.txn.advanceStep(input); }
+  async txnCancelSaga(id: string, reason: string) { return this.txn.cancelSaga(id, reason); }
+  async txnCompleteSaga(id: string, input: Parameters<TransactionReliabilityLayer["completeSaga"]>[1]) { return this.txn.completeSaga(id, input); }
+  async txnSubmitCommand(input: Parameters<TransactionReliabilityLayer["submitCommand"]>[0]) { return this.txn.submitCommand(input); }
+  async txnGetCommand(key: string) { return this.txn.getCommand(key); }
+  async txnEnqueueOutbox(input: Parameters<TransactionReliabilityLayer["enqueueOutbox"]>[0]) { return this.txn.enqueueOutbox(input); }
+  async txnListOutbox(status?: string, dueOnly?: boolean) { return this.txn.listOutbox(status, dueOnly); }
+  async txnPublishOutbox(id: string, input: Parameters<TransactionReliabilityLayer["publishOutbox"]>[1], priority?: string) { return this.txn.publishOutbox(id, input, priority); }
+  async txnReceiveEvent(input: Parameters<TransactionReliabilityLayer["receiveEvent"]>[0]) { return this.txn.receiveEvent(input); }
+  async txnAppendEvent(input: Parameters<TransactionReliabilityLayer["appendEvent"]>[0]) { return this.txn.appendEvent(input); }
+  async txnListEvents(aggregateType?: string, aggregateId?: string, sagaId?: string, eventType?: string) { return this.txn.listEvents(aggregateType, aggregateId, sagaId, eventType); }
+  async txnVerifyChain() { return this.txn.verifyChain(); }
+  async txnCreateCheckpoint(input: Parameters<TransactionReliabilityLayer["createCheckpoint"]>[0]) { return this.txn.createCheckpoint(input); }
+  async txnDecideCheckpoint(id: string, input: Parameters<TransactionReliabilityLayer["decideCheckpoint"]>[1]) { return this.txn.decideCheckpoint(id, input); }
+  async txnListCheckpoints(decision?: string) { return this.txn.listCheckpoints(decision); }
+  async txnExpireCheckpoints() { return this.txn.expireCheckpoints(); }
+  async txnPlanCompensation(input: Parameters<TransactionReliabilityLayer["planCompensation"]>[0]) { return this.txn.planCompensation(input); }
+  async txnExecuteCompensation(id: string) { return this.txn.executeCompensation(id); }
+  async txnListCompensations(sagaId?: string, status?: string) { return this.txn.listCompensations(sagaId, status); }
+  async txnListDlq(status?: string, category?: string, priority?: string) { return this.txn.listDlq(status, category, priority); }
+  async txnAssignDlq(id: string, owner: string) { return this.txn.assignDlq(id, owner); }
+  async txnRedriveDlq(id: string, input: Parameters<TransactionReliabilityLayer["redriveDlq"]>[1]) { return this.txn.redriveDlq(id, input); }
+  async txnRunReconciliation(input: Parameters<TransactionReliabilityLayer["runReconciliation"]>[0]) { return this.txn.runReconciliation(input); }
+  async txnListReconciliations() { return this.txn.listReconciliations(); }
+  async txnDeclareDependency(input: Parameters<TransactionReliabilityLayer["declareDependency"]>[0]) { return this.txn.declareDependency(input); }
+  async txnListDependencies() { return this.txn.listDependencies(); }
+  async txnEvaluateDependency(module: string, failedDependency: string) { return this.txn.evaluateDependency(module, failedDependency); }
+  async txnReliabilityMetrics() { return this.txn.reliabilityMetrics(); }
+  async txnPatientStatus(aggregateType: string, aggregateId: string) { return this.txn.patientStatusView(aggregateType, aggregateId); }
+  async txnClinicianStatus(sagaId: string) { return this.txn.clinicianStatusView(sagaId); }
+  async txnOperationsStatus() { return this.txn.operationsView(); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {

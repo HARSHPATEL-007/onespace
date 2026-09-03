@@ -38,6 +38,7 @@ const TABS = [
   { id: "meds", label: "Med Safety" },
   { id: "interop", label: "Interop" },
   { id: "offline", label: "Offline & Edge" },
+  { id: "reliability", label: "Reliability" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -305,6 +306,33 @@ export function WellnessBoard({
       if (sf.ok && sfj?.rows) setOfflineStoreForward(sfj.rows);
     } catch { /* degrades gracefully */ }
   };
+  // event-driven transaction reliability state
+  const [txnSagas, setTxnSagas] = useState<Array<Record<string, unknown>>>([]);
+  const [txnSagaDetail, setTxnSagaDetail] = useState<Record<string, unknown> | null>(null);
+  const [txnOutbox, setTxnOutbox] = useState<Array<Record<string, unknown>>>([]);
+  const [txnDlq, setTxnDlq] = useState<Array<Record<string, unknown>>>([]);
+  const [txnCheckpoints, setTxnCheckpoints] = useState<Array<Record<string, unknown>>>([]);
+  const [txnMetrics, setTxnMetrics] = useState<Record<string, unknown> | null>(null);
+  const [txnForm, setTxnForm] = useState({ commandType:"create_medication_order", aggregateType:"medication_plan", aggregateId:"", patientId:"" });
+  const refreshTxn = async () => {
+    try {
+      const s = await fetch(`/api/health/transactions/sagas?take=30`, { cache: "no-store" });
+      const sj = await s.json().catch(()=>null);
+      if (s.ok && sj?.rows) setTxnSagas(sj.rows);
+      const o = await fetch(`/api/health/transactions/outbox?status=PENDING`, { cache: "no-store" });
+      const oj = await o.json().catch(()=>null);
+      if (o.ok && oj?.rows) setTxnOutbox(oj.rows);
+      const d = await fetch(`/api/health/transactions/dlq?status=OPEN`, { cache: "no-store" });
+      const dj = await d.json().catch(()=>null);
+      if (d.ok && dj?.rows) setTxnDlq(dj.rows);
+      const c = await fetch(`/api/health/transactions/checkpoints?decision=PENDING`, { cache: "no-store" });
+      const cj = await c.json().catch(()=>null);
+      if (c.ok && cj?.rows) setTxnCheckpoints(cj.rows);
+      const m = await fetch(`/api/health/transactions/metrics`, { cache: "no-store" });
+      const mj = await m.json().catch(()=>null);
+      if (m.ok && mj) setTxnMetrics(mj);
+    } catch { /* degrades gracefully */ }
+  };
 
   // fetch dashboard
   useEffect(() => {
@@ -509,6 +537,17 @@ export function WellnessBoard({
         const osf = await j(`/api/health/offline/store-forward`);
         if (alive && osf?.rows) setOfflineStoreForward(osf.rows);
         setOfflineForm(prev=> ({ ...prev, patientId: demoPatient }));
+        const ts = await j(`/api/health/transactions/sagas?take=20`);
+        if (alive && ts?.rows) setTxnSagas(ts.rows);
+        const to = await j(`/api/health/transactions/outbox?status=PENDING`);
+        if (alive && to?.rows) setTxnOutbox(to.rows);
+        const td = await j(`/api/health/transactions/dlq?status=OPEN`);
+        if (alive && td?.rows) setTxnDlq(td.rows);
+        const tc = await j(`/api/health/transactions/checkpoints?decision=PENDING`);
+        if (alive && tc?.rows) setTxnCheckpoints(tc.rows);
+        const tm = await j(`/api/health/transactions/metrics`);
+        if (alive && tm) setTxnMetrics(tm);
+        setTxnForm(prev=> ({ ...prev, patientId: demoPatient, aggregateId:`med-plan-${demoPatient.slice(0,8)}` }));
         setDelegationForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCarePlanForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCareTaskForm(prev=> ({ ...prev, patientId: demoPatient }));
@@ -2568,6 +2607,60 @@ Which measurements produced this estimate? Which model version? Did corrected re
           <Section title="Pharmacy Intelligence — 50k+ Drug Pairs • CPIC Pharmacogenomics • Blockchain Supply">
             <div style={{ fontSize:12, color:"var(--nv-color-text-faint)"}}>Drug-drug / drug-food / drug-disease / drug-lab • renal/hepatic dosing • pregnancy/lactation • counterfeit QR/NFC via supply blockchain • smart dispensers • adherence prediction + financial assistance • REMS & cold chain.</div>
             <div style={{ display:"flex", gap:6, marginTop:8, flexWrap:"wrap" }}><Pill tone="warning">Warfarin INR ↑ fluconazole</Pill><Pill tone="danger">Simvastatin + macrolide</Pill><Pill>CYP2D6 codeine → avoid</Pill><Pill>CPIC-guided dosing</Pill></div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "reliability" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Healthcare Transaction Reliability — Accepted ≠ Safe" subtitle="Command gateway → idempotency → saga orchestrator → local txn + outbox → broker → idempotent inbox → steps → immutable hash-chained history. Durable intent, accountable execution, visible partial failure, human escalation, eventual reconciliation." action={<><Badge tone="primary">15 States</Badge><Badge tone="warning">Saga + Outbox + Inbox</Badge><Badge tone="success">Append-Only History</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", fontSize:11, fontWeight:800 }}>{["Received","Validating","Accepted","In progress","Partially completed","Awaiting human review","Compensating","Reconciliation required","Completed","Completed with exception","Failed safely"].map((s,i)=> <span key={s} style={{ display:"inline-flex", alignItems:"center", gap:4 }}><span style={{ padding:"4px 8px", borderRadius:999, background:i>=9?"#fee2e2":i>=7?"#fef3c7":i>=5?"#dbeafe":"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>{s}</span>{i<10 && <span style={{ color:"var(--nv-color-text-faint)"}}>→</span>}</span>)}</div>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:8 }}>{["Command ≠ Event ≠ Task ≠ Saga ≠ Compensation ≠ Reconciliation ≠ Audit"].map((s)=> <Pill key={s} tone="primary">{s}</Pill>)}</div>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Never “success” when only the initiating module succeeded — pharmacy delivery, patient confirmation, authorization, and reconciliation stay visible until done.</div>
+          </Section>
+          <Section title="Live Sagas — Every Cross-Module Action Has a Visible State">
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px,1fr))", gap:8, marginBottom:8 }}>
+              <Stat label="SAGAS TRACKED" value={String(txnSagas.length)} hint="orchestrated, not hidden" />
+              <Stat label="NEED HUMAN REVIEW" value={String(txnSagas.filter(s=> ["AWAITING_HUMAN_REVIEW","AWAITING_AUTHORIZATION","AWAITING_PATIENT_CONFIRMATION","RECONCILIATION_REQUIRED"].includes(String(s.status))).length)} hint="checkpoints + reconciliation" tone="danger" />
+              <Stat label="PARTIAL FAILURES" value={String(txnSagas.filter(s=> ["PARTIALLY_COMPLETED","COMPENSATING"].includes(String(s.status))).length)} hint="never shown as complete" tone="danger" />
+              <Stat label="OUTBOX BACKLOG" value={String(txnOutbox.length)} hint={`${String(txnDlq.length)} in DLQ`} tone={txnOutbox.length>0 ? "warning" : undefined} />
+            </div>
+            <div style={{ display:"flex", gap:4, marginBottom:6, flexWrap:"wrap" }}>
+              <select className="nv-select" value={txnForm.commandType} onChange={e=> setTxnForm({...txnForm, commandType:e.target.value})} style={{ fontSize:11 }}>{["create_medication_order","create_referral","release_discharge_plan","critical_result_notification","custom"].map(c=> <option key={c} value={c}>{c}</option>)}</select>
+              <input className="nv-input" placeholder="Aggregate type" value={txnForm.aggregateType} onChange={e=> setTxnForm({...txnForm, aggregateType:e.target.value})} style={{ flex:1, minWidth:130, fontSize:11 }} />
+              <input className="nv-input" placeholder="Aggregate ID" value={txnForm.aggregateId} onChange={e=> setTxnForm({...txnForm, aggregateId:e.target.value})} style={{ flex:1, minWidth:130, fontSize:11 }} />
+              <input className="nv-input" placeholder="Patient ID (auto)" value={txnForm.patientId} onChange={e=> setTxnForm({...txnForm, patientId:e.target.value})} style={{ flex:1, minWidth:130, fontSize:11 }} />
+              <Button size="sm" onClick={async()=> { if(!txnForm.aggregateType || !txnForm.aggregateId) return; const r=await fetch("/api/health/transactions/sagas",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ ...txnForm, patientId: txnForm.patientId || undefined, idempotencyKey:`ui:${txnForm.commandType}:${txnForm.aggregateId}:${Date.now()}` })}); const j=await r.json().catch(()=>null); if(!r.ok) alert(j?.error ?? "Start failed"); else void refreshTxn(); }}>Start Saga</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch("/api/health/transactions/reconciliation",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ scope:"hourly" })}); const j=await r.json().catch(()=>null); if(j) alert(`${String((((j.findings as Array<unknown>) ?? []).length))} findings — intended vs recorded vs external vs patient-visible vs audit`); }}>Run Reconciliation</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/events/verify`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) alert(j.intact ? `History intact — ${String(j.checked)} events verified` : `CHAIN BREAK: ${String(((j.breaks as Array<unknown>) ?? []).length)} breaks`); }}>Verify History Chain</Button>
+            </div>
+            <div style={{ maxHeight:200, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Saga</th><th>Type</th><th>Status</th><th>Step</th><th>Priority</th><th>Actions</th></tr></thead><tbody>{txnSagas.length===0 && <tr><td colSpan={6} className="nv-empty">No sagas yet — start a medication order, referral, discharge, or critical-result saga above</td></tr>}{txnSagas.slice(0,12).map((s:Record<string,unknown>,i:number)=> <tr key={String(s.id ?? i)}><td style={{ fontSize:10 }}><b>{String(s.sagaId).slice(0,14)}…</b></td><td style={{ fontSize:10 }}>{String(s.commandType)}</td><td><Pill tone={String(s.status)==="COMPLETED"?"success":["FAILED_SAFELY","CANCELLED"].includes(String(s.status))?"danger":["PARTIALLY_COMPLETED","COMPENSATING","RECONCILIATION_REQUIRED","AWAITING_HUMAN_REVIEW"].includes(String(s.status))?"warning":"primary"}>{String(s.status)}</Pill></td><td style={{ fontSize:10, maxWidth:160 }}>{String(s.currentStep ?? "—")}</td><td style={{ fontSize:10 }}>{String(s.priority)}</td><td style={{ display:"flex", gap:2, flexWrap:"wrap" }}>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/sagas/${String(s.id)}`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) setTxnSagaDetail(j); }}>Inspect</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/sagas/${String(s.id)}/complete`,{method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"}); if(!r.ok) { const j=await r.json().catch(()=>null); alert(j?.error ?? "Complete blocked — partial failure stays visible"); } else void refreshTxn(); }}>Complete</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const reason = window.prompt("Cancellation reason:"); if(!reason) return; const r=await fetch(`/api/health/transactions/sagas/${String(s.id)}/cancel`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ reason })}); if(r.ok) void refreshTxn(); }}>Cancel</Button>
+            </td></tr>)}</tbody></table></div>
+            {txnSagaDetail && <div style={{ marginTop:6, padding:8, border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)", fontSize:11 }}><b>Steps — {String(((txnSagaDetail as Record<string,unknown>).saga as Record<string,unknown> | undefined)?.sagaId ?? "").slice(0,14)}…</b><div style={{ marginTop:4, maxHeight:120, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>#</th><th>Step</th><th>Kind</th><th>Status</th><th>Attempts</th><th>Action</th></tr></thead><tbody>{((((txnSagaDetail as Record<string,unknown>).steps as Array<Record<string,unknown>>) ?? [])).map((st)=> <tr key={String(st.id)}><td>{String(st.seq)}</td><td style={{ fontSize:10, maxWidth:220 }}>{String(st.name)}</td><td style={{ fontSize:10 }}>{String(st.kind)}</td><td><Pill tone={String(st.status)==="COMPLETED"?"success":String(st.status)==="FAILED"?"danger":"neutral"}>{String(st.status)}</Pill></td><td style={{ fontSize:10 }}>{String(st.attempts)}/{String(st.maxAttempts)}</td><td style={{ display:"flex", gap:2 }}>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/sagas/advance`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ stepId: String(st.id), outcome:"completed" })}); if(r.ok) { const g=await fetch(`/api/health/transactions/sagas/${String(((txnSagaDetail as Record<string,unknown>).saga as Record<string,unknown>).id)}`,{ cache:"no-store" }); const j=await g.json().catch(()=>null); if(j) setTxnSagaDetail(j); void refreshTxn(); } }}>Done</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/sagas/advance`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ stepId: String(st.id), outcome:"failed", error:"operator-marked failure" })}); if(r.ok) { const g=await fetch(`/api/health/transactions/sagas/${String(((txnSagaDetail as Record<string,unknown>).saga as Record<string,unknown>).id)}`,{ cache:"no-store" }); const j=await g.json().catch(()=>null); if(j) setTxnSagaDetail(j); void refreshTxn(); } }}>Fail</Button>
+            </td></tr>)}</tbody></table></div>
+            <div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Checkpoints: {String((((txnSagaDetail as Record<string,unknown>).checkpoints as Array<unknown>) ?? []).length)} • compensations: {String((((txnSagaDetail as Record<string,unknown>).compensations as Array<unknown>) ?? []).length)} • history events: {String((((txnSagaDetail as Record<string,unknown>).events as Array<unknown>) ?? []).length)}</div></div>}
+          </Section>
+          <Section title="Outbox, DLQ, Checkpoints — Bounded Retries, Owned Dead Letters, Human Gates">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Outbox backlog ({String(txnOutbox.length)})</b><div style={{ marginTop:4, maxHeight:110, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Event</th><th>Action</th></tr></thead><tbody>{txnOutbox.length===0 && <tr><td colSpan={2} className="nv-empty">Outbox drained</td></tr>}{txnOutbox.slice(0,6).map((o:Record<string,unknown>,i:number)=> <tr key={String(o.id ?? i)}><td style={{ fontSize:10 }}>{String(o.eventType)}<br/><span style={{ color:"var(--nv-color-text-faint)"}}>attempt {String(o.attemptCount)}</span></td><td><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/outbox/${String(o.id)}/publish`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ success:true })}); if(r.ok) void refreshTxn(); }}>Publish</Button></td></tr>)}</tbody></table></div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Exponential backoff + jitter, capped attempts, per-aggregate order. Exhaustion routes to DLQ — critical-clinical escalates immediately.</div></div>
+              <div><b>Dead letters ({String(txnDlq.length)})</b><div style={{ marginTop:4, maxHeight:110, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Category</th><th>Action</th></tr></thead><tbody>{txnDlq.length===0 && <tr><td colSpan={2} className="nv-empty">DLQ empty</td></tr>}{txnDlq.slice(0,6).map((d:Record<string,unknown>,i:number)=> <tr key={String(d.id ?? i)}><td style={{ fontSize:10 }}>{String(d.category)}<br/><span style={{ color:"var(--nv-color-text-faint)"}}>{String(d.reason).slice(0,40)}</span></td><td style={{ display:"flex", gap:2 }}><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/dlq/${String(d.id)}/redrive`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ dryRun:true, note:"cockpit dry-run" })}); const j=await r.json().catch(()=>null); if(j) alert("Dry-run recorded — revalidated, no duplicate action"); }}>Dry-run</Button><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/dlq/${String(d.id)}/assign`,{method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"}); if(r.ok) void refreshTxn(); }}>Assign</Button></td></tr>)}</tbody></table></div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Encrypted, owned, SLA'd, never auto-deleted. High-risk redrive needs clinical approval + revalidation.</div></div>
+              <div><b>Checkpoints ({String(txnCheckpoints.length)} pending)</b><div style={{ marginTop:4, maxHeight:110, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Step</th><th>Role</th><th>Action</th></tr></thead><tbody>{txnCheckpoints.length===0 && <tr><td colSpan={3} className="nv-empty">No pending approvals</td></tr>}{txnCheckpoints.slice(0,6).map((c:Record<string,unknown>,i:number)=> <tr key={String(c.id ?? i)}><td style={{ fontSize:10 }}>{String(c.step)}</td><td style={{ fontSize:10 }}>{String(c.requiredRole)}</td><td style={{ display:"flex", gap:2 }}><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/checkpoints/${String(c.id)}/decide`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ decision:"APPROVED", decidedBy:"cockpit-operator" })}); if(r.ok) void refreshTxn(); }}>Approve</Button><Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/transactions/checkpoints/${String(c.id)}/decide`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ decision:"DECLINED", decidedBy:"cockpit-operator" })}); if(r.ok) void refreshTxn(); }}>Decline</Button></td></tr>)}</tbody></table></div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Medication, critical results, identity, discharge, referrals, high-risk actions — what, next, if-declined, evidence, limits, reversibility.</div></div>
+            </div>
+          </Section>
+          <Section title="Metrics, Dependencies, Fallbacks — Safety Outcomes, Not Just Uptime">
+            {!txnMetrics && <div className="nv-empty" style={{ fontSize:11 }}>Loading metrics…</div>}
+            {txnMetrics && <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px,1fr))", gap:8, fontSize:11 }}>
+              <div className="nv-card" style={{ padding:10 }}><b>Delivery</b><div style={{ color:"var(--nv-color-text-faint)"}}>Outbox backlog: {String(((txnMetrics as Record<string,unknown>).delivery as Record<string,unknown> | undefined)?.outboxBacklog ?? 0)} • DLQ open: {String(((txnMetrics as Record<string,unknown>).delivery as Record<string,unknown> | undefined)?.dlqOpen ?? 0)}</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Clinical safety</b><div style={{ color:"var(--nv-color-text-faint)"}}>Unresolved partials: {String(((txnMetrics as Record<string,unknown>).clinicalSafety as Record<string,unknown> | undefined)?.unresolvedPartialFailures ?? 0)} • critical DLQ: {String(((txnMetrics as Record<string,unknown>).clinicalSafety as Record<string,unknown> | undefined)?.criticalDlqOpen ?? 0)} • failure rate: {String(((txnMetrics as Record<string,unknown>).clinicalSafety as Record<string,unknown> | undefined)?.sagaFailureRate ?? 0)}</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Human ops</b><div style={{ color:"var(--nv-color-text-faint)"}}>Checkpoint latency: {String(((txnMetrics as Record<string,unknown>).humanOps as Record<string,unknown> | undefined)?.checkpointLatencyMs ?? 0)}ms • pending: {String(((txnMetrics as Record<string,unknown>).humanOps as Record<string,unknown> | undefined)?.checkpointsPending ?? 0)} • failed compensations: {String(((txnMetrics as Record<string,unknown>).humanOps as Record<string,unknown> | undefined)?.compensationsFailed ?? 0)}</div></div>
+              <div className="nv-card" style={{ padding:10 }}><b>Integrity</b><div style={{ color:"var(--nv-color-text-faint)"}}>History events: {String(((txnMetrics as Record<string,unknown>).integrity as Record<string,unknown> | undefined)?.historyEvents ?? 0)} • hash-chained, correction-by-new-event</div></div>
+            </div>}
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Compensation kinds: technical undo, clinical correction, patient notification, administrative correction, forward recovery — a valid order is kept and rerouted, never auto-deleted. Dependencies fail closed for treatment, open for read-only continuity. Backpressure reserves capacity for critical + medication traffic and stays visible. Fallbacks: on-call phone, direct pharmacy contact, manual referral, printed discharge checklist, alternate channels — reconciled back with original time, actor, evidence.</div>
           </Section>
         </div>
       )}
