@@ -37,6 +37,7 @@ const TABS = [
   { id: "care", label: "Care & Pharmacy" },
   { id: "meds", label: "Med Safety" },
   { id: "interop", label: "Interop" },
+  { id: "offline", label: "Offline & Edge" },
   { id: "wellness", label: "Wellness" },
   { id: "telehealth", label: "Telehealth" },
   { id: "ani", label: "Ani Intelligence" },
@@ -280,6 +281,30 @@ export function WellnessBoard({
       if (d.ok && dj) setInteropQuality(dj);
     } catch { /* degrades gracefully */ }
   };
+  // offline-first edge runtime state
+  const [offlineDevices, setOfflineDevices] = useState<Array<Record<string, unknown>>>([]);
+  const [offlineOutbox, setOfflineOutbox] = useState<Array<Record<string, unknown>>>([]);
+  const [offlineConflicts, setOfflineConflicts] = useState<Array<Record<string, unknown>>>([]);
+  const [offlineStoreForward, setOfflineStoreForward] = useState<Array<Record<string, unknown>>>([]);
+  const [offlineSyncStatus, setOfflineSyncStatus] = useState<Record<string, unknown> | null>(null);
+  const [offlineObservability, setOfflineObservability] = useState<Record<string, unknown> | null>(null);
+  const [offlineForm, setOfflineForm] = useState({ deviceId:"clinic-tablet-04", name:"Community Clinic Tablet 04", role:"rural_clinic", patientId:"" });
+  const refreshOffline = async () => {
+    try {
+      const dv = await fetch(`/api/health/offline/devices`, { cache: "no-store" });
+      const dvj = await dv.json().catch(()=>null);
+      if (dv.ok && dvj?.rows) setOfflineDevices(dvj.rows);
+      const ob = await fetch(`/api/health/offline/outbox?status=QUEUED`, { cache: "no-store" });
+      const obj = await ob.json().catch(()=>null);
+      if (ob.ok && obj?.rows) setOfflineOutbox(obj.rows);
+      const cf = await fetch(`/api/health/offline/conflicts?status=OPEN`, { cache: "no-store" });
+      const cfj = await cf.json().catch(()=>null);
+      if (cf.ok && cfj?.rows) setOfflineConflicts(cfj.rows);
+      const sf = await fetch(`/api/health/offline/store-forward`, { cache: "no-store" });
+      const sfj = await sf.json().catch(()=>null);
+      if (sf.ok && sfj?.rows) setOfflineStoreForward(sfj.rows);
+    } catch { /* degrades gracefully */ }
+  };
 
   // fetch dashboard
   useEffect(() => {
@@ -475,6 +500,15 @@ export function WellnessBoard({
         if (alive && id) setInteropQuality(id);
         const ix = await j(`/api/health/interop/incidents?status=open`);
         if (alive && ix?.rows) setInteropIncidents(ix.rows);
+        const od = await j(`/api/health/offline/devices`);
+        if (alive && od?.rows) setOfflineDevices(od.rows);
+        const oo = await j(`/api/health/offline/outbox?status=QUEUED`);
+        if (alive && oo?.rows) setOfflineOutbox(oo.rows);
+        const oc = await j(`/api/health/offline/conflicts?status=OPEN`);
+        if (alive && oc?.rows) setOfflineConflicts(oc.rows);
+        const osf = await j(`/api/health/offline/store-forward`);
+        if (alive && osf?.rows) setOfflineStoreForward(osf.rows);
+        setOfflineForm(prev=> ({ ...prev, patientId: demoPatient }));
         setDelegationForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCarePlanForm(prev=> ({ ...prev, patientId: demoPatient }));
         setCareTaskForm(prev=> ({ ...prev, patientId: demoPatient }));
@@ -2204,6 +2238,54 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
               <div className="nv-card" style={{ padding:10 }}><b>Subscriptions backlog: {String(((interopQuality as Record<string,unknown>).subscriptions as Record<string,unknown> | undefined)?.backlog ?? 0)}</b><div style={{ color:"var(--nv-color-text-faint)"}}>Open incidents: {String(((interopQuality as Record<string,unknown>).incidents as Record<string,unknown> | undefined)?.open ?? 0)} • open conflicts: {String(((interopQuality as Record<string,unknown>).conflicts as Record<string,unknown> | undefined)?.open ?? 0)}</div></div>
             </div>}
             <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Completeness never masks identity or timeliness gaps. HL7: persist before ACK (AA/AE/AR), replay needs original message + ACK + idempotency + approval. DICOM: parse conformance statements first; viewer outage = operational incident, missing study affecting care = clinical work item. Terminology: ambiguous local codes stay uncertain, steward-approved, expiring — recompute downstream after correction. Duplicates: deterministic IDs first, never merge patients on name + DOB. Replay: dry-run → approve → execute, production blocked without explicit authorization.</div>
+          </Section>
+        </div>
+      )}
+
+      {tab === "offline" && (
+        <div style={{ display:"grid", gap:12 }}>
+          <Section title="Offline-First Edge Runtime — Continuity Without False Certainty" subtitle="Approved capabilities only when disconnected • stale/local labels • queued sync • append-only signed events • cryptographic erasure. A disconnected device is never an unsupervised clinical authority." action={<><Badge tone="primary">7 Modes</Badge><Badge tone="warning">Signed Bundles</Badge><Badge tone="success">Append-Only Sync</Badge></>}>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", fontSize:11, fontWeight:800 }}>{["Online","Degraded","Offline","Emergency offline","Reconnecting","Syncing","Quarantined sync"].map((s,i)=> <span key={s} style={{ padding:"4px 8px", borderRadius:999, background:i===3?"#fee2e2":i===0?"#d1fae5":"var(--nv-color-surface-raised)", border:"1px solid var(--nv-color-border)" }}>{s}</span>)}</div>
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginTop:8 }}>{["Emergency cache","Active-care cache","Read-only cache","Local entries","Pending outbox","Sync metadata"].map((s)=> <Pill key={s} tone="primary">{s}</Pill>)}</div>
+            <div style={{ marginTop:6, fontSize:11, color:"var(--nv-color-text-faint)"}}>Tier 3 (history, research, unneeded identifiers) stays server-side unless a use case, consent basis, and risk assessment justify local storage.</div>
+          </Section>
+          <Section title="Edge Devices — Enroll, Heartbeat, Mode, Revoke, Wipe">
+            <div style={{ display:"flex", gap:4, marginBottom:6, flexWrap:"wrap" }}>
+              <input className="nv-input" placeholder="Device ID (clinic-tablet-04)" value={offlineForm.deviceId} onChange={e=> setOfflineForm({...offlineForm, deviceId:e.target.value})} style={{ flex:1, minWidth:160, fontSize:11 }} />
+              <input className="nv-input" placeholder="Name" value={offlineForm.name} onChange={e=> setOfflineForm({...offlineForm, name:e.target.value})} style={{ flex:1, minWidth:160, fontSize:11 }} />
+              <select className="nv-select" value={offlineForm.role} onChange={e=> setOfflineForm({...offlineForm, role:e.target.value})} style={{ fontSize:11 }}>{["rural_clinic","ambulance","emergency_team","outreach","disaster","field_worker","hub"].map(r=> <option key={r} value={r}>{r}</option>)}</select>
+              <Button size="sm" onClick={async()=> { if(!offlineForm.deviceId || !offlineForm.name) return; const r=await fetch("/api/health/offline/devices",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ deviceId: offlineForm.deviceId, name: offlineForm.name, role: offlineForm.role })}); if(r.ok) void refreshOffline(); }}>Enroll Device</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/offline/observability`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) setOfflineObservability(j); }}>Observability</Button>
+            </div>
+            <div style={{ maxHeight:150, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Device</th><th>Role</th><th>Mode</th><th>Status</th><th>Integrity</th><th>Actions</th></tr></thead><tbody>{offlineDevices.length===0 && <tr><td colSpan={6} className="nv-empty">No edge devices enrolled — register the first field device above</td></tr>}{offlineDevices.slice(0,12).map((dv:Record<string,unknown>,i:number)=> <tr key={String(dv.id ?? i)}><td style={{ fontSize:10 }}><b>{String(dv.name)}</b><br/><span style={{ color:"var(--nv-color-text-faint)"}}>{String(dv.deviceId)}</span></td><td style={{ fontSize:10 }}>{String(dv.role)}</td><td><Pill tone={String(dv.mode)==="ONLINE"?"success":String(dv.mode)==="EMERGENCY_OFFLINE"||String(dv.mode)==="QUARANTINED_SYNC"?"danger":"warning"}>{String(dv.mode)}</Pill></td><td>{String(dv.status)}</td><td style={{ fontSize:10 }}>{String(dv.integrity)}</td><td style={{ display:"flex", gap:2, flexWrap:"wrap" }}>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/offline/devices/${String(dv.id)}/heartbeat`,{method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"}); if(r.ok) void refreshOffline(); }}>Heartbeat</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/offline/sync/status?deviceId=${String(dv.deviceId)}`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) setOfflineSyncStatus(j); }}>Sync status</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { const mode = window.prompt("Mode (ONLINE/DEGRADED/OFFLINE/EMERGENCY_OFFLINE/RECONNECTING/SYNCING/QUARANTINED_SYNC):","OFFLINE"); if(!mode) return; const r=await fetch(`/api/health/offline/devices/${String(dv.id)}/mode`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ mode, reason:"operator set from cockpit" })}); if(r.ok) void refreshOffline(); }}>Mode</Button>
+              <Button size="sm" variant="ghost" onClick={async()=> { if(!window.confirm(`Revoke ${String(dv.name)}?`)) return; const r=await fetch(`/api/health/offline/devices/${String(dv.id)}/revoke`,{method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"}); if(r.ok) void refreshOffline(); }}>Revoke</Button>
+            </td></tr>)}</tbody></table></div>
+            {offlineSyncStatus && <div style={{ marginTop:6, padding:8, border:"1px solid var(--nv-color-border)", borderRadius:6, background:"var(--nv-color-surface-raised)", fontSize:11 }}><b>Field device: {String(((offlineSyncStatus as Record<string,unknown>).device as Record<string,unknown> | undefined)?.name ?? "—")}</b><div style={{ color:"var(--nv-color-text-faint)"}}>Last sync: {String((offlineSyncStatus as Record<string,unknown>).lastSuccessfulSync ?? "never")} • offline {String((offlineSyncStatus as Record<string,unknown>).offlineMinutes ?? 0)}m • pending {String((offlineSyncStatus as Record<string,unknown>).pendingClinicalEvents ?? 0)} (critical {String((offlineSyncStatus as Record<string,unknown>).criticalPendingEvents ?? 0)}) • conflicts {String((offlineSyncStatus as Record<string,unknown>).conflicts ?? 0)} • rejected {String((offlineSyncStatus as Record<string,unknown>).rejectedEvents ?? (offlineSyncStatus as Record<string,unknown>).rejectedEvents ?? 0)} • integrity {String((offlineSyncStatus as Record<string,unknown>).deviceIntegrity ?? "?")} • emergency mode {String((offlineSyncStatus as Record<string,unknown>).emergencyMode ?? false)}</div><div style={{ marginTop:4 }}><Pill tone="primary">{String((offlineSyncStatus as Record<string,unknown>).statusWord ?? "")}</Pill></div></div>}
+          </Section>
+          <Section title="Outbox, Conflicts, Store-and-Forward — Queued, Human-Reviewed, Visible">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Pending outbox ({String(offlineOutbox.length)})</b><div style={{ marginTop:4, maxHeight:110, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Operation</th><th>Priority</th><th>Clock</th></tr></thead><tbody>{offlineOutbox.length===0 && <tr><td colSpan={3} className="nv-empty">Queue empty</td></tr>}{offlineOutbox.slice(0,6).map((e:Record<string,unknown>,i:number)=> <tr key={String(e.id ?? i)}><td style={{ fontSize:10 }}>{String(e.operation)} <span style={{ color:"var(--nv-color-text-faint)"}}>{String(e.resourceRef ?? "").slice(0,24)}</span></td><td><Pill tone={["safety","critical"].includes(String(e.priority))?"danger":"neutral"}>{String(e.priority)}</Pill></td><td style={{ fontSize:10 }}>{String(e.logicalClock ?? "—")}</td></tr>)}</tbody></table></div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Priority order: safety → meds/allergies → critical obs → referrals → care plans → messages → media → analytics → telemetry. Structured data before media on thin links.</div></div>
+              <div><b>Sync conflicts ({String(offlineConflicts.length)})</b><div style={{ marginTop:4, maxHeight:110, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Type</th><th>Action</th></tr></thead><tbody>{offlineConflicts.length===0 && <tr><td colSpan={2} className="nv-empty">No open conflicts</td></tr>}{offlineConflicts.slice(0,6).map((c:Record<string,unknown>,i:number)=> <tr key={String(c.id ?? i)}><td style={{ fontSize:10, maxWidth:200 }}>{String(c.type)}</td><td><Button size="sm" variant="ghost" onClick={async()=> { const name = window.prompt("Reviewer name (required for clinical types):"); if(!name) return; const r=await fetch(`/api/health/offline/conflicts/${String(c.id)}/resolve`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ decision:"reviewed per data-type rule", reviewedBy: name })}); if(!r.ok) { const j=await r.json().catch(()=>null); alert(j?.error ?? "Resolve failed"); } else void refreshOffline(); }}>Resolve</Button></td></tr>)}</tbody></table></div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>No last-write-wins for meds, allergies, identity, care plans. “Two records conflict — a pharmacist or clinician must review.”</div></div>
+            </div>
+            <div style={{ marginTop:8 }}><b style={{ fontSize:11 }}>Store-and-forward ({String(offlineStoreForward.length)})</b><div style={{ marginTop:4, maxHeight:100, overflowY:"auto" }}><table className="nv-table" style={{ fontSize:11 }}><thead><tr><th>Kind</th><th>Priority</th><th>Status</th><th>Action</th></tr></thead><tbody>{offlineStoreForward.length===0 && <tr><td colSpan={4} className="nv-empty">No queued telehealth objects</td></tr>}{offlineStoreForward.slice(0,6).map((s:Record<string,unknown>,i:number)=> <tr key={String(s.id ?? i)}><td style={{ fontSize:10 }}>{String(s.kind)}</td><td><Pill tone={String(s.priority)==="emergency"?"danger":"neutral"}>{String(s.priority)}</Pill></td><td>{String(s.status)}</td><td><Button size="sm" variant="ghost" onClick={async()=> { const to = window.prompt("Transition to (QUEUED/UPLOADED/RECEIVED/ASSIGNED/VIEWED/RESPONDED/DELIVERED/ESCALATED/CLOSED):","QUEUED"); if(!to) return; const r=await fetch(`/api/health/offline/store-forward/${String(s.id)}/transition`,{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ to })}); if(!r.ok) { const j=await r.json().catch(()=>null); alert(j?.error ?? "Transition failed"); } else void refreshOffline(); }}>Move</Button></td></tr>)}</tbody></table></div><div style={{ marginTop:4, fontSize:11, color:"var(--nv-color-text-faint)"}}>Upload alone never counts as clinician-reviewed. “Stored securely, not yet reviewed — use the local emergency pathway if in immediate danger.” Wound media stays out of the device gallery.</div></div>
+          </Section>
+          <Section title="Emergency, Credentials, Bundles, Security, Observability">
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, fontSize:11 }}>
+              <div><b>Emergency + credentials</b><div style={{ display:"flex", gap:4, marginTop:4, flexWrap:"wrap" }}>
+                <Button size="sm" variant="ghost" onClick={async()=> { if(!offlineForm.patientId) { alert("Set a patient ID in the device form first (used as summary patient)"); return; } const r=await fetch("/api/health/offline/emergency-summaries",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: offlineForm.patientId, dataAsOf: new Date().toISOString(), payload:{ allergies:[], medications:[], critical_conditions:[], uncertainties:["field-generated snapshot"] } })}); const j=await r.json().catch(()=>null); if(j) alert(`Summary ready — read-only, server-signed, freshness-labeled`); }}>Generate emergency summary</Button>
+                <Button size="sm" variant="ghost" onClick={async()=> { if(!offlineForm.patientId) return; const reason = window.prompt("Break-glass reason (recorded + synced):"); if(!reason) return; const r=await fetch("/api/health/offline/emergency-access",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ patientId: offlineForm.patientId, workerToken:"field-worker", reason, scope:["view_emergency_summary"], expiresAt: new Date(Date.now()+4*3600_000).toISOString() })}); if(r.ok) alert("Time-limited break-glass granted + audited — never a convenience bypass"); }}>Break-glass access</Button>
+                <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch("/api/health/offline/cds/evaluate",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ deviceId: offlineForm.deviceId || "clinic-tablet-04", function:"Allergy display" })}); const j=await r.json().catch(()=>null); if(j) alert(j.permitted ? `Permitted — ${String(j.disclaimer ?? "")}` : `Refused — ${String(j.reason ?? "")}`); }}>Evaluate CDS gate</Button>
+              </div><div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Summaries are read-only IPS-style snapshots with generated/refresh dates and limitation labels; new observations are separate local records. Biometrics stay on-device; fallback access always exists. Identity: roster/QR/token first — uncertain identity means unlinked events + steward review, never med/allergy changes.</div></div>
+              <div><b>Security + observability</b><div style={{ display:"flex", gap:4, marginTop:4, flexWrap:"wrap" }}>
+                <Button size="sm" variant="ghost" onClick={async()=> { const kind = window.prompt("Incident kind (Lost device/Stolen device/Tampered application/...):","Lost device"); if(!kind) return; const r=await fetch("/api/health/offline/security-incidents",{method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ deviceId: offlineForm.deviceId || "clinic-tablet-04", kind })}); if(r.ok) { alert("Incident filed — lost/stolen/tampered auto-locks the device"); void refreshOffline(); } }}>Report incident</Button>
+                <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/offline/observability?deviceId=${offlineForm.deviceId || "clinic-tablet-04"}`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) setOfflineObservability(j); }}>Observability</Button>
+                <Button size="sm" variant="ghost" onClick={async()=> { const r=await fetch(`/api/health/offline/retention/evaluate?deviceProfile=rural_field_worker`,{ cache:"no-store" }); const j=await r.json().catch(()=>null); if(j) alert(`Retention evaluated — holds override erasure; device erases, server directs`); }}>Retention check</Button>
+              </div>{offlineObservability && <div style={{ marginTop:4, color:"var(--nv-color-text-faint)"}}>Reports: {String((offlineObservability as Record<string,unknown>).reports ?? 0)} • offline {String(((offlineObservability as Record<string,unknown>).totals as Record<string,unknown> | undefined)?.offlineMinutes ?? 0)}m • queue {String(((offlineObservability as Record<string,unknown>).totals as Record<string,unknown> | undefined)?.queueSize ?? 0)} • conflicts {String(((offlineObservability as Record<string,unknown>).totals as Record<string,unknown> | undefined)?.conflicts ?? 0)}. Metrics inform support — never penalize workers for network/power gaps.</div>}</div>
+            </div>
+            <div style={{ marginTop:8, fontSize:11, color:"var(--nv-color-text-faint)"}}>Retention: time-based, event-based, policy hold, user deletion — expired local data cryptographically erased, server record + audit follow organization policy. Hubs authenticate devices, keep a signed ledger, and never become unencrypted caches. Power: low-power mode, deferred media, solar workflows, SMS/USSD fallback, Bluetooth/local sync, resumable transfers. Offline CDS: 13 approved low-risk functions, 11 prohibitions, every output labeled with version, limits, review requirement, and sync state.</div>
           </Section>
         </div>
       )}

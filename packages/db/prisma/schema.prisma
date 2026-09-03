@@ -192,6 +192,18 @@ integrations    Integration[]
   interopSubscriptions InteropSubscription[]
   interopIncidents InteropIncident[]
   interopConformanceReports InteropConformanceReport[]
+  offlineDevices OfflineDevice[]
+  offlineCredentials OfflineCredential[]
+  offlineBundles OfflineKnowledgeBundle[]
+  offlineEmergencySummaries OfflineEmergencySummary[]
+  offlineEmergencyAccesses OfflineEmergencyAccess[]
+  offlineOutboxEvents OfflineOutboxEvent[]
+  offlineSyncSessions OfflineSyncSession[]
+  offlineSyncConflicts OfflineSyncConflict[]
+  offlineStoreForwards OfflineStoreForward[]
+  offlineRetentionPolicies OfflineRetentionPolicy[]
+  offlineSecurityIncidents OfflineSecurityIncident[]
+  offlineDeviceReports OfflineDeviceReport[]
   videoPlaylists  VideoPlaylist[]
   legalDocRevisions LegalDocRevision[]
   dealNotes       DealNote[]
@@ -4503,6 +4515,11 @@ model HealthPatient {
   workItems HealthWorkItem[]
   interopMessages InteropMessage[]
   interopConflicts InteropConflict[]
+  offlineEmergencySummaries OfflineEmergencySummary[]
+  offlineEmergencyAccesses OfflineEmergencyAccess[]
+  offlineOutboxEvents OfflineOutboxEvent[]
+  offlineSyncConflicts OfflineSyncConflict[]
+  offlineStoreForwards OfflineStoreForward[]
 
   @@unique([workspaceId, mrn])
   @@index([workspaceId, lastName])
@@ -8454,6 +8471,367 @@ model InteropConformanceReport {
   @@index([workspaceId, interfaceId])
   @@index([workspaceId, status])
   @@index([expiresAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// N0VA HEALTH — OFFLINE-FIRST EDGE RUNTIME
+// Secure offline clinical runtime for rural clinics, ambulances, emergency teams,
+// mobile outreach, disaster response, field workers. Approved capabilities only when
+// disconnected; stale/local labels; queued sync; never unsupervised clinical authority.
+// Local data is never globally accepted until server-side validation + sync succeed.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum OfflineMode {
+  ONLINE
+  DEGRADED
+  OFFLINE
+  EMERGENCY_OFFLINE
+  RECONNECTING
+  SYNCING
+  QUARANTINED_SYNC
+}
+
+enum OfflineOutboxStatus {
+  QUEUED
+  UPLOADED
+  ACCEPTED
+  REJECTED
+  CONFLICTED
+}
+
+enum OfflineSyncStatus {
+  STARTED
+  COMPLETED
+  COMPLETED_WITH_CONFLICTS
+  FAILED
+}
+
+enum OfflineConflictStatus {
+  OPEN
+  HUMAN_REVIEW
+  RESOLVED
+  ESCALATED
+}
+
+enum OfflineStoreForwardStatus {
+  CAPTURED
+  QUEUED
+  UPLOADED
+  RECEIVED
+  ASSIGNED
+  VIEWED
+  RESPONDED
+  DELIVERED
+  ESCALATED
+  EXPIRED
+  FAILED
+  CLOSED
+}
+
+/// Enrolled edge device — attested runtime, encryption posture, revocation.
+model OfflineDevice {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  deviceId        String   // stable hardware/app identifier
+  name            String   // Community Clinic Tablet 04
+  role            String   // rural_clinic | ambulance | emergency_team | outreach | disaster | field_worker | hub
+  mode            OfflineMode @default(ONLINE)
+  status          String   @default("active") // active | locked | wiped | retired | compromised
+  lastSeenAt      DateTime @default(now())
+  batteryPct      Int?
+  storageFreeMb   Int?
+  appVersion      String?
+  bundleVersion   String?
+  integrity       String   @default("unverified") // verified | unverified | tampered
+  encryption      Json     @default("{}") // { app_level, device_level, key_separation, rotation }
+  revokedAt       DateTime?
+  wipedAt         DateTime?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, deviceId])
+  @@index([workspaceId, status])
+  @@index([workspaceId, mode])
+}
+
+/// Time-boxed offline credential — expiry + revocation state always visible.
+model OfflineCredential {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  subject          String   // authorized-worker-token
+  role             String   // community_health_worker
+  scope            String[] @default([]) // view_emergency_summary, capture_observations, create_referral
+  deviceId         String?
+  issuedAt         DateTime @default(now())
+  expiresAt        DateTime
+  offlineAllowed   Boolean  @default(true)
+  revocationStatus String   @default("valid") // valid | revoked | last_checked:<ts>
+  lastRevocationCheck DateTime?
+  signature        String?
+  emergencyOnly    Boolean  @default(false)
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, subject])
+  @@index([workspaceId, expiresAt])
+  @@index([revocationStatus])
+}
+
+/// Signed offline knowledge bundle — refuse unsigned/expired/incompatible, fail safe.
+model OfflineKnowledgeBundle {
+  id          String   @id @default(uuid())
+  workspaceId String
+  bundleId    String   // nova-cds-rural-2026-09
+  version     String   // 4.2.0
+  scope       String[] @default([]) // approved low-risk functions
+  jurisdiction String?
+  approvedBy  String?  // clinical-governance-board
+  validFrom   DateTime?
+  expiresAt   DateTime?
+  hash        String?  // sha256:...
+  signature   String?  // digital-signature
+  offlineUse  Boolean  @default(true)
+  status      String   @default("active") // active | expired | revoked | rolled_back
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, bundleId, version])
+  @@index([workspaceId, status])
+  @@index([expiresAt])
+}
+
+/// Emergency read-only summary (IPS concept) — freshness + limitation labels, server-signed.
+model OfflineEmergencySummary {
+  id          String   @id @default(uuid())
+  workspaceId String
+  patientId   String
+  summaryRef  String?  // ips-...
+  generatedAt DateTime @default(now())
+  dataAsOf    DateTime
+  payload     Json     @default("{}") // allergies, meds, conditions, procedures, devices, results, contacts, preferences, uncertainties
+  provenance  String   @default("server_signed")
+  status      String   @default("active") // active | expired | superseded
+  expiresAt   DateTime?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([expiresAt])
+}
+
+/// Break-glass emergency access — time-limited, minimum necessary, audited, synced.
+model OfflineEmergencyAccess {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  patientId     String
+  workerToken   String
+  role          String?
+  reason        String
+  scope         String[] @default([])
+  grantedAt     DateTime @default(now())
+  expiresAt     DateTime
+  lockedAt      DateTime? // automatic lock after episode
+  syncedAt      DateTime?
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, patientId])
+  @@index([expiresAt])
+}
+
+/// Append-only sync journal — events, never overwrites. Signed, hashed, sequenced.
+model OfflineOutboxEvent {
+  id            String             @id @default(uuid()) // globally unique event id
+  workspaceId   String
+  deviceId      String
+  patientId     String?
+  resourceRef   String?            // patient + resource reference
+  operation     String             // create | update | delete | message | media | observation
+  payload       Json               @default("{}")
+  payloadHash   String?
+  parentVersion String?
+  logicalClock  Int                @default(0)
+  signature     String?
+  consentCtx    Json               @default("{}")
+  priority      String             @default("routine") // safety | critical | high | routine | bulk
+  status        OfflineOutboxStatus @default(QUEUED)
+  attempts      Int                @default(0)
+  lastError     String?
+  syncedAt      DateTime?
+  createdById   String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, deviceId, status])
+  @@index([workspaceId, patientId])
+  @@index([status])
+  @@index([priority])
+}
+
+/// Sync run — counts, integrity checks, conflicts; never display "Synced" with loose ends.
+model OfflineSyncSession {
+  id                String           @id @default(uuid()) // sync-...
+  workspaceId       String
+  deviceId          String
+  status            OfflineSyncStatus @default(STARTED)
+  uploaded          Int              @default(0)
+  accepted          Int              @default(0)
+  rejected          Int              @default(0)
+  conflicts         Int              @default(0)
+  downloaded        Int              @default(0)
+  hashCheck         String?          // passed | failed | pending
+  sequenceCheck     String?
+  identityCheck     String?
+  mediaCheck        String?          // passed | pending | failed
+  lastServerVersion String?
+  nextAction        String?
+  finishedAt        DateTime?
+  createdById       String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, deviceId])
+  @@index([workspaceId, status])
+}
+
+/// Sync conflict — typed default handling; meds/allergies/identity always human-reviewed.
+model OfflineSyncConflict {
+  id            String                @id @default(uuid())
+  workspaceId   String
+  deviceId      String?
+  type          String                // independent_additions | same_field_edits | delete_vs_update | med_start_vs_stop | allergy_add_vs_remove | duplicate_observation | identity_conflict | careplan_versions | terminology_changed | stale_summary
+  recordRefs    String[]              @default([])
+  patientId     String?
+  defaultHandling String?             // per data-type rule
+  owner         String?
+  status        OfflineConflictStatus @default(OPEN)
+  resolution    Json                  @default("{}")
+  resolvedAt    DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, type])
+}
+
+/// Store-and-forward telehealth object — visible delivery state end to end.
+model OfflineStoreForward {
+  id            String                     @id @default(uuid())
+  workspaceId   String
+  deviceId      String
+  patientId     String?
+  kind          String                     // text | voice | image | wound_photo | vitals | video | questionnaire | referral | response | consent | escalation
+  payloadRef    String?                    // encrypted object reference + hash
+  payloadHash   String?
+  consentRef    String?
+  priority      String                     @default("routine") // emergency | urgent | routine
+  status        OfflineStoreForwardStatus  @default(CAPTURED)
+  receiverRole  String?
+  respondedAt   DateTime?
+  receiptConfirmedAt DateTime?
+  expiresAt     DateTime?
+  createdById   String?
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  patient   HealthPatient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, deviceId, status])
+  @@index([workspaceId, patientId])
+  @@index([status])
+}
+
+/// Retention policy per device profile — time/event/hold distinguished; crypto-erase.
+model OfflineRetentionPolicy {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  deviceProfile String   // rural_field_worker | ambulance | ...
+  retention     Json     @default("{}") // per data-type rules
+  deletion      Json     @default("{}") // { method, requires_server_ack, legal_hold_override }
+  active        Boolean  @default(true)
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, deviceProfile])
+  @@index([workspaceId, active])
+}
+
+/// Security incident — lost/stolen/tamper; revoke/lock/wipe/erase + reconcile + notify.
+model OfflineSecurityIncident {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  deviceId      String
+  kind          String   // lost | stolen | failed_logins | rooted | tampered | bad_signature | unexpected_export | clock_manipulation | cert_failure | suspicious_sync | data_mismatch | unauthorized_emergency
+  detail        String?
+  actions       Json     @default("[]") // revoke_device, revoke_credentials, lock_app, wipe_key, crypto_erase, block_sync, preserve_forensics, notify_owners, reconcile_events, notify_patients
+  status        String   @default("open") // open | contained | resolved | closed
+  resolvedAt    DateTime?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, deviceId])
+}
+
+/// Observability snapshot — never used to penalize workers for network/power gaps.
+model OfflineDeviceReport {
+  id              String   @id @default(uuid())
+  workspaceId     String
+  deviceId        String
+  offlineMinutes  Int      @default(0)
+  batteryPct      Int?
+  storageFreeMb   Int?
+  queueSize       Int      @default(0)
+  criticalBacklog Int      @default(0)
+  syncDurationMs  Int?
+  syncSuccess     Boolean?
+  conflictCount   Int      @default(0)
+  rejectionCount  Int      @default(0)
+  duplicateCount  Int      @default(0)
+  integrityFails  Int      @default(0)
+  credentialDaysLeft Int?
+  bundleExpired   Boolean  @default(false)
+  emergencyAccesses Int    @default(0)
+  cdsUses         Int      @default(0)
+  mediaFailures   Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, deviceId])
+  @@index([createdAt])
 }
 
 /// N0VA LEGAL - revision history.

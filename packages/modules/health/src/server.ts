@@ -14,6 +14,7 @@ import { ClosedLoopPathways, PATHWAY_EXECUTION_MODEL, PATHWAY_LIBRARY, FHIR_PATH
 import { ClinicalWorkQueue, WORK_SOURCES, WORK_PIPELINE, WORK_LIFECYCLE, WORK_QUEUES, WORK_QUEUE_API, WORK_PRIORITY_LEVELS, FHIR_WORKQUEUE_RESOURCES, AUTOMATION_LEVELS } from "./work-queue";
 import { MedicationSafetyCockpit, MEDICATION_PIPELINE, FOUR_REALITIES, BPMH_SOURCES, MEDICATION_API, FHIR_MEDICATION_RESOURCES, ALERT_CLASSES } from "./medication-safety";
 import { InteropControlPlane, INTEROP_PIPELINE, INTEROP_PROTOCOLS, INTEROP_API, FHIR_INTEROP_RESOURCES, VALIDATION_PIPELINE } from "./interoperability";
+import { OfflineEdgeRuntime, OFFLINE_MODES, OFFLINE_API, FHIR_OFFLINE_RESOURCES, SYNC_STATUS_WORDS } from "./offline-edge";
 import { CareCoordination, CAREGIVER_RELATIONSHIPS, CAREGIVER_ECOSYSTEM, DELEGATION_LIFECYCLE, CARE_TASK_STATES, MEDICATION_WORKFLOW, TRANSPORT_WORKFLOW, ESCALATION_EVENT_TYPES, CAREGIVER_API } from "./caregiver";
 
 // ── Transcendent Health Module — VITALITY-Ω ─────────────────────────
@@ -338,6 +339,7 @@ export class HealthService {
   private get workQueue() { return new ClinicalWorkQueue(this.workspaceId, this.userId, this.role); }
   private get medSafety() { return new MedicationSafetyCockpit(this.workspaceId, this.userId, this.role); }
   private get interop() { return new InteropControlPlane(this.workspaceId, this.userId, this.role); }
+  private get offlineEdge() { return new OfflineEdgeRuntime(this.workspaceId, this.userId, this.role); }
   private get caregiver() { return new CareCoordination(this.workspaceId, this.userId, this.role); }
 
   private async assert(action: "READ"|"CREATE"|"UPDATE"|"DELETE") {
@@ -764,6 +766,55 @@ export class HealthService {
   async interopListIncidents(status?: string) { return this.interop.listIncidents(status); }
   async interopResolveIncident(id: string, input: Parameters<InteropControlPlane["resolveIncident"]>[1]) { return this.interop.resolveIncident(id, input); }
   async interopQualityDashboard() { return this.interop.qualityDashboard(); }
+
+  // ── Offline-First Edge Runtime ────────────────────────────────────
+  get offlineModes() { return OFFLINE_MODES; }
+  get offlineApi() { return OFFLINE_API; }
+  get fhirOfflineResources() { return FHIR_OFFLINE_RESOURCES; }
+  get syncStatusWords() { return SYNC_STATUS_WORDS; }
+  async offlineRegisterDevice(input: Parameters<OfflineEdgeRuntime["registerDevice"]>[0]) { return this.offlineEdge.registerDevice(input); }
+  async offlineListDevices(status?: string) { return this.offlineEdge.listDevices(status); }
+  async offlineGetDevice(id: string) { return this.offlineEdge.getDevice(id); }
+  async offlineHeartbeat(id: string, input: Parameters<OfflineEdgeRuntime["heartbeat"]>[1]) { return this.offlineEdge.heartbeat(id, input); }
+  async offlineSetMode(id: string, input: Parameters<OfflineEdgeRuntime["setMode"]>[1]) { return this.offlineEdge.setMode(id, input); }
+  async offlineRevokeDevice(id: string, reason: string) { return this.offlineEdge.revokeDevice(id, reason); }
+  async offlineWipeDevice(id: string, attestation: string) { return this.offlineEdge.wipeDevice(id, attestation); }
+  async offlineSyncStatus(deviceId: string) { return this.offlineEdge.getSyncStatus(deviceId); }
+  async offlineIssueCredential(input: Parameters<OfflineEdgeRuntime["issueCredential"]>[0]) { return this.offlineEdge.issueCredential(input); }
+  async offlineListCredentials(subject?: string) { return this.offlineEdge.listCredentials(subject); }
+  async offlineVerifyCredential(id: string) { return this.offlineEdge.verifyCredential(id); }
+  async offlineRevokeCredential(id: string, reason: string) { return this.offlineEdge.revokeCredential(id, reason); }
+  async offlinePublishBundle(input: Parameters<OfflineEdgeRuntime["publishBundle"]>[0]) { return this.offlineEdge.publishBundle(input); }
+  async offlineListBundles(status?: string) { return this.offlineEdge.listBundles(status); }
+  async offlineVerifyBundle(id: string) { return this.offlineEdge.verifyBundle(id); }
+  async offlineRollbackBundle(id: string, reason: string) { return this.offlineEdge.rollbackBundle(id, reason); }
+  async offlineEvaluateCds(input: Parameters<OfflineEdgeRuntime["evaluateCds"]>[0]) { return this.offlineEdge.evaluateCds(input); }
+  async offlineGenerateSummary(input: Parameters<OfflineEdgeRuntime["generateSummary"]>[0]) { return this.offlineEdge.generateSummary(input); }
+  async offlineListEmergencySummaries(patientId?: string) { return this.offlineEdge.listEmergencySummaries(patientId); }
+  async offlineExpireSummaries() { return this.offlineEdge.expireSummaries(); }
+  async offlineGrantEmergencyAccess(input: Parameters<OfflineEdgeRuntime["grantEmergencyAccess"]>[0]) { return this.offlineEdge.grantEmergencyAccess(input); }
+  async offlineListEmergencyAccesses(patientId?: string) { return this.offlineEdge.listEmergencyAccesses(patientId); }
+  async offlineReviewEmergencyAccess(id: string, reviewedBy: string) { return this.offlineEdge.reviewEmergencyAccess(id, reviewedBy); }
+  async offlineQueueEvent(input: Parameters<OfflineEdgeRuntime["queueEvent"]>[0]) { return this.offlineEdge.queueEvent(input); }
+  async offlineListOutbox(deviceId?: string, status?: string, priority?: string) { return this.offlineEdge.listOutbox(deviceId, status, priority); }
+  async offlineMarkEventStatus(id: string, status: "UPLOADED"|"ACCEPTED"|"REJECTED"|"CONFLICTED", lastError?: string) { return this.offlineEdge.markEventStatus(id, status, lastError); }
+  async offlineStartSync(input: Parameters<OfflineEdgeRuntime["startSync"]>[0]) { return this.offlineEdge.startSync(input); }
+  async offlineCompleteSync(id: string, input: Parameters<OfflineEdgeRuntime["completeSync"]>[1]) { return this.offlineEdge.completeSync(id, input); }
+  async offlineListSyncs(deviceId?: string) { return this.offlineEdge.listSyncs(deviceId); }
+  async offlineListConflicts(status?: string) { return this.offlineEdge.listConflicts(status); }
+  async offlineCreateConflict(input: Parameters<OfflineEdgeRuntime["createConflict"]>[0]) { return this.offlineEdge.createConflict(input); }
+  async offlineResolveConflict(id: string, input: Parameters<OfflineEdgeRuntime["resolveConflict"]>[1]) { return this.offlineEdge.resolveConflict(id, input); }
+  async offlineCreateStoreForward(input: Parameters<OfflineEdgeRuntime["createStoreForward"]>[0]) { return this.offlineEdge.createStoreForward(input); }
+  async offlineTransitionStoreForward(id: string, input: Parameters<OfflineEdgeRuntime["transitionStoreForward"]>[1]) { return this.offlineEdge.transitionStoreForward(id, input); }
+  async offlineListStoreForward(deviceId?: string, status?: string) { return this.offlineEdge.listStoreForward(deviceId, status); }
+  async offlineUpsertRetention(input: Parameters<OfflineEdgeRuntime["upsertRetentionPolicy"]>[0]) { return this.offlineEdge.upsertRetentionPolicy(input); }
+  async offlineListRetention() { return this.offlineEdge.listRetentionPolicies(); }
+  async offlineEvaluateRetention(deviceProfile: string) { return this.offlineEdge.evaluateRetention(deviceProfile); }
+  async offlineReportSecurityIncident(input: Parameters<OfflineEdgeRuntime["reportSecurityIncident"]>[0]) { return this.offlineEdge.reportSecurityIncident(input); }
+  async offlineListSecurityIncidents(status?: string) { return this.offlineEdge.listSecurityIncidents(status); }
+  async offlineResolveSecurityIncident(id: string, input: Parameters<OfflineEdgeRuntime["resolveSecurityIncident"]>[1]) { return this.offlineEdge.resolveSecurityIncident(id, input); }
+  async offlineRecordReport(input: Parameters<OfflineEdgeRuntime["recordReport"]>[0]) { return this.offlineEdge.recordReport(input); }
+  async offlineObservability(deviceId?: string) { return this.offlineEdge.getObservability(deviceId); }
 
   // ── Legacy check-ins ──────────────────────────────────────────────
   async checkins(take = 30) {
