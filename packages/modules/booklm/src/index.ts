@@ -149,7 +149,8 @@ export {
   codeSafetyCheck, mediaCitation, figureRole, rightsFor,
   buildCitationGroundedAnswer, FederatedRegistry, RetrievalQueryStore, globalQueryStore,
   evaluateRetrievalDeep, runBenchmarkSuite, validateIndexedUnit, fusionExplainDeep,
-  dedupeFederatedHits, tuneWeightsFromFeedback,
+  dedupeFederatedHits, tuneWeightsFromFeedback, translateQueryFor,
+  federatedRankScore, rankFederated, personalizationImpact, mediaChapters,
   RETRIEVAL_BENCHMARK_SETS, NO_EVIDENCE_MESSAGE_DEEP,
   type DeepFilters, type FilterableMeta, type FilterVerdict, type GeoPoint,
   type TemporalDoc, type TemporalComparison, type StructuredCell, type CodeSafetyVerdict,
@@ -157,4 +158,5 @@ export {
   type ConnectorCaps, type RegistryConnector, type FederatedAuditEntry,
   type DeepEvalInput, type DeepEvalResult, type BenchmarkSet, type BenchmarkCase,
   type BenchmarkReport, type StoredQuery, type DedupedFederatedHit, type FeedbackTally,
+  type FederatedRankSignals, type PersonalizationImpact, type MediaChapter,
 } from "./retrieval-deep";

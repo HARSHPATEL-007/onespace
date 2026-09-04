@@ -21,6 +21,7 @@ import {
 } from "@n0va/modules-booklm/retrieval";
 import {
   applyMetadataFilters,
+  mediaChapters,
   deepFilterSchema,
   geoScore,
   compareTemporalVersions,
@@ -290,6 +291,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ path: string[]
           results: parsed.data.segments
             .map((s) => ({ ...mediaCitation(s.video_id, s.start, s.end), score: mediaScore(parsed.data.query, { transcript: s.transcript, slide: s.slide }), slide: s.slide }))
             .sort((a, b) => b.score - a.score),
+          chapters: mediaChapters(parsed.data.segments),
         });
       }
       case "code": {

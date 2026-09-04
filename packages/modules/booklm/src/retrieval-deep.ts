@@ -404,7 +404,13 @@ export interface RegistryConnector {
   capabilities: ConnectorCaps;
   rateLimitPerMin: number;
   lastIndexed: string;
-  query: (q: string) => Promise<{ document_id: string; title: string; relevance: number; authority: number; rights: string }[]>;
+  query: (q: string) => Promise<{
+    document_id: string; title: string; relevance: number; authority?: number;
+    currency?: number; citationSupport?: number; curricularFit?: number;
+    latencyMs?: number; rights: string;
+  }[]>;
+  /** Per-connector query translation. Defaults to translateQueryFor(). */
+  translate?: (q: string) => string;
   deleteDoc?: (documentId: string) => Promise<void>;
 }
 
@@ -412,8 +418,74 @@ export interface FederatedAuditEntry {
   at: string;
   repository: string;
   query: string;
+  translatedQuery?: string;
   hits: number;
   ok: boolean;
+}
+
+const FED_STOP = new Set(["the", "and", "for", "with", "from", "this", "that", "what", "when", "which", "about", "into", "does", "show", "find", "with", "please", "thanks", "thank", "kindly", "hello"]);
+
+/**
+ * Default federated query translation. Quoted phrases and exact identifiers
+ * pass through untouched; otherwise whitespace collapses and length caps at
+ * 500 chars. Metadata-only connectors (no fullText) receive key terms only
+ * (words longer than 3 chars, stop-words dropped, capped at 10) since they
+ * cannot run phrase queries.
+ */
+export function translateQueryFor(query: string, caps: ConnectorCaps): string {
+  const q = query.replace(/\s+/g, " ").trim().slice(0, 500);
+  if (caps.fullText) return q;
+  const quoted = [...q.matchAll(/"([^"]+)"/g)].map((m) => `"${m[1]!}"`);
+  const terms = [...new Set(
+    q.replace(/"[^"]*"/g, " ").toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 3 && !FED_STOP.has(t)),
+  )].slice(0, 10);
+  // Phrases stay quoted: catalog/library indexes honor phrase queries even
+  // without full-text, and exact user phrasing must survive translation.
+  return [...quoted, ...terms].join(" ").slice(0, 500) || q.slice(0, 100);
+}
+
+export interface FederatedRankSignals {
+  relevance: number;
+  authority?: number;
+  currency?: number;
+  citationSupport?: number;
+  /** Connector-side permission enforcement passed. Defaults true: connectors
+   *  enforce permissions server-side; the gateway never re-opens denials. */
+  permitted?: boolean;
+  licenseOk?: boolean;
+  accessible?: boolean;
+  curricularFit?: number;
+  /** Tie-break only — never a primary rank signal. */
+  latencyMs?: number;
+}
+
+/**
+ * Spec federated ranking: query relevance, source authority, currency,
+ * citation support, institution permissions, license compatibility,
+ * accessibility, local curricular alignment — latency as micro tie-break.
+ * Permission failure vetoes: an unpermitted hit scores 0 regardless of fit.
+ */
+export function federatedRankScore(s: FederatedRankSignals): number {
+  if (s.permitted === false) return 0;
+  const v = (x: number | undefined, dflt: number) => Math.max(0, Math.min(1, x ?? dflt));
+  const r =
+    0.34 * v(s.relevance, 0) +
+    0.18 * v(s.authority, 0.5) +
+    0.1 * v(s.currency, 0.5) +
+    0.12 * v(s.citationSupport, 0.3) +
+    0.08 * (s.licenseOk ?? true ? 1 : 0) +
+    0.08 * (s.accessible ?? true ? 1 : 0) +
+    0.1 * v(s.curricularFit, 0.5) -
+    Math.min(0.01, (s.latencyMs ?? 0) / 1_000_000);
+  return Math.round(Math.max(0, r) * 10000) / 10000;
+}
+
+/** Stable descending sort by federatedRankScore. */
+export function rankFederated<T extends FederatedRankSignals>(hits: T[]): T[] {
+  return [...hits]
+    .map((h, i) => ({ h, i }))
+    .sort((a, b) => federatedRankScore(b.h) - federatedRankScore(a.h) || a.i - b.i)
+    .map((x) => x.h);
 }
 
 export class FederatedRegistry {
@@ -438,9 +510,9 @@ export class FederatedRegistry {
   async search(
     query: string,
     repos: string[] = [],
-  ): Promise<{ hits: { repository: string; document_id: string; title: string; relevance: number; rights: string }[]; deduped: DedupedFederatedHit[]; unavailable: string[] }> {
+  ): Promise<{ hits: (FederatedRankSignals & { repository: string; document_id: string; title: string; rights: string })[]; deduped: DedupedFederatedHit[]; unavailable: string[] }> {
     const targets = repos.length > 0 ? repos : [...this.connectors.keys()];
-    const hits: { repository: string; document_id: string; title: string; relevance: number; rights: string }[] = [];
+    const hits: (FederatedRankSignals & { repository: string; document_id: string; title: string; rights: string })[] = [];
     const unavailable: string[] = [];
     await Promise.all(
       targets.map(async (repo) => {
@@ -454,24 +526,35 @@ export class FederatedRegistry {
           this.audit.push({ at: new Date().toISOString(), repository: repo, query, hits: 0, ok: false });
           return;
         }
+        // Query translation per connector capability; audit both forms.
+        const translated = (c.translate ?? ((q: string) => translateQueryFor(q, c.capabilities)))(query);
         try {
           this.calls.push({ repo, minute: new Date().toISOString().slice(0, 16) });
-          const r = await c.query(query);
-          // Metadata normalization + provenance.
+          const started = Date.now();
+          const r = await c.query(translated);
+          // Metadata normalization + provenance + rights-derived signals.
           for (const h of r) {
-            hits.push({ repository: repo, document_id: h.document_id, title: h.title, relevance: h.relevance, rights: h.rights });
+            const ri = rightsFor(h.rights);
+            hits.push({
+              repository: repo, document_id: h.document_id, title: h.title,
+              relevance: h.relevance, authority: h.authority, currency: h.currency,
+              citationSupport: h.citationSupport, curricularFit: h.curricularFit,
+              latencyMs: h.latencyMs ?? (Date.now() - started),
+              permitted: true, licenseOk: ri.status !== "unknown", accessible: ri.canDisplay,
+              rights: h.rights,
+            });
           }
-          this.audit.push({ at: new Date().toISOString(), repository: repo, query, hits: r.length, ok: true });
+          this.audit.push({ at: new Date().toISOString(), repository: repo, query, translatedQuery: translated, hits: r.length, ok: true });
         } catch {
           unavailable.push(repo);
-          this.audit.push({ at: new Date().toISOString(), repository: repo, query, hits: 0, ok: false });
+          this.audit.push({ at: new Date().toISOString(), repository: repo, query, translatedQuery: translated, hits: 0, ok: false });
         }
       }),
     );
-    hits.sort((a, b) => b.relevance - a.relevance);
-    // Cross-repository deduplication: same document via two repos collapses
-    // to one entry that keeps every repository in its provenance.
-    return { hits, deduped: dedupeFederatedHits(hits), unavailable };
+    // Spec ranking (relevance → authority → currency → …; latency tie-break
+    // only), then cross-repository deduplication with provenance kept.
+    const ranked = rankFederated(hits);
+    return { hits: ranked, deduped: dedupeFederatedHits(ranked), unavailable };
   }
 
   async propagateDeletion(documentId: string): Promise<{ deleted: string[]; failed: string[] }> {
@@ -777,6 +860,79 @@ export async function runBenchmarkSuite(
     macroRecall: n ? r3(recSum / n) : 0,
     failures,
   };
+}
+
+export interface PersonalizationImpact {
+  /** Newly surfaced relevant ids ÷ relevant set. */
+  benefit: number;
+  /** Lost relevant ids ÷ relevant set. */
+  harm: number;
+  surfaced: string[];
+  buried: string[];
+}
+
+/**
+ * Personalization benefit/harm probe (pure). Compares top-k ids with and
+ * without personalization against the relevant set: `benefit` is relevant
+ * material the learner would otherwise miss; `harm` is authoritative
+ * material personalization buried — the hidden-bubble detector. Feeds the
+ * personalizationBenefit/Harm eval probes and the "broader results" control.
+ */
+export function personalizationImpact(
+  baselineIds: string[],
+  personalizedIds: string[],
+  relevant: Set<string>,
+  k = 10,
+): PersonalizationImpact {
+  const b = new Set(baselineIds.slice(0, k));
+  const p = new Set(personalizedIds.slice(0, k));
+  const surfaced = [...p].filter((id) => relevant.has(id) && !b.has(id));
+  const buried = [...b].filter((id) => relevant.has(id) && !p.has(id));
+  const denom = Math.max(1, relevant.size);
+  return {
+    benefit: r3(surfaced.length / denom),
+    harm: r3(buried.length / denom),
+    surfaced,
+    buried,
+  };
+}
+
+export interface MediaChapter {
+  slide: string;
+  start: number;
+  end: number;
+  segmentCount: number;
+  speakers: string[];
+}
+
+/**
+ * Media chapters from transcript segments: consecutive segments sharing a
+ * linked slide collapse into one chapter (start/end span, speaker roster).
+ * Slide-less segments group as "Untitled" rather than vanishing — the video
+ * tree's chapters view without inventing structure.
+ */
+export function mediaChapters(
+  segments: { start: number; end: number; slide?: string; speaker?: string }[],
+): MediaChapter[] {
+  const out: MediaChapter[] = [];
+  for (const s of segments) {
+    const slide = (s.slide ?? "").trim() || "Untitled";
+    const cur = out[out.length - 1];
+    if (cur && cur.slide === slide && s.start >= cur.start) {
+      cur.end = Math.max(cur.end, s.end);
+      cur.segmentCount++;
+      if (s.speaker && !cur.speakers.includes(s.speaker)) cur.speakers.push(s.speaker);
+    } else {
+      out.push({
+        slide,
+        start: s.start,
+        end: s.end,
+        segmentCount: 1,
+        speakers: s.speaker ? [s.speaker] : [],
+      });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

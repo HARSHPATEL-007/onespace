@@ -1261,7 +1261,7 @@ export class HybridRetrievalService {
 
     // Deep metadata pre-rank gate: hard constraints (language, validity
     // window, course/institution scope, artifact types) before MMR/diversity.
-    const gated = applyDeepFilterGate(permitted, {
+    const gateFilters = {
       institution_id: req.filters.institution_id ?? req.scope.institution_id,
       course_id: req.filters.course_id ?? req.scope.course_id,
       language: req.filters.language ?? [],
@@ -1269,7 +1269,20 @@ export class HybridRetrievalService {
       artifact_types: req.filters.artifact_types ?? [],
       valid_at: req.filters.valid_at ?? req.time.valid_at,
       access: req.filters.access,
-    }, req.scope.setId, !!req.filters.geo_within);
+    };
+    const langsRequested = (gateFilters.language ?? []).map((l) => l.toLowerCase());
+    let gated = applyDeepFilterGate(permitted, gateFilters, req.scope.setId, !!req.filters.geo_within);
+    // Cross-language fallback: a language gate that empties the result set
+    // retries unconstrained and says so — multilingual recall without
+    // silently overriding the learner's language preference next time.
+    let crossLanguageFallback: { requested: string[] } | null = null;
+    if (gated.kept.length === 0 && langsRequested.length > 0) {
+      const retry = applyDeepFilterGate(permitted, { ...gateFilters, language: [] }, req.scope.setId, !!req.filters.geo_within);
+      if (retry.kept.length > 0) {
+        gated = retry;
+        crossLanguageFallback = { requested: langsRequested };
+      }
+    }
     const filtered = gated.kept;
 
     // Redundancy control: penalize near-duplicate evidence spans.
@@ -1323,6 +1336,7 @@ export class HybridRetrievalService {
       citation_paths: citeGraph.paths,
       contradictions: citeGraph.contradictions,
       study_path: studyPath,
+      cross_language_fallback: crossLanguageFallback,
       temporal_comparisons: temporalComparisons,
       federated: federated.slice(0, req.limit).map((h) => ({
         repository: h.repository, document_id: h.document_id, title: h.title,
@@ -1338,6 +1352,7 @@ export class HybridRetrievalService {
         prerequisite_chain_count: graph.chains.length,
         citation_path_count: citeGraph.paths.length,
         contradiction_count: citeGraph.contradictions.length,
+        cross_language_fallback: crossLanguageFallback,
         secrets_redacted: secretsRedacted,
         federated_duplicates_collapsed: federatedDuplicatesCollapsed,
         validation,
