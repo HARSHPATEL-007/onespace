@@ -9,6 +9,18 @@ export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
 export { QualityPanel, type QualityActions } from "./quality-ui";
 export { QualityService, rightsSchema, freshnessRuleSchema } from "./quality";
+export {
+  provenanceSchema, provenanceSourceSchema, buildProvenanceRecord, lineageLink,
+  auditArtifactCitations, assessFreshnessForRules, safetyDisposition,
+  publicationDecisionForArtifact, ARTIFACT_POLICIES, DEFAULT_ARTIFACT_POLICY,
+  readingAdaptPlan, decisionAuditEntry, approvalStateFromReviews,
+  type ProvenanceRecord, type ProvenanceSource, type CitationSeverity,
+  type ClaimCitationFinding, type ArtifactCitationAudit, type FreshnessRuleInput,
+  type FreshnessMark, type FreshnessAssessment, type SafetyAction,
+  type SafetyDisposition, type StakeLevel, type ArtifactPolicy,
+  type ArtifactDecisionInput, type ReadingAdaptOp, type DecisionAuditEntry,
+  type ApprovalState, type ApprovalStateResult,
+} from "./quality-deep";
 export { FactoryPanel, type FactoryActions } from "./factory-ui";
 export { StudyFactoryService, generateSchema } from "./factory";
 export { SourcesPanel, type SourcesActions } from "./sources-ui";

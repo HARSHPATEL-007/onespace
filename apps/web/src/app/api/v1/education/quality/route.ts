@@ -59,7 +59,9 @@ export async function GET(req: Request) {
 
 /**
  * POST /v1/education/quality — report-artifact | report-document |
- * review-decide | rights-upsert | freshness-upsert
+ * review-decide | rights-upsert | freshness-upsert | provenance-register |
+ * provenance-get | approval-request | approval-state | artifact-status |
+ * freshness-assess | reading-adapt | safety-disposition
  */
 export async function POST(req: Request) {
   const c = await ctx();
@@ -102,6 +104,50 @@ export async function POST(req: Request) {
         const parsed = freshnessRuleSchema.safeParse(b);
         if (!parsed.success) return NextResponse.json({ error: "Invalid body", issues: parsed.error.issues }, { status: 400 });
         return NextResponse.json(await q.upsertFreshnessRule(parsed.data), { status: 201 });
+      }
+      case "provenance-register": {
+        return NextResponse.json(await q.registerProvenance(b), { status: 201 });
+      }
+      case "provenance-get": {
+        const { content_id } = b as { content_id?: string };
+        if (!content_id) return NextResponse.json({ error: "content_id required" }, { status: 400 });
+        return NextResponse.json(await q.provenanceFor(content_id));
+      }
+      case "approval-request": {
+        const { reportId, queues, deadline } = b as { reportId?: string; queues?: string[]; deadline?: string };
+        if (!reportId || !Array.isArray(queues)) return NextResponse.json({ error: "reportId + queues[] required" }, { status: 400 });
+        return NextResponse.json(await q.requestApproval(reportId, queues, deadline), { status: 201 });
+      }
+      case "approval-state": {
+        const { reportId, deadline } = b as { reportId?: string; deadline?: string };
+        if (!reportId) return NextResponse.json({ error: "reportId required" }, { status: 400 });
+        return NextResponse.json(await q.approvalState(reportId, deadline));
+      }
+      case "artifact-status": {
+        const { artifactId, status } = b as { artifactId?: string; status?: string };
+        if (!artifactId || !["DRAFT", "IN_REVIEW", "APPROVED", "PUBLISHED", "SUPERSEDED", "REJECTED"].includes(status ?? "")) {
+          return NextResponse.json({ error: "artifactId + valid status required" }, { status: 400 });
+        }
+        return NextResponse.json(await q.setArtifactReviewStatus(artifactId, status as "APPROVED"));
+      }
+      case "freshness-assess": {
+        const { setId } = b as { setId?: string };
+        if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });
+        return NextResponse.json(await q.freshnessAssessment(setId));
+      }
+      case "reading-adapt": {
+        const { text, target } = b as { text?: string; target?: string };
+        if (!text || !target) return NextResponse.json({ error: "text + target required" }, { status: 400 });
+        return NextResponse.json(q.adaptReadingPlan(text, target));
+      }
+      case "safety-disposition": {
+        const { safetyDisposition } = await import("@n0va/modules-booklm/quality-deep");
+        const { findings, ageBand } = b as { findings?: { severity: string; category: string; excerpt: string; action: string }[]; ageBand?: string };
+        if (!Array.isArray(findings)) return NextResponse.json({ error: "findings[] required" }, { status: 400 });
+        return NextResponse.json(safetyDisposition(
+          findings.map((f) => ({ ...f, severity: f.severity === "high" ? "high" as const : "medium" as const, action: "warn" as const })),
+          ageBand ?? "",
+        ));
       }
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });

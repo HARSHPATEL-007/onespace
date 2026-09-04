@@ -33,7 +33,45 @@ export interface QualityActions {
     remediationHrs: number; contradictionResolutionHrs: number;
     instructorOverrideRate: number; needsInstrumentation: string[];
   }>;
+  provenance: (input: unknown) => Promise<{ record: ProvenanceRecordShape; reportId: string }>;
+  provenanceGet: (contentId: string) => Promise<ProvenanceReportShape | null>;
+  approvalRequest: (reportId: string, queues: string[], deadline?: string) => Promise<ApprovalStateShape>;
+  approvalState: (reportId: string, deadline?: string) => Promise<ApprovalStateShape>;
+  artifactStatus: (artifactId: string, status: string) => Promise<{ artifactId: string; status: string }>;
+  freshnessAssess: (setId: string) => Promise<{ setId: string; rules: number; blocked: number; items: FreshnessItemShape[]; note: string }>;
+  readingAdapt: (text: string, target: string) => Promise<{ target: string; ops: ReadingOpShape[]; note: string }>;
 }
+
+export interface ProvenanceRecordShape {
+  content_id: string;
+  parent_sources: { id: string; version: string; location: string; hash: string; rights: { license: string; expires_at: string | null; derivative_allowed: boolean; attribution_required: boolean } }[];
+  generated_by: string;
+  model_version: string;
+  human_review: string | null;
+  publication_state: string;
+}
+
+export interface ProvenanceReportShape {
+  id: string; subjectId: string; decision: string; dimensions: unknown; createdAt: string;
+}
+
+export interface ApprovalStateShape {
+  reportId: string; decision: string; deadline: string | null;
+  state: string; perQueue: { queue: string; status: string }[]; blocking: number; overdue: boolean; summary: string;
+}
+
+export interface FreshnessItemShape {
+  id: string; type: string; title: string; ageDays: number; worst: string; blocking: boolean;
+  assessments: { claimType: string; state: string; mark: string; requiredReviewer: string; note: string }[];
+}
+
+export interface ReadingOpShape {
+  op: string; sentence?: string; words?: number; terms?: string[]; index?: number;
+}
+
+export const REVIEW_QUEUE_OPTIONS = [
+  "SUBJECT_MATTER", "PEDAGOGICAL", "ACCESSIBILITY", "CULTURAL", "RIGHTS", "SAFETY", "EDITORIAL",
+];
 
 const DIM_LABELS: Record<string, string> = {
   grounding: "Source grounding", citations: "Citations", consistency: "Consistency",
@@ -185,6 +223,12 @@ export function QualityPanel({ setId, actions, isInstructor, artifactId }: {
             )}
           </div>
 
+          {/* Approval workflow */}
+          <ApprovalWorkbench actions={actions} />
+
+          {/* Freshness assessment */}
+          <FreshnessAssessCard setId={setId} actions={actions} />
+
           {/* Metrics */}
           <div className="nv-card" style={{ fontSize: 13 }}>
             <div style={{ fontWeight: 800, marginBottom: 6 }}>📊 Operational quality (no misleading claims)</div>
@@ -205,6 +249,112 @@ export function QualityPanel({ setId, actions, isInstructor, artifactId }: {
             )}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+export function ProvenanceCard({ record }: { record: ProvenanceRecordShape }) {
+  return (
+    <div data-testid="provenance-card" style={{ fontSize: 12 }}>
+      <div><b>{record.content_id}</b> → {record.publication_state.replace(/_/g, " ")}
+        <span style={{ color: "var(--nv-color-text-faint)" }}> · {record.generated_by || "manual"}{record.model_version ? ` (${record.model_version})` : ""}</span>
+      </div>
+      {record.parent_sources.map((p) => (
+        <div key={`${p.id}@${p.version}`} style={{ marginTop: 2 }}>
+          ↳ {p.id} {p.version}{p.location ? ` · ${p.location}` : ""} · license: {p.rights.license}
+          {p.rights.derivative_allowed ? "" : " · no derivatives"}{p.rights.attribution_required ? " · attribution" : ""}
+        </div>
+      ))}
+      {record.human_review && <div>Human review: {record.human_review}</div>}
+    </div>
+  );
+}
+
+export function ApprovalWorkbench({ actions }: {
+  actions: Pick<QualityActions, "approvalRequest" | "approvalState" | "artifactStatus">;
+}) {
+  const [reportId, setReportId] = useState("");
+  const [queues, setQueues] = useState<string[]>(["SUBJECT_MATTER", "ACCESSIBILITY"]);
+  const [deadline, setDeadline] = useState("");
+  const [state, setState] = useState<ApprovalStateShape | null>(null);
+  const [artifactId, setArtifactId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const toggle = (q: string) => setQueues((prev) => (prev.includes(q) ? prev.filter((x) => x !== q) : [...prev, q]));
+  const run = (fn: () => Promise<ApprovalStateShape>) => {
+    setError(null);
+    void fn().then(setState).catch((e) => setError(e instanceof Error ? e.message : "Failed"));
+  };
+
+  return (
+    <div className="nv-card" data-testid="approval-workbench" style={{ fontSize: 13 }}>
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>✅ Approval workflow (granular, auditable)</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <input className="nv-input" value={reportId} onChange={(e) => setReportId(e.target.value)} placeholder="report id…" style={{ flex: 1, minWidth: 140 }} />
+        <input className="nv-input" value={deadline} onChange={(e) => setDeadline(e.target.value)} placeholder="deadline (ISO, optional)" style={{ width: 200 }} />
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6, fontSize: 12 }}>
+        {REVIEW_QUEUE_OPTIONS.map((q) => (
+          <label key={q} style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input type="checkbox" checked={queues.includes(q)} onChange={() => toggle(q)} /> {q.toLowerCase().replace(/_/g, " ")}
+          </label>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <Button variant="secondary" size="sm" disabled={!reportId.trim() || queues.length === 0}
+          onClick={() => run(() => actions.approvalRequest(reportId.trim(), queues, deadline || undefined))}>Request approval</Button>
+        <Button variant="ghost" size="sm" disabled={!reportId.trim()}
+          onClick={() => run(() => actions.approvalState(reportId.trim(), deadline || undefined))}>Refresh state</Button>
+      </div>
+      {error && <p role="alert" style={{ fontSize: 12 }}>{error}</p>}
+      {state && (
+        <div style={{ fontSize: 12, marginTop: 6 }}>
+          <div>State: <b>{state.state.replace(/_/g, " ")}</b> — {state.summary}{state.overdue ? " ⏰ overdue" : ""}</div>
+          <div style={{ color: "var(--nv-color-text-faint)" }}>
+            {state.perQueue.map((p) => `${p.queue.toLowerCase().replace(/_/g, " ")}:${p.status.toLowerCase()}`).join(" · ") || "no reviews yet"}
+          </div>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+        <input className="nv-input" value={artifactId} onChange={(e) => setArtifactId(e.target.value)} placeholder="artifact id (granular decision)…" style={{ flex: 1, minWidth: 140 }} />
+        {(["APPROVED", "REJECTED", "IN_REVIEW"] as const).map((s) => (
+          <Button key={s} variant="ghost" size="sm" disabled={!artifactId.trim()}
+            onClick={() => void actions.artifactStatus(artifactId.trim(), s).catch((e) => setError(e instanceof Error ? e.message : "Failed"))}>
+            {s.toLowerCase().replace(/_/g, " ")}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function FreshnessAssessCard({ setId, actions }: {
+  setId: string; actions: Pick<QualityActions, "freshnessAssess">;
+}) {
+  const [result, setResult] = useState<Awaited<ReturnType<QualityActions["freshnessAssess"]>> | null>(null);
+  return (
+    <div className="nv-card" data-testid="freshness-assess" style={{ fontSize: 13 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+        <span style={{ fontWeight: 800 }}>🕒 Freshness assessment (per-rule, exact claim affected)</span>
+        <div style={{ flex: 1 }} />
+        <Button variant="secondary" size="sm" onClick={() => void actions.freshnessAssess(setId).then(setResult).catch(() => undefined)}>Assess set</Button>
+      </div>
+      {result && (
+        <div style={{ fontSize: 12 }}>
+          <div>Rules: {result.rules} · blocked: <b>{result.blocked}</b></div>
+          {result.items.map((i) => (
+            <div key={i.id} style={{ marginTop: 4 }}>
+              • {i.title} ({i.type}, {i.ageDays}d) — <b>{i.worst.replace(/_/g, " ")}</b>
+              {i.assessments.map((a, n) => (
+                <div key={n} style={{ color: "var(--nv-color-text-faint)" }}>
+                  {a.claimType}: {a.mark.replace(/_/g, " ")} — {a.note}{a.requiredReviewer ? ` · reviewer: ${a.requiredReviewer}` : ""}
+                </div>
+              ))}
+            </div>
+          ))}
+          <div style={{ color: "var(--nv-color-text-faint)" }}>{result.note}</div>
+        </div>
       )}
     </div>
   );

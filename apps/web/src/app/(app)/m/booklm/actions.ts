@@ -1301,6 +1301,39 @@ export async function qualityMetricsAction(setId: string) {
   return (await qualitySvc()).qualityMetrics(setId);
 }
 
+export async function qualityProvenanceAction(input: unknown) {
+  return (await qualitySvc()).registerProvenance(input);
+}
+
+export async function qualityProvenanceGetAction(contentId: string) {
+  const r = await (await qualitySvc()).provenanceFor(contentId);
+  if (!r) return null;
+  return { id: r.id, subjectId: r.subjectId, decision: r.decision, dimensions: r.dimensions, createdAt: r.createdAt.toISOString() };
+}
+
+export async function qualityApprovalRequestAction(reportId: string, queues: string[], deadline?: string) {
+  return (await qualitySvc()).requestApproval(reportId, queues, deadline);
+}
+
+export async function qualityApprovalStateAction(reportId: string, deadline?: string) {
+  return (await qualitySvc()).approvalState(reportId, deadline);
+}
+
+const ARTIFACT_STATUSES = ["DRAFT", "IN_REVIEW", "APPROVED", "PUBLISHED", "SUPERSEDED", "REJECTED"] as const;
+
+export async function qualityArtifactStatusAction(artifactId: string, status: string) {
+  if (!(ARTIFACT_STATUSES as readonly string[]).includes(status)) throw new Error("Invalid artifact status");
+  return (await qualitySvc()).setArtifactReviewStatus(artifactId, status as (typeof ARTIFACT_STATUSES)[number]);
+}
+
+export async function qualityFreshnessAssessAction(setId: string) {
+  return (await qualitySvc()).freshnessAssessment(setId);
+}
+
+export async function qualityReadingAdaptAction(text: string, target: string) {
+  return (await qualitySvc()).adaptReadingPlan(text, target);
+}
+
 export async function decisionDetailAction(id: string) {
   const r = await (await decSvc()).get(id);
   return {

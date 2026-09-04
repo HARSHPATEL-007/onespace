@@ -41,6 +41,7 @@
     "./doc-parse": "./src/doc-parse.ts",
     "./quality": "./src/quality.ts",
     "./quality-checks": "./src/quality-checks.ts",
+    "./quality-deep": "./src/quality-deep.ts",
     "./factory": "./src/factory.ts",
     "./study-factory": "./src/study-factory.ts",
     "./integrity-ui": "./src/integrity-ui.tsx",

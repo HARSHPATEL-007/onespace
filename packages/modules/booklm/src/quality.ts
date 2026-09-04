@@ -7,6 +7,11 @@ import {
   rightsDecision, scanSafety, freshnessState, publicationDecision,
   type RightsStatus,
 } from "./quality-checks";
+import {
+  auditArtifactCitations, assessFreshnessForRules, safetyDisposition,
+  publicationDecisionForArtifact, readingAdaptPlan, decisionAuditEntry,
+  approvalStateFromReviews, buildProvenanceRecord,
+} from "./quality-deep";
 
 export const rightsSchema = z.object({
   sourceKey: z.string().trim().min(1).max(300),
@@ -61,6 +66,12 @@ export class QualityService {
       cited: Math.min(sentences.length, markers),
       status: markers === 0 && sentences.length > 3 ? "failed" : markers < sentences.length / 2 ? "warning" : "passed",
     };
+    // Claim-level audit with severity: quantitative claims need date/units,
+    // quotations need bounding cites, figure mentions need origin cites.
+    const highStakesType = ["practice_test", "coding_assignment", "lab"].includes(a.type);
+    const citationDetail = auditArtifactCitations(a.id, text.slice(0, 20000), {
+      highStakes: highStakesType, answerKey: a.type === "practice_test",
+    });
 
     // Consistency: contradiction scan across sentence pairs (capped).
     const contradictions: { a: string; b: string; kind: string }[] = [];
@@ -102,6 +113,9 @@ export class QualityService {
     const cultural = scanCultural(text.slice(0, 20000), "");
     const a11y = auditAccessibility(text.slice(0, 20000));
     const safety = scanSafety(text.slice(0, 20000));
+    // Proportionate safety behavior: block / transform / warn / escalate with
+    // required reviewers, safe alternatives, and stricter child defaults.
+    const disposition = safetyDisposition(safety);
     const rights = await this.rightsForSources(a.sourceDocs);
     const rightsWorst = rights.some((r) => ["unknown", "prohibited", "disputed"].includes(r.status)) ? "blocked"
       : rights.some((r) => r.status !== "cleared" && r.status !== "attribution") ? "restricted" : "cleared";
@@ -110,7 +124,15 @@ export class QualityService {
 
     const dimensions = {
       grounding: { status: grounding, extractionConfidence: a.extractionConfidence, citations: citeRefs },
-      citations: { total: citationAudit.claims, cited: citationAudit.cited, status: citationAudit.status },
+      citations: {
+        total: citationAudit.claims, cited: citationAudit.cited, status: citationAudit.status,
+        audit: {
+          claims_total: citationDetail.claims_total, claims_cited: citationDetail.claims_cited,
+          supported: citationDetail.supported_citations, weak: citationDetail.weak_citations,
+          missing: citationDetail.missing_citations, by_severity: citationDetail.by_severity,
+          status: citationDetail.status,
+        },
+      },
       consistency: {
         status: contradictions.length > 0 ? "warning" : "passed",
         contradictions,
@@ -134,16 +156,26 @@ export class QualityService {
       safety: {
         status: safety.some((s) => s.severity === "high") ? "blocked" : safety.length > 0 ? "human_review" : "passed",
         findings: safety,
+        disposition: {
+          action: disposition.action, requiredReviewers: disposition.requiredReviewers,
+          safeAlternative: disposition.safeAlternative, warnings: disposition.warnings,
+        },
       },
       instructor: { status: a.reviewStatus, reviewer: a.reviewedById },
     };
-    const pub = publicationDecision({
+    // Policy-driven release gate: artifact-type presets (a graded lab and a
+    // glossary never share a release threshold).
+    const pub = publicationDecisionForArtifact({
+      artifactType: a.type,
       rights: (rightsWorst === "blocked" ? "unknown" : rightsWorst === "restricted" ? "unknown" : "cleared") as RightsStatus,
       safetyHigh: safety.some((s) => s.severity === "high"),
-      criticalMissing: citationAudit.status === "failed" && ["practice_test", "coding_assignment", "lab"].includes(a.type),
-      majorContradictions: contradictions.length >= 2,
+      criticalMissing: citationAudit.status === "failed" && highStakesType,
+      contradictionCount: contradictions.length,
       a11yBlocking: a11y.failures.some((f) => f.blocking),
+      a11yWarnings: a11y.warnings,
       biasHigh: bias.some((b) => b.severity === "high"),
+      biasFindings: bias.length,
+      culturalFindings: cultural.findings.length,
       instructorApproved: a.reviewStatus === "APPROVED" || a.reviewStatus === "PUBLISHED",
     });
     const report = await prisma.qualityReport.create({
@@ -156,7 +188,7 @@ export class QualityService {
     });
     // Route review queues from findings.
     const queues: string[] = [];
-    if (contradictions.length > 0) queues.push("SUBJECT_MATTER");
+    if (contradictions.length > 0 || citationDetail.by_severity.critical > 0) queues.push("SUBJECT_MATTER");
     if (bias.length > 0 || cultural.findings.length > 0) queues.push("CULTURAL");
     if (a11y.failures.length > 0) queues.push("ACCESSIBILITY");
     if (rightsWorst !== "cleared") queues.push("RIGHTS");
@@ -167,7 +199,28 @@ export class QualityService {
         data: { workspaceId: this.workspaceId, reportId: report.id, queue: q as never },
       }).catch(() => null);
     }
-    return { report, publication: pub };
+    // Decision audit entry: rule/input versions, evidence, uncertainty,
+    // disposition and downstream — the measurable control for this decision.
+    const audit = decisionAuditEntry({
+      ruleVersion: RULE_VERSION,
+      artifactVersion: a.version,
+      evidence: [
+        `citations ${citationDetail.claims_cited}/${citationDetail.claims_total} (${citationDetail.status})`,
+        `contradictions: ${contradictions.length}`,
+        `a11y: ${a11y.passed} passed, ${a11y.failed} failed`,
+        `rights: ${rightsWorst}`,
+        `safety: ${disposition.action}`,
+      ],
+      confidence: a.extractionConfidence,
+      uncertainty: [
+        ...(citationDetail.status !== "passed" ? ["citation support incomplete"] : []),
+        ...(contradictions.length > 0 ? ["unresolved contradictions"] : []),
+      ],
+      decision: pub.decision,
+      disposition: pub.decision,
+      downstream: [`artifact:${a.id}`],
+    });
+    return { report, publication: pub, audit };
   }
 
   async reportDocument(documentId: string) {
@@ -240,6 +293,125 @@ export class QualityService {
       where: { id, workspaceId: this.workspaceId },
       data: { status: status as never, reviewerId: this.userId, note: note.slice(0, 2000) },
     });
+  }
+
+  // -- Provenance registry (versioned audit records; lineage per span) -------------------------
+  async registerProvenance(input: unknown) {
+    const record = buildProvenanceRecord(input);
+    const report = await prisma.qualityReport.create({
+      data: {
+        workspaceId: this.workspaceId, setId: null,
+        subjectType: "provenance", subjectId: record.content_id,
+        dimensions: { provenance: record } as never,
+        decision: record.publication_state, ruleVersion: RULE_VERSION, createdById: this.userId,
+      },
+    });
+    return { record, reportId: report.id };
+  }
+
+  async provenanceFor(contentId: string) {
+    return prisma.qualityReport.findFirst({
+      where: { workspaceId: this.workspaceId, subjectType: "provenance", subjectId: contentId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  // -- Approval workflow (stateful, auditable, granular) -----------------------------------------
+  private static readonly REVIEW_QUEUES = [
+    "SUBJECT_MATTER", "PEDAGOGICAL", "ACCESSIBILITY", "CULTURAL", "RIGHTS", "SAFETY", "EDITORIAL",
+  ];
+
+  /** Request required queue reviews for a report. Idempotent: pending reviews are never duplicated. */
+  async requestApproval(reportId: string, requiredQueues: string[], deadlineIso?: string) {
+    this.assertInstructor();
+    const report = await prisma.qualityReport.findFirst({
+      where: { id: reportId, workspaceId: this.workspaceId },
+    });
+    if (!report) throw new Error("Report not found");
+    const queues = [...new Set(requiredQueues)].filter((q) => QualityService.REVIEW_QUEUES.includes(q));
+    if (queues.length === 0) throw new Error("No valid review queues requested");
+    const existing = await prisma.qualityReview.findMany({
+      where: { workspaceId: this.workspaceId, reportId },
+    });
+    const hasOpen = new Set(existing.filter((r) => r.status === "PENDING").map((r) => String(r.queue)));
+    for (const q of queues) {
+      if (hasOpen.has(q)) continue;
+      await prisma.qualityReview.create({
+        data: { workspaceId: this.workspaceId, reportId, queue: q as never },
+      }).catch(() => null);
+    }
+    return this.approvalState(reportId, deadlineIso);
+  }
+
+  /** Derive workflow state from queue reviews: blocked / changes / approved / pending. */
+  async approvalState(reportId: string, deadlineIso?: string) {
+    const report = await prisma.qualityReport.findFirst({
+      where: { id: reportId, workspaceId: this.workspaceId },
+      include: { reviews: true },
+    });
+    if (!report) throw new Error("Report not found");
+    const required = [...new Set(report.reviews.map((r) => String(r.queue)))];
+    return {
+      reportId: report.id, decision: report.decision,
+      deadline: deadlineIso ?? null,
+      ...approvalStateFromReviews(
+        report.reviews.map((r) => ({ queue: String(r.queue), status: String(r.status) })),
+        required, deadlineIso ?? null,
+      ),
+    };
+  }
+
+  /** Granular instructor decision per artifact (approve glossary, reject test). */
+  async setArtifactReviewStatus(
+    artifactId: string,
+    status: "DRAFT" | "IN_REVIEW" | "APPROVED" | "PUBLISHED" | "SUPERSEDED" | "REJECTED",
+  ) {
+    this.assertInstructor();
+    await prisma.studyArtifact.updateMany({
+      where: { id: artifactId, workspaceId: this.workspaceId },
+      data: { reviewStatus: status as never, reviewedById: this.userId },
+    });
+    return { artifactId, status };
+  }
+
+  // -- Freshness assessment across a set (rule-based, approximate) ----------------------------------
+  async freshnessAssessment(setId: string) {
+    const [rules, artifacts] = await Promise.all([
+      prisma.freshnessRule.findMany({
+        where: { workspaceId: this.workspaceId, OR: [{ setId }, { setId: null }] }, take: 50,
+      }),
+      prisma.studyArtifact.findMany({
+        where: { workspaceId: this.workspaceId, setId },
+        select: { id: true, type: true, title: true, updatedAt: true }, take: 200,
+      }),
+    ]);
+    if (rules.length === 0) {
+      return { setId, rules: 0, blocked: 0, items: [], note: "No freshness rules configured for this set — add claim-type rules first." };
+    }
+    const now = Date.now();
+    const items = artifacts.map((a) => {
+      const ageDays = (now - new Date(a.updatedAt).getTime()) / 86_400_000;
+      const { assessments, worst } = assessFreshnessForRules(ageDays, rules.map((r) => ({
+        claimType: r.claimType, jurisdiction: r.jurisdiction, validDays: r.validDays,
+        refreshDays: r.refreshDays, requiredReviewer: r.requiredReviewer,
+      })));
+      return {
+        id: a.id, type: a.type, title: a.title, ageDays: Math.round(ageDays),
+        worst, blocking: worst === "publication_blocked",
+        assessments: assessments.filter((x) => x.mark !== "unaffected"),
+      };
+    });
+    return {
+      setId, rules: rules.length,
+      blocked: items.filter((i) => i.blocking).length,
+      items: items.filter((i) => i.worst !== "unaffected"),
+      note: "Rule-based and approximate: rules apply by set, not per-claim. Exact-claim tracking needs claim-level validity fields.",
+    };
+  }
+
+  /** Deterministic reading-adapt edit ops for instructor approval (no silent rewrite). */
+  adaptReadingPlan(text: string, target: string) {
+    return readingAdaptPlan(text.slice(0, 20000), target);
   }
 
   // -- Rights ledger --------------------------------------------------------------------------------
