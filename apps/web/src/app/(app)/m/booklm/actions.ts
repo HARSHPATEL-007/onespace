@@ -12,6 +12,7 @@ import { OrchestratorService, runTurnSchema, modePolicySchema } from "@n0va/modu
 import { MemoryService } from "@n0va/modules-booklm/memories";
 import { DecisionService } from "@n0va/modules-booklm/decisions";
 import { AssessProfileService } from "@n0va/modules-booklm/assess-profile";
+import { IntegrityService } from "@n0va/modules-booklm/integrity-service";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -637,6 +638,140 @@ export async function assessBlueprintsAction(setId: string) {
 
 export async function assessBlueprintCheckAction(setId: string, objective: string) {
   return (await assessSvc()).blueprintCheck(setId, objective);
+}
+
+// --- Assessment integrity ---
+
+const integSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new IntegrityService(workspaceId, userId, role);
+};
+
+export async function integrityStatusAction() {
+  const rows = await (await integSvc()).learnerStatus();
+  return rows.map((r) => ({
+    id: r.id, academic: r.academic, integrity: r.integrity,
+    checked: r.checked, notUsed: r.notUsed,
+    accommodation: r.accommodation as Record<string, unknown>,
+    appealDeadline: r.appealDeadline?.toISOString() ?? null,
+    appeals: r.appeals.map((a) => ({ id: a.id, status: a.status })),
+    penaltyPending: r.penaltyPending,
+  }));
+}
+
+export async function integrityAppealAction(recordId: string, reason: string, evidence: string) {
+  return (await integSvc()).fileAppeal(recordId, reason, evidence);
+}
+
+export async function integrityAppealsAction() {
+  const rows = await (await integSvc()).listAppeals();
+  return rows.map((a) => ({
+    id: a.id, recordId: a.recordId, reason: a.reason, evidence: a.evidence,
+    status: a.status, resolution: a.resolution,
+    createdAt: a.createdAt.toISOString(),
+  }));
+}
+
+export async function integrityQueueAction() {
+  const rows = await (await integSvc()).reviewQueue();
+  return rows.map((r) => ({
+    id: r.id, userId: r.userId, status: r.status,
+    academicScore: r.academicScore, grader: r.grader,
+    signals: (r.signals ?? []) as { type: string; severity: string; evidence: string; confidence: number }[],
+    excludedSignals: r.excludedSignals,
+    accommodation: r.accommodation as Record<string, unknown> | null,
+    technicalEvents: (r.technicalEvents ?? []) as unknown[],
+    appealDeadline: r.appealDeadline?.toISOString() ?? null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export async function integrityReviewAction(recordId: string, decision: "CLEARED" | "VIOLATION", reason: string) {
+  await (await integSvc()).reviewDecision(recordId, decision, reason);
+}
+
+export async function integrityAppealResolveAction(appealId: string, status: "UPHELD" | "OVERTURNED", resolution: string) {
+  await (await integSvc()).resolveAppeal(appealId, status, resolution);
+}
+
+export async function integrityOverviewAction(setId: string) {
+  return (await integSvc()).instructorOverview(setId);
+}
+
+export async function integrityMetricsAction() {
+  return (await integSvc()).qualityMetrics();
+}
+
+export async function integritySimilarityAction(setId: string, text: string) {
+  return (await integSvc()).analyzeSubmission(setId, text.slice(0, 8000));
+}
+
+export async function integrityItemAction(formData: FormData) {
+  const { itemSchema } = await import("@n0va/modules-booklm/integrity-service");
+  const parsed = itemSchema.parse({
+    setId: String(formData.get("setId") ?? "") || undefined,
+    templateKey: String(formData.get("templateKey") ?? ""),
+    prompt: String(formData.get("prompt") ?? ""),
+  });
+  await (await integSvc()).createItem(parsed);
+}
+
+export async function integrityVariantAction(templateKey: string, setId: string) {
+  return (await integSvc()).makeVariant(templateKey, undefined, setId);
+}
+
+export async function integrityItemStatusAction(id: string, status: "ACTIVE" | "FROZEN" | "RETIRED" | "INVALIDATED") {
+  await (await integSvc()).setItemStatus(id, status);
+}
+
+export async function integrityExposureAction(templateKey: string) {
+  return (await integSvc()).exposureMap(templateKey);
+}
+
+export async function integrityAccommodationsAction() {
+  const rows = await (await integSvc()).listAccommodations();
+  return rows.map((a) => ({
+    id: a.id, userId: a.userId, effects: a.effects, active: a.active,
+    expiresAt: a.expiresAt?.toISOString() ?? null,
+  }));
+}
+
+export async function integrityAccommodationAction(formData: FormData) {
+  const { accommodationSchema } = await import("@n0va/modules-booklm/integrity-service");
+  const parsed = accommodationSchema.parse({
+    userId: String(formData.get("userId") ?? ""),
+    setId: String(formData.get("setId") ?? "") || undefined,
+    effects: String(formData.get("effects") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  });
+  await (await integSvc()).upsertAccommodation(parsed);
+}
+
+export async function integrityDefenseAction(formData: FormData) {
+  const { defenseSchema } = await import("@n0va/modules-booklm/integrity-service");
+  const parsed = defenseSchema.parse({
+    setId: String(formData.get("setId") ?? "") || undefined,
+    topic: String(formData.get("topic") ?? ""),
+    consentRecording: formData.get("consentRecording") === "on",
+  });
+  await (await integSvc()).scheduleDefense(parsed);
+}
+
+export async function integrityDefensesAction() {
+  const rows = await (await integSvc()).listDefenses();
+  return rows.map((d) => ({
+    id: d.id, topic: d.topic, status: d.status, userId: d.userId,
+    scores: (d.scores ?? {}) as Record<string, number | string>,
+    consentRecording: d.consentRecording,
+  }));
+}
+
+export async function integrityDefenseScoreAction(id: string, formData: FormData) {
+  const scores: Record<string, number> = {};
+  for (const k of ["conceptual_accuracy", "decision_justification", "adaptation_to_counterexample", "uncertainty_awareness", "communication_clarity"]) {
+    const v = formData.get(k);
+    if (v !== null && v !== "") scores[k] = Number(v);
+  }
+  await (await integSvc()).scoreDefense(id, scores, String(formData.get("transcript") ?? ""), String(formData.get("note") ?? ""));
 }
 
 export async function decisionDetailAction(id: string) {

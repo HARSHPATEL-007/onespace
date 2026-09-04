@@ -7,6 +7,8 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { IntegrityPanel, type IntegrityActions } from "./integrity-ui";
+export { IntegrityService, policySchemaIntegrity, itemSchema, signalSchema, recordSchema, accommodationSchema, defenseSchema } from "./integrity-service";
 export { AssessmentProfilePanel, type AssessActions } from "./assess-ui";
 export { AssessProfileService, evidenceSchema, blueprintSchema } from "./assess-profile";
 export { ExplanationCard, DecisionQueue, EducatorDecisionPanel, DecisionMetricsView, DecisionGovernance, type DecisionCardData } from "./pedagogy-ui";
@@ -37,6 +39,11 @@ export {
   ASSESS_SEQUENCE, validateBlueprint, compositeGrade,
   type AssessDim,
 } from "./assess-dims";
+export {
+  triageLevel, reviewRequired, EXCLUDED_SIGNALS, buildVariant,
+  analyzeSimilarity, authorshipFollowUp, interpretWithAccommodation, buildNotice,
+  type TriageLevel, type IntegritySignal, type VariantSpec,
+} from "./integrity";
 export {
   classifyDocSpan, trustRank, injectionScan, confidenceLevelFor,
   canTransition, scopeRank, mayPromoteScope, retrievalOrder, rankMemories,

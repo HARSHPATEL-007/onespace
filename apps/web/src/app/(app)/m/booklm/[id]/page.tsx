@@ -8,7 +8,7 @@ import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction, decisionListAction, decisionCardAction, decisionControlAction, decisionDetailAction, decisionEducatorAction, decisionMetricsAction, assessProfileAction, assessLogEvidenceAction, assessReportsAction, assessBlueprintAction, assessBlueprintsAction, assessBlueprintCheckAction } from "../actions";
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction, decisionListAction, decisionCardAction, decisionControlAction, decisionDetailAction, decisionEducatorAction, decisionMetricsAction, assessProfileAction, assessLogEvidenceAction, assessReportsAction, assessBlueprintAction, assessBlueprintsAction, assessBlueprintCheckAction, integrityStatusAction, integrityAppealAction, integrityAppealsAction, integrityQueueAction, integrityReviewAction, integrityAppealResolveAction, integrityOverviewAction, integrityMetricsAction, integritySimilarityAction, integrityItemAction, integrityVariantAction, integrityItemStatusAction, integrityExposureAction, integrityAccommodationsAction, integrityAccommodationAction, integrityDefenseAction, integrityDefensesAction, integrityDefenseScoreAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -178,6 +178,26 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             saveBlueprint: assessBlueprintAction,
             blueprints: assessBlueprintsAction,
             blueprintCheck: assessBlueprintCheckAction,
+          },
+          integrity: {
+            status: integrityStatusAction,
+            appeal: integrityAppealAction,
+            appeals: integrityAppealsAction,
+            queue: integrityQueueAction,
+            review: integrityReviewAction,
+            appealResolve: integrityAppealResolveAction,
+            overview: integrityOverviewAction,
+            metrics: integrityMetricsAction,
+            similarity: integritySimilarityAction,
+            createItem: integrityItemAction,
+            makeVariant: integrityVariantAction,
+            itemStatus: integrityItemStatusAction,
+            exposure: integrityExposureAction,
+            accommodations: integrityAccommodationsAction,
+            addAccommodation: integrityAccommodationAction,
+            scheduleDefense: integrityDefenseAction,
+            defenses: integrityDefensesAction,
+            scoreDefense: integrityDefenseScoreAction,
           },
           decisionDetail: decisionDetailAction,
           decisionEducator: decisionEducatorAction,

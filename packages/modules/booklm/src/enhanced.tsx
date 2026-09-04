@@ -10,6 +10,7 @@ import { AdaptivePanel, type AdaptActions } from "./adapt-ui";
 import { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
 import { MemoryCenterPanel, type MemoryActions } from "./memory-ui";
 import { AssessmentProfilePanel, type AssessActions } from "./assess-ui";
+import { IntegrityPanel, type IntegrityActions } from "./integrity-ui";
 import { DecisionGovernance, type GovernanceDecision } from "./pedagogy-ui";
 
 export interface CockpitData {
@@ -605,6 +606,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     tutorAgents: TutorAgentActions;
     memory: MemoryActions;
     assess: AssessActions;
+    integrity: IntegrityActions;
     decisionDetail: (id: string) => Promise<{
       trigger: string; issueType: string; issueDescription: string; severity: string;
       evidence: { type: string; ref: string; result: string; context: string; at: string; invalid?: boolean }[];
@@ -620,7 +622,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
   };
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "agents" | "grades" | "materials" | "graph" | "adapt" | "memory" | "assess" | "insights" | "governance">("evidence");
+  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "agents" | "grades" | "materials" | "graph" | "adapt" | "memory" | "assess" | "integrity" | "insights" | "governance">("evidence");
   const [disOnly, setDisOnly] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<V2Answer | null>(null);
@@ -640,6 +642,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     { id: "adapt", label: "🎛 Adapt" },
     { id: "memory", label: "🗂 Memory" },
     { id: "assess", label: "📈 Assess" },
+    { id: "integrity", label: "🛡 Integrity" },
     { id: "tutor", label: "🤖 Tutor" },
     { id: "agents", label: "💬 Agents" },
     { id: "grades", label: "📝 Grades" },
@@ -704,6 +707,9 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
       )}
       {tab === "assess" && (
         <AssessmentProfilePanel setId={setId} concepts={graphConcepts} actions={actions.assess} isInstructor={isInstructor} />
+      )}
+      {tab === "integrity" && (
+        <IntegrityPanel setId={setId} actions={actions.integrity} isInstructor={isInstructor} />
       )}
       {tab === "tutor" && (
         <TutorPanel modes={modes} sessions={sessions} memories={memories}

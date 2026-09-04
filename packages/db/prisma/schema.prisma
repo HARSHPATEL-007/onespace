@@ -452,6 +452,12 @@ model Workspace {
   decisionRecords              DecisionRecord[]
   decisionReviews              DecisionReview[]
   assessmentBlueprints         AssessmentBlueprint[]
+  assessmentItems              AssessmentItem[]
+  itemExposures                ItemExposure[]
+  integrityRecords             IntegrityRecord[]
+  integrityAppeals             IntegrityAppeal[]
+  accommodations               Accommodation[]
+  oralDefenses                 OralDefense[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -4993,6 +4999,37 @@ model Escalation {
 }
 
 /// Rubric-aware grading with audit trail + appeals.
+/// Assessment integrity — layered evidence-and-review, never surveillance.
+/// Academic scores, integrity signals, accommodations, technical events,
+/// human review, and appeals are stored separately; signals never silently
+/// reduce scores, and no high-stakes decision rests on AI/biometrics alone.
+enum IntegrityStatus {
+  CLEAR
+  INFORMATIONAL
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+  REVIEW_REQUIRED
+  CLEARED
+  VIOLATION
+}
+
+enum IntegrityAppealStatus {
+  OPEN
+  UNDER_REVIEW
+  UPHELD
+  OVERTURNED
+  WITHDRAWN
+}
+
+enum ItemStatus {
+  ACTIVE
+  FROZEN
+  RETIRED
+  INVALIDATED
+}
+
 model Assessment {
   id          String   @id @default(uuid())
   workspaceId String
@@ -5000,13 +5037,153 @@ model Assessment {
   title       String
   description String   @default("")
   createdById String?
+  policy      Json?
+  stakes      String   @default("low")
   createdAt   DateTime @default(now())
 
   workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   criteria  RubricCriterion[]
   grades    Grade[]
+  items     AssessmentItem[]
+  integrity IntegrityRecord[]
 
   @@index([workspaceId, setId])
+}
+
+/// Versioned assessment items with randomization invariants, exposure
+/// tracking, and retirement. Variants preserve objective, demand, rubric.
+model AssessmentItem {
+  id             String     @id @default(uuid())
+  workspaceId    String
+  assessmentId   String?
+  setId          String?
+  templateKey    String
+  variantOf      String?
+  variantId      String     @default("")
+  prompt         String     @default("")
+  invariants     String[]   @default([])
+  randomizedFields String[] @default([])
+  difficultyEstimate Float  @default(0.5)
+  biasCheck      String     @default("pending")
+  accessibilityCheck String  @default("pending")
+  status         ItemStatus @default(ACTIVE)
+  version        Int        @default(1)
+  createdById    String?
+  createdAt      DateTime   @default(now())
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessment Assessment? @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  exposures  ItemExposure[]
+
+  @@index([workspaceId, assessmentId])
+  @@index([workspaceId, templateKey])
+}
+
+/// Item exposure log: who saw what, when, under which policy, authorized?
+model ItemExposure {
+  id          String   @id @default(uuid())
+  workspaceId String
+  itemId      String?
+  templateKey String   @default("")
+  userId      String
+  kind        String   @default("view")
+  authorized  Boolean  @default(true)
+  setId       String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  item      AssessmentItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, itemId, userId])
+  @@index([workspaceId, templateKey])
+}
+
+/// Integrity record per submission: signals + accommodation + technical
+/// events + review + appeal — all separate from the academic score.
+model IntegrityRecord {
+  id               String          @id @default(uuid())
+  workspaceId      String
+  assessmentId     String?
+  setId            String?
+  userId           String
+  submissionRef    String          @default("")
+  status           IntegrityStatus @default(CLEAR)
+  academicScore    Float?
+  grader           String          @default("")
+  gradeConfidence  Float?
+  signals          Json?
+  excludedSignals  String[]        @default([])
+  accommodation    Json?
+  technicalEvents  Json?
+  reviewerId       String?
+  reviewDecision   String          @default("")
+  reviewReason     String          @default("")
+  appealDeadline   DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessment  Assessment?       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  appeals     IntegrityAppeal[]
+
+  @@index([workspaceId, userId, status])
+  @@index([workspaceId, assessmentId])
+}
+
+/// Integrity appeals with evidence access and no-penalty-during-review.
+model IntegrityAppeal {
+  id         String                @id @default(uuid())
+  workspaceId String
+  recordId   String
+  userId     String
+  reason     String
+  evidence   String                @default("")
+  status     IntegrityAppealStatus @default(OPEN)
+  resolution String                @default("")
+  resolvedById String?
+  createdAt  DateTime              @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  record    IntegrityRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, recordId])
+}
+
+/// Accommodations: effects only (e.g. extended_time), never diagnoses.
+model Accommodation {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  setId       String?
+  effects     String[]  @default([])
+  active      Boolean   @default(true)
+  verifiedBy  String    @default("")
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, active])
+}
+
+/// Oral defenses: subject understanding scored separately from fluency.
+model OralDefense {
+  id          String   @id @default(uuid())
+  workspaceId String
+  assessmentId String?
+  setId       String?
+  userId      String
+  topic       String   @default("")
+  scores      Json?
+  consentRecording Boolean @default(false)
+  transcript  String   @default("")
+  reviewerId  String?
+  status      String   @default("scheduled")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId])
 }
 
 model RubricCriterion {
