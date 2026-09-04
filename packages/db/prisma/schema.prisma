@@ -472,6 +472,10 @@ model Workspace {
   docVersions                  DocVersion[]
   studyModels                  StudyModel[]
   studyArtifacts               StudyArtifact[]
+  qualityReports               QualityReport[]
+  qualityReviews               QualityReview[]
+  rightsRecords                RightsRecord[]
+  freshnessRules               FreshnessRule[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -5107,6 +5111,98 @@ model StudyArtifact {
   model     StudyModel?  @relation(fields: [modelId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, setId, type])
+}
+
+/// Quality control — release gate and learning-governance system.
+/// Multidimensional reports (never one opaque score), review queues,
+/// rights ledger, freshness rules. Deterministic checks + instructor judgment.
+enum QualityReviewQueue {
+  SUBJECT_MATTER
+  PEDAGOGICAL
+  ACCESSIBILITY
+  CULTURAL
+  RIGHTS
+  SAFETY
+  EDITORIAL
+}
+
+enum QualityReviewStatus {
+  PENDING
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+  WAIVED
+}
+
+model QualityReport {
+  id          String   @id @default(uuid())
+  workspaceId String
+  setId       String?
+  subjectType String   @default("artifact")
+  subjectId   String
+  dimensions  Json
+  decision    String   @default("draft")
+  ruleVersion String   @default("qc-1.0")
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  reviews   QualityReview[]
+
+  @@index([workspaceId, subjectType, subjectId])
+  @@index([workspaceId, setId])
+}
+
+model QualityReview {
+  id          String              @id @default(uuid())
+  workspaceId String
+  reportId    String
+  queue       QualityReviewQueue
+  status      QualityReviewStatus @default(PENDING)
+  reviewerId  String?
+  note        String              @default("")
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  report    QualityReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, reportId, queue])
+}
+
+model RightsRecord {
+  id                 String    @id @default(uuid())
+  workspaceId        String
+  sourceKey          String
+  license            String    @default("unknown")
+  expiresAt          DateTime?
+  derivativeAllowed  Boolean   @default(false)
+  attributionRequired Boolean  @default(false)
+  scope              String    @default("")
+  evidence           String    @default("")
+  createdById        String?
+  createdAt          DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sourceKey])
+}
+
+model FreshnessRule {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  setId            String?
+  claimType        String
+  jurisdiction     String   @default("")
+  validDays        Int      @default(365)
+  refreshDays      Int      @default(90)
+  requiredReviewer String   @default("")
+  createdById      String?
+  createdAt        DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, setId])
 }
 
 /// N0VA BOOKLM+EDUCATION Multi-Agent Tutor — supervised agents, event-driven

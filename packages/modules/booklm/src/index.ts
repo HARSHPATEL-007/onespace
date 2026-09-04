@@ -7,6 +7,8 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { QualityPanel, type QualityActions } from "./quality-ui";
+export { QualityService, rightsSchema, freshnessRuleSchema } from "./quality";
 export { FactoryPanel, type FactoryActions } from "./factory-ui";
 export { StudyFactoryService, generateSchema } from "./factory";
 export { SourcesPanel, type SourcesActions } from "./sources-ui";
@@ -71,6 +73,13 @@ export {
   detectSequenceGaps, detectTruncation, figureNumberGaps,
   aggregateQuality, parseTranscriptTimestamps,
 } from "./doc-parse";
+export {
+  jaccard, textSimilarity, classifyDuplicate, extractPropositions,
+  detectContradiction, auditCitations, readingProfile, scanBias, scanCultural,
+  auditAccessibility, rightsDecision, scanSafety, freshnessState,
+  publicationDecision,
+  type DuplicateKind, type ContradictionKind as QcContradictionKind, type RightsStatus,
+} from "./quality-checks";
 export {
   buildStudyModel, genSummary, genGlossary, genConceptMap, genPrereqMap,
   genFlashcards, genPracticeTest, genCaseStudy, genDebate, genLab, genCoding,

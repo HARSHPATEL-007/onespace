@@ -28,6 +28,10 @@ import {
   factoryValidateAction, factoryReviewAction, factoryPublishAction,
   factoryTransformAction, factoryRegenerateAction, factoryProvenanceAction,
   factoryImpactAction, factoryConsistencyAction,
+  qualityReportArtifactAction, qualityReportsAction, qualityQueueAction,
+  qualityDecideAction, qualityRightsAction, qualityRightsSaveAction,
+  qualityFreshnessAction, qualityFreshnessSaveAction, qualityImpactAction,
+  qualityMetricsAction,
 } from "../actions";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -289,6 +293,18 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             provenance: factoryProvenanceAction,
             impact: factoryImpactAction,
             consistency: factoryConsistencyAction,
+          },
+          quality: {
+            reportArtifact: qualityReportArtifactAction,
+            reports: qualityReportsAction,
+            queue: qualityQueueAction,
+            decide: qualityDecideAction,
+            rights: qualityRightsAction,
+            rightsSave: qualityRightsSaveAction,
+            freshness: qualityFreshnessAction,
+            freshnessSave: qualityFreshnessSaveAction,
+            impact: qualityImpactAction,
+            metrics: qualityMetricsAction,
           },
           decisionDetail: decisionDetailAction,
           decisionEducator: decisionEducatorAction,

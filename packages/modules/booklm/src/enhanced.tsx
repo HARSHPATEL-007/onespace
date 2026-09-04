@@ -15,6 +15,7 @@ import { GradingPanel, type GradingActions } from "./grading-ui";
 import { AnalyticsPanel, type InsightsActions } from "./insights-ui";
 import { SourcesPanel, type SourcesActions } from "./sources-ui";
 import { FactoryPanel, type FactoryActions } from "./factory-ui";
+import { QualityPanel, type QualityActions } from "./quality-ui";
 import { DecisionGovernance, type GovernanceDecision } from "./pedagogy-ui";
 
 export interface CockpitData {
@@ -615,6 +616,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     insights: InsightsActions;
     sources: SourcesActions;
     factory: FactoryActions;
+    quality: QualityActions;
     decisionDetail: (id: string) => Promise<{
       trigger: string; issueType: string; issueDescription: string; severity: string;
       evidence: { type: string; ref: string; result: string; context: string; at: string; invalid?: boolean }[];
@@ -630,7 +632,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
   };
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "agents" | "grades" | "materials" | "graph" | "adapt" | "memory" | "assess" | "integrity" | "sources" | "insights" | "governance">("evidence");
+  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "agents" | "grades" | "materials" | "graph" | "adapt" | "memory" | "assess" | "integrity" | "sources" | "insights" | "quality" | "governance">("evidence");
   const [disOnly, setDisOnly] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<V2Answer | null>(null);
@@ -652,6 +654,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     { id: "assess", label: "📈 Assess" },
     { id: "integrity", label: "🛡 Integrity" },
     { id: "sources", label: "📄 Sources" },
+    { id: "quality", label: "✅ Quality" },
     { id: "tutor", label: "🤖 Tutor" },
     { id: "agents", label: "💬 Agents" },
     { id: "grades", label: "📝 Grades" },
@@ -719,6 +722,9 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
       )}
       {tab === "sources" && (
         <SourcesPanel setId={setId} actions={actions.sources} />
+      )}
+      {tab === "quality" && (
+        <QualityPanel setId={setId} actions={actions.quality} isInstructor={isInstructor} />
       )}
       {tab === "integrity" && (
         <IntegrityPanel setId={setId} actions={actions.integrity} isInstructor={isInstructor} />

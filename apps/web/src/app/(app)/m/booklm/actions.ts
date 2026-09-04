@@ -17,6 +17,7 @@ import { GradingService } from "@n0va/modules-booklm/grading";
 import { AssessInsightsService } from "@n0va/modules-booklm/assess-insights";
 import { DocIngestService } from "@n0va/modules-booklm/doc-ingest";
 import { StudyFactoryService } from "@n0va/modules-booklm/factory";
+import { QualityService } from "@n0va/modules-booklm/quality";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -1207,6 +1208,97 @@ export async function factoryImpactAction(documentKey: string) {
 
 export async function factoryConsistencyAction(setId: string) {
   return (await factorySvc()).consistency(setId);
+}
+
+// --- Quality control ---
+
+const qualitySvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new QualityService(workspaceId, userId, role);
+};
+
+export async function qualityReportArtifactAction(artifactId: string) {
+  const { report, publication } = await (await qualitySvc()).reportArtifact(artifactId);
+  return {
+    reportId: report.id, decision: report.decision,
+    dimensions: report.dimensions as Record<string, { status: string }>,
+    publication,
+  };
+}
+
+export async function qualityReportDocumentAction(documentId: string) {
+  const { report } = await (await qualitySvc()).reportDocument(documentId);
+  return { reportId: report.id, decision: report.decision };
+}
+
+export async function qualityReportsAction(setId: string) {
+  const rows = await (await qualitySvc()).setReports(setId);
+  return rows.map((r) => ({
+    id: r.id, subjectType: r.subjectType, subjectId: r.subjectId,
+    decision: r.decision,
+    dimensions: (r.dimensions ?? {}) as Record<string, { status: string }>,
+    createdAt: r.createdAt.toISOString(),
+    reviews: r.reviews.map((v) => ({ queue: v.queue, status: v.status })),
+  }));
+}
+
+export async function qualityQueueAction() {
+  const rows = await (await qualitySvc()).reviewQueue();
+  return rows.map((r) => ({
+    id: r.id, reportId: r.reportId, queue: r.queue, status: r.status,
+    note: r.note, createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+export async function qualityDecideAction(id: string, status: "APPROVED" | "CHANGES_REQUESTED" | "REJECTED" | "WAIVED", note: string) {
+  await (await qualitySvc()).decideReview(id, status, note);
+}
+
+export async function qualityRightsAction() {
+  const rows = await (await qualitySvc()).rightsLedger();
+  return rows.map((r) => ({
+    id: r.id, sourceKey: r.sourceKey, license: r.license,
+    derivativeAllowed: r.derivativeAllowed, attributionRequired: r.attributionRequired,
+    scope: r.scope, expiresAt: r.expiresAt?.toISOString() ?? null,
+  }));
+}
+
+export async function qualityRightsSaveAction(formData: FormData) {
+  const { rightsSchema } = await import("@n0va/modules-booklm/quality");
+  const parsed = rightsSchema.parse({
+    sourceKey: String(formData.get("sourceKey") ?? ""),
+    license: String(formData.get("license") ?? "unknown"),
+    derivativeAllowed: formData.get("derivativeAllowed") === "on",
+    attributionRequired: formData.get("attributionRequired") === "on",
+    scope: String(formData.get("scope") ?? ""),
+    evidence: String(formData.get("evidence") ?? ""),
+  });
+  await (await qualitySvc()).upsertRights(parsed);
+}
+
+export async function qualityFreshnessAction(setId: string) {
+  return (await qualitySvc()).listFreshnessRules(setId);
+}
+
+export async function qualityFreshnessSaveAction(formData: FormData) {
+  const { freshnessRuleSchema } = await import("@n0va/modules-booklm/quality");
+  const parsed = freshnessRuleSchema.parse({
+    setId: String(formData.get("setId") ?? "") || undefined,
+    claimType: String(formData.get("claimType") ?? "general"),
+    jurisdiction: String(formData.get("jurisdiction") ?? ""),
+    validDays: Number(formData.get("validDays")) || 365,
+    refreshDays: Number(formData.get("refreshDays")) || 90,
+    requiredReviewer: String(formData.get("requiredReviewer") ?? ""),
+  });
+  await (await qualitySvc()).upsertFreshnessRule(parsed);
+}
+
+export async function qualityImpactAction(setId: string, source: string, kind: string) {
+  return (await qualitySvc()).impactAnalysis(setId, source, kind);
+}
+
+export async function qualityMetricsAction(setId: string) {
+  return (await qualitySvc()).qualityMetrics(setId);
 }
 
 export async function decisionDetailAction(id: string) {
