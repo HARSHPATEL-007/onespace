@@ -8,6 +8,7 @@ import {
   validateArtifact, consistencyCheck, reviewPolicy,
   artifactEnvelope, assessmentLeakageCheck, translationTermCheck,
   type SummaryDepth, type TestBlueprint, type Audience,
+  type LabModality, type CodingTask, type RevisionVariant,
 } from "./study-factory";
 import { rightsDecision } from "./quality-checks";
 
@@ -38,6 +39,9 @@ export const generateSchema = z.object({
   objectives: z.array(z.string().max(200)).max(20).default([]),
   gaps: z.array(z.string().max(200)).max(20).default([]),
   highStakes: z.boolean().default(false),
+  labModality: z.enum(["physical", "virtual", "dataset", "at_home", "field", "demo"]).default("physical"),
+  codingTask: z.enum(["scaffolded", "debugging", "tracing", "test_writing", "refactoring", "data_analysis", "pair_prompt", "defense"]).default("scaffolded"),
+  revisionVariant: z.enum(["one_page", "formula", "visual", "last_minute"]).default("one_page"),
 });
 
 const AUTO_PUBLISH_CONFIDENCE = 0.85;
@@ -131,10 +135,10 @@ export class StudyFactoryService {
       case "practice_test": content = genPracticeTest(nodes, input.blueprint as TestBlueprint); break;
       case "case_study": content = genCaseStudy(nodes, input.topic || "course case"); break;
       case "debate": content = genDebate(nodes, input.topic || "course motion"); break;
-      case "lab": content = genLab(input.topic || "course lab", input.objectives); break;
-      case "coding_assignment": content = genCoding(input.topic || "course assignment", input.language, input.objectives); break;
+      case "lab": content = genLab(input.topic || "course lab", input.objectives, input.labModality as LabModality); break;
+      case "coding_assignment": content = genCoding(input.topic || "course assignment", input.language, input.objectives, input.codingTask as CodingTask); break;
       case "viva": content = genViva(nodes); break;
-      case "revision_sheet": content = genRevision(nodes, input.topic || "course topic"); break;
+      case "revision_sheet": content = genRevision(nodes, input.topic || "course topic", input.revisionVariant as RevisionVariant); break;
       case "audio_lesson": content = genAudioScript(nodes, input.title || "course audio"); break;
       case "deck": content = genDeck(nodes, input.title || "course deck"); break;
       case "teaching_notes": content = genTeachingNotes(nodes, input.topic || "course topic"); break;
@@ -149,6 +153,7 @@ export class StudyFactoryService {
         type: input.type, content, sourceVersions,
         concepts: [...new Set(nodes.filter((x) => x.kind === "concept").map((x) => x.label))].slice(0, 20),
         extractionConfidence, highStakes: input.highStakes,
+        sourceOnly: input.sourceOnly,
       },
       nodes, sourceVersions,
     );
@@ -171,7 +176,7 @@ export class StudyFactoryService {
       data: {
         workspaceId: this.workspaceId, setId: input.setId, modelId: model.id,
         type: input.type, title: input.title || `${input.type.replace(/_/g, " ")} — ${new Date().toLocaleDateString()}`,
-        content: { ...content, _opts: { depth: input.depth, audience, topic: input.topic, language: input.language, objectives: input.objectives, blueprint: input.blueprint, highStakes: input.highStakes } } as never,
+        content: { ...content, _opts: { depth: input.depth, audience, topic: input.topic, language: input.language, objectives: input.objectives, gaps: input.gaps, blueprint: input.blueprint, highStakes: input.highStakes, sourceOnly: input.sourceOnly, labModality: input.labModality, codingTask: input.codingTask, revisionVariant: input.revisionVariant } } as never,
         sourceDocs, sourceVersions,
         concepts: [...new Set(nodes.filter((x) => x.kind === "concept").map((x) => x.label))].slice(0, 20),
         objectives: nodes.filter((x) => x.kind === "objective").map((x) => x.label).slice(0, 10),
@@ -205,12 +210,14 @@ export class StudyFactoryService {
       : await this.latestModel(a.setId).catch(() => null);
     const nodes = ((model?.nodes ?? []) as unknown as import("./study-factory").ModelNode[]);
     const currentVersions = (model?.sourceVersions ?? []) as string[];
+    const opts = ((a.content ?? {}) as { _opts?: { highStakes?: boolean; sourceOnly?: boolean } })._opts ?? {};
     return validateArtifact(
       {
         type: a.type, content: (a.content ?? {}) as Record<string, unknown>,
         sourceVersions: a.sourceVersions, concepts: a.concepts,
         extractionConfidence: a.extractionConfidence,
-        highStakes: ["practice_test", "coding_assignment", "lab"].includes(a.type),
+        highStakes: opts.highStakes ?? ["practice_test", "coding_assignment", "lab"].includes(a.type),
+        sourceOnly: opts.sourceOnly,
       },
       nodes, currentVersions,
     );
@@ -316,7 +323,7 @@ export class StudyFactoryService {
     const fresh = await this.generate({
       setId: a.setId, type: a.type as never, title: a.title,
       depth: (opts.depth as never) ?? "standard",
-      sourceOnly: true,
+      sourceOnly: (opts.sourceOnly as boolean | undefined) ?? true,
       audience: (opts.audience as never) ?? { level: "intermediate", language: "en" },
       blueprint: (opts.blueprint as never) ?? { concepts: {}, levels: {}, types: {}, difficulty: {} },
       topic: String(opts.topic ?? a.title),
@@ -324,6 +331,9 @@ export class StudyFactoryService {
       objectives: (opts.objectives as string[]) ?? [],
       gaps: (opts.gaps as string[]) ?? [],
       highStakes: Boolean(opts.highStakes ?? false),
+      labModality: (opts.labModality as never) ?? "physical",
+      codingTask: (opts.codingTask as never) ?? "scaffolded",
+      revisionVariant: (opts.revisionVariant as never) ?? "one_page",
     });
     await prisma.studyArtifact.updateMany({
       where: { id, workspaceId: this.workspaceId }, data: { reviewStatus: "SUPERSEDED" as never },
@@ -464,12 +474,14 @@ export class StudyFactoryService {
    */
   async pack(setId: string, gaps: string[] = [], title?: string) {
     const label = title || `Study pack — ${new Date().toLocaleDateString()}`;
+    const packDefaults = { labModality: "physical", codingTask: "scaffolded", revisionVariant: "one_page" } as const;
     const gapSheet = await this.generate({
       setId, type: "gap_sheet", title: `${label} (gaps)`,
       depth: "standard", sourceOnly: true,
       audience: { ageBand: "", level: "intermediate", language: "en" },
       blueprint: { concepts: {}, levels: {}, types: {}, difficulty: {} },
       topic: "", language: "python", objectives: [], gaps, highStakes: false,
+      ...packDefaults,
     });
     const cards = await this.generate({
       setId, type: "flashcard_set", title: `${label} (cards)`,
@@ -477,6 +489,7 @@ export class StudyFactoryService {
       audience: { ageBand: "", level: "intermediate", language: "en" },
       blueprint: { concepts: {}, levels: {}, types: {}, difficulty: {} },
       topic: "", language: "python", objectives: [], gaps, highStakes: false,
+      ...packDefaults,
     });
     const revision = await this.generate({
       setId, type: "revision_sheet", title: `${label} (revision)`,
@@ -485,6 +498,7 @@ export class StudyFactoryService {
       blueprint: { concepts: {}, levels: {}, types: {}, difficulty: {} },
       topic: gaps.join(", "),
       language: "python", objectives: [], gaps, highStakes: false,
+      ...packDefaults,
     });
     const slim = (r: { artifact: { id: string; type: string; title: string }; validation: unknown; route: unknown }) => ({
       id: r.artifact.id, type: r.artifact.type, title: r.artifact.title,

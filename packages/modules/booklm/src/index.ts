@@ -24,9 +24,9 @@ export {
 export { FactoryPanel, type FactoryActions } from "./factory-ui";
 export {
   artifactEnvelope, assessmentLeakageCheck, translationTermCheck, genGapSheet,
-  morphologyHint, blueprintConformance,
+  morphologyHint, blueprintConformance, verbalizeFormula,
   type ArtifactEnvelope, type LeakageFinding, type TermCheck,
-  type BlueprintGap,
+  type BlueprintGap, type LabModality, type CodingTask, type RevisionVariant,
 } from "./study-factory";
 export { StudyFactoryService, generateSchema } from "./factory";
 export { SourcesPanel, type SourcesActions } from "./sources-ui";

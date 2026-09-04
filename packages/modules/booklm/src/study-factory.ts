@@ -373,6 +373,10 @@ export function genCaseStudy(nodes: ModelNode[], topic: string): Record<string, 
     constraints: ["time limit stated", "resources listed"],
     task: "Decide and justify with evidence.",
     alternativeInterpretations: ["consider at least one rival reading"],
+    decisionExtensions: [
+      "What would change your decision? Name the evidence that would flip it.",
+      "Which constraint, if relaxed, changes the outcome most?",
+    ],
     rubric: ["uses evidence", "handles constraints", "justifies decision"],
     debrief: "Compare decisions against source evidence.",
     syntheticNote: "Fictionalized details labeled as instructional, never as source facts.",
@@ -398,23 +402,54 @@ export function genDebate(nodes: ModelNode[], motion: string): Record<string, un
   };
 }
 
-export function genLab(topic: string, objectives: string[]): Record<string, unknown> {
+export type LabModality = "physical" | "virtual" | "dataset" | "at_home" | "field" | "demo";
+
+const LAB_MODALITY_NOTES: Record<LabModality, string[]> = {
+  physical: ["follow instructor-approved steps only"],
+  virtual: ["simulation parameters set by instructor; no physical hazards"],
+  dataset: ["work from the provided dataset — do not fabricate readings"],
+  at_home: ["low-risk household materials only; adult supervision where stated"],
+  field: ["observe without disturbing; record location, time, conditions"],
+  demo: ["instructor performs; learners predict before each step"],
+};
+
+/** Lab exercises across modalities. Safety properties, compatibility,
+ *  availability, and results are never invented — any unlisted hazard,
+ *  material, or outcome is an explicit gap for instructor review. */
+export function genLab(topic: string, objectives: string[], modality: LabModality = "physical"): Record<string, unknown> {
   return {
-    kind: "lab", title: topic, objectives,
+    kind: "lab", title: topic, objectives, modality,
     materials: ["per instructor inventory — never assumed"],
-    estimatedMinutes: 45, riskLevel: "low", hazards: [],
-    requiredSupervision: true,
+    estimatedMinutes: 45, riskLevel: modality === "dataset" || modality === "virtual" ? "none" : "low", hazards: [],
+    requiredSupervision: modality !== "dataset",
     accessibilityAlternatives: ["virtual simulation", "provided dataset"],
-    procedure: ["follow instructor-approved steps only"],
+    procedure: LAB_MODALITY_NOTES[modality] ?? LAB_MODALITY_NOTES.physical,
     analysis: ["record observations", "compare with expected pattern"],
     safetyReview: "instructor_required",
     warning: "Safety properties, compatibility, availability, and results are never invented.",
   };
 }
 
-export function genCoding(title: string, language: string, objectives: string[]): Record<string, unknown> {
+export type CodingTask = "scaffolded" | "debugging" | "tracing" | "test_writing" | "refactoring" | "data_analysis" | "pair_prompt" | "defense";
+
+const CODING_TASK_NOTES: Record<CodingTask, { focus: string; deliverable: string }> = {
+  scaffolded: { focus: "complete TODO markers without a hidden answer to copy", deliverable: "working program + explanation" },
+  debugging: { focus: "diagnose a seeded defect from symptoms and stack trace", deliverable: "fix + root-cause note" },
+  tracing: { focus: "predict outputs by hand before running", deliverable: "trace table + verified run" },
+  test_writing: { focus: "write tests that fail on plausible wrong implementations", deliverable: "test suite + rationale" },
+  refactoring: { focus: "improve structure with behavior unchanged", deliverable: "refactored code + before/after tests" },
+  data_analysis: { focus: "answer a question from the provided dataset", deliverable: "analysis + reproducible steps" },
+  pair_prompt: { focus: "driver/navigator roles swap each subtask", deliverable: "joint solution + role log" },
+  defense: { focus: "oral defense of choices, complexity, and edge cases", deliverable: "defense answers + code walkthrough" },
+};
+
+/** Coding assignments by task variant. Reasoning is assessed alongside
+ *  output in every variant — copying a hidden answer cannot complete one. */
+export function genCoding(title: string, language: string, objectives: string[], task: CodingTask = "scaffolded"): Record<string, unknown> {
+  const t = CODING_TASK_NOTES[task] ?? CODING_TASK_NOTES.scaffolded;
   return {
-    kind: "coding_assignment", title, language, objectives,
+    kind: "coding_assignment", title, language, objectives, task,
+    focus: t.focus, deliverable: t.deliverable,
     starterCode: "// scaffold with TODO markers (no hidden answer)",
     requirements: ["stated inputs/outputs", "edge cases listed below"],
     examples: [{ input: "sample", output: "sample" }],
@@ -441,33 +476,65 @@ export function genViva(nodes: ModelNode[]): Record<string, unknown> {
   };
 }
 
-export function genRevision(nodes: ModelNode[], topic: string): Record<string, unknown> {
+export type RevisionVariant = "one_page" | "formula" | "visual" | "last_minute";
+
+/** Revision-sheet variants. One-page and last-minute compress; formula
+ *  isolates notation; visual describes layout for later illustration.
+ *  All variants stay conceptually complete — compression drops examples
+ *  and caveats first, never core claims. */
+export function genRevision(nodes: ModelNode[], topic: string, variant: RevisionVariant = "one_page"): Record<string, unknown> {
   const concepts = byKind(nodes, "concept").slice(0, 10);
   const formulae = byKind(nodes, "formula").slice(0, 6);
   const misc = byKind(nodes, "misconception").slice(0, 5);
+  const cap = variant === "last_minute" ? 3 : 6;
   return {
-    kind: "revision_sheet", topic,
-    mustKnow: concepts.slice(0, 6).map((c) => c.text),
-    mustDo: concepts.slice(0, 4).map((c) => `Apply ${c.label} in context`),
-    mistakes: misc.map((m) => m.text),
+    kind: "revision_sheet", topic, variant,
+    mustKnow: concepts.slice(0, cap).map((c) => c.text),
+    mustDo: variant === "formula" ? [] : concepts.slice(0, 4).map((c) => `Apply ${c.label} in context`),
+    mistakes: variant === "last_minute" ? misc.slice(0, 3).map((m) => m.text) : misc.map((m) => m.text),
     formulas: formulae.map((f) => f.text),
+    visualPlan: variant === "visual" ? concepts.slice(0, 5).map((c) => `Panel for ${c.label}: described layout with alt-text slot`) : undefined,
     quickChecks: concepts.slice(0, 3).map((c) => `Check: ${c.label}?`),
     sources: [...new Set(nodes.map((x) => cite(x)))].slice(0, 10),
   };
 }
 
+/** Deterministic spoken-form heuristic for common notation. Labeled as a
+ *  first pass for the pronunciation review — never a phonetic authority. */
+export function verbalizeFormula(latex: string): string {
+  return latex
+    .replace(/\\d?frac\{([^}]*)\}\{([^}]*)\}/g, "$1 over $2")
+    .replace(/\\sqrt\{([^}]*)\}/g, "square root of $1")
+    .replace(/\\(cdot|times)\b/g, " times ")
+    .replace(/([A-Za-z])_\{?([^}\s]+)\}?/g, "$1 sub $2")
+    .replace(/\^[{]?([^}\s]+)[}]?/g, " to the power $1")
+    .replace(/\\([a-zA-Z]+)/g, "$1")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+}
+
 export function genAudioScript(nodes: ModelNode[], title: string): Record<string, unknown> {
   const concepts = byKind(nodes, "concept").slice(0, 6);
+  const formulae = byKind(nodes, "formula").slice(0, 4);
   let t = 0;
-  const cues = concepts.flatMap((c) => {
+  const cues: Record<string, string>[] = [];
+  concepts.forEach((c, i) => {
     const at = t; t += 48;
-    return [
-      { at: fmtClock(at), kind: "idea", text: `${c.label}: ${c.text.slice(0, 160)}` },
-      { at: fmtClock(at + 30), kind: "check", text: `Pause: predict one consequence of ${c.label} before continuing.` },
-    ];
+    if (i > 0) {
+      cues.push({ at: fmtClock(at), kind: "transition", text: `We have covered ${concepts[i - 1]!.label}; next, we connect it to ${c.label}.` });
+    }
+    cues.push({ at: fmtClock(at), kind: "idea", text: `${c.label}: ${c.text.slice(0, 160)}` });
+    cues.push({ at: fmtClock(at + 30), kind: "check", text: `Pause: predict one consequence of ${c.label} before continuing.` });
   });
+  const formulaReads = formulae.map((f) => ({
+    latex: f.text, spoken: verbalizeFormula(f.text), citation: cite(f),
+    note: "spoken-form first pass — pronunciation review required",
+  }));
   return {
-    kind: "audio_lesson", title, cues,
+    kind: "audio_lesson", title, cues, formulaReads,
+    diagramDescriptions: "each referenced diagram gets a verbal description cue at its timestamp",
     transcriptNote: "full transcript aligned to cues; synthetic voice disclosed with permission",
     citations: [...new Set(concepts.map((c) => cite(c)))],
   };
@@ -490,7 +557,7 @@ export function genDeck(nodes: ModelNode[], title: string): Record<string, unkno
         citations: [cite(c)],
       })),
     ],
-    accessibility: { readingOrder: true, altText: true, contrastChecked: true },
+    accessibility: { readingOrder: true, altText: true, contrastChecked: true, captionsRequired: false },
     textExport: "one idea per slide; source figures distinguished from illustrative graphics",
   };
 }
@@ -545,7 +612,15 @@ export interface ArtifactDraft {
   type: string; content: Record<string, unknown>;
   sourceVersions: string[]; concepts: string[];
   extractionConfidence: number; highStakes?: boolean;
+  /** Source-only mode: every claim must carry a citation — outside facts prohibited. */
+  sourceOnly?: boolean;
 }
+
+const SOURCE_ONLY_MARKERS = [
+  /doc_[\w-]*:v\d+/, /\bp\s?\d+\b/, /\bchapter\b/i, /\bslide_\d+\b/i,
+  /\[\d+:\d+-\d+:\d+\]/, /\(\d{4}\)/, /cite_[\w-]+/i,
+  /concept-graph/, /co-occurrence/,
+];
 
 export function validateArtifact(draft: ArtifactDraft, model: ModelNode[], currentVersions: string[]): {
   valid: boolean; issues: string[]; reviewRequired: boolean;
@@ -579,6 +654,19 @@ export function validateArtifact(draft: ArtifactDraft, model: ModelNode[], curre
   // Inferences marked.
   if (/\b(may suggest|suggests that|probably|likely means)\b/i.test(text) && !/inference/i.test(text)) {
     issues.push("inferential language without inference marking");
+  }
+  // Source-only mode: outside facts prohibited — every claim-ish sentence
+  // must carry a citation marker (model citations count).
+  if (draft.sourceOnly) {
+    const claims = text
+      .replace(/[{}[\]"]/g, " ")
+      .split(/(?<=[.!?])\s+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 40 && /[a-zA-Z]{3,}/.test(s));
+    const unmarked = claims.filter((s) => !SOURCE_ONLY_MARKERS.some((re) => re.test(s))).slice(0, 5);
+    for (const u of unmarked) {
+      issues.push(`source-only mode: claim without citation — outside facts prohibited (“${u.slice(0, 80)}…”)`);
+    }
   }
   // Outdated versions.
   const stale = draft.sourceVersions.filter((v) => !currentVersions.includes(v));
