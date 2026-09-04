@@ -4,6 +4,9 @@ import { LearningService, learningSetSchema, learningItemSchema } from "@n0va/mo
 import { EvidenceService, citationSchema, challengeSchema, ANSWER_MODES } from "@n0va/modules-booklm/evidence";
 import { PolicyService, policySchema } from "@n0va/modules-booklm/policies";
 import { EvalService } from "@n0va/modules-booklm/eval";
+import { LearnerGraphService, profileSchema, goalSchema, observeSchema, correctionSchema } from "@n0va/modules-booklm/graph";
+import { MisconceptionService, misconceptionSchema } from "@n0va/modules-booklm/misconceptions";
+import { RecommendationService } from "@n0va/modules-booklm/recommend";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -149,6 +152,122 @@ export async function upsertPolicyAction(formData: FormData) {
 export async function getEvalAction(setId: string) {
   const { workspaceId } = await actionContext();
   return new EvalService(workspaceId).workspaceEval(setId);
+}
+
+// --- Personal knowledge graph ---
+
+const graphSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new LearnerGraphService(workspaceId, userId, role);
+};
+const misSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new MisconceptionService(workspaceId, userId, role);
+};
+const recSvc = async () => {
+  const { workspaceId, userId } = await actionContext();
+  return new RecommendationService(workspaceId, userId);
+};
+
+export async function graphObserveAction(input: {
+  conceptId: string; dimension?: string; value: number; confidence?: number;
+  sourceType?: string; sourceId?: string; context?: string; novelty?: number;
+}) {
+  const parsed = observeSchema.parse({
+    conceptId: input.conceptId, dimension: input.dimension ?? "recall",
+    value: input.value, confidence: input.confidence ?? 0.5,
+    sourceType: input.sourceType ?? "assessment", sourceId: input.sourceId ?? "",
+    context: input.context ?? "", novelty: input.novelty ?? 0,
+  });
+  return (await graphSvc()).observe(parsed);
+}
+
+export async function graphGoalAction(formData: FormData) {
+  const parsed = goalSchema.parse({
+    title: String(formData.get("title") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    competencyKeys: String(formData.get("competencyKeys") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    deadline: String(formData.get("deadline") ?? "") || undefined,
+  });
+  await (await graphSvc()).createGoal(parsed);
+}
+
+export async function graphProfileAction(formData: FormData) {
+  const parsed = profileSchema.parse({
+    name: String(formData.get("name") ?? ""),
+    kind: String(formData.get("kind") ?? "academic"),
+  });
+  await (await graphSvc()).createProfile(parsed);
+}
+
+export async function graphCorrectionAction(formData: FormData) {
+  const parsed = correctionSchema.parse({
+    targetType: String(formData.get("targetType") ?? "mastery"),
+    targetId: String(formData.get("targetId") ?? ""),
+    field: String(formData.get("field") ?? ""),
+    newValue: String(formData.get("newValue") ?? ""),
+    reason: String(formData.get("reason") ?? ""),
+    scope: String(formData.get("scope") ?? "profile"),
+  });
+  await (await graphSvc()).applyCorrection(parsed);
+}
+
+export async function graphUndoAction(formData: FormData) {
+  await (await graphSvc()).undoCorrection(String(formData.get("id") ?? ""));
+}
+
+export async function recGenerateAction(setId: string) {
+  return (await recSvc()).generate(setId);
+}
+
+export async function recStatusAction(id: string, status: "ACCEPTED" | "REJECTED" | "DISMISSED") {
+  await (await recSvc()).setStatus(id, status);
+}
+
+export async function misReportAction(input: { conceptId: string; statement: string; detectedFrom?: string[] }) {
+  const parsed = misconceptionSchema.parse({
+    conceptId: input.conceptId, statement: input.statement,
+    detectedFrom: input.detectedFrom ?? ["learner-report"],
+  });
+  return (await misSvc()).report(parsed);
+}
+
+export async function misAdvanceAction(id: string, to: string) {
+  return (await misSvc()).advance(id, to);
+}
+
+export async function misAcknowledgeAction(id: string, acknowledged: boolean) {
+  await (await misSvc()).acknowledge(id, acknowledged);
+}
+
+export async function getGraphDataAction(setId: string) {
+  const g = await graphSvc();
+  const r = await recSvc();
+  const m = await misSvc();
+  const [recommendations, paths, strategies, misconceptions, goals, changed, decaying] = await Promise.all([
+    r.list(setId).catch(() => []),
+    r.planPaths(setId).catch(() => []),
+    r.strategyEffectiveness().catch(() => null),
+    m.list().catch(() => []),
+    g.listGoals().catch(() => []),
+    g.whatChanged(30).catch(() => []),
+    g.decayedSkills(10).catch(() => []),
+  ]);
+  return { recommendations, paths, strategies, misconceptions, goals, changed, decaying };
+}
+
+export async function getConceptDetailAction(conceptId: string) {
+  const g = await graphSvc();
+  const [history, cohort] = await Promise.all([
+    g.conceptHistory(conceptId).catch(() => null),
+    g.cohortComparison(conceptId).catch(() => null),
+  ]);
+  return { history, cohort };
+}
+
+export async function getGraphExportAction(level: string) {
+  const g = await graphSvc();
+  return g.exportGraph({ level });
 }
 
 export async function seedConceptsAction(formData: FormData) {

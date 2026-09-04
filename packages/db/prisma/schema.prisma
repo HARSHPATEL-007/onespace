@@ -426,6 +426,13 @@ model Workspace {
   sourcePolicies               SourcePolicy[]
   evidenceChallenges           EvidenceChallenge[]
   answerRecords                AnswerRecord[]
+  learnerProfiles              LearnerProfile[]
+  learnerGoals                 LearnerGoal[]
+  masteryObservations          MasteryObservation[]
+  misconceptions               Misconception[]
+  conceptDependencies          ConceptDependency[]
+  recommendations              Recommendation[]
+  graphCorrections             GraphCorrection[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -3960,6 +3967,79 @@ model AnswerRecord {
   @@index([workspaceId, setId])
 }
 
+/// N0VA BOOKLM+EDUCATION Personal Graph — learner model, memory, adaptive planning.
+enum MasteryStatus {
+  UNKNOWN
+  EXPOSED
+  RECOGNIZED
+  EMERGING
+  PRACTICED
+  RELIABLE
+  TRANSFER_CAPABLE
+  DURABLE
+  INDEPENDENT
+  MENTOR_CAPABLE
+  DECAYING
+  CONTESTED
+  MISAPPLIED
+  SUPERSEDED
+}
+
+enum ConceptDependencyRel {
+  PREREQUISITE_OF
+  PART_OF
+  GENERALIZES
+  SPECIALIZES
+  ANALOGOUS_TO
+  CONTRASTS_WITH
+  COMMONLY_CONFUSED_WITH
+  ENABLES
+  APPLIED_IN
+  ASSESSED_BY
+  EXPLAINED_BY
+  SUPERSEDED_BY
+  REQUIRES_SKILL
+  REQUIRES_CONTEXT
+}
+
+enum DependencyKind {
+  HARD
+  SOFT
+  HIDDEN
+  LOCAL
+  TRANSFER
+  REMEDIAL
+}
+
+enum MisconceptionStatus {
+  CANDIDATE
+  EVIDENCE_GATHERING
+  TESTING
+  CLARIFICATION
+  CONFIRMED
+  DISMISSED
+  REMEDIATION
+  REASSESSED
+  RESOLVED
+  DORMANT
+  PERSISTENT
+}
+
+enum GoalStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ABANDONED
+}
+
+enum RecommendationStatus {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+  DISMISSED
+  EXPIRED
+}
+
 /// Learner-specific knowledge graph nodes.
 model LearnerConcept {
   id          String             @id @default(uuid())
@@ -3976,6 +4056,10 @@ model LearnerConcept {
   edgesFrom ConceptEdge[]    @relation("ConceptFrom")
   edgesTo   ConceptEdge[]    @relation("ConceptTo")
   mastery   LearnerMastery[]
+  misconceptions Misconception[]
+  observations   MasteryObservation[]
+  depsFrom       ConceptDependency[] @relation("DepFrom")
+  depsTo         ConceptDependency[] @relation("DepTo")
 
   @@unique([workspaceId, setId, key])
   @@index([workspaceId, setId])
@@ -3997,6 +4081,9 @@ model ConceptEdge {
 }
 
 /// Per-learner mastery with decay + spaced repetition scheduling.
+/// `mastery` is the aggregate; `dimensions` holds the 10 separate dimensions
+/// (recognition, recall, conceptual, procedural, application, transfer,
+/// analysis, creation, metacognition, collaboration) with estimate intervals.
 model LearnerMastery {
   id                String   @id @default(uuid())
   workspaceId       String
@@ -4013,12 +4100,193 @@ model LearnerMastery {
   nextReviewAt      DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  // Personal graph: dimensions, state machine, transfer, verification
+  dimensions       Json?
+  dimensionRanges  Json?
+  status           MasteryStatus @default(UNKNOWN)
+  stateEvidence    String        @default("")
+  lastVerifiedAt   DateTime?
+  transferContexts Json?
+
   workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   concept   LearnerConcept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
   user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, conceptId, userId])
   @@index([workspaceId, userId, nextReviewAt])
+  @@index([workspaceId, userId, status])
+}
+
+/// Learner-controlled profiles: academic, role, certification, project,
+/// language, research, teaching, personal-interest, accessibility, intensive.
+model LearnerProfile {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  name        String
+  kind        String    @default("academic")
+  goals       Json?
+  priorities  Json?
+  vocabulary  String    @default("")
+  modalities  String[]  @default([])
+  timeCapMin  Int?
+  standards   String    @default("")
+  sharing     Json?
+  privacy     Json?
+  isDefault   Boolean   @default(false)
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  learnerGoals LearnerGoal[]
+
+  @@index([workspaceId, userId])
+}
+
+/// Learner goals requiring competencies; owned by the learner.
+model LearnerGoal {
+  id               String     @id @default(uuid())
+  workspaceId      String
+  userId           String
+  profileId        String?
+  title            String
+  description      String     @default("")
+  competencyKeys   String[]   @default([])
+  deadline         DateTime?
+  status           GoalStatus @default(ACTIVE)
+  progress         Float      @default(0)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  profile   LearnerProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, userId, status])
+}
+
+/// Event-sourced mastery observations: every learner-state update points to
+/// evidence (assessment, task, explanation, transfer attempt, correction…).
+model MasteryObservation {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  conceptId     String
+  userId        String
+  profileId     String?
+  dimension     String   @default("recall")
+  value         Float
+  confidence    Float    @default(0.5)
+  sourceType    String   @default("assessment")
+  sourceId      String   @default("")
+  context       String   @default("")
+  novelty       Float    @default(0)
+  modelVersion  String   @default("")
+  visibility    String   @default("learner-and-instructor")
+  correctionOf  String?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  concept   LearnerConcept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, conceptId, userId, createdAt])
+  @@index([workspaceId, userId, createdAt])
+}
+
+/// Misconception objects with lifecycle; learner-facing label is always
+/// "current interpretation to revisit" — never a stigmatizing diagnosis.
+model Misconception {
+  id                 String             @id @default(uuid())
+  workspaceId        String
+  conceptId          String
+  userId             String
+  statement          String
+  detectedFrom       String[]           @default([])
+  confidence         Float              @default(0.5)
+  severity           String             @default("medium")
+  affectedConceptIds String[]           @default([])
+  counterevidence    String[]           @default([])
+  status             MisconceptionStatus @default(CANDIDATE)
+  learnerAcknowledged Boolean           @default(false)
+  resolvedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  concept   LearnerConcept @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, status])
+  @@index([workspaceId, conceptId])
+}
+
+/// Typed concept dependencies with prerequisite intelligence
+/// (hard/soft/hidden/local/transfer/remedial) and approval metadata.
+model ConceptDependency {
+  id           String               @id @default(uuid())
+  workspaceId  String
+  setId        String?
+  fromId       String
+  toId         String
+  relation     ConceptDependencyRel @default(PREREQUISITE_OF)
+  kind         DependencyKind       @default(SOFT)
+  confidence   Float                @default(0.5)
+  mandatory    Boolean              @default(false)
+  scope        String               @default("")
+  approved     Boolean              @default(false)
+  approvedById String?
+  alternatives Json?
+  createdAt    DateTime             @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  from      LearnerConcept @relation("DepFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to        LearnerConcept @relation("DepTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, toId])
+  @@index([workspaceId, fromId])
+}
+
+/// Explainable recommendations: reason codes, evidence, alternatives,
+/// expected benefit, confidence — the learner may accept, reject, or dismiss.
+model Recommendation {
+  id              String               @id @default(uuid())
+  workspaceId     String
+  userId          String
+  setId           String?
+  profileId       String?
+  action          String
+  reasonCodes     String[]             @default([])
+  explanation     String[]             @default([])
+  evidence        String[]             @default([])
+  alternatives    String[]             @default([])
+  expectedBenefit String               @default("")
+  confidence      Float                @default(0.5)
+  status          RecommendationStatus @default(PROPOSED)
+  expiresAt       DateTime?
+  createdAt       DateTime             @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, status])
+}
+
+/// Learner-controlled corrections: first-class graph events with scope,
+/// impact preview, and undo — never a silent overwrite.
+model GraphCorrection {
+  id         String   @id @default(uuid())
+  workspaceId String
+  userId     String
+  targetType String
+  targetId   String
+  field      String
+  oldValue   String   @default("")
+  newValue   String
+  reason     String   @default("")
+  scope      String   @default("profile")
+  undone     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, targetId])
 }
 
 /// Adaptive study plan / learner profile per set.

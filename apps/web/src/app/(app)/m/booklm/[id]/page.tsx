@@ -8,7 +8,7 @@ import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction } from "../actions";
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,7 +32,7 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
   const an = new LearningAnalyticsService(workspaceId);
   const isInstructor = ["admin", "owner", "teacher"].includes(role);
 
-  const [docPicks, videoPicks, coverage, claims, graph, mastery, nextAction, sessions, memories, assessments, myGrades, cockpit, policy, challenges] = await Promise.all([
+  const [docPicks, videoPicks, coverage, claims, graph, mastery, nextAction, sessions, memories, assessments, myGrades, cockpit, policy, challenges, graphData] = await Promise.all([
     svc.pickDocs(),
     svc.pickVideos(),
     ev.coverage(id).catch(() => null),
@@ -47,6 +47,7 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
     an.learnerCockpit(id, userId).catch(() => null),
     pol.effectivePolicy(id).catch(() => null),
     ev.listChallenges(id).catch(() => []),
+    getGraphDataAction(id).catch(() => null),
   ]);
   const dashboard = isInstructor ? await an.instructorDashboard(id).catch(() => null) : null;
 
@@ -92,6 +93,8 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
           reason: ch.reason, learnerNote: ch.learnerNote, status: ch.status,
           evidence: ch.evidence,
         }))}
+        graphConcepts={graph.concepts.map((c) => ({ id: c.id, key: c.key, label: c.label }))}
+        graphData={graphData}
         actions={{
           ask: askGroundedAction,
           askV2: askGroundedActionV2,
@@ -110,6 +113,18 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
           grade: submitGradeAction,
           appeal: appealGradeAction,
           materials: getMaterialsAction,
+          graph: {
+            generate: recGenerateAction,
+            recStatus: recStatusAction,
+            reportMisconception: misReportAction,
+            acknowledge: misAcknowledgeAction,
+            addGoal: graphGoalAction,
+            observe: graphObserveAction,
+            correct: graphCorrectionAction,
+            undo: graphUndoAction,
+            conceptDetail: getConceptDetailAction,
+            exportGraph: getGraphExportAction,
+          },
         }}
       />
     </>

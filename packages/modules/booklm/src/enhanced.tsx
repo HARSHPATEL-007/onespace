@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@n0va/ui";
 import { materialsToMarkdown, type MaterialsKind } from "./pure";
 import { classifyContradiction } from "./epistemics";
+import { LearnerGraphPanel, type GraphData, type GraphActions, type GraphConcept } from "./graph-ui";
 
 export interface CockpitData {
   goal: string; nextAction: string; nextActionReason: string; difficulty: string;
@@ -532,7 +533,7 @@ export function TutorPanel({
   );
 }
 
-export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claims, concepts, modes, sessions, memories, assessments, myGrades, isInstructor, dashboard, policy, challenges, actions }: {
+export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claims, concepts, modes, sessions, memories, assessments, myGrades, isInstructor, dashboard, policy, challenges, graphConcepts, graphData, actions }: {
   setId: string;
   cockpit: CockpitData | null;
   nextAction: { action: string; reason: string; strategy: string; confidence: number } | null;
@@ -548,6 +549,8 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
   dashboard: { heatmap: { conceptId: string; label: string; avgMastery: number; learners: number; misconceptions: number; confused: boolean }[]; misconceptionClusters: { conceptKey: string; wrong: number }[]; attempts: number; avgScore: number; earlyWarnings: { userId: string; avgMastery: number; reason: string }[] } | null;
   policy: PolicyData | null;
   challenges: ChallengeRow[];
+  graphConcepts: GraphConcept[];
+  graphData: GraphData | null;
   actions: {
     ask: (setId: string, q: string) => Promise<{ mode: string; answer: string; segments?: { text: string; kind: string; itemTitle?: string }[] }>;
     askV2: (setId: string, q: string, mode: string) => Promise<unknown>;
@@ -566,10 +569,11 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     grade: (fd: FormData) => Promise<void>;
     appeal: (fd: FormData) => Promise<void>;
     materials: (setId: string, kind: MaterialsKind) => Promise<unknown>;
+    graph: GraphActions;
   };
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "grades" | "materials" | "insights" | "governance">("evidence");
+  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "grades" | "materials" | "graph" | "insights" | "governance">("evidence");
   const [disOnly, setDisOnly] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<V2Answer | null>(null);
@@ -585,6 +589,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
   const tabs: { id: typeof tab; label: string }[] = [
     { id: "evidence", label: "📖 Evidence" },
     { id: "concepts", label: "🕸 Concepts" },
+    { id: "graph", label: "🧠 Graph" },
     { id: "tutor", label: "🤖 Tutor" },
     { id: "grades", label: "📝 Grades" },
     { id: "materials", label: "📦 Materials" },
@@ -630,6 +635,12 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
         <ConceptsPanel concepts={concepts}
           onSeed={() => void actions.seed(fd2()).then(refresh)}
           onRecord={(fd) => { void actions.record(fd).then(refresh); }} />
+      )}
+      {tab === "graph" && graphData && (
+        <LearnerGraphPanel setId={setId} concepts={graphConcepts} data={graphData} actions={actions.graph} />
+      )}
+      {tab === "graph" && !graphData && (
+        <div style={{ fontSize: 13, color: "var(--nv-color-text-faint)" }}>Graph data unavailable.</div>
       )}
       {tab === "tutor" && (
         <TutorPanel modes={modes} sessions={sessions} memories={memories}

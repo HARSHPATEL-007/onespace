@@ -157,7 +157,7 @@ const QUERY_PATTERNS: { type: QueryType; re: RegExp }[] = [
   { type: "howto", re: /\b(how (do|can|should|to)|steps? to|guide|tutorial|procedure)\b/i },
   { type: "historical", re: /\b(in \d{4}|history of|historical|when did|timeline|century|before the|after the)\b/i },
   { type: "scientific", re: /\b(study|studies|research shows|evidence for|clinical|trial|efficacy|mechanism|hypothesis)\b/i },
-  { type: "legal", re: /\b(law|legal|regulation|compliance|statute|contract|liab\w*|jurisdiction|policy requires)\b/i },
+  { type: "legal", re: /\b(law|legal|regulation|compliance|statute|contract|liab\w*|jurisdiction|policy requires|gdpr|fda|hipaa|ferpa|coppa|sox|copyright|consent decree)\b/i },
   { type: "comparison", re: /\b(vs\.?|versus|compare|comparison|difference between|better than|pros and cons)\b/i },
   { type: "why", re: /^(why|what causes|what caused|explain why)\b/i },
   { type: "research", re: /\b(disagreement|debate|controvers\w*|open question|unknown|gaps? in|future research|state of the art)\b/i },
