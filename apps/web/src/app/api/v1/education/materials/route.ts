@@ -127,6 +127,13 @@ export async function POST(req: Request) {
         if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });
         return NextResponse.json(await f.consistency(setId));
       }
+      case "pack": {
+        const setId = String(b.setId ?? "");
+        const gaps = Array.isArray(b.gaps) ? (b.gaps as unknown[]).map(String).slice(0, 20) : [];
+        const title = typeof b.title === "string" ? b.title.slice(0, 300) : undefined;
+        if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });
+        return NextResponse.json(await f.pack(setId, gaps, title), { status: 201 });
+      }
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }

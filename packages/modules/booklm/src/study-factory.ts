@@ -42,6 +42,15 @@ export function buildStudyModel(args: {
     if (/e\.g\.|for example|such as|like /i.test(it.notes)) {
       nodes.push({ id: nid("ex"), kind: "example", label: it.title, text: it.notes.slice(0, 300), source: src, version: "v1", confidence: 0.7, tags: ["example"] });
     }
+    if (/\b(not |isn't|aren't|unlike|contrast(ed)? with|however,? this is not)\b[^.!?]{0,120}?(example|case|instance)?/i.test(it.notes)) {
+      const m = it.notes.match(/\b(not |isn't|aren't|unlike|contrast(?:ed)? with)\b[^.!?]{0,160}[.!?]?/i);
+      if (m) nodes.push({ id: nid("cex"), kind: "counterexample", label: it.title, text: m[0].slice(0, 300), source: src, version: "v1", confidence: 0.6, tags: ["counterexample"] });
+    }
+    if (/\b(requires?|prerequisite|assumes?|builds? on|before (studying|learning)|first (learn|understand|master))\b/i.test(it.notes)) {
+      const m = it.notes.match(/\b(requires?|prerequisite|assumes?|builds? on)[^.!?]{0,120}[.!?]?/i)
+        ?? it.notes.match(/\bbefore (studying|learning)[^.!?]{0,120}[.!?]?/i);
+      if (m) nodes.push({ id: nid("pre"), kind: "prerequisite", label: it.title, text: m[0].slice(0, 300), source: src, version: "v1", confidence: 0.6, tags: ["prerequisite"] });
+    }
     if (/\b(step \d|first,|then,|procedure|method:)\b/i.test(it.notes)) {
       nodes.push({ id: nid("proc"), kind: "procedure", label: it.title, text: it.notes.slice(0, 400), source: src, version: "v1", confidence: 0.65 });
     }
@@ -98,24 +107,59 @@ export function genSummary(nodes: ModelNode[], depth: SummaryDepth, sourceOnly =
   };
 }
 
-export function genGlossary(nodes: ModelNode[]): Record<string, unknown> {
+const MORPH_PREFIXES = ["photo", "thermo", "micro", "macro", "trans", "inter", "super", "anti", "dis", "mis", "over", "under", "sub", "post", "pre", "syn", "bio", "geo", "auto", "semi", "multi", "poly", "un", "re", "co", "de", "ex", "in", "im", "non"];
+const MORPH_SUFFIXES = ["tion", "sion", "ness", "ment", "able", "ible", "less", "ful", "ous", "ive", "ize", "ise", "ism", "ist", "ity", "ary", "ery", "ory", "sis", "esis", "ing", "al", "ic", "ly", "ed"];
+
+/** Deterministic morphology hint (longest affix match). Heuristic for
+ *  instruction — verify before teaching, never presented as etymology. */
+export function morphologyHint(term: string): { prefix: string; root: string; suffix: string } | null {
+  const word = term.trim().split(/\s+/)[0]!.toLowerCase().replace(/[^a-z]/g, "");
+  if (word.length < 6) return null;
+  const pre = MORPH_PREFIXES.find((p) => word.startsWith(p) && word.length - p.length >= 4) ?? "";
+  const rest = word.slice(pre.length);
+  const suf = MORPH_SUFFIXES.find((s) => rest.endsWith(s) && rest.length - s.length >= 3) ?? "";
+  const root = rest.slice(0, rest.length - suf.length);
+  if (!pre && !suf) return null;
+  return { prefix: pre, root, suffix: suf };
+}
+
+const REVIEW_INTERVALS = [1, 3, 7, 14, 30];
+
+export function genGlossary(
+  nodes: ModelNode[],
+  opts: { translations?: Record<string, Record<string, string>>; reviewStart?: string } = {},
+): Record<string, unknown> {
   const defs = byKind(nodes, "definition").slice(0, 40);
   const examples = byKind(nodes, "example");
+  const counter = byKind(nodes, "counterexample");
   const misc = byKind(nodes, "misconception");
+  const startMs = opts.reviewStart ? Date.parse(opts.reviewStart) : Date.now();
+  const reviewDates = REVIEW_INTERVALS.map((d) => new Date((Number.isNaN(startMs) ? Date.now() : startMs) + d * 86_400_000).toISOString().slice(0, 10));
+  const contentTokens = (t: string) => new Set(t.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 4));
   return {
     kind: "glossary",
     terms: defs.map((d) => {
-      const ex = examples.find((e) => e.label === d.label);
-      const non = misc.find((m) => m.label === d.label || m.text.toLowerCase().includes(d.label.toLowerCase()));
+      const ex = examples.find((e) => e.label.toLowerCase() === d.label.toLowerCase());
+      const cex = counter.find((e) => e.label.toLowerCase() === d.label.toLowerCase());
+      const non = misc.find((m) => m.label.toLowerCase() === d.label.toLowerCase() || m.text.toLowerCase().includes(d.label.toLowerCase()));
+      const dt = contentTokens(d.text);
+      const synonyms = defs
+        .filter((x) => x.label !== d.label && [...contentTokens(x.text)].some((t) => dt.has(t)))
+        .slice(0, 3).map((x) => x.label);
       return {
         term: d.label,
         definition: d.text,
         plainLanguage: firstSentence(d.text),
+        morphology: morphologyHint(d.label),
+        morphologyNote: "Affix-split hint for instruction — verify before teaching; not etymology.",
+        synonyms,
         relatedTerms: defs.filter((x) => x.label !== d.label).slice(0, 2).map((x) => x.label),
         contrastTerms: non ? [non.text.slice(0, 80)] : [],
         example: ex ? { text: ex.text.slice(0, 200), citation: cite(ex), example: true } : null,
-        nonExample: non ? non.text.slice(0, 160) : null,
+        nonExample: (cex ? cex.text : non?.text ?? "").slice(0, 160) || null,
+        translations: opts.translations?.[d.label] ?? {},
         citations: [cite(d)],
+        reviewSchedule: { intervalsDays: REVIEW_INTERVALS, nextReviews: reviewDates },
         meaningWarning: "Terms may differ across disciplines — this definition is source-scoped.",
       };
     }),
@@ -172,38 +216,108 @@ export function genPrereqMap(deps: { from: string; to: string; relation: string;
   };
 }
 
-export type CardType = "definition" | "recall" | "cloze" | "formula" | "compare" | "error_diagnosis" | "transfer" | "explain_why";
+export type CardType = "definition" | "recall" | "cloze" | "formula" | "compare" | "error_diagnosis" | "transfer" | "explain_why" | "scenario";
 
+function clozeFront(text: string, label: string): string | null {
+  const re = new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+  if (!re.test(text)) return null;
+  // Blank the term, never the answer's explanatory context around it.
+  return text.replace(re, "_____").slice(0, 280);
+}
+
+/**
+ * Flashcards by retrieval purpose. Every concept gets a definition card;
+ * further slots rotate deterministically across formula / error-diagnosis /
+ * compare / cloze / transfer / explain-why / scenario / recall so a set
+ * mixes retrieval purposes instead of repeating one shape. Types needing
+ * data the model lacks (diagram labeling, translation, confidence
+ * prediction) are never emitted — no fabricated fronts.
+ */
 export function genFlashcards(nodes: ModelNode[], perConcept = 2): Record<string, unknown> {
   const concepts = byKind(nodes, "concept").slice(0, 15);
   // Case-insensitive label indexes: model keys ("slope") and concept labels
   // ("Slope") must resolve to the same definition/formula cards.
   const defs = new Map(byKind(nodes, "definition").map((d) => [d.label.toLowerCase(), d]));
   const formulae = new Map(byKind(nodes, "formula").map((f) => [f.label.toLowerCase(), f]));
+  const examples = byKind(nodes, "example");
+  const evidence = byKind(nodes, "evidence");
   const misc = byKind(nodes, "misconception");
   const cards: Record<string, unknown>[] = [];
-  for (const c of concepts) {
+  concepts.forEach((c, ci) => {
     const key = c.label.toLowerCase();
     const d = defs.get(key);
     const f = formulae.get(key);
     const m = misc.find((x) => x.label.toLowerCase() === key || x.text.toLowerCase().includes(key));
+    const ex = examples.find((e) => e.label.toLowerCase() === key);
+    const ev = evidence.find((e) => e.label.toLowerCase().includes(key) || key.includes(e.label.toLowerCase()));
+    const pair = concepts.find((o) => o.label !== c.label && sharedToken(c.label, o.label));
+    const cloze = d ? clozeFront(d.text, c.label) : null;
     const base = { concept: c.label, difficulty: "introductory", citation: cite(c), confidence: 0.85 };
+    const second: Record<string, unknown>[] = [];
+    if (f) second.push({ ...base, cardType: "formula" as CardType, front: `Write the formula for ${c.label}.`, back: f.text, citation: cite(f) });
+    if (m) second.push({ ...base, cardType: "error_diagnosis" as CardType, front: `What is wrong with: "${m.text.slice(0, 120)}"?`, back: `See source evidence for ${c.label}.`, misconceptionTarget: m.text.slice(0, 160) });
+    if (pair) second.push({ ...base, cardType: "compare" as CardType, front: `Compare ${c.label} with ${pair.label}: one key difference?`, back: `${c.text.slice(0, 160)} vs ${pair.text.slice(0, 160)}` });
+    if (cloze) second.push({ ...base, cardType: "cloze" as CardType, front: cloze, back: c.label });
+    if (ev) second.push({ ...base, cardType: "transfer" as CardType, front: `Apply ${c.label} to a new case: ${ev.text.slice(0, 120)}?`, back: `Use ${c.label} reasoning with source evidence.`, citation: cite(ev) });
+    if (ev) second.push({ ...base, cardType: "explain_why" as CardType, front: `Explain why ${c.label} holds, using evidence.`, back: ev.text.slice(0, 200), citation: cite(ev) });
+    if (ex) second.push({ ...base, cardType: "scenario" as CardType, front: `Scenario: ${ex.text.slice(0, 140)} — which concept applies and why?`, back: `${c.label}: ${c.text.slice(0, 140)}`, citation: cite(ex) });
+    second.push({ ...base, cardType: "recall" as CardType, front: `Recall one key fact about ${c.label}.`, back: c.text });
     cards.push({ ...base, cardType: "definition" as CardType, front: `Define ${c.label}.`, back: d ? d.text : c.text });
-    if (cards.filter((x) => (x as { concept: string }).concept === c.label).length >= perConcept) continue;
-    if (f) {
-      cards.push({ ...base, cardType: "formula" as CardType, front: `Write the formula for ${c.label}.`, back: f.text, citation: cite(f) });
-    } else if (m) {
-      cards.push({ ...base, cardType: "error_diagnosis" as CardType, front: `What is wrong with: "${m.text.slice(0, 120)}"?`, back: `See source evidence for ${c.label}.`, misconceptionTarget: m.text.slice(0, 160) });
-    } else {
-      cards.push({ ...base, cardType: "recall" as CardType, front: `Recall one key fact about ${c.label}.`, back: c.text });
-    }
-  }
+    // Rotate the entry point so sets mix purposes deterministically.
+    const rotated = second.length > 1 ? [...second.slice(ci % second.length), ...second.slice(0, ci % second.length)] : second;
+    for (const card of rotated.slice(0, Math.max(0, perConcept - 1))) cards.push(card);
+  });
   return { kind: "flashcard_set", cards, rule: "one retrieval target per card; answers never leak through wording" };
 }
 
 export interface TestBlueprint {
   concepts: Record<string, number>; levels: Record<string, number>;
   types: Record<string, number>; difficulty: Record<string, number>;
+}
+
+export interface BlueprintGap {
+  dimension: "concepts" | "levels" | "types" | "difficulty";
+  key: string;
+  target: number;
+  actual: number;
+  delta: number;
+}
+
+/**
+ * Blueprint conformance: actual question distribution vs the weighted
+ * blueprint, per dimension. Gaps beyond ±0.15 flag for regeneration or
+ * instructor adjustment — a blueprint-driven test must be able to prove it
+ * followed the blueprint.
+ */
+export function blueprintConformance(
+  questions: { concept: string; level?: string; type?: string; difficulty?: string }[],
+  bp: TestBlueprint,
+  tolerance = 0.15,
+): { n: number; gaps: BlueprintGap[]; conforms: boolean } {
+  const gaps: BlueprintGap[] = [];
+  const n = Math.max(1, questions.length);
+  const dist = (pick: (q: (typeof questions)[number]) => string): Map<string, number> => {
+    const m = new Map<string, number>();
+    for (const q of questions) {
+      const k = pick(q) || "unspecified";
+      m.set(k, (m.get(k) ?? 0) + 1 / n);
+    }
+    return m;
+  };
+  const dims: { name: BlueprintGap["dimension"]; target: Record<string, number>; actual: Map<string, number> }[] = [
+    { name: "concepts", target: bp.concepts, actual: dist((q) => q.concept) },
+    { name: "levels", target: bp.levels, actual: dist((q) => q.level ?? "") },
+    { name: "types", target: bp.types, actual: dist((q) => q.type ?? "") },
+    { name: "difficulty", target: bp.difficulty, actual: dist((q) => q.difficulty ?? "") },
+  ];
+  for (const d of dims) {
+    for (const [key, target] of Object.entries(d.target)) {
+      const actual = Math.round((d.actual.get(key) ?? 0) * 100) / 100;
+      const delta = Math.round((actual - target) * 100) / 100;
+      if (Math.abs(delta) > tolerance) gaps.push({ dimension: d.name, key, target, actual, delta });
+    }
+  }
+  return { n: questions.length, gaps: gaps.slice(0, 20), conforms: gaps.length === 0 };
 }
 
 export function genPracticeTest(nodes: ModelNode[], bp: TestBlueprint, total = 8): Record<string, unknown> {
@@ -216,15 +330,24 @@ export function genPracticeTest(nodes: ModelNode[], bp: TestBlueprint, total = 8
   const chosen = (pool.length > 0 ? pool : concepts).slice(0, total);
   const levels = Object.keys(bp.levels);
   const types = Object.keys(bp.types);
+  const diffs = Object.keys(bp.difficulty);
+  const metas = chosen.map((c, i) => ({
+    concept: c.label,
+    level: levels[i % Math.max(1, levels.length)] ?? "application",
+    type: types[i % Math.max(1, types.length)] ?? "short_answer",
+    difficulty: diffs[i % Math.max(1, diffs.length)] ?? "moderate",
+  }));
+  const conformance = blueprintConformance(metas, bp);
   return {
-    kind: "practice_test", blueprint: bp,
+    kind: "practice_test", blueprint: bp, conformance,
     questions: chosen.map((c, i) => {
-      const m = misc.find((x) => x.label === c.label);
+      const m = misc.find((x) => x.label.toLowerCase() === c.label.toLowerCase());
+      const meta = metas[i]!;
       return {
         id: `q_${i + 1}`,
-        prompt: `Question on ${c.label} (${levels[i % Math.max(1, levels.length)] ?? "application"}).`,
+        prompt: `${meta.type} on ${c.label} (${meta.level}).`,
         objective: `LO${(i % 4) + 1}`, concept: c.label,
-        difficulty: "moderate",
+        level: meta.level, questionType: meta.type, difficulty: meta.difficulty,
         answer: {
           type: "rubric",
           requiredElements: ["identifies mechanism", "uses evidence", "addresses boundary condition"],
@@ -468,8 +591,16 @@ export function validateArtifact(draft: ArtifactDraft, model: ModelNode[], curre
   return { valid: issues.length === 0, issues, reviewRequired };
 }
 
-/** Cross-artifact consistency: definitions, formulas, terminology, keys, versions. */
-export function consistencyCheck(artifacts: { id: string; type: string; content: Record<string, unknown>; sourceVersions: string[] }[]): {
+/**
+ * Cross-artifact consistency: definitions, formulas, terminology, answer
+ * keys, citations, versions, accessibility, translation drift, age-level
+ * fit, prerequisite order. `currentVersions` enables outdated-reference
+ * detection; without it that check is skipped, never guessed.
+ */
+export function consistencyCheck(
+  artifacts: { id: string; type: string; content: Record<string, unknown>; sourceVersions: string[] }[],
+  currentVersions: string[] = [],
+): {
   alerts: { kinds: string[]; detail: string; artifactIds: string[] }[];
 } {
   const alerts: { kinds: string[]; detail: string; artifactIds: string[] }[] = [];
@@ -510,9 +641,117 @@ export function consistencyCheck(artifacts: { id: string; type: string; content:
       alerts.push({ kinds: ["mismatched_formulas"], detail: "same formula family rendered differently", artifactIds: list.map((x) => x.id) });
     }
   }
-  // Stale versions.
-  const allVersions = new Set(artifacts.flatMap((a) => a.sourceVersions));
-  void allVersions;
+  // Outdated source references (only when current versions are known).
+  if (currentVersions.length > 0) {
+    for (const a of artifacts) {
+      const stale = a.sourceVersions.filter((v) => !currentVersions.includes(v));
+      if (stale.length > 0) {
+        alerts.push({ kinds: ["outdated_source_references"], detail: `pinned to ${stale.join(", ")} — regenerate from current model`, artifactIds: [a.id] });
+      }
+    }
+  }
+  // Inconsistent terminology: same stem, different surface forms.
+  const surfaces = new Map<string, { form: string; id: string }[]>();
+  for (const a of artifacts) {
+    const t = JSON.stringify(a.content);
+    const labels = new Set<string>();
+    for (const m of t.matchAll(/"(?:concept|term|label)"\s*:\s*"([^"]+)"/g)) labels.add(m[1]!);
+    for (const l of labels) {
+      const stem = l.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/s$/, "");
+      if (stem.length < 4) continue;
+      const arr = surfaces.get(stem) ?? [];
+      arr.push({ form: l, id: a.id });
+      surfaces.set(stem, arr);
+    }
+  }
+  for (const [stem, list] of surfaces) {
+    const forms = new Set(list.map((x) => x.form));
+    if (forms.size > 1) {
+      alerts.push({ kinds: ["inconsistent_terminology"], detail: `“${stem}” rendered as ${[...forms].join(" / ")}`, artifactIds: [...new Set(list.map((x) => x.id))] });
+    }
+  }
+  // Different answer keys for equivalent questions (same concept + level).
+  const keyed = new Map<string, { elements: string; id: string }[]>();
+  for (const a of artifacts) {
+    const c = a.content as { questions?: { concept?: string; level?: string; answer?: { requiredElements?: string[] } }[] };
+    for (const q of c.questions ?? []) {
+      if (!q.concept) continue;
+      const k = `${q.concept.toLowerCase()}::${(q.level ?? "").toLowerCase()}`;
+      const arr = keyed.get(k) ?? [];
+      arr.push({ elements: JSON.stringify(q.answer?.requiredElements ?? []), id: a.id });
+      keyed.set(k, arr);
+    }
+  }
+  for (const [k, list] of keyed) {
+    if (new Set(list.map((x) => x.elements)).size > 1) {
+      alerts.push({ kinds: ["different_answer_keys"], detail: `equivalent questions on ${k} scored differently`, artifactIds: [...new Set(list.map((x) => x.id))] });
+    }
+  }
+  // Missing citations.
+  for (const a of artifacts) {
+    if (!/citation/i.test(JSON.stringify(a.content))) {
+      alerts.push({ kinds: ["missing_citations"], detail: "no citation markers found", artifactIds: [a.id] });
+    }
+  }
+  // Accessibility omissions.
+  for (const a of artifacts) {
+    const c = a.content as { accessibility?: { altText?: boolean }; transcriptNote?: string; cues?: unknown[]; accessibilityAlternative?: string; questions?: { accessibilityAlternative?: string }[] };
+    if (a.type === "deck" && c.accessibility?.altText !== true) {
+      alerts.push({ kinds: ["accessibility_omissions"], detail: "deck without confirmed alt text", artifactIds: [a.id] });
+    }
+    if (a.type === "audio_lesson" && (!c.transcriptNote || !c.cues)) {
+      alerts.push({ kinds: ["accessibility_omissions"], detail: "audio without transcript alignment", artifactIds: [a.id] });
+    }
+    if (a.type === "practice_test" && (c.questions ?? []).some((q) => !q.accessibilityAlternative)) {
+      alerts.push({ kinds: ["accessibility_omissions"], detail: "questions without accessibility alternatives", artifactIds: [a.id] });
+    }
+  }
+  // Translation drift: unexplained adaptations in translated derivatives.
+  for (const a of artifacts) {
+    const c = a.content as { termCheck?: { status?: string; missingPolicy?: string[]; emptyTranslations?: string[] } };
+    if (a.type.endsWith("_translate") && c.termCheck?.status === "review_required") {
+      const n = (c.termCheck.missingPolicy?.length ?? 0) + (c.termCheck.emptyTranslations?.length ?? 0);
+      alerts.push({ kinds: ["translation_drift"], detail: `${n} term(s) lack explained equivalents`, artifactIds: [a.id] });
+    }
+  }
+  // Age-level mismatch: adapted derivatives must carry teacher review.
+  for (const a of artifacts) {
+    const c = a.content as { review?: string };
+    if (a.type.endsWith("_adapt") && c.review !== "teacher_required") {
+      alerts.push({ kinds: ["age_level_mismatch"], detail: "age adaptation without teacher-required review", artifactIds: [a.id] });
+    }
+  }
+  // Incorrect prerequisite order: cycles in prerequisite maps.
+  for (const a of artifacts) {
+    if (a.type !== "prereq_map" && a.type !== "concept_map") continue;
+    const c = a.content as { edges?: { from: string; to: string }[] };
+    const adj = new Map<string, string[]>();
+    for (const e of c.edges ?? []) {
+      const arr = adj.get(e.from) ?? [];
+      arr.push(e.to);
+      adj.set(e.from, arr);
+    }
+    const visiting = new Set<string>();
+    const done = new Set<string>();
+    // Boxed so closure assignments stay visible (plain `let` narrowing
+    // across the recursive closure collapses to never).
+    const box: { cycle: string[] | null } = { cycle: null };
+    const dfs = (node: string, trail: string[]): void => {
+      if (box.cycle || done.has(node)) return;
+      if (visiting.has(node)) {
+        box.cycle = [...trail.slice(trail.indexOf(node)), node];
+        return;
+      }
+      visiting.add(node);
+      for (const next of adj.get(node) ?? []) dfs(next, [...trail, node]);
+      visiting.delete(node);
+      done.add(node);
+    };
+    for (const node of adj.keys()) dfs(node, []);
+    if (box.cycle) {
+      alerts.push({ kinds: ["incorrect_prerequisite_order"], detail: `dependency cycle: ${box.cycle.join(" → ")}`, artifactIds: [a.id] });
+    }
+  }
   return { alerts };
 }
 

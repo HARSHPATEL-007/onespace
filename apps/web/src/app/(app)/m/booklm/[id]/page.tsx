@@ -26,7 +26,7 @@ import {
   docLayoutAction, docTablesAction, docFormulasAction, docFiguresAction,
   docCitationsAction, docTranscriptAction, docSegmentsAction, docCorrectAction,
   docCorrectionsAction, docCiteAction,
-  factoryBuildAction, factoryGenerateAction, factoryListAction, factoryGetAction, factoryEnvelopeAction, factoryLeakageAction,
+  factoryBuildAction, factoryGenerateAction, factoryListAction, factoryGetAction, factoryEnvelopeAction, factoryLeakageAction, factoryPackAction,
   factoryValidateAction, factoryReviewAction, factoryPublishAction,
   factoryTransformAction, factoryRegenerateAction, factoryProvenanceAction,
   factoryImpactAction, factoryConsistencyAction,
@@ -300,6 +300,7 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             consistency: factoryConsistencyAction,
             envelope: factoryEnvelopeAction,
             leakage: factoryLeakageAction,
+            pack: factoryPackAction,
           },
           quality: {
             reportArtifact: qualityReportArtifactAction,

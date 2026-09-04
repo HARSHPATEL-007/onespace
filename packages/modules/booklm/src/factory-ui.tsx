@@ -30,6 +30,7 @@ export interface FactoryActions {
   consistency: (setId: string) => Promise<{ checked: { id: string; type: string }[]; alerts: { kinds: string[]; detail: string; artifactIds: string[] }[] }>;
   envelope: (id: string) => Promise<EnvelopeShape>;
   leakage: (setId: string) => Promise<LeakageShape>;
+  pack: (setId: string, gaps: string[]) => Promise<{ setId: string; gaps: string[]; items: { id: string; type: string; title: string }[]; note: string }>;
 }
 
 export interface EnvelopeShape {
@@ -79,6 +80,8 @@ export function FactoryPanel({ setId, actions, isInstructor }: {
   const [depth, setDepth] = useState("standard");
   const [topic, setTopic] = useState("");
   const [impactKey, setImpactKey] = useState("");
+  const [gaps, setGaps] = useState("");
+  const [pack, setPack] = useState<{ items: { id: string; type: string; title: string }[]; note: string } | null>(null);
 
   const load = () => {
     void actions.list(setId).then((a) => setArtifacts(a)).catch(() => undefined);
@@ -124,6 +127,20 @@ export function FactoryPanel({ setId, actions, isInstructor }: {
           }}>Generate</Button>
           <Button variant="secondary" size="sm" onClick={() => void actions.consistency(setId).then((c) => setConsistency(c))}>Consistency check</Button>
         </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+          <input className="nv-input" value={gaps} onChange={(e) => setGaps(e.target.value)} placeholder="gap concepts, comma-separated (study pack)…" style={{ flex: 1, minWidth: 200 }} />
+          <Button variant="secondary" size="sm" onClick={() => {
+            const list = gaps.split(",").map((g) => g.trim()).filter(Boolean).slice(0, 20);
+            void actions.pack(setId, list).then((p) => { setPack(p); load(); refresh(); });
+          }}>Build study pack</Button>
+        </div>
+        {pack && (
+          <div style={{ fontSize: 12, marginTop: 6 }}>
+            <span style={{ color: "var(--nv-color-success)" }}>✅ Pack built: </span>
+            {pack.items.map((i) => i.title).join(" · ")}
+            <div style={{ color: "var(--nv-color-text-faint)" }}>{pack.note}</div>
+          </div>
+        )}
         {consistency && (
           <div style={{ fontSize: 12, marginTop: 6 }}>
             {consistency.alerts.length === 0

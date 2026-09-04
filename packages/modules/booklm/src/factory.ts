@@ -431,10 +431,16 @@ export class StudyFactoryService {
   /** Cross-artifact consistency over the set's latest artifacts. */
   async consistency(setId: string) {
     const { consistencyCheck } = await import("./study-factory");
-    const rows = await prisma.studyArtifact.findMany({
-      where: { workspaceId: this.workspaceId, setId },
-      orderBy: { updatedAt: "desc" }, take: 200,
-    });
+    const [rows, model] = await Promise.all([
+      prisma.studyArtifact.findMany({
+        where: { workspaceId: this.workspaceId, setId },
+        orderBy: { updatedAt: "desc" }, take: 200,
+      }),
+      prisma.studyModel.findFirst({
+        where: { workspaceId: this.workspaceId, setId },
+        orderBy: { createdAt: "desc" },
+      }).catch(() => null),
+    ]);
     // Latest per type.
     const seen = new Set<string>();
     const latest = rows.filter((r) => {
@@ -442,11 +448,52 @@ export class StudyFactoryService {
       seen.add(r.type);
       return true;
     });
+    const currentVersions = ((model?.sourceVersions ?? []) as string[]);
     const { alerts } = consistencyCheck(latest.map((a) => ({
       id: a.id, type: a.type,
       content: (a.content ?? {}) as Record<string, unknown>,
       sourceVersions: a.sourceVersions,
-    })));
+    })), currentVersions);
     return { checked: latest.map((a) => ({ id: a.id, type: a.type })), alerts };
+  }
+
+  /**
+   * Personalized study pack: gap sheet + flashcards + revision sheet from
+   * the same model in one call. Scoped to the learner's gap concepts when
+   * provided, otherwise the full model — never three independent summaries.
+   */
+  async pack(setId: string, gaps: string[] = [], title?: string) {
+    const label = title || `Study pack — ${new Date().toLocaleDateString()}`;
+    const gapSheet = await this.generate({
+      setId, type: "gap_sheet", title: `${label} (gaps)`,
+      depth: "standard", sourceOnly: true,
+      audience: { ageBand: "", level: "intermediate", language: "en" },
+      blueprint: { concepts: {}, levels: {}, types: {}, difficulty: {} },
+      topic: "", language: "python", objectives: [], gaps, highStakes: false,
+    });
+    const cards = await this.generate({
+      setId, type: "flashcard_set", title: `${label} (cards)`,
+      depth: "standard", sourceOnly: true,
+      audience: { ageBand: "", level: "intermediate", language: "en" },
+      blueprint: { concepts: {}, levels: {}, types: {}, difficulty: {} },
+      topic: "", language: "python", objectives: [], gaps, highStakes: false,
+    });
+    const revision = await this.generate({
+      setId, type: "revision_sheet", title: `${label} (revision)`,
+      depth: "standard", sourceOnly: true,
+      audience: { ageBand: "", level: "intermediate", language: "en" },
+      blueprint: { concepts: {}, levels: {}, types: {}, difficulty: {} },
+      topic: gaps.join(", "),
+      language: "python", objectives: [], gaps, highStakes: false,
+    });
+    const slim = (r: { artifact: { id: string; type: string; title: string }; validation: unknown; route: unknown }) => ({
+      id: r.artifact.id, type: r.artifact.type, title: r.artifact.title,
+      validation: r.validation, route: r.route,
+    });
+    return {
+      setId, gaps,
+      items: [slim(gapSheet), slim(cards), slim(revision)],
+      note: "One model, three coordinated formats — gap-targeted, cited, instructor-reviewable.",
+    };
   }
 }

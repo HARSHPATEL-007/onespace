@@ -1165,6 +1165,10 @@ export async function factoryLeakageAction(setId: string) {
   return (await factorySvc()).leakage(setId);
 }
 
+export async function factoryPackAction(setId: string, gaps: string[] = [], title?: string) {
+  return (await factorySvc()).pack(setId, gaps.slice(0, 20), title);
+}
+
 export async function factoryListAction(setId: string) {
   const rows = await (await factorySvc()).list(setId);
   return rows.map((a) => ({
