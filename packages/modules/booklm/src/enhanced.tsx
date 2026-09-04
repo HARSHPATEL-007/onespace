@@ -7,6 +7,7 @@ import { materialsToMarkdown, type MaterialsKind } from "./pure";
 import { classifyContradiction } from "./epistemics";
 import { LearnerGraphPanel, type GraphData, type GraphActions, type GraphConcept } from "./graph-ui";
 import { AdaptivePanel, type AdaptActions } from "./adapt-ui";
+import { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
 
 export interface CockpitData {
   goal: string; nextAction: string; nextActionReason: string; difficulty: string;
@@ -572,10 +573,11 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     materials: (setId: string, kind: MaterialsKind) => Promise<unknown>;
     graph: GraphActions;
     adapt: AdaptActions;
+    tutorAgents: TutorAgentActions;
   };
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "grades" | "materials" | "graph" | "adapt" | "insights" | "governance">("evidence");
+  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "agents" | "grades" | "materials" | "graph" | "adapt" | "insights" | "governance">("evidence");
   const [disOnly, setDisOnly] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<V2Answer | null>(null);
@@ -594,6 +596,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     { id: "graph", label: "🧠 Graph" },
     { id: "adapt", label: "🎛 Adapt" },
     { id: "tutor", label: "🤖 Tutor" },
+    { id: "agents", label: "💬 Agents" },
     { id: "grades", label: "📝 Grades" },
     { id: "materials", label: "📦 Materials" },
     ...(isInstructor ? [{ id: "insights" as const, label: "📊 Insights" }] : []),
@@ -654,6 +657,9 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
           onRemember={(fd) => void actions.remember(fd).then(refresh)}
           onForget={(fd) => void actions.forget(fd).then(refresh)}
           onDecide={(fd) => void actions.decide(fd).then(refresh)} />
+      )}
+      {tab === "agents" && (
+        <TutorAgentsPanel setId={setId} concepts={graphConcepts} actions={actions.tutorAgents} isInstructor={isInstructor} />
       )}
       {tab === "grades" && (
         <GradesPanel assessments={assessments} myGrades={myGrades} isInstructor={isInstructor}

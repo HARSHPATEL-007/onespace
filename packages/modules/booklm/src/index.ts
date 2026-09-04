@@ -7,7 +7,14 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
+export { OrchestratorService, runTurnSchema } from "./orchestrate";
 export { AdaptivePanel, type AdaptActions } from "./adapt-ui";
+export {
+  AGENT_DEFS, classifyIntent, selectWorkflow, AUTHORITY_HIERARCHY,
+  resolveConflictRank, escalationTriggers, verdictFor, socraticShouldStop,
+  type AgentDef, type Intent, type Workflow, type FactVerdict,
+} from "./tutor-agents";
 export { AdaptiveService, loopPlanSchema, loopRespondSchema, policySchemaAdaptive, overrideSchema } from "./adapt";
 export {
   nextDifficulty, dimensionToMove, classifyError, REMEDIATION,

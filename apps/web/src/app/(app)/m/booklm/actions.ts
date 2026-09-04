@@ -8,6 +8,7 @@ import { LearnerGraphService, profileSchema, goalSchema, observeSchema, correcti
 import { MisconceptionService, misconceptionSchema } from "@n0va/modules-booklm/misconceptions";
 import { RecommendationService } from "@n0va/modules-booklm/recommend";
 import { AdaptiveService } from "@n0va/modules-booklm/adapt";
+import { OrchestratorService, runTurnSchema } from "@n0va/modules-booklm/orchestrate";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -349,6 +350,62 @@ export async function adaptOverrideAction(formData: FormData) {
 
 export async function adaptInterleaveAction(setId: string, level: "low" | "moderate" | "high") {
   return (await adaptSvc()).interleaveSet(setId, level);
+}
+
+// --- Multi-agent tutor ---
+
+const orchSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new OrchestratorService(workspaceId, userId, role);
+};
+
+export async function tutorAgentsAction() {
+  const agents = await (await orchSvc()).listAgents();
+  if (agents.length === 0) return (await orchSvc()).seedRegistry();
+  return agents;
+}
+
+export async function tutorTurnAction(input: { sessionId?: string; setId: string; conceptId?: string; message: string }) {
+  const parsed = runTurnSchema.parse({
+    sessionId: input.sessionId || undefined,
+    setId: input.setId || undefined,
+    conceptId: input.conceptId || undefined,
+    message: input.message,
+  });
+  return (await orchSvc()).runTurn(parsed);
+}
+
+export async function tutorSessionDetailAction(sessionId: string) {
+  const d = await (await orchSvc()).sessionDetail(sessionId);
+  return {
+    degraded: d.degraded, intent: d.intent,
+    tasks: d.tasks.map((t) => ({
+      id: t.id, agentKey: t.agentKey, intent: t.intent, status: t.status,
+      warnings: t.warnings, nextActions: t.nextActions,
+      modelVersion: t.modelVersion, latencyMs: t.latencyMs, error: t.error,
+    })),
+    events: d.events.map((e) => ({
+      id: e.id, type: e.type, actor: e.actor, createdAt: e.createdAt.toISOString(), payload: e.payload,
+    })),
+    escalations: d.escalations.map((e) => ({ id: e.id, status: e.status })),
+  };
+}
+
+export async function tutorEscalationsAction() {
+  const rows = await (await orchSvc()).listEscalations();
+  return rows.map((e) => ({
+    id: e.id, topic: e.topic, issue: e.issue, status: e.status,
+    urgency: e.urgency, recommendation: e.recommendation,
+    learnerVisible: e.learnerVisible, createdAt: e.createdAt.toISOString(),
+  }));
+}
+
+export async function tutorResolveEscalationAction(formData: FormData) {
+  await (await orchSvc()).resolveEscalation(
+    String(formData.get("id") ?? ""),
+    String(formData.get("resolution") ?? ""),
+    String(formData.get("status") ?? "RESOLVED") === "DISMISSED" ? "DISMISSED" : "RESOLVED",
+  );
 }
 
 export async function seedConceptsAction(formData: FormData) {
