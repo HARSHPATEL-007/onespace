@@ -124,7 +124,7 @@ export {
   type Dimension, type MasteryState,
 } from "./learner";
 export { LearningSets, LearningSetView } from "./components";
-export { QueryPlanView, EvidenceCardView, PersonalizationControls, type RetrievalUiActions } from "./retrieval-ui";
+export { QueryPlanView, EvidenceCardView, EvidenceResultsList, ValidityBadge, PersonalizationControls, type RetrievalUiActions } from "./retrieval-ui";
 export {
   HybridRetrievalService, classifyHybridIntent, extractEntities, detectAmbiguity,
   keywordScore, vectorProxyScore, descendToSpan, traverseGraph, graphRelevance,
@@ -140,3 +140,17 @@ export {
   type FusionSignals, type FusionWeights, type GraphPath, type FederatedHit,
 } from "./hybrid-retrieval";
 export { LearningCockpit, EvidencePanel, ConceptsPanel, TutorPanel, GradesPanel, BooklmEnhancements, MaterialsPanel, GovernancePanel, type V2Answer, type V2Claim, type PolicyData, type ChallengeRow } from "./enhanced";
+export {
+  deepFilterSchema, applyMetadataFilters, metadataFitScore, geoScore,
+  compareTemporalVersions, tableYearMax, tablePercentCells, tableYearDelta,
+  codeSafetyCheck, mediaCitation, figureRole, rightsFor,
+  buildCitationGroundedAnswer, FederatedRegistry, RetrievalQueryStore, globalQueryStore,
+  evaluateRetrievalDeep, runBenchmarkSuite, validateIndexedUnit, fusionExplainDeep,
+  RETRIEVAL_BENCHMARK_SETS, NO_EVIDENCE_MESSAGE_DEEP,
+  type DeepFilters, type FilterableMeta, type FilterVerdict, type GeoPoint,
+  type TemporalDoc, type TemporalComparison, type StructuredCell, type CodeSafetyVerdict,
+  type FigureRole, type RightsInfo, type RetrievalGroundedClaim, type GroundedAnswer,
+  type ConnectorCaps, type RegistryConnector, type FederatedAuditEntry,
+  type DeepEvalInput, type DeepEvalResult, type BenchmarkSet, type BenchmarkCase,
+  type BenchmarkReport, type StoredQuery,
+} from "./retrieval-deep";

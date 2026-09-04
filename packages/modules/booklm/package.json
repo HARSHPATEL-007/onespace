@@ -54,6 +54,7 @@
     "./tutor-agents": "./src/tutor-agents.ts",
     "./graph-ui": "./src/graph.tsx",
     "./retrieval": "./src/hybrid-retrieval.ts",
+    "./retrieval-deep": "./src/retrieval-deep.ts",
     "./retrieval-ui": "./src/retrieval-ui.tsx",
     "./pure": "./src/pure.ts",
     "./materials": "./src/materials.ts",

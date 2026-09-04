@@ -6,6 +6,7 @@ export interface RetrievalUiActions {
   compareVersions?: (card: EvidenceCard) => void;
   showRelated?: (card: EvidenceCard) => void;
   traversePrereqs?: (card: EvidenceCard) => void;
+  findSimpler?: (card: EvidenceCard) => void;
   findDiagram?: (card: EvidenceCard) => void;
   findTimestamp?: (card: EvidenceCard) => void;
   findPractice?: (card: EvidenceCard) => void;
@@ -38,12 +39,32 @@ export function QueryPlanView({ plan }: { plan: QueryPlan }) {
   );
 }
 
+const VALIDITY_TONE: Record<string, string> = {
+  current: "nv-badge-ok",
+  historical: "nv-badge-muted",
+  superseded: "nv-badge-stale",
+  "future-effective": "nv-badge-warn",
+  "date-unknown": "nv-badge-warn",
+  "conflicting-validity": "nv-badge-bad",
+};
+
+export function ValidityBadge({ validity }: { validity: EvidenceCard["validity"] }) {
+  return (
+    <span data-testid="validity-badge" className={VALIDITY_TONE[validity] ?? "nv-badge-muted"}>
+      Validity: {validity}
+    </span>
+  );
+}
+
 export function EvidenceCardView({ card, actions }: { card: EvidenceCard; actions?: RetrievalUiActions }) {
   return (
     <article data-testid="evidence-card">
       <h4>{card.title}</h4>
       <p>
-        {card.source} · {card.location} · Validity: {card.validity} · Rights: {card.rights}
+        {card.source} · {card.location} · Rights: {card.rights}
+      </p>
+      <p>
+        <ValidityBadge validity={card.validity} /> · Score: {card.score.toFixed(3)} · Citation: {card.citation.id || "—"}
       </p>
       <p>Match: {card.match}</p>
       <blockquote>{card.evidence}</blockquote>
@@ -54,15 +75,53 @@ export function EvidenceCardView({ card, actions }: { card: EvidenceCard; action
       </ul>
       <p>Related: {card.relatedConcepts.join(", ") || "—"}</p>
       <p>Contradictions: {card.contradictions}</p>
+      <p>Accessibility: {card.accessibility.join(", ") || "—"}</p>
       <div>
         <button onClick={() => actions?.openSource?.(card.citation.id)}>Open source location</button>
         <button onClick={() => actions?.addCitation?.(card)}>Add citation</button>
         <button onClick={() => actions?.compareVersions?.(card)}>Compare versions</button>
+        <button onClick={() => actions?.showRelated?.(card)}>Show related concepts</button>
+        <button onClick={() => actions?.traversePrereqs?.(card)}>Traverse prerequisites</button>
+        <button onClick={() => actions?.findSimpler?.(card)}>Find simpler explanation</button>
         <button onClick={() => actions?.findDiagram?.(card)}>Find diagram</button>
         <button onClick={() => actions?.findTimestamp?.(card)}>Find lecture timestamp</button>
+        <button onClick={() => actions?.findPractice?.(card)}>Find practice questions</button>
         <button onClick={() => actions?.reportIncorrect?.(card)}>Report incorrect</button>
       </div>
     </article>
+  );
+}
+
+export function EvidenceResultsList({
+  cards,
+  query,
+  unavailable,
+  actions,
+  onSearchBroader,
+}: {
+  cards: EvidenceCard[];
+  query: string;
+  unavailable?: string[];
+  actions?: RetrievalUiActions;
+  onSearchBroader?: (query: string) => void;
+}) {
+  if (cards.length === 0) {
+    return (
+      <div data-testid="no-evidence">
+        <p>I found related material, but not enough approved evidence to support a definite answer.</p>
+        <button onClick={() => (onSearchBroader ?? actions?.searchBroader)?.(query)}>Search broader repositories</button>
+      </div>
+    );
+  }
+  return (
+    <div data-testid="evidence-results">
+      {cards.map((c, i) => (
+        <EvidenceCardView key={`${c.citation.id || c.title}-${i}`} card={c} actions={actions} />
+      ))}
+      {unavailable && unavailable.length > 0 && (
+        <p data-testid="federated-gap">Not searched (unavailable): {unavailable.join(", ")} — coverage is partial.</p>
+      )}
+    </div>
   );
 }
 
