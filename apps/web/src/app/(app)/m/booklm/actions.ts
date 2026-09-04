@@ -16,6 +16,7 @@ import { IntegrityService } from "@n0va/modules-booklm/integrity-service";
 import { GradingService } from "@n0va/modules-booklm/grading";
 import { AssessInsightsService } from "@n0va/modules-booklm/assess-insights";
 import { DocIngestService } from "@n0va/modules-booklm/doc-ingest";
+import { StudyFactoryService } from "@n0va/modules-booklm/factory";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -1114,6 +1115,98 @@ export async function docCorrectionsAction(documentId: string) {
 
 export async function docCiteAction(documentId: string, blockKey: string, claim: string, setId: string) {
   return (await docSvc()).citeBlock(documentId, blockKey, claim, setId);
+}
+
+// --- Study-material factory ---
+
+const factorySvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new StudyFactoryService(workspaceId, userId, role);
+};
+
+export async function factoryBuildAction(setId: string) {
+  const { model, prereqs } = await (await factorySvc()).buildModel(setId);
+  return { modelId: model.id, nodes: (model.nodes as unknown[]).length, prereqs: prereqs.length };
+}
+
+export async function factoryGenerateAction(input: {
+  setId: string; type: string; title?: string; depth?: string; topic?: string;
+  language?: string; objectives?: string[]; highStakes?: boolean;
+}) {
+  const { generateSchema } = await import("@n0va/modules-booklm/factory");
+  const parsed = generateSchema.parse({
+    setId: input.setId, type: input.type, title: input.title ?? "",
+    depth: input.depth ?? "standard", topic: input.topic ?? "",
+    language: input.language ?? "python", objectives: input.objectives ?? [],
+    highStakes: input.highStakes ?? false,
+  });
+  const res = await (await factorySvc()).generate(parsed);
+  return {
+    artifact: {
+      id: res.artifact.id, type: res.artifact.type, title: res.artifact.title,
+      reviewStatus: String(res.artifact.reviewStatus), version: res.artifact.version,
+      extractionConfidence: res.artifact.extractionConfidence,
+      sourceVersions: res.artifact.sourceVersions, concepts: res.artifact.concepts.slice(0, 8),
+      updatedAt: new Date().toISOString(),
+    },
+    content: res.artifact.content as Record<string, unknown>,
+    validation: res.validation, route: res.route, autoPublished: res.autoPublished,
+  };
+}
+
+export async function factoryListAction(setId: string) {
+  const rows = await (await factorySvc()).list(setId);
+  return rows.map((a) => ({
+    id: a.id, type: a.type, title: a.title,
+    reviewStatus: String(a.reviewStatus), version: a.version,
+    extractionConfidence: a.extractionConfidence,
+    sourceVersions: a.sourceVersions, concepts: a.concepts.slice(0, 8),
+    updatedAt: a.updatedAt.toISOString(),
+  }));
+}
+
+export async function factoryGetAction(id: string) {
+  const a = await (await factorySvc()).get(id);
+  return {
+    id: a.id, type: a.type, title: a.title,
+    content: (a.content ?? {}) as Record<string, unknown>,
+    sourceDocs: a.sourceDocs, sourceVersions: a.sourceVersions,
+    concepts: a.concepts, objectives: a.objectives,
+    extractionConfidence: a.extractionConfidence,
+    reviewStatus: String(a.reviewStatus), version: a.version,
+  };
+}
+
+export async function factoryValidateAction(id: string) {
+  return (await factorySvc()).validate(id);
+}
+
+export async function factoryReviewAction(id: string, approve: boolean) {
+  await (await factorySvc()).review(id, approve);
+}
+
+export async function factoryPublishAction(id: string) {
+  await (await factorySvc()).publish(id);
+}
+
+export async function factoryTransformAction(id: string, kind: "translate" | "adapt" | "accessibility", opts: Record<string, unknown>) {
+  return (await factorySvc()).transform(id, kind, opts);
+}
+
+export async function factoryRegenerateAction(id: string) {
+  return (await factorySvc()).regenerate(id);
+}
+
+export async function factoryProvenanceAction(id: string) {
+  return (await factorySvc()).provenance(id);
+}
+
+export async function factoryImpactAction(documentKey: string) {
+  return (await factorySvc()).impact(documentKey);
+}
+
+export async function factoryConsistencyAction(setId: string) {
+  return (await factorySvc()).consistency(setId);
 }
 
 export async function decisionDetailAction(id: string) {

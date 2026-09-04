@@ -14,6 +14,7 @@ import { IntegrityPanel, type IntegrityActions } from "./integrity-ui";
 import { GradingPanel, type GradingActions } from "./grading-ui";
 import { AnalyticsPanel, type InsightsActions } from "./insights-ui";
 import { SourcesPanel, type SourcesActions } from "./sources-ui";
+import { FactoryPanel, type FactoryActions } from "./factory-ui";
 import { DecisionGovernance, type GovernanceDecision } from "./pedagogy-ui";
 
 export interface CockpitData {
@@ -613,6 +614,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     grading: GradingActions;
     insights: InsightsActions;
     sources: SourcesActions;
+    factory: FactoryActions;
     decisionDetail: (id: string) => Promise<{
       trigger: string; issueType: string; issueDescription: string; severity: string;
       evidence: { type: string; ref: string; result: string; context: string; at: string; invalid?: boolean }[];
@@ -741,7 +743,10 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
         </>
       )}
       {tab === "materials" && (
-        <MaterialsPanel setId={setId} onGenerate={actions.materials} />
+        <>
+          <FactoryPanel setId={setId} actions={actions.factory} isInstructor={isInstructor} />
+          <MaterialsPanel setId={setId} onGenerate={actions.materials} />
+        </>
       )}
       {tab === "insights" && (
         <>

@@ -24,6 +24,10 @@ import {
   docLayoutAction, docTablesAction, docFormulasAction, docFiguresAction,
   docCitationsAction, docTranscriptAction, docSegmentsAction, docCorrectAction,
   docCorrectionsAction, docCiteAction,
+  factoryBuildAction, factoryGenerateAction, factoryListAction, factoryGetAction,
+  factoryValidateAction, factoryReviewAction, factoryPublishAction,
+  factoryTransformAction, factoryRegenerateAction, factoryProvenanceAction,
+  factoryImpactAction, factoryConsistencyAction,
 } from "../actions";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -271,6 +275,20 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             correct: docCorrectAction,
             corrections: docCorrectionsAction,
             cite: docCiteAction,
+          },
+          factory: {
+            build: factoryBuildAction,
+            generate: factoryGenerateAction,
+            list: factoryListAction,
+            get: factoryGetAction,
+            validate: factoryValidateAction,
+            review: factoryReviewAction,
+            publish: factoryPublishAction,
+            transform: factoryTransformAction,
+            regenerate: factoryRegenerateAction,
+            provenance: factoryProvenanceAction,
+            impact: factoryImpactAction,
+            consistency: factoryConsistencyAction,
           },
           decisionDetail: decisionDetailAction,
           decisionEducator: decisionEducatorAction,

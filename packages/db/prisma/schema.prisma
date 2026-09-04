@@ -470,6 +470,8 @@ model Workspace {
   docTranscripts               DocTranscript[]
   docCorrections               DocCorrection[]
   docVersions                  DocVersion[]
+  studyModels                  StudyModel[]
+  studyArtifacts               StudyArtifact[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -5050,6 +5052,61 @@ model DocVersion {
   document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, version])
+}
+
+/// Study-material factory — one verified learning model, many consistent
+/// artifacts. Every artifact retains sources, versions, confidence,
+/// objectives, audience, and review status; contradictions across artifacts
+/// raise consistency alerts instead of silently coexisting.
+enum ArtifactReviewStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  SUPERSEDED
+  REJECTED
+}
+
+model StudyModel {
+  id             String   @id @default(uuid())
+  workspaceId    String
+  setId          String
+  nodes          Json
+  sourceVersions Json?
+  builtById      String?
+  createdAt      DateTime @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  artifacts StudyArtifact[]
+
+  @@index([workspaceId, setId])
+}
+
+model StudyArtifact {
+  id                   String               @id @default(uuid())
+  workspaceId          String
+  setId                String
+  modelId              String?
+  type                 String
+  title                String               @default("")
+  content              Json
+  sourceDocs           String[]             @default([])
+  sourceVersions       String[]             @default([])
+  concepts             String[]             @default([])
+  objectives           String[]             @default([])
+  audience             Json?
+  extractionConfidence Float                @default(0.5)
+  reviewStatus         ArtifactReviewStatus @default(DRAFT)
+  version              Int                  @default(1)
+  createdById          String?
+  reviewedById         String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  model     StudyModel?  @relation(fields: [modelId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, setId, type])
 }
 
 /// N0VA BOOKLM+EDUCATION Multi-Agent Tutor — supervised agents, event-driven

@@ -7,6 +7,8 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { FactoryPanel, type FactoryActions } from "./factory-ui";
+export { StudyFactoryService, generateSchema } from "./factory";
 export { SourcesPanel, type SourcesActions } from "./sources-ui";
 export { DocIngestService, registerSchema, ingestSchema, docCorrectionSchema, sha256 } from "./doc-ingest";
 export { AnalyticsPanel, type InsightsActions } from "./insights-ui";
@@ -69,6 +71,14 @@ export {
   detectSequenceGaps, detectTruncation, figureNumberGaps,
   aggregateQuality, parseTranscriptTimestamps,
 } from "./doc-parse";
+export {
+  buildStudyModel, genSummary, genGlossary, genConceptMap, genPrereqMap,
+  genFlashcards, genPracticeTest, genCaseStudy, genDebate, genLab, genCoding,
+  genViva, genRevision, genAudioScript, genDeck, genTeachingNotes,
+  adaptAccessibility, adaptAge, adaptLanguage,
+  validateArtifact, consistencyCheck, reviewPolicy,
+  type ModelNode, type Audience, type TestBlueprint, type SummaryDepth,
+} from "./study-factory";
 export {
   classifyDocSpan, trustRank, injectionScan, confidenceLevelFor,
   canTransition, scopeRank, mayPromoteScope, retrievalOrder, rankMemories,
