@@ -219,6 +219,33 @@ export class AdaptiveService {
         curriculumVersion: input.setId ?? "",
       },
     });
+    // Explainable decision record: issue, evidence, scored strategy, alternatives.
+    const { DecisionService } = await import("./decisions");
+    const decisions = new DecisionService(this.workspaceId, this.userId, this.role);
+    const issueType = diagnosis.blockingPrerequisites.length > 0 ? "missing_prerequisite"
+      : diagnosis.errorType === "causal" ? "misconception"
+      : diagnosis.errorType === "calibration" ? "confidence_miscalibration"
+      : diagnosis.errorType === "vocabulary" ? "definition_confusion"
+      : diagnosis.transferGap ? "transfer_gap"
+      : diagnosis.errorType ? "execution_error" : "insufficient_evidence";
+    const decision = await decisions.create({
+      setId: input.setId, conceptId: input.conceptId, trigger: "adaptive_loop_planned",
+      issueType,
+      issueDescription: this.explainDecision(diagnosis, strategy, alternatives).slice(0, 2).join(" "),
+      severity: diagnosis.misconceptions.length > 0 ? "high" : "moderate",
+      evidence: [
+        ...diagnosis.blockingPrerequisites.map((b) => ({ type: "prerequisite_mastery", ref: b.id, result: `${Math.round(b.mastery * 100)}%`, context: "course", at: new Date().toISOString() })),
+        ...(diagnosis.errorType ? [{ type: "error_pattern", ref: diagnosis.errorType, result: diagnosis.remediation?.first ?? "", context: "recent", at: new Date().toISOString() }] : []),
+        ...diagnosis.misconceptions.slice(0, 3).map((m) => ({ type: "misconception_flag", ref: m.id, result: m.status, context: "course", at: new Date().toISOString() })),
+      ],
+      chosenMode: "PRACTICE", chosenAction: `${strategy} (${modality}; level ${difficulty.level})`,
+      alternatives: alternatives.map((a) => ({ strategy: a, reasonNotSelected: "", risks: [] as string[] })),
+      expectedTarget: `measurable progress on ${input.conceptId}`,
+      successMeasure: "one independent response at the new difficulty without added hints",
+      confIssue: 0.72, confStrategy: 0.66, confOutcome: 0.6,
+      agents: ["adaptive:1.0"], stateSnapshot: "", policySnapshot: `adaptive-policy-v${policy.version}`,
+    }).catch(() => null);
+    const card = decision ? await decisions.card(decision.id).catch(() => null) : null;
     return {
       loopId: loop.id,
       decision: strategy,
@@ -229,6 +256,8 @@ export class AdaptiveService {
       evidence: loop.evidence,
       alternatives,
       explanation: this.explainDecision(diagnosis, strategy, alternatives),
+      decisionId: decision?.id ?? null,
+      decisionCard: card,
     };
   }
 
@@ -295,6 +324,28 @@ export class AdaptiveService {
         overrideReason: input.overrideReason,
       },
     });
+    // Self-monitoring: mark linked decision measured + append immutable review.
+    try {
+      const { DecisionService } = await import("./decisions");
+      const decisions = new DecisionService(this.workspaceId, this.userId, this.role);
+      const linked = await prisma.decisionRecord.findMany({
+        where: { workspaceId: this.workspaceId, userId: this.userId, conceptId: conceptId || undefined, trigger: "adaptive_loop_planned" },
+        orderBy: { createdAt: "desc" }, take: 1,
+      });
+      const d = linked[0];
+      if (d) {
+        await decisions.mark(d.id, "DELIVERED").catch(() => null);
+        await decisions.mark(d.id, "MEASURED").catch(() => null);
+        const effectiveness = Math.max(0, Math.min(1, 0.5 + gain * 2.5));
+        await decisions.review(d.id, {
+          predictedOutcome: d.expectedTarget,
+          observedOutcome: `learning gain ${gain} (confidence ${confidence})`,
+          predictionError: gain < 0 ? "outcome declined — hypothesis needs revision, not learner blame" : "",
+          effectiveness, nextAction: gain < 0 ? "reassess issue; do not repeat automatically" : "continue plan",
+          confIssue: undefined, confStrategy: undefined,
+        }).catch(() => null);
+      }
+    } catch { /* self-monitoring best-effort */ }
     return {
       loopId: updated.id, gain, gainConfidence: confidence,
       scheduled: conceptId ? "review scheduled via spaced-repetition state" : "no concept — no schedule",

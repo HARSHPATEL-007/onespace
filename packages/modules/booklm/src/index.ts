@@ -7,6 +7,8 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { ExplanationCard, DecisionQueue, EducatorDecisionPanel, DecisionMetricsView, DecisionGovernance, type DecisionCardData } from "./pedagogy-ui";
+export { DecisionService, pedagogyDecisionSchema, reviewSchema, evidenceItemSchema, alternativeSchema } from "./decisions";
 export { MemoryCenterPanel, type MemoryActions, type MemoryCard } from "./memory-ui";
 export { MemoryService, memoryRecordSchema, classroomSchema } from "./memories";
 export { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
@@ -22,6 +24,11 @@ export {
   MODE_SAFETY_RULES, MODE_MEMORY, socraticHint,
   type TeachingMode, type ModeContract,
 } from "./tutor-modes";
+export {
+  ISSUES, EVIDENCE_RELIABILITY, strategyScore, confidenceBand,
+  mustShowAlternatives, adaptationRecord, governanceChecks, outcomeQuality,
+  type IssueType, type EvidenceKind, type StrategyFit, type ConfidenceBand,
+} from "./pedagogy";
 export {
   classifyDocSpan, trustRank, injectionScan, confidenceLevelFor,
   canTransition, scopeRank, mayPromoteScope, retrievalOrder, rankMemories,

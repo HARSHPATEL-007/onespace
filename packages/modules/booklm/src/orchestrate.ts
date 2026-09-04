@@ -274,6 +274,28 @@ export class OrchestratorService {
     // Memory is mode-scoped: outcomes per MODE_MEMORY, never transcripts.
     const committed = await this.commitProposals(session.id, outputs, mode);
 
+    // Explainable decision record for this intervention.
+    const { DecisionService } = await import("./decisions");
+    const decisionSvc = new DecisionService(this.workspaceId, this.userId, this.role);
+    const turnDecision = await decisionSvc.create({
+      setId: input.setId, conceptId: input.conceptId, trigger: `tutor_turn:${intent}`,
+      issueType: "insufficient_evidence",
+      issueDescription: `Tutor turn in ${mode.toLowerCase()} mode for intent ${intent}.`,
+      severity: triggers.length > 0 ? "high" : "moderate",
+      evidence: [
+        ...outputs.flatMap((o) => o.out.warnings.slice(0, 2).map((w) => ({ type: "agent_warning", ref: o.key, result: w.slice(0, 200), context: "turn", at: new Date().toISOString() }))),
+        ...verdicts.slice(0, 4).map((v) => ({ type: "fact_verdict", ref: v.claim.slice(0, 120), result: v.verdict, context: "turn", at: new Date().toISOString() })),
+      ],
+      chosenMode: mode, chosenAction: outputs.map((o) => `${o.key}:${o.status}`).join("; ").slice(0, 1000),
+      alternatives: [],
+      expectedTarget: "learner progress on the stated intent",
+      successMeasure: "next response shows movement toward the target",
+      confIssue: 0.6, confStrategy: 0.62, confOutcome: 0.55,
+      agents: outputs.map((o) => o.key), stateSnapshot: String(snapshot.version), policySnapshot: "",
+    }).catch(() => null);
+    if (turnDecision) await decisionSvc.mark(turnDecision.id, "DELIVERED").catch(() => null);
+    const turnCard = turnDecision ? await decisionSvc.card(turnDecision.id).catch(() => null) : null;
+
     // Exit check from explicit learner cues (transitions stay learner-approved).
     const exitTo = exitCue(input.message, mode);
     const transitionSuggestion = exitTo ? transitionMessage(mode, exitTo, "you signaled readiness") : null;
@@ -293,6 +315,7 @@ export class OrchestratorService {
     return {
       sessionId: session.id, intent, workflow, refused: false, mode,
       modeBanner: MODE_CONTRACTS[mode].banner,
+      decisionId: turnDecision?.id ?? null, decisionCard: turnCard,
       response: composed, escalationId, latencyMs: Date.now() - started,
     };
   }

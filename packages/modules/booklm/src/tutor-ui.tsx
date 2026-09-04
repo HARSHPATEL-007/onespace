@@ -4,10 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@n0va/ui";
 import type { GraphConcept } from "./graph-ui";
+import { ExplanationCard, type DecisionCardData } from "./pedagogy-ui";
 
 export interface TurnResponse {
   sessionId: string; intent: string; workflow?: string; refused: boolean;
-  mode?: string; modeBanner?: string; escalationId: string | null; latencyMs: number;
+  mode?: string; modeBanner?: string; decisionId?: string | null;
+  decisionCard?: DecisionCardData | null;
+  escalationId: string | null; latencyMs: number;
   response: {
     body: string; mode?: string; modeBanner?: string; transitionSuggestion?: string | null;
     checkForUnderstanding: string | null; misconceptionCheck: string | null;
@@ -26,6 +29,7 @@ export interface TutorAgentActions {
   progress: (sessionId: string, signals: Record<string, boolean>) => Promise<{ transition: string | null; message: string }>;
   modeQuality: (setId: string) => Promise<{ turnsByMode: { mode: string; turns: number }[]; taskOutcomes: { agent: string; status: string; count: number }[]; escalations: { status: string; count: number }[] }>;
   setModePolicy: (fd: FormData) => Promise<void>;
+  decisionControl: (id: string, control: string, note: string, modifiedAction?: string) => Promise<unknown>;
 }
 
 export interface TaskRow { id: string; agentKey: string; intent: string; status: string; warnings: string[]; nextActions: string[]; modelVersion: string; latencyMs: number | null; error: string }
@@ -133,6 +137,14 @@ export function TutorAgentsPanel({ setId, concepts, actions, isInstructor }: {
           <div style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{t.r.response.body}</div>
           {t.r.response.transitionSuggestion && (
             <div style={{ fontSize: 12, marginTop: 6, fontWeight: 600 }}>{t.r.response.transitionSuggestion}</div>
+          )}
+          {t.r.decisionCard && (
+            <div style={{ marginTop: 8 }}>
+              <ExplanationCard
+                card={t.r.decisionCard}
+                onControl={(c, n, m) => actions.decisionControl(t.r.decisionId!, c, n, m).then(() => refresh())}
+              />
+            </div>
           )}
           {t.r.response.checkForUnderstanding && (
             <div style={{ fontSize: 12, marginTop: 6 }}><b>Check:</b> {t.r.response.checkForUnderstanding}</div>

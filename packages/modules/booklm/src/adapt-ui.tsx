@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@n0va/ui";
 import type { GraphConcept } from "./graph-ui";
+import { ExplanationCard, type DecisionCardData } from "./pedagogy-ui";
 
 export interface AdaptActions {
   plan: (conceptId: string, setId: string, minutes: number) => Promise<AdaptPlan>;
@@ -18,11 +19,13 @@ export interface AdaptActions {
   setControl: (control: string, value: unknown) => Promise<unknown>;
   interleave: (setId: string, level: "low" | "moderate" | "high") => Promise<{ sets: { conceptKey: string; label: string; count: number; kind: string }[]; comparisonItems: number; reason: string }>;
   override: (fd: FormData) => Promise<void>;
+  decisionControl: (id: string, control: string, note: string, modifiedAction?: string) => Promise<unknown>;
 }
 
 export interface AdaptPlan {
   loopId: string; decision: string; modality: string; difficultyLevel: number;
   difficultyLocked: boolean; ladder: string; evidence: string[]; alternatives: string[]; explanation: string[];
+  decisionId?: string | null; decisionCard?: DecisionCardData | null;
 }
 
 export interface AdaptState {
@@ -129,6 +132,14 @@ export function AdaptivePanel({ setId, concepts, actions, isInstructor }: {
           <div style={{ fontSize: 12, marginTop: 4, color: "var(--nv-color-text-faint)" }}>
             Evidence: {plan.evidence.join(" · ") || "initial state"}
           </div>
+          {plan.decisionCard && (
+            <div style={{ marginTop: 8 }}>
+              <ExplanationCard
+                card={plan.decisionCard}
+                onControl={(c, n, m) => actions.decisionControl(plan.decisionId!, c, n, m).then(() => refresh())}
+              />
+            </div>
+          )}
           <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
             <label style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}>
               <input type="checkbox" checked={correct} onChange={(e) => setCorrect(e.target.checked)} /> Correct response

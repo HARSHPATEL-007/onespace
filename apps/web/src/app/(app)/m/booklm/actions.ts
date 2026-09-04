@@ -10,6 +10,7 @@ import { RecommendationService } from "@n0va/modules-booklm/recommend";
 import { AdaptiveService } from "@n0va/modules-booklm/adapt";
 import { OrchestratorService, runTurnSchema, modePolicySchema } from "@n0va/modules-booklm/orchestrate";
 import { MemoryService } from "@n0va/modules-booklm/memories";
+import { DecisionService } from "@n0va/modules-booklm/decisions";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -523,6 +524,69 @@ export async function memoryExportAction() {
 
 export async function memoryScanAction(text: string) {
   return (await memSvc()).scanDocument(text.slice(0, 20000));
+}
+
+// --- Explainable pedagogy ---
+
+const decSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new DecisionService(workspaceId, userId, role);
+};
+
+export async function decisionListAction(setId: string) {
+  const rows = await (await decSvc()).list(setId);
+  return rows.map((r) => ({
+    id: r.id, trigger: r.trigger, issueType: r.issueType,
+    issueDescription: r.issueDescription, severity: r.severity,
+    chosenMode: r.chosenMode, chosenAction: r.chosenAction,
+    confOverall: r.confOverall, status: r.status,
+    createdAt: r.createdAt.toISOString(),
+    reviews: r.reviews.map((v) => ({
+      predictedOutcome: v.predictedOutcome, observedOutcome: v.observedOutcome,
+      predictionError: v.predictionError, effectiveness: v.effectiveness,
+      nextAction: v.nextAction,
+    })),
+  }));
+}
+
+export async function decisionCardAction(id: string) {
+  return (await decSvc()).card(id);
+}
+
+export async function decisionControlAction(id: string, control: string, note: string, modifiedAction = "") {
+  return (await decSvc()).control(id, control, note, modifiedAction);
+}
+
+export async function decisionEducatorAction(formData: FormData) {
+  return (await decSvc()).educator(
+    String(formData.get("id") ?? ""),
+    String(formData.get("control") ?? "approve"),
+    String(formData.get("note") ?? ""),
+    { mode: String(formData.get("mode") ?? ""), action: String(formData.get("action") ?? "") },
+  );
+}
+
+export async function decisionMetricsAction(setId: string) {
+  return (await decSvc()).metrics(setId);
+}
+
+export async function decisionDetailAction(id: string) {
+  const r = await (await decSvc()).get(id);
+  return {
+    trigger: r.trigger, issueType: r.issueType, issueDescription: r.issueDescription,
+    severity: r.severity,
+    evidence: ((r.evidence ?? []) as { type: string; ref: string; result: string; context: string; at: string; invalid?: boolean }[]),
+    chosenMode: r.chosenMode, chosenAction: r.chosenAction,
+    alternatives: ((r.alternatives ?? []) as { strategy: string; reasonNotSelected: string; risks: string[]; score?: number; factors?: { name: string; value: number }[] }[]),
+    expectedTarget: r.expectedTarget, successMeasure: r.successMeasure,
+    confOverall: r.confOverall, confIssue: r.confIssue, confStrategy: r.confStrategy, confOutcome: r.confOutcome,
+    status: r.status, controlBy: r.controlBy, controlNote: r.controlNote, version: r.version,
+    provenance: r.provenance as { agents?: string[]; stateSnapshot?: string; policySnapshot?: string } | null,
+    reviews: r.reviews.map((v) => ({
+      predictedOutcome: v.predictedOutcome, observedOutcome: v.observedOutcome,
+      predictionError: v.predictionError, effectiveness: v.effectiveness, nextAction: v.nextAction,
+    })),
+  };
 }
 
 export async function seedConceptsAction(formData: FormData) {

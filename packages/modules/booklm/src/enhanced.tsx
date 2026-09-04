@@ -9,6 +9,7 @@ import { LearnerGraphPanel, type GraphData, type GraphActions, type GraphConcept
 import { AdaptivePanel, type AdaptActions } from "./adapt-ui";
 import { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
 import { MemoryCenterPanel, type MemoryActions } from "./memory-ui";
+import { DecisionGovernance, type GovernanceDecision } from "./pedagogy-ui";
 
 export interface CockpitData {
   goal: string; nextAction: string; nextActionReason: string; difficulty: string;
@@ -352,7 +353,7 @@ function DisagreementCard({ group, onChallenge }: { group: ClaimGroup; onChallen
 
 export function GovernancePanel({
   policy, challenges, onUpsertPolicy, onResolveChallenge, onRunEval,
-  evalResult, evalRunning,
+  evalResult, evalRunning, decisions, decisionMetrics, onDecisionDetail, onDecisionEducator,
 }: {
   policy: PolicyData | null;
   challenges: ChallengeRow[];
@@ -361,6 +362,23 @@ export function GovernancePanel({
   onRunEval: () => void;
   evalResult: Record<string, unknown> | null;
   evalRunning: boolean;
+  decisions: GovernanceDecision[];
+  decisionMetrics: {
+    decisions: number; completeRecordRate: number; byStatus: Record<string, number>;
+    learnerControlRate: number; reviews: number; outcomeAttainment: number; avgEffectiveness: number;
+  } | null;
+  onDecisionDetail: (id: string) => Promise<{
+    trigger: string; issueType: string; issueDescription: string; severity: string;
+    evidence: { type: string; ref: string; result: string; context: string; at: string; invalid?: boolean }[];
+    chosenMode: string; chosenAction: string;
+    alternatives: { strategy: string; reasonNotSelected: string; risks: string[]; score?: number; factors?: { name: string; value: number }[] }[];
+    expectedTarget: string; successMeasure: string;
+    confOverall: number; confIssue: number; confStrategy: number; confOutcome: number;
+    status: string; controlBy: string | null; controlNote: string; version: number;
+    provenance: { agents?: string[]; stateSnapshot?: string; policySnapshot?: string } | null;
+    reviews: { predictedOutcome: string; observedOutcome: string; predictionError: string; effectiveness: number | null; nextAction: string }[];
+  }>;
+  onDecisionEducator: (fd: FormData) => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -409,6 +427,10 @@ export function GovernancePanel({
         <div style={{ fontWeight: 800, marginBottom: 6 }}>📊 Evaluation suite</div>
         <Button variant="secondary" size="sm" onClick={onRunEval} disabled={evalRunning}>{evalRunning ? "Computing…" : "Run evaluation"}</Button>
         <EvalView result={evalResult} />
+      </div>
+      <div className="nv-card" style={{ fontSize: 13 }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>🧾 Pedagogical decisions (educator view)</div>
+        <DecisionGovernance decisions={decisions} metrics={decisionMetrics} onDetail={onDecisionDetail} onEducator={onDecisionEducator} />
       </div>
     </div>
   );
@@ -536,7 +558,7 @@ export function TutorPanel({
   );
 }
 
-export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claims, concepts, modes, sessions, memories, assessments, myGrades, isInstructor, dashboard, policy, challenges, graphConcepts, graphData, actions }: {
+export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claims, concepts, modes, sessions, memories, assessments, myGrades, isInstructor, dashboard, policy, challenges, graphConcepts, graphData, decisions, decisionMetrics, actions }: {
   setId: string;
   cockpit: CockpitData | null;
   nextAction: { action: string; reason: string; strategy: string; confidence: number } | null;
@@ -554,6 +576,11 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
   challenges: ChallengeRow[];
   graphConcepts: GraphConcept[];
   graphData: GraphData | null;
+  decisions: GovernanceDecision[];
+  decisionMetrics: {
+    decisions: number; completeRecordRate: number; byStatus: Record<string, number>;
+    learnerControlRate: number; reviews: number; outcomeAttainment: number; avgEffectiveness: number;
+  } | null;
   actions: {
     ask: (setId: string, q: string) => Promise<{ mode: string; answer: string; segments?: { text: string; kind: string; itemTitle?: string }[] }>;
     askV2: (setId: string, q: string, mode: string) => Promise<unknown>;
@@ -576,6 +603,18 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     adapt: AdaptActions;
     tutorAgents: TutorAgentActions;
     memory: MemoryActions;
+    decisionDetail: (id: string) => Promise<{
+      trigger: string; issueType: string; issueDescription: string; severity: string;
+      evidence: { type: string; ref: string; result: string; context: string; at: string; invalid?: boolean }[];
+      chosenMode: string; chosenAction: string;
+      alternatives: { strategy: string; reasonNotSelected: string; risks: string[]; score?: number; factors?: { name: string; value: number }[] }[];
+      expectedTarget: string; successMeasure: string;
+      confOverall: number; confIssue: number; confStrategy: number; confOutcome: number;
+      status: string; controlBy: string | null; controlNote: string; version: number;
+      provenance: { agents?: string[]; stateSnapshot?: string; policySnapshot?: string } | null;
+      reviews: { predictedOutcome: string; observedOutcome: string; predictionError: string; effectiveness: number | null; nextAction: string }[];
+    }>;
+    decisionEducator: (fd: FormData) => Promise<unknown>;
   };
 }) {
   const router = useRouter();
@@ -638,6 +677,9 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
               .catch(() => setEvalRunning(false));
           }}
           evalResult={evalResult} evalRunning={evalRunning}
+          decisions={decisions} decisionMetrics={decisionMetrics}
+          onDecisionDetail={(id) => actions.decisionDetail(id)}
+          onDecisionEducator={(fd) => void actions.decisionEducator(fd).then(refresh)}
         />
       )}
       {tab === "concepts" && (

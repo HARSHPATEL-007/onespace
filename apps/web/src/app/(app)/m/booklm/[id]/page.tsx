@@ -8,7 +8,7 @@ import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction } from "../actions";
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction, decisionListAction, decisionCardAction, decisionControlAction, decisionDetailAction, decisionEducatorAction, decisionMetricsAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -32,7 +32,7 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
   const an = new LearningAnalyticsService(workspaceId);
   const isInstructor = ["admin", "owner", "teacher"].includes(role);
 
-  const [docPicks, videoPicks, coverage, claims, graph, mastery, nextAction, sessions, memories, assessments, myGrades, cockpit, policy, challenges, graphData] = await Promise.all([
+  const [docPicks, videoPicks, coverage, claims, graph, mastery, nextAction, sessions, memories, assessments, myGrades, cockpit, policy, challenges, graphData, decisions, decisionMetrics] = await Promise.all([
     svc.pickDocs(),
     svc.pickVideos(),
     ev.coverage(id).catch(() => null),
@@ -48,6 +48,8 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
     pol.effectivePolicy(id).catch(() => null),
     ev.listChallenges(id).catch(() => []),
     getGraphDataAction(id).catch(() => null),
+    decisionListAction(id).catch(() => []),
+    decisionMetricsAction(id).catch(() => null),
   ]);
   const dashboard = isInstructor ? await an.instructorDashboard(id).catch(() => null) : null;
 
@@ -95,6 +97,8 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
         }))}
         graphConcepts={graph.concepts.map((c) => ({ id: c.id, key: c.key, label: c.label }))}
         graphData={graphData}
+        decisions={decisions}
+        decisionMetrics={decisionMetrics}
         actions={{
           ask: askGroundedAction,
           askV2: askGroundedActionV2,
@@ -138,6 +142,7 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             setControl: adaptControlAction,
             interleave: adaptInterleaveAction,
             override: adaptOverrideAction,
+            decisionControl: decisionControlAction,
           },
           tutorAgents: {
             turn: tutorTurnAction,
@@ -148,6 +153,7 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             progress: tutorProgressAction,
             modeQuality: tutorModeQualityAction,
             setModePolicy: tutorModePolicyAction,
+            decisionControl: decisionControlAction,
           },
           memory: {
             list: memoryListAction,
@@ -165,6 +171,8 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             exportAll: memoryExportAction,
             scan: memoryScanAction,
           },
+          decisionDetail: decisionDetailAction,
+          decisionEducator: decisionEducatorAction,
         }}
       />
     </>
