@@ -394,6 +394,43 @@ function hashStr(s: string): number {
   return h;
 }
 
+/** Retrieval-time secrets gate (mirrors the safety policy in retrieval-deep;
+ *  kept local to avoid a module cycle). */
+const LIKELY_SECRET_RES = [
+  /sk-(live|test)-[A-Za-z0-9]{8,}/,
+  /AKIA[0-9A-Z]{16}/,
+  /-----BEGIN (RSA )?PRIVATE KEY-----/,
+  /xox[bap]-[A-Za-z0-9-]{8,}/,
+  /ghp_[A-Za-z0-9]{20,}/,
+];
+
+/**
+ * Individual diagram labels + relationship count from the structured figure
+ * payload (nodes/edges JSON). Tolerates string arrays and {label,name,text}
+ * objects; anything else is ignored rather than coerced into labels.
+ */
+export function extractFigureLabels(nodes: unknown, edges: unknown): { labels: string[]; relCount: number } {
+  const labels: string[] = [];
+  const push = (v: unknown) => {
+    if (typeof v === "string") {
+      if (v.trim()) labels.push(v.trim().slice(0, 120));
+      return;
+    }
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      for (const k of ["label", "name", "text", "title"]) {
+        if (typeof o[k] === "string" && (o[k] as string).trim()) {
+          labels.push((o[k] as string).trim().slice(0, 120));
+          break;
+        }
+      }
+    }
+  };
+  if (Array.isArray(nodes)) nodes.forEach(push);
+  const relCount = Array.isArray(edges) ? edges.length : 0;
+  return { labels: [...new Set(labels)].slice(0, 20), relCount };
+}
+
 // ---------------------------------------------------------------------------
 // Knowledge-graph traversal.
 // ---------------------------------------------------------------------------
@@ -861,6 +898,107 @@ import { prisma } from "@n0va/db";
 interface ScoredCard extends EvidenceCard {
   signals: FusionSignals;
   unit: IndexedUnit;
+  /** Doc-level metadata for hard pre-rank filtering (language, artifact). */
+  meta: { language?: string; artifact?: string };
+}
+
+/** Modality → artifact-type mapping for `filters.artifact_types` enforcement. */
+const MODALITY_ARTIFACT: Record<string, string> = {
+  text: "textbook",
+  table: "lab",
+  formula: "textbook",
+  image: "textbook",
+  audio: "lecture",
+  video: "lecture",
+  code: "lab",
+  slide: "lecture",
+  lab: "lab",
+};
+
+export interface DeepFilterReport {
+  excluded: number;
+  excludedBy: string[];
+  unverified: string[];
+  enforced: string[];
+}
+
+/**
+ * Hard-constraint pre-rank filtering over the full spec filter surface.
+ * Only excludes on data the index actually carries; anything unverifiable
+ * is reported (never silently ignored, never over-excluded).
+ */
+export function applyDeepFilterGate(
+  cards: ScoredCard[],
+  filters: {
+    institution_id?: string;
+    course_id?: string;
+    language?: string[];
+    status?: string;
+    artifact_types?: string[];
+    valid_at?: string;
+    access?: string;
+  },
+  scopeSetId?: string,
+): { kept: ScoredCard[]; report: DeepFilterReport } {
+  const report: DeepFilterReport = { excluded: 0, excludedBy: [], unverified: [], enforced: ["acl", "workspace"] };
+  const langs = (filters.language ?? []).map((l) => l.toLowerCase());
+  if (langs.length > 0) report.enforced.push("language");
+  if (filters.valid_at) report.enforced.push("valid_at");
+  if (filters.course_id) report.enforced.push("course");
+  if (filters.institution_id) report.enforced.push("institution");
+  if (filters.artifact_types && filters.artifact_types.length > 0) report.enforced.push("artifact_types");
+  if (filters.access === "learner_current_user") report.enforced.push("access=learner_current_user(via ACL)");
+  // Approval status has no backing field on SourceDocument (its `status` is
+  // ingest state) — report as unverified instead of fake-enforcing.
+  report.unverified.push("status: no approval field on indexed documents — workspace scoping + ACL enforced instead");
+
+  const kept: ScoredCard[] = [];
+  for (const c of cards) {
+    const reasons: string[] = [];
+    const lang = (c.meta.language ?? "").toLowerCase();
+    if (langs.length > 0 && lang && !langs.includes(lang)) reasons.push(`language:${c.meta.language}`);
+    const from = c.unit.valid_time.from ?? "0000-01-01";
+    const until = c.unit.valid_time.until ?? "9999-12-31";
+    if (filters.valid_at && (filters.valid_at < from || filters.valid_at > until)) {
+      reasons.push(`valid_at:${filters.valid_at}`);
+    }
+    if (filters.course_id) {
+      const cid = filters.course_id;
+      if (scopeSetId && scopeSetId !== cid) {
+        reasons.push(`course_mismatch(scope=${scopeSetId},filter=${cid})`);
+      } else if (
+        c.unit.access_scope.length > 0 &&
+        !c.unit.access_scope.includes(cid) &&
+        !(scopeSetId && c.unit.access_scope.includes(scopeSetId))
+      ) {
+        reasons.push(`course_scope:${cid}`);
+      }
+    }
+    if (filters.institution_id) {
+      const iid = filters.institution_id;
+      if (c.unit.access_scope.length === 0) {
+        if (!report.unverified.includes(`institution:${iid} (unit carries no scope — kept, ACL still applies)`)) {
+          report.unverified.push(`institution:${iid} (unit carries no scope — kept, ACL still applies)`);
+        }
+      } else if (!c.unit.access_scope.includes(iid)) {
+        reasons.push(`institution:${iid}`);
+      }
+    }
+    const wants = (filters.artifact_types ?? []).map((a) => a.toLowerCase());
+    if (wants.length > 0) {
+      const art = (c.meta.artifact ?? MODALITY_ARTIFACT[c.unit.modality] ?? "textbook").toLowerCase();
+      if (!wants.includes(art)) reasons.push(`artifact:${art}`);
+    }
+    if (reasons.length > 0) {
+      report.excluded++;
+      for (const r of reasons) {
+        if (report.excludedBy.length < 12 && !report.excludedBy.includes(r)) report.excludedBy.push(r);
+      }
+      continue;
+    }
+    kept.push(c);
+  }
+  return { kept, report };
 }
 
 export class HybridRetrievalService {
@@ -883,7 +1021,7 @@ export class HybridRetrievalService {
     };
 
     // Parallel retrieval across specialized indexes.
-    const [keyword, vector, tables, formulas, images, media, code, citations, graphPath] = await Promise.all([
+    const [keyword, vector, tables, formulas, images, media, codeRes, citations, graph, savedSources] = await Promise.all([
       this.keywordUnits(req.query, scopeFilter, req.limit),
       this.vectorUnits(req.query, scopeFilter, req.limit),
       req.modalities.includes("table") || req.modalities.includes("text") || req.modalities.includes("lab") ? this.tableUnits(req.query, scopeFilter) : Promise.resolve([] as ScoredCard[]),
@@ -892,18 +1030,35 @@ export class HybridRetrievalService {
       req.modalities.includes("video") || req.modalities.includes("audio") || req.modalities.includes("text") ? this.mediaUnits(req.query, scopeFilter) : Promise.resolve([] as ScoredCard[]),
       this.codeUnits(req.query, scopeFilter),
       this.citationUnits(req.query, scopeFilter, req.limit),
-      this.graphSignal(req.query, req.scope.setId),
+      this.graphContext(req.query, req.scope.setId),
+      this.savedSourceIds(req.scope.setId),
     ]);
+    const graphPath = graph.score;
 
     // Federated (optional, failure-isolated).
     let federated: FederatedHit[] = [];
     let federatedUnavailable: string[] = [];
+    let federatedDuplicatesCollapsed = 0;
     if (req.federated.enabled && connectors.length > 0) {
       const f = await federatedSearch(connectors, req.query);
       federated = f.hits;
       federatedUnavailable = f.unavailable;
+      // Cross-repository deduplication: same document via two repos collapses
+      // to the highest-relevance entry (local to avoid a module cycle).
+      const seenFed = new Map<string, number>();
+      federated = federated.filter((h) => {
+        const key = `${h.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}::${h.document_id}`;
+        if (seenFed.has(key)) {
+          federatedDuplicatesCollapsed++;
+          return false;
+        }
+        seenFed.set(key, h.relevance);
+        return true;
+      });
     }
 
+    const code = codeRes.cards;
+    const secretsRedacted = codeRes.secretsRedacted;
     // Fuse: RRF over id lists + weighted S(d,q) rerank.
     const all: ScoredCard[] = [...keyword, ...vector, ...tables, ...formulas, ...images, ...media, ...code, ...citations];
     // Inject graph + temporal + personalization signals before fusion.
@@ -915,12 +1070,14 @@ export class HybridRetrievalService {
       }));
       const p = personalizationBoost(c.unit, {
         courseContext: req.personalization.course_context ?? [],
-        recentConcepts: req.personalization.recent_concepts ?? [],
-        savedSources: [],
+        // Mastery gaps ride with recent concepts when study history is on:
+        // gaps are what the learner still needs, so they deserve a boost.
+        recentConcepts: [...(req.personalization.recent_concepts ?? []), ...(req.personalization.mastery_gaps ?? [])],
+        savedSources,
         enabled: {
           useCourseContext: req.personalization.use_course_context ?? true,
           useStudyHistory: req.personalization.use_study_history ?? false,
-          useSavedSources: false,
+          useSavedSources: req.personalization.use_saved_sources ?? false,
           searchGlobally: false, reset: false,
         },
       });
@@ -947,9 +1104,22 @@ export class HybridRetrievalService {
     const permitted = all.filter((c) => passesAcl(c.unit, acl));
     const leaksPrevented = all.length - permitted.length;
 
+    // Deep metadata pre-rank gate: hard constraints (language, validity
+    // window, course/institution scope, artifact types) before MMR/diversity.
+    const gated = applyDeepFilterGate(permitted, {
+      institution_id: req.filters.institution_id,
+      course_id: req.filters.course_id ?? req.scope.course_id,
+      language: req.filters.language ?? [],
+      status: req.filters.status,
+      artifact_types: req.filters.artifact_types ?? [],
+      valid_at: req.filters.valid_at ?? req.time.valid_at,
+      access: req.filters.access,
+    }, req.scope.setId);
+    const filtered = gated.kept;
+
     // Redundancy control: penalize near-duplicate evidence spans.
     const seen = new Set<string>();
-    for (const c of permitted.sort((a, b) => b.score - a.score)) {
+    for (const c of filtered.sort((a, b) => b.score - a.score)) {
       const key = c.unit.text.slice(0, 80).toLowerCase();
       if (seen.has(key)) {
         c.signals.R = 1;
@@ -959,7 +1129,7 @@ export class HybridRetrievalService {
 
     // Diversity across sources/modalities (MMR on text overlap).
     const diverse = diversify(
-      permitted.sort((a, b) => b.score - a.score),
+      filtered.sort((a, b) => b.score - a.score),
       (c) => c.score,
       (a, b) => vectorProxyScore(a.unit.text, b.unit.text),
       0.4, req.limit,
@@ -973,13 +1143,24 @@ export class HybridRetrievalService {
       });
     }
 
-    const cards: EvidenceCard[] = diverse.map(({ signals: _s, unit: _u, ...card }) => card);
+    const cards: EvidenceCard[] = diverse.map(({ signals: _s, unit: _u, meta: _m, ...card }) => card);
     const validation = validateEvidencePackage(cards);
+
+    // Temporal comparisons: same document surfacing at two validity states
+    // (e.g. current + historical) gets an explicit old-vs-new comparison.
+    const temporalComparisons = this.compareVersions(diverse).slice(0, 3);
 
     return {
       query_id: queryId,
       plan,
       results: cards,
+      // Parallel units array for ACL-bound persistence (GET re-checks).
+      units: diverse.map((c) => c.unit),
+      graph_paths: graph.paths.map((p) => ({
+        nodes: p.nodes, relations: p.relations,
+        reason: p.reason, evidence: p.evidence, confidence: p.confidence,
+      })),
+      temporal_comparisons: temporalComparisons,
       federated: federated.slice(0, req.limit).map((h) => ({
         repository: h.repository, document_id: h.document_id, title: h.title,
         availability: h.availability, rights: h.rights, last_indexed: h.last_indexed, citation: h.citation,
@@ -989,6 +1170,10 @@ export class HybridRetrievalService {
         fusion_weights: this.weights,
         routes: RETRIEVAL_ROUTES,
         leaksPrevented,
+        filter_report: gated.report,
+        graph_path_count: graph.paths.length,
+        secrets_redacted: secretsRedacted,
+        federated_duplicates_collapsed: federatedDuplicatesCollapsed,
         validation,
         note: federatedUnavailable.length > 0
           ? `Not searched (unavailable): ${federatedUnavailable.join(", ")} — coverage is partial.`
@@ -997,6 +1182,74 @@ export class HybridRetrievalService {
       refused: cards.length === 0,
       refusal: cards.length === 0 ? NO_EVIDENCE_MESSAGE : null,
     };
+  }
+
+  /**
+   * Saved sources for "use my saved sources": items the learner annotated
+   * (quotes/comments) resolve to item + document ids for the boost allowlist.
+   */
+  private async savedSourceIds(setId?: string): Promise<string[]> {
+    try {
+      const anns = await prisma.learningAnnotation.findMany({
+        where: { workspaceId: this.workspaceId, userId: this.userId, ...(setId ? { setId } : {}) },
+        take: 100,
+      });
+      const itemIds = [...new Set(anns.map((a) => a.itemId).filter((v): v is string => !!v))];
+      if (itemIds.length === 0) return [];
+      const items = await prisma.learningItem.findMany({ where: { id: { in: itemIds } } }).catch(() => []);
+      return [...new Set([
+        ...itemIds,
+        ...items.map((i) => i.id),
+        ...items.map((i) => i.refId).filter((v): v is string => !!v),
+      ])];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Group diverse results by document; when one document appears at two
+   * validity states, surface an explicit old-vs-new comparison instead of
+   * leaving the learner to reconcile them.
+   */
+  private compareVersions(diverse: ScoredCard[]): {
+    document_id: string; oldStatus: string; newStatus: string;
+    changed: boolean; summary: string; oldExcerpt: string; newExcerpt: string;
+  }[] {
+    const byDoc = new Map<string, ScoredCard[]>();
+    for (const c of diverse) {
+      const arr = byDoc.get(c.unit.document_id) ?? [];
+      arr.push(c);
+      byDoc.set(c.unit.document_id, arr);
+    }
+    const out: {
+      document_id: string; oldStatus: string; newStatus: string;
+      changed: boolean; summary: string; oldExcerpt: string; newExcerpt: string;
+    }[] = [];
+    for (const [docId, arr] of byDoc) {
+      if (arr.length < 2) continue;
+      const ordered = [...arr].sort((a, b) => b.score - a.score);
+      const first = ordered[0]!;
+      const other = ordered.find((c) => c.validity !== first.validity);
+      if (!other) continue;
+      // Treat the lower-validity item as "old", higher as "new".
+      const rank = (s: string) => (s === "current" ? 3 : s === "historical" ? 2 : 1);
+      const newer = rank(first.validity) >= rank(other.validity) ? first : other;
+      const older = newer === first ? other : first;
+      const changed = older.unit.text.trim() !== newer.unit.text.trim();
+      out.push({
+        document_id: docId,
+        oldStatus: older.validity,
+        newStatus: newer.validity,
+        changed,
+        summary: changed
+          ? `${older.validity} → ${newer.validity}: text differs between the two states.`
+          : `${older.validity} → ${newer.validity}: text-identical, only status differs.`,
+        oldExcerpt: older.unit.text.slice(0, 300),
+        newExcerpt: newer.unit.text.slice(0, 300),
+      });
+    }
+    return out;
   }
 
   /** Explain a past query plan (GET /v1/retrieval/{query_id}/explanation shape). */
@@ -1019,6 +1272,7 @@ export class HybridRetrievalService {
     rights: string; evidence: string; relatedConcepts?: string[];
     score: number; why: string[]; citationId: string; resolver?: string;
     signals: FusionSignals;
+    meta?: { language?: string; artifact?: string };
   }): ScoredCard {
     return {
       title: opts.title, source: opts.source, match: opts.match, location: opts.location,
@@ -1029,6 +1283,7 @@ export class HybridRetrievalService {
       score: opts.score, why: opts.why, actions: EVIDENCE_ACTIONS,
       citation: { id: opts.citationId, resolver: opts.resolver ?? "" },
       signals: opts.signals, unit,
+      meta: { language: opts.meta?.language ?? "", artifact: opts.meta?.artifact ?? MODALITY_ARTIFACT[unit.modality] ?? "textbook" },
     };
   }
 
@@ -1065,6 +1320,7 @@ export class HybridRetrievalService {
         score, why: reasons,
         citationId: unit.citation_id,
         signals: this.mkSignals({ K: score, V: score * 0.5, C: unit.citation_id ? 0.6 : 0.3 }),
+        meta: { language: doc?.language ?? "" },
       }));
     }
     return out.sort((a, b) => b.score - a.score).slice(0, limit);
@@ -1090,6 +1346,7 @@ export class HybridRetrievalService {
           score: v, why: ["Same concept (semantic)"],
           citationId: "",
           signals: this.mkSignals({ K: v * 0.4, V: v, C: 0.4 }),
+          meta: { artifact: it.kind === "VIDEO" ? "lecture" : it.kind === "DOC" ? "textbook" : "textbook" },
         });
       })
       .filter((c): c is ScoredCard => c !== null)
@@ -1115,13 +1372,20 @@ export class HybridRetrievalService {
         valid_time: { from: null, until: null }, access_scope: doc?.setId ? [doc.setId] : [],
         citation_id: "", embedding_ids: [`text_${t.id}`], source_reliability: t.confidence,
       };
+      const extras = [
+        ...(t.units.length > 0 ? [`Units: ${t.units.join(", ")}`] : []),
+        ...(t.footnotes.length > 0 ? [`Notes: ${t.footnotes.join(" ").slice(0, 200)}`] : []),
+      ];
       out.push(this.toCard(unit, {
         title: t.caption || `Table ${t.tableKey}`, source: `Report table v${doc?.version ?? 1}`,
         match: "Table cell + header", location: `Page ${t.page}, ${t.tableKey}`,
-        rights: "institution-only", evidence: `${t.headers.join(" | ")} — ${cells.slice(0, 3).map((c) => c.value).join(", ")}`,
-        score: s, why: ["Table header/cell match — cite the exact cell range"],
+        rights: "institution-only",
+        evidence: `${t.headers.join(" | ")} — ${cells.slice(0, 3).map((c) => c.value).join(", ")}${extras.length > 0 ? ` | ${extras.join(" | ")}` : ""}`,
+        score: s,
+        why: ["Table header/cell match — cite the exact cell range", ...(extras.length > 0 ? ["Units + footnotes preserved from the source table"] : [])],
         citationId: "",
         signals: this.mkSignals({ K: s * 0.7, V: s * 0.6, C: 0.5 }),
+        meta: { language: doc?.language ?? "" },
       }));
     }
     return out.sort((a, b) => b.score - a.score).slice(0, 8);
@@ -1133,14 +1397,17 @@ export class HybridRetrievalService {
     for (const f of formulae) {
       const doc = await prisma.sourceDocument.findUnique({ where: { id: f.documentId } }).catch(() => null);
       if (scope.setId && doc?.setId && doc.setId !== scope.setId) continue;
-      const rec: FormulaRecord = { latex: f.latex, normalized: normalizeFormula(f.latex), variables: f.variables, concepts: [], location: `page_${f.page}:${f.formulaKey}` };
+      // Prefer the ingested plain form as the interpreted display; fall back
+      // to structural normalization. Original LaTeX is always preserved.
+      const interpreted = f.plain || normalizeFormula(f.latex);
+      const rec: FormulaRecord = { latex: f.latex, normalized: interpreted, variables: f.variables, concepts: [], location: `page_${f.page}:${f.formulaKey}` };
       const { score, matchedAs } = formulaScore(query, rec);
       if (score <= 0.15) continue;
       const unit: IndexedUnit = {
         chunk_id: `formula_${f.id}`, document_id: f.documentId, version: `v${doc?.version ?? 1}`,
         modality: "formula",
         location: { page: f.page, section: "", timestamp: null, cell_range: null },
-        text: `Original: ${f.latex} | Interpreted: ${rec.normalized}`, concept_ids: [], entities: f.variables,
+        text: `Original: ${f.latex} | Interpreted: ${interpreted}`, concept_ids: [], entities: f.variables,
         valid_time: { from: null, until: null }, access_scope: doc?.setId ? [doc.setId] : [],
         citation_id: "", embedding_ids: [`text_${f.id}`], source_reliability: f.confidence,
       };
@@ -1148,9 +1415,10 @@ export class HybridRetrievalService {
         title: `Equation ${f.formulaKey}`, source: doc?.title ?? "Course text",
         match: `Formula (${matchedAs}) — original preserved`, location: `Page ${f.page}, ${f.formulaKey}`,
         rights: "institution-only", evidence: f.latex.slice(0, 300),
-        score, why: [`Formula match (${matchedAs}); original notation preserved`],
+        score, why: [`Formula match (${matchedAs}); original notation preserved, interpreted form shown separately`],
         citationId: "",
         signals: this.mkSignals({ K: score * 0.6, V: score * 0.7, C: 0.5 }),
+        meta: { language: doc?.language ?? "" },
       }));
     }
     return out.sort((a, b) => b.score - a.score).slice(0, 8);
@@ -1172,13 +1440,27 @@ export class HybridRetrievalService {
         valid_time: { from: null, until: null }, access_scope: doc?.setId ? [doc.setId] : [],
         citation_id: "", embedding_ids: [`visual_${f.id}`], source_reliability: f.confidence,
       };
+      // Individual diagram labels + relationships, not just the whole image.
+      const { labels, relCount } = extractFigureLabels(f.nodes, f.edges);
+      const role = labels.length >= 4 || relCount >= 3
+        ? "data-bearing"
+        : labels.length > 0 || f.caption.trim().length > 20
+          ? "explanatory"
+          : "decorative";
       out.push(this.toCard(unit, {
         title: f.caption.slice(0, 80) || `Figure ${f.figureKey}`, source: doc?.title ?? "Course media",
-        match: "Diagram label/caption", location: `Page ${f.page}, ${f.figureKey}`,
+        match: `Diagram (${role}, ${labels.length} labels)`, location: `Page ${f.page}, ${f.figureKey}`,
         rights: "institution-only", evidence: f.caption.slice(0, 300),
-        score: s, why: ["Figure caption/label match"],
+        relatedConcepts: labels.slice(0, 12),
+        score: s,
+        why: [
+          "Figure caption/label match",
+          `Figure role: ${role}; ${relCount} diagram relationships indexed`,
+          "Rights unverified on figure — confirm before redistribution",
+        ],
         citationId: "",
         signals: this.mkSignals({ K: s * 0.5, V: s, C: 0.4 }),
+        meta: { language: doc?.language ?? "" },
       }));
     }
     return out.sort((a, b) => b.score - a.score).slice(0, 8);
@@ -1201,22 +1483,36 @@ export class HybridRetrievalService {
         valid_time: { from: null, until: null }, access_scope: doc?.setId ? [doc.setId] : [],
         citation_id: "", embedding_ids: [`text_${s.id}`], source_reliability: s.confidence,
       };
+      // Speaker identity + uncertainty travel with the segment; low speaker
+      // confidence is retained as uncertainty, never silently resolved.
+      const speakerNote = s.speakerConfidence < 0.7
+        ? `Speaker uncertain (${s.speaker}, conf ${s.speakerConfidence.toFixed(2)}) — retained, not resolved`
+        : `Speaker: ${s.speaker}`;
       out.push(this.toCard(unit, {
         title: doc?.title ?? "Lecture", source: "Lecture recording",
-        match: "Spoken phrase / slide", location: `${doc?.title ?? "lecture"}@${stamp}`,
-        rights: "course-private", evidence: s.text.slice(0, 300),
-        score: v, why: [`Transcript match @${stamp} — jump-to-segment available`],
+        match: "Spoken phrase / slide", location: `${doc?.title ?? "lecture"}@${stamp} · ${s.speaker}${s.linkedSlide ? ` · slide: ${s.linkedSlide}` : ""}`,
+        rights: "course-private", evidence: `[${s.speaker} @${stamp}] ${s.text.slice(0, 280)}`,
+        score: v,
+        why: [`Transcript match @${stamp} — jump-to-segment available`, speakerNote, ...(s.linkedSlide ? [`Linked slide: ${s.linkedSlide}`] : [])],
         citationId: "",
         signals: this.mkSignals({ K: v * 0.6, V: v * 0.8, C: 0.4 }),
+        meta: { language: s.language || doc?.language || "" },
       }));
     }
     return out.sort((a, b) => b.score - a.score).slice(0, 8);
   }
 
-  private async codeUnits(query: string, scope: Record<string, string>): Promise<ScoredCard[]> {
+  private async codeUnits(query: string, scope: Record<string, string>): Promise<{ cards: ScoredCard[]; secretsRedacted: number }> {
     const blocks = await prisma.docCode.findMany({ where: { workspaceId: this.workspaceId }, take: 50 }).catch(() => []);
     const out: ScoredCard[] = [];
+    let secretsRedacted = 0;
     for (const c of blocks) {
+      // Secrets gate at retrieval time: embedded credentials are dropped
+      // before ranking and counted — never displayed, never cited.
+      if (LIKELY_SECRET_RES.some((re) => re.test(c.content))) {
+        secretsRedacted++;
+        continue;
+      }
       const doc = await prisma.sourceDocument.findUnique({ where: { id: c.documentId } }).catch(() => null);
       if (scope.setId && doc?.setId && doc.setId !== scope.setId) continue;
       const s = codeScore(query, { symbol: c.codeKey, calls: [], comments: "", language: c.language, content: c.content });
@@ -1231,16 +1527,26 @@ export class HybridRetrievalService {
         valid_time: { from: null, until: null }, access_scope: doc?.setId ? [doc.setId] : [],
         citation_id: "", embedding_ids: [`text_${c.id}`], source_reliability: c.confidence,
       };
+      const parseNote = c.parseStatus && c.parseStatus !== "ok"
+        ? `Parse status: ${c.parseStatus}${c.warnings.length > 0 ? ` — ${c.warnings.slice(0, 3).join("; ")}` : ""}`
+        : null;
       out.push(this.toCard(unit, {
         title: `${c.codeKey} (${c.language})`, source: doc?.title ?? "Code collection",
         match: "Code symbol/structure", location: `Page ${c.page}, ${c.codeKey}`,
         rights: "course-private", evidence: c.content.slice(0, 300),
-        score: Math.round(best * 1000) / 1000, why: ["Code symbol/structure match; licenses + hidden solutions respected"],
+        score: Math.round(best * 1000) / 1000,
+        why: [
+          "Code symbol/structure match",
+          // The index carries no license field: say so instead of asserting.
+          "License not indexed — confirm reuse rights before copying",
+          ...(parseNote ? [parseNote] : []),
+        ],
         citationId: "",
         signals: this.mkSignals({ K: best * 0.7, V: best * 0.6, C: 0.3 }),
+        meta: { language: doc?.language ?? "" },
       }));
     }
-    return out.sort((a, b) => b.score - a.score).slice(0, 8);
+    return { cards: out.sort((a, b) => b.score - a.score).slice(0, 8), secretsRedacted };
   }
 
   private async citationUnits(query: string, scope: Record<string, string>, limit: number): Promise<ScoredCard[]> {
@@ -1273,6 +1579,7 @@ export class HybridRetrievalService {
             K: k.score, V: v, C: c.support === "SUPPORTS" ? 0.8 : c.support === "QUALIFIES" ? 0.5 : 0.2,
             R: 0, stale: c.verificationLabel === "REQUIRES_REVIEW" ? 0.6 : 0,
           }),
+          meta: { language: c.language || "" },
         });
       })
       .filter((c): c is ScoredCard => c !== null)
@@ -1280,28 +1587,56 @@ export class HybridRetrievalService {
       .slice(0, limit);
   }
 
-  private async graphSignal(query: string, setId?: string): Promise<number> {
+  /**
+   * Graph context: match the query to a concept, then traverse real paths to
+   * its neighborhood. Every path keeps relation type + confidence so answers
+   * expose pH → logarithmic scale → logarithms with reason and evidence —
+   * never causality inferred from proximity alone.
+   */
+  private async graphContext(query: string, setId?: string): Promise<{ score: number; paths: GraphPath[] }> {
     try {
       const concepts = await prisma.learnerConcept.findMany({
         where: { workspaceId: this.workspaceId, ...(setId ? { setId } : {}) }, take: 50,
       });
+      const low = query.toLowerCase();
       const hit = concepts.find((c) =>
-        query.toLowerCase().includes(c.label.toLowerCase()) || query.toLowerCase().includes(c.key.replace(/-/g, " ")),
+        low.includes(c.label.toLowerCase()) || low.includes(c.key.replace(/-/g, " ")),
       );
-      if (!hit) return 0;
+      if (!hit) return { score: 0, paths: [] };
       const edges = await prisma.conceptEdge.findMany({ where: { workspaceId: this.workspaceId }, take: 200 }).catch(() => []);
-      const nodes = new Map(concepts.map((c) => [c.id, { id: c.id, label: c.label, kind: c.kind }]));
+      // Map the Prisma enum to the retrieval relation vocabulary exactly —
+      // the old lowercase-and-dash fold produced invalid relations.
+      const relOf = (r: string): GraphRelation => {
+        switch (r) {
+          case "PREREQUISITE": return "prerequisite-of";
+          case "CONTRADICTS": return "contradicts";
+          case "UNLOCKS": return "prerequisite-of";
+          case "PART_OF": return "example-of";
+          default: return "related-to";
+        }
+      };
+      const nodes = new Map(concepts.map((c) => [c.id, { id: c.id, label: c.label, kind: String(c.kind) }]));
       const gEdges: GraphEdge[] = edges.map((e) => ({
         from: e.fromId, to: e.toId,
-        relation: (String(e.relation).toLowerCase().replace("_", "-") as GraphRelation) ?? "related-to",
+        relation: relOf(String(e.relation)),
         confidence: Math.min(1, (e.weight ?? 1) / 2), source: "course-graph",
       }));
-      // Score = does the query touch a multi-hop neighborhood?
-      const neighbors = gEdges.filter((e) => e.from === hit.id || e.to === hit.id).length;
-      void nodes;
-      return Math.min(0.9, 0.4 + 0.15 * neighbors);
+      const neighborIds = [...new Set(
+        gEdges.filter((e) => e.from === hit.id || e.to === hit.id)
+          .flatMap((e) => [e.from, e.to])
+          .filter((id) => id !== hit.id),
+      )].slice(0, 8);
+      const paths: GraphPath[] = [];
+      for (const nid of neighborIds) {
+        // Traverse both directions; keep the first successful direction.
+        const p = traverseGraph(nodes, gEdges, hit.id, nid)
+          ?? traverseGraph(nodes, gEdges.map((e) => ({ ...e, from: e.to, to: e.from })), hit.id, nid);
+        if (p) paths.push(p);
+        if (paths.length >= 5) break;
+      }
+      return { score: Math.min(0.9, 0.4 + 0.15 * neighborIds.length), paths };
     } catch {
-      return 0;
+      return { score: 0, paths: [] };
     }
   }
 }

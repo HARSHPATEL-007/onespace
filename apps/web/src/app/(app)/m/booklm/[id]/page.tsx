@@ -7,6 +7,8 @@ import { AssessmentService } from "@n0va/modules-booklm/assessment";
 import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
+import { RetrievalWorkbench } from "@n0va/modules-booklm/retrieval-workbench";
+import { getRetrievalPlanAction, runRetrievalQueryAction, submitRetrievalFeedbackAction } from "../retrieval-actions";
 import { requireWorkspace } from "@/lib/context";
 import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction, decisionListAction, decisionCardAction, decisionControlAction, decisionDetailAction, decisionEducatorAction, decisionMetricsAction, assessProfileAction, assessLogEvidenceAction, assessReportsAction, assessBlueprintAction, assessBlueprintsAction, assessBlueprintCheckAction, integrityStatusAction, integrityAppealAction, integrityAppealsAction, integrityQueueAction, integrityReviewAction, integrityAppealResolveAction, integrityOverviewAction, integrityMetricsAction, integritySimilarityAction, integrityItemAction, integrityVariantAction, integrityItemStatusAction, integrityExposureAction, integrityAccommodationsAction, integrityAccommodationAction, integrityDefenseAction, integrityDefensesAction, integrityDefenseScoreAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
@@ -308,6 +310,14 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
           },
           decisionDetail: decisionDetailAction,
           decisionEducator: decisionEducatorAction,
+        }}
+      />
+      <RetrievalWorkbench
+        setId={id}
+        actions={{
+          plan: getRetrievalPlanAction,
+          query: runRetrievalQueryAction,
+          feedback: submitRetrievalFeedbackAction,
         }}
       />
     </>

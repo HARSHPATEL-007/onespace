@@ -56,6 +56,7 @@
     "./retrieval": "./src/hybrid-retrieval.ts",
     "./retrieval-deep": "./src/retrieval-deep.ts",
     "./retrieval-ui": "./src/retrieval-ui.tsx",
+    "./retrieval-workbench": "./src/retrieval-workbench.tsx",
     "./pure": "./src/pure.ts",
     "./materials": "./src/materials.ts",
     "./analytics": "./src/analytics.ts",

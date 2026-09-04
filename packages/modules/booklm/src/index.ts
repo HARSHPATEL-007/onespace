@@ -125,19 +125,21 @@ export {
 } from "./learner";
 export { LearningSets, LearningSetView } from "./components";
 export { QueryPlanView, EvidenceCardView, EvidenceResultsList, ValidityBadge, PersonalizationControls, type RetrievalUiActions } from "./retrieval-ui";
+export { RetrievalWorkbench, type WorkbenchActions, type WorkbenchQueryResult } from "./retrieval-workbench";
 export {
   HybridRetrievalService, classifyHybridIntent, extractEntities, detectAmbiguity,
   keywordScore, vectorProxyScore, descendToSpan, traverseGraph, graphRelevance,
   temporalLabel, temporalFit, tableCellScore, normalizeFormula, formulaScore,
   imageScore, mediaScore, codeScore, fusionScore, rrfFuse, diversify, explainResult,
   passesAcl, sanitizeForRender, personalizationBoost, federatedSearch,
-  validateEvidencePackage, evaluateRetrieval,
+  validateEvidencePackage, evaluateRetrieval, applyDeepFilterGate, extractFigureLabels,
   DEFAULT_FUSION_WEIGHTS, RETRIEVAL_ROUTES, RETRIEVAL_BENCHMARKS,
   EVIDENCE_ACTIONS, NO_EVIDENCE_MESSAGE,
   indexedUnitSchema, retrievalRequestSchema, metadataFilterSchema,
   temporalQuerySchema, personalizationSchema,
   type IndexedUnit, type RetrievalRequest, type QueryPlan, type EvidenceCard,
   type FusionSignals, type FusionWeights, type GraphPath, type FederatedHit,
+  type DeepFilterReport,
 } from "./hybrid-retrieval";
 export { LearningCockpit, EvidencePanel, ConceptsPanel, TutorPanel, GradesPanel, BooklmEnhancements, MaterialsPanel, GovernancePanel, type V2Answer, type V2Claim, type PolicyData, type ChallengeRow } from "./enhanced";
 export {
@@ -146,11 +148,12 @@ export {
   codeSafetyCheck, mediaCitation, figureRole, rightsFor,
   buildCitationGroundedAnswer, FederatedRegistry, RetrievalQueryStore, globalQueryStore,
   evaluateRetrievalDeep, runBenchmarkSuite, validateIndexedUnit, fusionExplainDeep,
+  dedupeFederatedHits, tuneWeightsFromFeedback,
   RETRIEVAL_BENCHMARK_SETS, NO_EVIDENCE_MESSAGE_DEEP,
   type DeepFilters, type FilterableMeta, type FilterVerdict, type GeoPoint,
   type TemporalDoc, type TemporalComparison, type StructuredCell, type CodeSafetyVerdict,
   type FigureRole, type RightsInfo, type RetrievalGroundedClaim, type GroundedAnswer,
   type ConnectorCaps, type RegistryConnector, type FederatedAuditEntry,
   type DeepEvalInput, type DeepEvalResult, type BenchmarkSet, type BenchmarkCase,
-  type BenchmarkReport, type StoredQuery,
+  type BenchmarkReport, type StoredQuery, type DedupedFederatedHit, type FeedbackTally,
 } from "./retrieval-deep";

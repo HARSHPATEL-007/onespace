@@ -15,6 +15,8 @@ import {
   codeScore,
   validateEvidencePackage,
   sanitizeForRender,
+  passesAcl,
+  DEFAULT_FUSION_WEIGHTS,
   type GraphRelation,
 } from "@n0va/modules-booklm/retrieval";
 import {
@@ -31,6 +33,8 @@ import {
   rightsFor,
   buildCitationGroundedAnswer,
   evaluateRetrievalDeep,
+  dedupeFederatedHits,
+  tuneWeightsFromFeedback,
   globalQueryStore,
 } from "@n0va/modules-booklm/retrieval-deep";
 import { retrievalContext } from "@/lib/retrieval-context";
@@ -105,7 +109,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ path: string[]
     if (!parsed.success) return NextResponse.json({ error: "Invalid body", issues: parsed.error.issues }, { status: 400 });
     const stored = globalQueryStore.addFeedback(queryId, parsed.data.unit_id, parsed.data.verdict, parsed.data.note);
     if (!stored) return NextResponse.json({ error: "Unknown query_id" }, { status: 404 });
-    return NextResponse.json({ query_id: queryId, recorded: true, feedback_count: stored.feedback.length });
+    // Learning-to-rank loop: aggregate this query's feedback into per-chunk
+    // tallies and suggest conservative weight nudges (bounded ±0.05).
+    const tallyByChunk = new Map<string, { correct: number; incorrect: number }>();
+    for (const f of stored.feedback) {
+      const t = tallyByChunk.get(f.unitId) ?? { correct: 0, incorrect: 0 };
+      if (f.verdict === "correct") t.correct++;
+      else t.incorrect++;
+      tallyByChunk.set(f.unitId, t);
+    }
+    const suggested_weights = tuneWeightsFromFeedback(
+      DEFAULT_FUSION_WEIGHTS,
+      [...tallyByChunk.entries()].map(([chunkId, t]) => ({ chunkId, ...t })),
+    );
+    return NextResponse.json({ query_id: queryId, recorded: true, feedback_count: stored.feedback.length, suggested_weights });
   }
 
   const [channel] = path;
@@ -122,6 +139,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ path: string[]
           cards: result.results,
           explanation: result.explanation,
           federatedUnavailable: result.federated_unavailable,
+          // ACL binding: units travel with the stored query so GET
+          // /evidence|explanation re-checks against the live caller context.
+          acl: {
+            userId: authed.acl.userId,
+            enrollments: authed.acl.enrollments,
+            institutionId: authed.acl.institutionId,
+            role: authed.acl.role,
+          },
+          units: result.units,
         });
         return NextResponse.json(result);
       }
@@ -309,6 +335,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ path: string[]
         });
       }
       case "eval": {
+        const probe = z.number().min(0).max(1).optional();
         const parsed = z
           .object({
             relevant: z.array(z.string()),
@@ -318,6 +345,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ path: string[]
             permission_leaks: z.number().int().min(0).default(0),
             stale_count: z.number().int().min(0).default(0),
             duplicate_count: z.number().int().min(0).default(0),
+            table_cell_accuracy: probe,
+            formula_match_accuracy: probe,
+            timestamp_accuracy: probe,
+            diagram_label_accuracy: probe,
+            code_symbol_accuracy: probe,
+            cross_language_quality: probe,
+            federated_coverage: probe,
+            personalization_benefit: probe,
+            personalization_harm: probe,
           })
           .safeParse(body);
         if (!parsed.success) return NextResponse.json({ error: "Invalid body", issues: parsed.error.issues }, { status: 400 });
@@ -330,6 +366,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ path: string[]
             permissionLeaks: parsed.data.permission_leaks,
             staleCount: parsed.data.stale_count,
             duplicateCount: parsed.data.duplicate_count,
+            tableCellAccuracy: parsed.data.table_cell_accuracy,
+            formulaMatchAccuracy: parsed.data.formula_match_accuracy,
+            timestampAccuracy: parsed.data.timestamp_accuracy,
+            diagramLabelAccuracy: parsed.data.diagram_label_accuracy,
+            codeSymbolAccuracy: parsed.data.code_symbol_accuracy,
+            crossLanguageQuality: parsed.data.cross_language_quality,
+            federatedCoverage: parsed.data.federated_coverage,
+            personalizationBenefit: parsed.data.personalization_benefit,
+            personalizationHarm: parsed.data.personalization_harm,
           }),
         );
       }
@@ -352,15 +397,32 @@ export async function GET(req: Request, ctx: { params: Promise<{ path: string[] 
     if (!stored || stored.workspaceId !== authed.ctx.workspaceId) {
       return NextResponse.json({ error: "Unknown query_id" }, { status: 404 });
     }
-    // Render-time permission re-check: never leak restricted passages.
-    const visible = stored.cards.filter((c) => {
+    // Render-time permission re-check against the LIVE caller context: each
+    // stored unit is re-authorized, so enrollments revoked after serve time
+    // still hide the passage (and its title/metadata) at render time.
+    const bound = stored.units && stored.units.length === stored.cards.length;
+    let renderFiltered = 0;
+    const visible = stored.cards.filter((c, i) => {
+      if (bound) {
+        const allowed = passesAcl(stored.units![i]!, authed.acl);
+        if (!allowed) {
+          renderFiltered++;
+          return false;
+        }
+      }
       const check = sanitizeForRender({ title: c.title, text: c.evidence }, true);
       return !("restricted" in check);
     });
     if (path[1] === "evidence") {
-      return NextResponse.json({ query_id: stored.queryId, query: stored.query, results: visible, validation: validateEvidencePackage(visible), federated_unavailable: stored.federatedUnavailable });
+      return NextResponse.json({
+        query_id: stored.queryId, query: stored.query, results: visible,
+        validation: validateEvidencePackage(visible),
+        federated_unavailable: stored.federatedUnavailable,
+        render_filtered: renderFiltered,
+        acl_bound: bound ?? false,
+      });
     }
-    return NextResponse.json({ query_id: stored.queryId, query: stored.query, explanation: stored.explanation, federated_unavailable: stored.federatedUnavailable, feedback_count: stored.feedback.length });
+    return NextResponse.json({ query_id: stored.queryId, query: stored.query, explanation: stored.explanation, federated_unavailable: stored.federatedUnavailable, feedback_count: stored.feedback.length, render_filtered: renderFiltered, acl_bound: bound ?? false });
   }
   return NextResponse.json({ error: "Unknown retrieval route" }, { status: 404 });
 }

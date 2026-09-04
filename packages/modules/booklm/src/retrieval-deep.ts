@@ -438,7 +438,7 @@ export class FederatedRegistry {
   async search(
     query: string,
     repos: string[] = [],
-  ): Promise<{ hits: { repository: string; document_id: string; title: string; relevance: number; rights: string }[]; unavailable: string[] }> {
+  ): Promise<{ hits: { repository: string; document_id: string; title: string; relevance: number; rights: string }[]; deduped: DedupedFederatedHit[]; unavailable: string[] }> {
     const targets = repos.length > 0 ? repos : [...this.connectors.keys()];
     const hits: { repository: string; document_id: string; title: string; relevance: number; rights: string }[] = [];
     const unavailable: string[] = [];
@@ -469,7 +469,9 @@ export class FederatedRegistry {
       }),
     );
     hits.sort((a, b) => b.relevance - a.relevance);
-    return { hits, unavailable };
+    // Cross-repository deduplication: same document via two repos collapses
+    // to one entry that keeps every repository in its provenance.
+    return { hits, deduped: dedupeFederatedHits(hits), unavailable };
   }
 
   async propagateDeletion(documentId: string): Promise<{ deleted: string[]; failed: string[] }> {
@@ -504,6 +506,20 @@ export interface DeepEvalInput {
   duplicateCount?: number;
   noAnswerExpected?: boolean;
   noAnswerGiven?: boolean;
+  // Modality accuracy probes (spec §Retrieval Evaluation). Each is an
+  // independent probe scored 0..1 by the caller (exact cell, formula
+  // equivalence, timestamp window, diagram label, code symbol, cross-language
+  // quality, federated coverage, personalization benefit/harm). Absent probes
+  // stay null — never zero-filled, so aggregates never fake precision.
+  tableCellAccuracy?: number;
+  formulaMatchAccuracy?: number;
+  timestampAccuracy?: number;
+  diagramLabelAccuracy?: number;
+  codeSymbolAccuracy?: number;
+  crossLanguageQuality?: number;
+  federatedCoverage?: number;
+  personalizationBenefit?: number;
+  personalizationHarm?: number;
 }
 
 export interface DeepEvalResult {
@@ -517,6 +533,15 @@ export interface DeepEvalResult {
   staleRate: number;
   duplicateRate: number;
   noAnswerCalibration: number;
+  tableCellAccuracy: number | null;
+  formulaMatchAccuracy: number | null;
+  timestampAccuracy: number | null;
+  diagramLabelAccuracy: number | null;
+  codeSymbolAccuracy: number | null;
+  crossLanguageQuality: number | null;
+  federatedCoverage: number | null;
+  personalizationBenefit: number | null;
+  personalizationHarm: number | null;
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -560,6 +585,7 @@ export function evaluateRetrievalDeep(input: DeepEvalInput): DeepEvalResult {
         ? 1
         : 0;
 
+  const probe = (v: number | undefined) => (v == null ? null : r3(Math.max(0, Math.min(1, v))));
   return {
     recallAtK: r3(recallAtK),
     precisionAtK: r3(precisionAtK),
@@ -571,7 +597,76 @@ export function evaluateRetrievalDeep(input: DeepEvalInput): DeepEvalResult {
     staleRate: r3((input.staleCount ?? 0) / Math.max(1, top.length)),
     duplicateRate: r3((input.duplicateCount ?? 0) / Math.max(1, top.length)),
     noAnswerCalibration,
+    tableCellAccuracy: probe(input.tableCellAccuracy),
+    formulaMatchAccuracy: probe(input.formulaMatchAccuracy),
+    timestampAccuracy: probe(input.timestampAccuracy),
+    diagramLabelAccuracy: probe(input.diagramLabelAccuracy),
+    codeSymbolAccuracy: probe(input.codeSymbolAccuracy),
+    crossLanguageQuality: probe(input.crossLanguageQuality),
+    federatedCoverage: probe(input.federatedCoverage),
+    personalizationBenefit: probe(input.personalizationBenefit),
+    personalizationHarm: probe(input.personalizationHarm),
   };
+}
+
+/**
+ * Cross-repository deduplication: normalize titles (case, punctuation,
+ * edition markers) and collapse same-document hits to the highest-relevance
+ * entry, keeping provenance of every repository that carried it.
+ */
+export interface DedupedFederatedHit {
+  document_id: string;
+  title: string;
+  relevance: number;
+  rights: string;
+  repositories: string[];
+}
+
+export function dedupeFederatedHits(
+  hits: { repository: string; document_id: string; title: string; relevance: number; rights: string }[],
+): DedupedFederatedHit[] {
+  const norm = (t: string) =>
+    t.toLowerCase().replace(/\b(\d+(st|nd|rd|th)\s+edition|edition|ed\.|vol\.?\s*\d+)\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const byKey = new Map<string, DedupedFederatedHit>();
+  for (const h of hits) {
+    const key = `${norm(h.title)}::${h.document_id}`;
+    const cur = byKey.get(key);
+    if (!cur) {
+      byKey.set(key, { document_id: h.document_id, title: h.title, relevance: h.relevance, rights: h.rights, repositories: [h.repository] });
+    } else {
+      cur.relevance = Math.max(cur.relevance, h.relevance);
+      if (!cur.repositories.includes(h.repository)) cur.repositories.push(h.repository);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => b.relevance - a.relevance);
+}
+
+export interface FeedbackTally {
+  chunkId: string;
+  correct: number;
+  incorrect: number;
+  /** Mean fused score at serve time (for calibration checks). */
+  meanScore?: number;
+}
+
+/**
+ * Learning-to-rank weight nudge from learner feedback. Deterministic and
+ * conservative: each net-incorrect chunk down-weights citation-trust (wc)
+ * slightly and up-weights lexical grounding (wk); net-correct does the
+ * reverse. Bounded to ±0.05 per call so one feedback batch can never
+ * destabilize ranking. Returns the adjusted weights (original untouched).
+ */
+export function tuneWeightsFromFeedback(
+  base: { wk: number; wv: number; wg: number; wm: number; wt: number; wc: number; wu: number; wr: number; ws: number },
+  tallies: FeedbackTally[],
+): typeof base {
+  let net = 0;
+  for (const t of tallies) net += t.correct - t.incorrect;
+  if (net === 0 || tallies.length === 0) return { ...base };
+  const step = Math.max(-0.05, Math.min(0.05, 0.01 * Math.sign(net)));
+  const clamp = (v: number) => Math.round(Math.max(0.02, Math.min(0.6, v)) * 1000) / 1000;
+  // net>0 (trusted): wc up, wk down a touch. net<0: wk up, wc down.
+  return { ...base, wk: clamp(base.wk - step), wc: clamp(base.wc + step) };
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +733,10 @@ export async function runBenchmarkSuite(
   }
   const avg = (rs: DeepEvalResult[], pick: (r: DeepEvalResult) => number) =>
     rs.length ? r3(rs.reduce((s, r) => s + pick(r), 0) / rs.length) : 0;
+  const avgNull = (rs: DeepEvalResult[], pick: (r: DeepEvalResult) => number | null): number | null => {
+    const vs = rs.map(pick).filter((v): v is number => v != null);
+    return vs.length ? r3(vs.reduce((s, v) => s + v, 0) / vs.length) : null;
+  };
   let ndcgSum = 0;
   let recSum = 0;
   let n = 0;
@@ -658,6 +757,15 @@ export async function runBenchmarkSuite(
       staleRate: avg(rs, (r) => r.staleRate),
       duplicateRate: avg(rs, (r) => r.duplicateRate),
       noAnswerCalibration: avg(rs, (r) => r.noAnswerCalibration),
+      tableCellAccuracy: avgNull(rs, (r) => r.tableCellAccuracy),
+      formulaMatchAccuracy: avgNull(rs, (r) => r.formulaMatchAccuracy),
+      timestampAccuracy: avgNull(rs, (r) => r.timestampAccuracy),
+      diagramLabelAccuracy: avgNull(rs, (r) => r.diagramLabelAccuracy),
+      codeSymbolAccuracy: avgNull(rs, (r) => r.codeSymbolAccuracy),
+      crossLanguageQuality: avgNull(rs, (r) => r.crossLanguageQuality),
+      federatedCoverage: avgNull(rs, (r) => r.federatedCoverage),
+      personalizationBenefit: avgNull(rs, (r) => r.personalizationBenefit),
+      personalizationHarm: avgNull(rs, (r) => r.personalizationHarm),
     };
     ndcgSum += perSet[set]!.ndcg;
     recSum += perSet[set]!.recallAtK;
@@ -684,6 +792,13 @@ export interface StoredQuery {
   federatedUnavailable: string[];
   createdAt: string;
   feedback: { unitId: string; verdict: string; note: string; at: string }[];
+  /**
+   * ACL binding for render-time re-checks. Units travel with the stored
+   * query so GET /evidence|explanation can re-run the access check against
+   * the *current* caller context instead of trusting serve-time state.
+   */
+  acl?: { userId: string; enrollments: string[]; institutionId?: string; role?: string };
+  units?: IndexedUnit[];
 }
 
 /** In-memory store; replace with a DB-backed impl in production. */

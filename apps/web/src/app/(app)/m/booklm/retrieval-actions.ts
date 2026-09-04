@@ -21,7 +21,7 @@ const retrievalSvc = async () => {
     institutionId: undefined as string | undefined,
     role: String(role ?? "member").toLowerCase(),
   };
-  return { svc, acl, workspaceId };
+  return { svc, acl, workspaceId, userId };
 };
 
 export async function getRetrievalPlanAction(query: string) {
@@ -39,6 +39,13 @@ export async function runRetrievalQueryAction(input: unknown) {
     cards: result.results,
     explanation: result.explanation,
     federatedUnavailable: result.federated_unavailable,
+    acl: {
+      userId: acl.userId,
+      enrollments: acl.enrollments,
+      institutionId: acl.institutionId,
+      role: acl.role,
+    },
+    units: result.units,
   });
   return result;
 }
