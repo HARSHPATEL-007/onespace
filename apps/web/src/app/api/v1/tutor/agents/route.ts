@@ -1,5 +1,6 @@
 import { auth } from "@n0va/auth";
-import { OrchestratorService, runTurnSchema } from "@n0va/modules-booklm/orchestrate";
+import { OrchestratorService, runTurnSchema, modePolicySchema } from "@n0va/modules-booklm/orchestrate";
+import { MODE_CONTRACTS, ALL_MODES } from "@n0va/modules-booklm/tutor-modes";
 import { requireWorkspace } from "@/lib/context";
 import { NextResponse } from "next/server";
 
@@ -18,7 +19,7 @@ function svc(c: { workspace: { id: string }; user: { id: string }; memberRole: s
 
 /**
  * GET /v1/tutor/agents?view=... — registry | sessions | session&id=... |
- * events&id=... | escalations[&status=...]
+ * events&id=... | escalations[&status=...] | modes[&setId=...] | mode-quality[&setId=...]
  */
 export async function GET(req: Request) {
   const c = await ctx();
@@ -39,6 +40,13 @@ export async function GET(req: Request) {
         return NextResponse.json({ events: await o.sessionEvents(id) });
       case "escalations":
         return NextResponse.json({ escalations: await o.listEscalations(url.searchParams.get("status") ?? undefined) });
+      case "modes":
+        return NextResponse.json({
+          contracts: ALL_MODES.map((m) => MODE_CONTRACTS[m]),
+          policies: url.searchParams.get("setId") ? await o.modePolicies(url.searchParams.get("setId")!) : [],
+        });
+      case "mode-quality":
+        return NextResponse.json(await o.modeQuality(url.searchParams.get("setId") ?? undefined));
       default:
         return NextResponse.json({ error: "Unknown view" }, { status: 400 });
     }
@@ -82,6 +90,16 @@ export async function POST(req: Request) {
       if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
       await o.resolveEscalation(id, String(resolution ?? ""), status === "DISMISSED" ? "DISMISSED" : "RESOLVED");
       return NextResponse.json({ ok: true });
+    }
+    if (action === "mode-policy") {
+      const parsed = modePolicySchema.safeParse(b);
+      if (!parsed.success) return NextResponse.json({ error: "Invalid body", issues: parsed.error.issues }, { status: 400 });
+      return NextResponse.json(await o.setModePolicy(parsed.data));
+    }
+    if (action === "progress") {
+      const { sessionId, signals } = b as { sessionId?: string; signals?: Record<string, boolean> };
+      if (!sessionId) return NextResponse.json({ error: "sessionId required" }, { status: 400 });
+      return NextResponse.json(await o.reportProgress(sessionId, (signals ?? {}) as never));
     }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {

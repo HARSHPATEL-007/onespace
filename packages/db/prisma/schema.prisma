@@ -448,6 +448,9 @@ model Workspace {
   memoryRecords                MemoryRecord[]
   classroomMemories            ClassroomMemory[]
   memoryEvents                 MemoryEvent[]
+  teachingModePolicies         TeachingModePolicy[]
+  decisionRecords              DecisionRecord[]
+  decisionReviews              DecisionReview[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -4677,6 +4680,97 @@ model MemoryEvent {
 
   @@index([workspaceId, memoryId, createdAt])
   @@index([workspaceId, operation])
+}
+
+/// Instructor-configured teaching-mode policy per course (set): allowed
+/// modes, course default, exam lockdown config.
+model TeachingModePolicy {
+  id          String   @id @default(uuid())
+  workspaceId String
+  setId       String
+  mode        String
+  enabled     Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  examConfig  Json?
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, setId, mode])
+}
+
+/// Explainable pedagogy — versioned decision records with evidence, strategy
+/// scoring, confidence decomposition, controls, and post-intervention review.
+/// Originals are immutable; reviews append, never rewrite.
+enum PedagogyDecisionStatus {
+  PROPOSED
+  PENDING_LEARNER
+  ACCEPTED
+  MODIFIED
+  REJECTED
+  DEFERRED
+  ESCALATED
+  DELIVERED
+  MEASURED
+  REVIEWED
+}
+
+/// Versioned pedagogical decision record (detail for educators/auditors).
+model DecisionRecord {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  setId            String?
+  userId           String
+  conceptId        String?
+  trigger          String   @default("")
+  issueType        String   @default("insufficient_evidence")
+  issueDescription String   @default("")
+  severity         String   @default("moderate")
+  evidence         Json?
+  chosenMode       String   @default("")
+  chosenAction     String   @default("")
+  alternatives     Json?
+  expectedTarget   String   @default("")
+  successMeasure   String   @default("")
+  confOverall      Float    @default(0.5)
+  confIssue        Float    @default(0.5)
+  confStrategy     Float    @default(0.5)
+  confOutcome      Float    @default(0.5)
+  status           PedagogyDecisionStatus @default(PROPOSED)
+  controlBy        String?
+  controlNote      String   @default("")
+  provenance       Json?
+  version          Int      @default(1)
+  supersedesId     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  reviews   DecisionReview[]
+
+  @@index([workspaceId, userId, status])
+  @@index([workspaceId, setId, status])
+}
+
+/// Post-intervention self-monitoring: prediction retained, outcome appended.
+model DecisionReview {
+  id                String   @id @default(uuid())
+  workspaceId       String
+  decisionId        String
+  predictedOutcome  String   @default("")
+  observedOutcome   String   @default("")
+  predictionError   String   @default("")
+  effectiveness     Float?
+  nextAction        String   @default("")
+  confidenceUpdate  Json?
+  createdAt         DateTime @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  decision  DecisionRecord  @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, decisionId])
 }
 
 /// N0VA BOOKLM+EDUCATION Multi-Agent Tutor — supervised agents, event-driven

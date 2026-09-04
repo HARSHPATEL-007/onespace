@@ -6,6 +6,10 @@ import {
   type Intent, type AgentDef,
 } from "./tutor-agents";
 import { snapshotScopes, agentAccess } from "./memory-trust";
+import {
+  MODE_CONTRACTS, ALL_MODES, selectMode, evaluateExit, transitionMessage,
+  MODE_MEMORY, socraticHint, type TeachingMode,
+} from "./tutor-modes";
 import { deriveVerificationLabel } from "./epistemics";
 
 export const runTurnSchema = z.object({
@@ -13,6 +17,15 @@ export const runTurnSchema = z.object({
   setId: z.string().optional(),
   conceptId: z.string().optional(),
   message: z.string().trim().min(1).max(4000),
+  mode: z.enum(ALL_MODES as [TeachingMode, ...TeachingMode[]]).optional(),
+});
+
+export const modePolicySchema = z.object({
+  setId: z.string().min(1),
+  mode: z.enum(ALL_MODES as [TeachingMode, ...TeachingMode[]]),
+  enabled: z.boolean().default(true),
+  isDefault: z.boolean().default(false),
+  examConfig: z.record(z.string(), z.unknown()).default({}),
 });
 
 export interface RunnerOutput {
@@ -21,6 +34,25 @@ export interface RunnerOutput {
   proposals: { conceptId?: string; dimension?: string; value?: number; kind: string; ref?: string }[];
   warnings: string[];
   nextActions: string[];
+}
+
+/** Explicit readiness cues in a message → candidate mode exit (learner confirms). */
+function exitCue(message: string, mode: TeachingMode): TeachingMode | null {
+  if (!/i can (do|solve|explain) .* (myself|independently|alone)|i('ve| have) got it|ready for (practice|harder|the exam)/i.test(message)) return null;
+  return evaluateExit(mode, {
+    independentApplication: true, retrievalPassed: true, teachbackDone: true,
+    transferDone: true,
+  });
+}
+
+/** Exam lock: safety gated the turn into controlled-assessment state. */
+function examLock(
+  _input: { message: string },
+  decision: { decision?: string; blocked?: string[] },
+): boolean {
+  if (decision.decision === "refuse") return true;
+  if (decision.decision === "modify" && (decision.blocked ?? []).includes("final_answer")) return true;
+  return false;
 }
 
 const empty: RunnerOutput = { artifacts: [], claims: [], proposals: [], warnings: [], nextActions: [] };
@@ -111,6 +143,49 @@ export class OrchestratorService {
     });
   }
 
+  // -- Teaching-mode policy (instructor course defaults) -------------------------------
+  async modePolicies(setId: string) {
+    return prisma.teachingModePolicy.findMany({
+      where: { workspaceId: this.workspaceId, setId },
+    });
+  }
+
+  async setModePolicy(input: z.infer<typeof modePolicySchema>) {
+    this.assertInstructor();
+    if (input.isDefault) {
+      await prisma.teachingModePolicy.updateMany({
+        where: { workspaceId: this.workspaceId, setId: input.setId },
+        data: { isDefault: false },
+      });
+    }
+    return prisma.teachingModePolicy.upsert({
+      where: { workspaceId_setId_mode: { workspaceId: this.workspaceId, setId: input.setId, mode: input.mode } },
+      update: { enabled: input.enabled, isDefault: input.isDefault, examConfig: (input.examConfig ?? {}) as never, updatedById: this.userId },
+      create: {
+        workspaceId: this.workspaceId, setId: input.setId, mode: input.mode,
+        enabled: input.enabled, isDefault: input.isDefault,
+        examConfig: (input.examConfig ?? {}) as never, updatedById: this.userId,
+      },
+    });
+  }
+
+  private async courseDefaultMode(setId?: string): Promise<TeachingMode | null> {
+    if (!setId) return null;
+    const row = await prisma.teachingModePolicy.findFirst({
+      where: { workspaceId: this.workspaceId, setId, isDefault: true, enabled: true },
+    }).catch(() => null);
+    const m = row?.mode as TeachingMode | undefined;
+    return m && (ALL_MODES as string[]).includes(m) ? m : null;
+  }
+
+  private async modeAllowed(setId: string | undefined, mode: TeachingMode): Promise<boolean> {
+    if (!setId) return true;
+    const row = await prisma.teachingModePolicy.findUnique({
+      where: { workspaceId_setId_mode: { workspaceId: this.workspaceId, setId, mode } },
+    }).catch(() => null);
+    return row ? row.enabled : true;
+  }
+
   // -- Turn: the governed pipeline ---------------------------------------------
   async runTurn(input: z.infer<typeof runTurnSchema>) {
     const started = Date.now();
@@ -144,16 +219,31 @@ export class OrchestratorService {
     const contested = false; // determined per-task below
     const risky = decision.decision === "escalate";
     const { workflow, agents } = selectWorkflow(intent, { contested, risky });
-    await this.log(session.id, null, "plan.created", { workflow, agents });
-    await prisma.tutorSession.update({ where: { id: session.id }, data: { intent, plan: { workflow, agents } as never } });
 
-    // Execute agents.
+    // Mode selection priority: safety > assessment restrictions > learner
+    // request > course default > objective > recommendation.
+    const courseDefault = await this.courseDefaultMode(input.setId);
+    const requested = input.mode && (await this.modeAllowed(input.setId, input.mode)) ? input.mode : null;
+    const { mode, reason: modeReason } = selectMode({
+      safetyForcesExam: decision.decision === "escalate" && examLock(input, decision),
+      assessmentActive: examLock(input, decision),
+      learnerRequest: requested,
+      courseDefault,
+      objective: input.message,
+    });
+    await this.log(session.id, null, "mode.selected", { mode, reason: modeReason });
+    await prisma.tutorSession.update({
+      where: { id: session.id },
+      data: { intent, mode: mode as never, plan: { workflow, agents, mode } as never },
+    });
+
+    // Execute agents (mode travels in the task target for enforcement).
     const outputs: { key: string; out: RunnerOutput; status: string }[] = [];
     let degraded = false;
     for (const key of agents) {
       if (key === "safety") { outputs.push(safety); continue; }
       const out = await this.execTask(session.id, key, intent, {
-        message: input.message, setId: input.setId, conceptId: input.conceptId,
+        message: input.message, setId: input.setId, conceptId: input.conceptId, mode,
         prior: Object.fromEntries(outputs.map((o) => [o.key, o.out])),
       }, {});
       outputs.push(out);
@@ -181,20 +271,53 @@ export class OrchestratorService {
     }
 
     // Commit allowed state proposals (agents propose; service commits).
-    const committed = await this.commitProposals(session.id, outputs);
+    // Memory is mode-scoped: outcomes per MODE_MEMORY, never transcripts.
+    const committed = await this.commitProposals(session.id, outputs, mode);
+
+    // Exit check from explicit learner cues (transitions stay learner-approved).
+    const exitTo = exitCue(input.message, mode);
+    const transitionSuggestion = exitTo ? transitionMessage(mode, exitTo, "you signaled readiness") : null;
+    if (transitionSuggestion) {
+      await this.log(session.id, null, "mode.transition.suggested", { from: mode, to: exitTo });
+    }
 
     // Compose one coherent response.
     const composed = await this.compose(
       session.id, outputs, null, verdicts, degraded,
       decision.decision === "modify" ? (decision.allowed ?? []) : undefined,
+      mode, transitionSuggestion,
     );
     if (degraded) {
       await prisma.tutorSession.update({ where: { id: session.id }, data: { degraded: true } });
     }
     return {
-      sessionId: session.id, intent, workflow, refused: false,
+      sessionId: session.id, intent, workflow, refused: false, mode,
+      modeBanner: MODE_CONTRACTS[mode].banner,
       response: composed, escalationId, latencyMs: Date.now() - started,
     };
+  }
+
+  /** Learner- or evidence-reported progress → explicit transition suggestion. */
+  async reportProgress(sessionId: string, signals: {
+    independentApplication?: boolean; retrievalPassed?: boolean; teachbackDone?: boolean;
+    transferDone?: boolean; submitted?: boolean; rootCauseExplained?: boolean;
+    conclusionFormed?: boolean; auditPassed?: boolean; queueCleared?: boolean;
+    rubricComplete?: boolean; revisionReviewed?: boolean; equivalenceConfirmed?: boolean;
+    errorReportDelivered?: boolean;
+  }) {
+    const session = await prisma.tutorSession.findFirst({
+      where: { id: sessionId, workspaceId: this.workspaceId, userId: this.userId },
+    });
+    if (!session) throw new Error("Session not found");
+    const mode = (session.mode as string as TeachingMode) ?? "DIRECT";
+    const next = evaluateExit(mode, signals);
+    if (!next) {
+      await this.log(sessionId, null, "mode.progress.recorded", { mode, signals });
+      return { transition: null as string | null, message: "Progress recorded — staying in this mode." };
+    }
+    const message = transitionMessage(mode, next, "exit condition met");
+    await this.log(sessionId, null, "mode.transition.suggested", { from: mode, to: next, signals });
+    return { transition: next as string, message };
   }
 
   private async execTask(
@@ -290,6 +413,23 @@ export class OrchestratorService {
     const message = String(target.message ?? "");
     const setId = target.setId as string | undefined;
     const conceptId = target.conceptId as string | undefined;
+    const mode = (target.mode as TeachingMode | undefined) ?? "DIRECT";
+    // EXAM mode: policy-locked notice only — no tutoring content, ever.
+    if (mode === "EXAM") {
+      return {
+        artifacts: [{
+          type: "explanation",
+          content: {
+            explanation: "Exam policy is locked. I can clarify interface instructions, apply approved accommodations, or record a technical problem — nothing that affects your score.",
+            example: "", checkForUnderstanding: "", misconceptionCheck: "", confidence: 1,
+          },
+        }],
+        claims: [],
+        proposals: [],
+        warnings: [],
+        nextActions: [],
+      };
+    }
     let explanation = "Let's break this down step by step.";
     let claims: RunnerOutput["claims"] = [];
     let misconceptionCheck = "No active misconceptions on this concept.";
@@ -312,22 +452,90 @@ export class OrchestratorService {
         if (hit) misconceptionCheck = `Interpretation to revisit: "${(hit as { statement: string }).statement.slice(0, 160)}".`;
       }
     }
+    // Mode-shaped delivery contracts.
+    const shaped = this.shapeForMode(mode, explanation.slice(0, 1500), claims[0]?.text ?? "");
     return {
       artifacts: [{
         type: "explanation",
         content: {
-          explanation: explanation.slice(0, 1500),
+          explanation: shaped.explanation,
           example: claims[0]?.text ?? "",
-          checkForUnderstanding: "Can you restate that in your own words, including one boundary condition?",
+          checkForUnderstanding: mode === "PRACTICE"
+            ? ""
+            : "Can you restate that in your own words, including one boundary condition?",
           misconceptionCheck, confidence: claims.length ? 0.72 : 0.4,
         },
       }],
       claims,
-      proposals: conceptId ? [{ kind: "exposure", conceptId, ref: "tutor-explained" }] : [],
-      warnings: claims.length === 0 ? ["no supporting evidence retrieved — explanation is scaffolded, not sourced"] : [],
-      nextActions: ["socratic.question", "assessment.task_generation"],
+      proposals: conceptId ? [{ kind: "exposure", conceptId, ref: `tutor-${mode.toLowerCase()}` }] : [],
+      warnings: [
+        ...(claims.length === 0 ? ["no supporting evidence retrieved — explanation is scaffolded, not sourced"] : []),
+        ...shaped.warnings,
+      ],
+      nextActions: mode === "PRACTICE"
+        ? []
+        : ["socratic.question", "assessment.task_generation"],
     };
   }
+
+/** Mode-shaped delivery: the same evidence rendered under the mode contract. */
+private shapeForMode(mode: TeachingMode, explanation: string, _example: string): { explanation: string; warnings: string[] } {
+  void _example;
+  switch (mode) {
+    case "PRACTICE":
+      return {
+        explanation: "Practice-only: no lecture here. Attempt the task first — use the “why?” button after you commit an answer.",
+        warnings: [],
+      };
+    case "WORKED_EXAMPLE":
+      return {
+        explanation: `Worked example:\nGoal: see how an expert chooses steps.\nStep 1 — Identify: what information matters?\nStep 2 — Choose: why this method?\nStep 3 — Execute: ${explanation.slice(0, 600)}\nStep 4 — Check: does the result make sense?\nFaded next: you choose the method; I provide the calculation.`,
+        warnings: [],
+      };
+    case "FLASHCARD":
+      return {
+        explanation: `Front: recall the core idea.\nBack (reveal after answering): ${explanation.slice(0, 400)}\nRate confidence low/medium/high.`,
+        warnings: [],
+      };
+    case "DEBUGGING":
+      return {
+        explanation: `Debug frame — observed vs expected, first divergence, likely cause, smallest test, fix, prevention. Starting point: ${explanation.slice(0, 500)}`,
+        warnings: ["code runs sandboxed only — paste code, never credentials or secrets"],
+      };
+    case "SOCRATIC":
+      return {
+        explanation: "Socratic mode asks first and explains second — see the question below.",
+        warnings: [],
+      };
+    case "DEBATE":
+      return {
+        explanation: `Positions mapped from contested evidence. Where evidence is one-sided, I say so explicitly. Context: ${explanation.slice(0, 400)}`,
+        warnings: [],
+      };
+    case "RESEARCH_SUPERVISOR":
+      return {
+        explanation: `Research check: what exactly is the question? What counts as evidence? Strongest opposing explanation? Claim audit: ${explanation.slice(0, 400)}`,
+        warnings: ["I do not submit work or claim authorship — milestones are yours"],
+      };
+    case "PEER_REVIEW":
+      return {
+        explanation: `AI critique (not peer consensus), rubric-first: criterion → evidence → strength → concern → revision path. Draft: ${explanation.slice(0, 400)}`,
+        warnings: [],
+      };
+    case "ORAL_EXAM":
+      return {
+        explanation: "Oral examination runs under a rubric with recording consent. Respond in your preferred authorized format; fluency is not scored as mastery.",
+        warnings: [],
+      };
+    case "ACCESSIBILITY":
+      return {
+        explanation: `Delivered in your selected format with equivalent meaning: ${explanation.slice(0, 600)}`,
+        warnings: [],
+      };
+    default:
+      return { explanation, warnings: [] };
+  }
+}
 
   private async socraticRunner(target: Record<string, unknown>): Promise<RunnerOutput> {
     const message = String(target.message ?? "");
@@ -578,7 +786,14 @@ export class OrchestratorService {
   private async commitProposals(
     sessionId: string,
     outputs: { key: string; out: RunnerOutput }[],
+    mode: TeachingMode = "DIRECT",
   ) {
+    // EXAM mode stores official records only — no mastery estimates written.
+    if (mode === "EXAM") {
+      await this.log(sessionId, null, "learner_state.update.committed", { committed: 0, note: "exam mode: official record only" });
+      return 0;
+    }
+    const mem = MODE_MEMORY[mode] ?? MODE_MEMORY.DIRECT!;
     const { LearnerGraphService } = await import("./graph");
     const { MisconceptionService } = await import("./misconceptions");
     const g = new LearnerGraphService(this.workspaceId, this.userId, this.role);
@@ -589,8 +804,8 @@ export class OrchestratorService {
         try {
           if (p.kind === "exposure" && p.conceptId) {
             await g.observe({
-              conceptId: p.conceptId, dimension: "recall", value: 0.4, confidence: 0.4,
-              sourceType: "tutor_session", sourceId: sessionId, context: "orchestrated explanation",
+              conceptId: p.conceptId, dimension: mem.dimension as never, value: 0.4, confidence: 0.4,
+              sourceType: mem.sourceType, sourceId: sessionId, context: `orchestrated ${mode.toLowerCase()} turn`,
               novelty: 0, visibility: "learner-and-instructor",
             });
             committed++;
@@ -703,6 +918,8 @@ export class OrchestratorService {
     verdicts: { claim: string; verdict: string; confidence: number; citations: string[] }[],
     degraded: boolean,
     allowedOnly?: string[],
+    mode: TeachingMode = "DIRECT",
+    transitionSuggestion: string | null = null,
   ) {
     const tutorOut = outputs.find((o) => o.key === "tutor")?.out;
     const explanation = (tutorOut?.artifacts.find((a) => a.type === "explanation")?.content ?? {}) as {
@@ -727,17 +944,21 @@ export class OrchestratorService {
       positions.length > 0 ? `\nThere are ${positions.length} contested position(s) — see the disagreement view.` : "",
       planBlocks.length > 0 ? `\nSuggested next: ${planBlocks[0]!.name} (${planBlocks[0]!.minutes} min) — ${planBlocks[0]!.detail}` : "",
       degraded ? "\nNote: one or more agents were unavailable, so this response is partial." : "",
+      transitionSuggestion ? `\n${transitionSuggestion}` : "",
     ].join("\n");
 
     const composed = {
       body,
+      mode,
+      modeBanner: MODE_CONTRACTS[mode].banner,
+      transitionSuggestion,
       checkForUnderstanding: explanation.checkForUnderstanding ?? null,
       misconceptionCheck: explanation.misconceptionCheck ?? null,
       citations: verdicts.flatMap((v) => v.citations).slice(0, 6),
       unresolvedClaims: verdicts.filter((v) => ["contested", "unsupported", "ambiguous"].includes(v.verdict)).length,
       verifiedClaims: verdicts.filter((v) => ["verified", "supported_with_limits"].includes(v.verdict)).length,
       nextAction: tutorOut?.nextActions[0] ?? "ask a follow-up",
-      controls: ["accept", "choose another approach", "explain why", "request human"],
+      controls: ["accept", "choose another approach", "explain why", "request human", "switch mode"],
       allowedOnly: allowedOnly ?? null,
       metadata: {
         contributors,
@@ -748,8 +969,31 @@ export class OrchestratorService {
       },
     };
     await this.log(sessionId, null, "response.composed", {
-      contributors, degraded, refused: !!refusal,
+      contributors, degraded, refused: !!refusal, mode, transitionSuggested: !!transitionSuggestion,
     });
     return composed;
+  }
+
+  /** Mode quality stats: turns per mode, task failure by agent, escalations. */
+  async modeQuality(setId?: string) {
+    const [sessions, tasks, escalations] = await Promise.all([
+      prisma.tutorSession.groupBy({
+        by: ["mode"], where: { workspaceId: this.workspaceId, ...(setId ? { setId } : {}) },
+        _count: { mode: true },
+      }),
+      prisma.agentTask.groupBy({
+        by: ["agentKey", "status"], where: { workspaceId: this.workspaceId },
+        _count: { status: true },
+      }),
+      prisma.escalation.groupBy({
+        by: ["status"], where: { workspaceId: this.workspaceId },
+        _count: { status: true },
+      }),
+    ]);
+    return {
+      turnsByMode: sessions.map((s) => ({ mode: s.mode, turns: s._count.mode })),
+      taskOutcomes: tasks.map((t) => ({ agent: t.agentKey, status: t.status, count: t._count.status })),
+      escalations: escalations.map((e) => ({ status: e.status, count: e._count.status })),
+    };
   }
 }

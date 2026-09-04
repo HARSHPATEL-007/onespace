@@ -10,13 +10,18 @@ export { LearningAnalyticsService } from "./analytics";
 export { MemoryCenterPanel, type MemoryActions, type MemoryCard } from "./memory-ui";
 export { MemoryService, memoryRecordSchema, classroomSchema } from "./memories";
 export { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
-export { OrchestratorService, runTurnSchema } from "./orchestrate";
+export { OrchestratorService, runTurnSchema, modePolicySchema } from "./orchestrate";
 export { AdaptivePanel, type AdaptActions } from "./adapt-ui";
 export {
   AGENT_DEFS, classifyIntent, selectWorkflow, AUTHORITY_HIERARCHY,
   resolveConflictRank, escalationTriggers, verdictFor, socraticShouldStop,
   type AgentDef, type Intent, type Workflow, type FactVerdict,
 } from "./tutor-agents";
+export {
+  MODE_CONTRACTS, ALL_MODES, selectMode, evaluateExit, transitionMessage,
+  MODE_SAFETY_RULES, MODE_MEMORY, socraticHint,
+  type TeachingMode, type ModeContract,
+} from "./tutor-modes";
 export {
   classifyDocSpan, trustRank, injectionScan, confidenceLevelFor,
   canTransition, scopeRank, mayPromoteScope, retrievalOrder, rankMemories,

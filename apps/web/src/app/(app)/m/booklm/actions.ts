@@ -8,7 +8,7 @@ import { LearnerGraphService, profileSchema, goalSchema, observeSchema, correcti
 import { MisconceptionService, misconceptionSchema } from "@n0va/modules-booklm/misconceptions";
 import { RecommendationService } from "@n0va/modules-booklm/recommend";
 import { AdaptiveService } from "@n0va/modules-booklm/adapt";
-import { OrchestratorService, runTurnSchema } from "@n0va/modules-booklm/orchestrate";
+import { OrchestratorService, runTurnSchema, modePolicySchema } from "@n0va/modules-booklm/orchestrate";
 import { MemoryService } from "@n0va/modules-booklm/memories";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
@@ -366,14 +366,34 @@ export async function tutorAgentsAction() {
   return agents;
 }
 
-export async function tutorTurnAction(input: { sessionId?: string; setId: string; conceptId?: string; message: string }) {
+export async function tutorTurnAction(input: { sessionId?: string; setId: string; conceptId?: string; message: string; mode?: string }) {
+  const { ALL_MODES } = await import("@n0va/modules-booklm/tutor-modes");
   const parsed = runTurnSchema.parse({
     sessionId: input.sessionId || undefined,
     setId: input.setId || undefined,
     conceptId: input.conceptId || undefined,
     message: input.message,
+    mode: input.mode && (ALL_MODES as string[]).includes(input.mode) ? input.mode : undefined,
   });
   return (await orchSvc()).runTurn(parsed);
+}
+
+export async function tutorProgressAction(sessionId: string, signals: Record<string, boolean>) {
+  return (await orchSvc()).reportProgress(sessionId, signals);
+}
+
+export async function tutorModePolicyAction(formData: FormData) {
+  const parsed = modePolicySchema.parse({
+    setId: String(formData.get("setId") ?? ""),
+    mode: String(formData.get("mode") ?? "DIRECT"),
+    enabled: formData.get("enabled") !== "off",
+    isDefault: formData.get("isDefault") === "on",
+  });
+  await (await orchSvc()).setModePolicy(parsed);
+}
+
+export async function tutorModeQualityAction(setId: string) {
+  return (await orchSvc()).modeQuality(setId);
 }
 
 export async function tutorSessionDetailAction(sessionId: string) {
