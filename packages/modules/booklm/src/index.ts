@@ -7,6 +7,10 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { AnalyticsPanel, type InsightsActions } from "./insights-ui";
+export { AssessInsightsService, windowSchema } from "./assess-insights";
+export { GradingPanel, type GradingActions } from "./grading-ui";
+export { GradingService, richEvidenceSchema, gradeV2Schema, calibrationSchema, fairnessSchema } from "./grading";
 export { IntegrityPanel, type IntegrityActions } from "./integrity-ui";
 export { IntegrityService, policySchemaIntegrity, itemSchema, signalSchema, recordSchema, accommodationSchema, defenseSchema } from "./integrity-service";
 export { AssessmentProfilePanel, type AssessActions } from "./assess-ui";
@@ -44,6 +48,19 @@ export {
   analyzeSimilarity, authorshipFollowUp, interpretWithAccommodation, buildNotice,
   type TriageLevel, type IntegritySignal, type VariantSpec,
 } from "./integrity";
+export {
+  gradeUncertainty, classifyPartialCredit, approvalGate, explainGrade,
+  disparity, disparityOfMeans, applyRegradeRule,
+  type ErrorKind as GradeErrorKind,
+} from "./assess-grading";
+export {
+  envelope, wilson, meanCI, difficulty, difficultyBand, discrimination,
+  pointBiserial, discriminationDiagnosis, absoluteGain, normalizedGain,
+  meanCalibrationError, calibrationPattern, funnel, ABANDON_REASONS,
+  suppressible, meetsMastery, evaluateWarnings, warningDisclaimer,
+  METRIC_DEFS, COHORT_MIN_CELL,
+  type MetricEnvelope, type WarningKind,
+} from "./assess-analytics";
 export {
   classifyDocSpan, trustRank, injectionScan, confidenceLevelFor,
   canTransition, scopeRank, mayPromoteScope, retrievalOrder, rankMemories,

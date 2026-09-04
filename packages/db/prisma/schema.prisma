@@ -458,6 +458,8 @@ model Workspace {
   integrityAppeals             IntegrityAppeal[]
   accommodations               Accommodation[]
   oralDefenses                 OralDefense[]
+  calibrationExamples          CalibrationExample[]
+  fairnessAudits               FairnessAudit[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -5039,6 +5041,9 @@ model Assessment {
   createdById String?
   policy      Json?
   stakes      String   @default("low")
+  rubricVersion Int    @default(1)
+  rubricFrozen Boolean @default(false)
+  gradingMode String   @default("co_grading")
   createdAt   DateTime @default(now())
 
   workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -5046,6 +5051,7 @@ model Assessment {
   grades    Grade[]
   items     AssessmentItem[]
   integrity IntegrityRecord[]
+  calibration CalibrationExample[]
 
   @@index([workspaceId, setId])
 }
@@ -5193,6 +5199,12 @@ model RubricCriterion {
   description  String @default("")
   weight       Float  @default(1)
   maxPoints    Float  @default(10)
+  version      Int    @default(1)
+  levels       Json?
+  mustHave     String[] @default([])
+  acceptableVariants String[] @default([])
+  nonEvidence  String[] @default([])
+  dependsOn    String[] @default([])
 
   assessment Assessment      @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   evidence   GradeEvidence[]
@@ -5210,6 +5222,13 @@ model Grade {
   explanation  String   @default("")
   blindKey     String   @default("")
   approved     Boolean  @default(false)
+  uncertainty  Float    @default(0.5)
+  uncertaintyReasons String[] @default([])
+  scoreLow     Float?
+  scoreHigh    Float?
+  reviewStatus String   @default("")
+  gradingContext Json?
+  gradingMode  String   @default("co_grading")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -5231,6 +5250,14 @@ model GradeEvidence {
   points        Float  @default(0)
   evidenceQuote String @default("")
   reasoning     String @default("")
+  location      String @default("")
+  supports      String @default("")
+  strength      Float  @default(0.5)
+  confidence    Float  @default(0.5)
+  reviewStatus  String @default("")
+  subscores     Json?
+  errorKind     String @default("")
+  diagnosis     String @default("")
 
   grade     Grade           @relation(fields: [gradeId], references: [id], onDelete: Cascade)
   criterion RubricCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
@@ -5245,12 +5272,54 @@ model GradeAudit {
   actorId     String
   action      String
   detail      String   @default("")
+  previousScore Float?
+  newScore    Float?
+  reason      String   @default("")
+  learnerNotified Boolean @default(false)
   createdAt   DateTime @default(now())
 
   grade     Grade     @relation(fields: [gradeId], references: [id], onDelete: Cascade)
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([gradeId])
+}
+
+/// Instructor-scored calibration examples for rubric deployment approval.
+model CalibrationExample {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  assessmentId String
+  response     String
+  instructorScores Json
+  aiScores     Json?
+  status       String   @default("pending")
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, assessmentId])
+}
+
+/// Fairness audits: aggregate-only disparity diagnostics, never identities.
+model FairnessAudit {
+  id          String   @id @default(uuid())
+  workspaceId String
+  setId       String?
+  scope       String   @default("")
+  dimension   String   @default("")
+  groups      Json?
+  metrics     Json?
+  finding     String   @default("")
+  action      String   @default("")
+  status      String   @default("open")
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, setId])
 }
 
 model GradeAppeal {

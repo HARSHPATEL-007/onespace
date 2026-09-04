@@ -10,6 +10,17 @@ import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
 import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction, decisionListAction, decisionCardAction, decisionControlAction, decisionDetailAction, decisionEducatorAction, decisionMetricsAction, assessProfileAction, assessLogEvidenceAction, assessReportsAction, assessBlueprintAction, assessBlueprintsAction, assessBlueprintCheckAction, integrityStatusAction, integrityAppealAction, integrityAppealsAction, integrityQueueAction, integrityReviewAction, integrityAppealResolveAction, integrityOverviewAction, integrityMetricsAction, integritySimilarityAction, integrityItemAction, integrityVariantAction, integrityItemStatusAction, integrityExposureAction, integrityAccommodationsAction, integrityAccommodationAction, integrityDefenseAction, integrityDefensesAction, integrityDefenseScoreAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
+import {
+  gradeSubmitV2Action, gradeApproveCriterionAction, gradesForAssessmentAction,
+  gradeHistoryAction, gradeExplainAction, gradeFreezeAction, gradeBumpVersionAction,
+  gradeShadowAction, gradeApplyRegradeAction, gradeCalibrationSaveAction,
+  gradeCalibrationAction, gradeBlindQueueAction, gradeDashboardAction,
+  gradeFairnessListAction, gradeFairnessSaveAction, gradeFairnessMetricsAction, gradeFairnessResolveAction,
+  insightsItemsAction, insightsClustersAction, insightsGainsAction,
+  insightsMasteryAction, insightsCalibrationAction, insightsDropoffAction,
+  insightsQualityAction, insightsWarningsAction, insightsOutcomesAction,
+  insightsMapAction, insightsCohortAction, insightsDismissAction, insightsDefsAction,
+} from "../actions";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -85,7 +96,15 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
         modes={[...TUTOR_MODES]}
         sessions={sessions.map((s) => ({ id: s.id, mode: s.mode, agent: s.agent, status: s.status, summary: s.summary, decisions: s.decisions }))}
         memories={memories.map((m) => ({ id: m.id, scope: m.scope, key: m.key, value: m.value, confidence: m.confidence, provenance: m.provenance }))}
-        assessments={assessments.map((a) => ({ id: a.id, title: a.title, description: a.description, criteria: a.criteria }))}
+        assessments={assessments.map((a) => ({
+          id: a.id, title: a.title, description: a.description,
+          criteria: a.criteria.map((c) => ({
+            id: c.id, label: c.label, maxPoints: c.maxPoints, weight: c.weight,
+            levels: (c.levels ?? null) as Record<string, string> | null,
+            mustHave: c.mustHave ?? [], acceptableVariants: c.acceptableVariants ?? [],
+            nonEvidence: c.nonEvidence ?? [],
+          })),
+        }))}
         myGrades={myGrades.map((g) => ({ id: g.id, totalPoints: g.totalPoints, maxPoints: g.maxPoints, explanation: g.explanation, approved: g.approved, assessment: g.assessment ? { title: g.assessment.title } : undefined }))}
         isInstructor={isInstructor}
         dashboard={dashboard}
@@ -198,6 +217,40 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             scheduleDefense: integrityDefenseAction,
             defenses: integrityDefensesAction,
             scoreDefense: integrityDefenseScoreAction,
+          },
+          grading: {
+            submit: gradeSubmitV2Action,
+            approveCriterion: gradeApproveCriterionAction,
+            grades: gradesForAssessmentAction,
+            history: gradeHistoryAction,
+            explain: gradeExplainAction,
+            freeze: gradeFreezeAction,
+            bumpVersion: gradeBumpVersionAction,
+            shadow: gradeShadowAction,
+            applyRegrade: gradeApplyRegradeAction,
+            calibration: gradeCalibrationAction,
+            saveCalibration: gradeCalibrationSaveAction,
+            blindQueue: gradeBlindQueueAction,
+            dashboard: gradeDashboardAction,
+            fairnessList: gradeFairnessListAction,
+            fairnessSave: gradeFairnessSaveAction,
+            fairnessMetrics: gradeFairnessMetricsAction,
+            fairnessResolve: gradeFairnessResolveAction,
+          },
+          insights: {
+            items: insightsItemsAction,
+            clusters: insightsClustersAction,
+            gains: insightsGainsAction,
+            mastery: insightsMasteryAction,
+            calibration: insightsCalibrationAction,
+            dropoff: insightsDropoffAction,
+            quality: insightsQualityAction,
+            warnings: insightsWarningsAction,
+            outcomes: insightsOutcomesAction,
+            map: insightsMapAction,
+            cohort: insightsCohortAction,
+            dismiss: insightsDismissAction,
+            defs: insightsDefsAction,
           },
           decisionDetail: decisionDetailAction,
           decisionEducator: decisionEducatorAction,

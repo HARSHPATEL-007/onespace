@@ -13,6 +13,8 @@ import { MemoryService } from "@n0va/modules-booklm/memories";
 import { DecisionService } from "@n0va/modules-booklm/decisions";
 import { AssessProfileService } from "@n0va/modules-booklm/assess-profile";
 import { IntegrityService } from "@n0va/modules-booklm/integrity-service";
+import { GradingService } from "@n0va/modules-booklm/grading";
+import { AssessInsightsService } from "@n0va/modules-booklm/assess-insights";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -772,6 +774,225 @@ export async function integrityDefenseScoreAction(id: string, formData: FormData
     if (v !== null && v !== "") scores[k] = Number(v);
   }
   await (await integSvc()).scoreDefense(id, scores, String(formData.get("transcript") ?? ""), String(formData.get("note") ?? ""));
+}
+
+// --- Evidence-based grading ---
+
+const gradeSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new GradingService(workspaceId, userId, role);
+};
+
+export async function gradeSubmitV2Action(input: {
+  assessmentId: string; userId: string; explanation?: string;
+  evidence: { criterionId: string; points: number; evidenceQuote?: string; reasoning?: string; location?: string; supports?: string; strength?: number; confidence?: number; subscores?: Record<string, number>; errorKind?: string; diagnosis?: string }[];
+}) {
+  const { gradeV2Schema } = await import("@n0va/modules-booklm/grading");
+  const parsed = gradeV2Schema.parse({
+    assessmentId: input.assessmentId, userId: input.userId,
+    explanation: input.explanation ?? "", evidence: input.evidence,
+  });
+  return (await gradeSvc()).submitGradeV2(parsed);
+}
+
+export async function gradeApproveCriterionAction(gradeId: string, criterionId: string, approved: boolean, points: string, note: string) {
+  return (await gradeSvc()).approveCriterion(
+    gradeId, criterionId, approved,
+    points === "" ? undefined : Number(points), note,
+  );
+}
+
+export async function gradeHistoryAction(gradeId: string) {
+  const g = await (await gradeSvc()).gradeHistory(gradeId);
+  return {
+    total: g.totalPoints, max: g.maxPoints, approved: g.approved,
+    uncertainty: g.uncertainty, reviewStatus: g.reviewStatus,
+    assessment: g.assessment.title,
+    evidence: g.evidence.map((e) => ({
+      criterionId: e.criterionId, label: e.criterion.label, points: e.points,
+      max: e.criterion.maxPoints, quote: e.evidenceQuote, reasoning: e.reasoning,
+      location: e.location, supports: e.supports, reviewStatus: e.reviewStatus,
+    })),
+    audits: g.audits.map((a) => ({
+      action: a.action, detail: a.detail, previousScore: a.previousScore,
+      newScore: a.newScore, reason: a.reason, learnerNotified: a.learnerNotified,
+      actorId: a.actorId, at: a.createdAt.toISOString(),
+    })),
+  };
+}
+
+export async function gradeExplainAction(gradeId: string) {
+  return (await gradeSvc()).explainGrade(gradeId);
+}
+
+export async function gradePartialCreditAction(input: { finalCorrect: boolean; structureSound: boolean }) {
+  return (await gradeSvc()).partialCredit({ ...input, earlyError: false, wrongModel: false, sufficientEvidence: true, alternativeValid: false });
+}
+
+export async function gradeFreezeAction(assessmentId: string, frozen: boolean) {
+  await (await gradeSvc()).freezeRubric(assessmentId, frozen);
+}
+
+export async function gradeBumpVersionAction(assessmentId: string) {
+  await (await gradeSvc()).bumpRubricVersion(assessmentId);
+}
+
+export async function gradeShadowAction(assessmentId: string) {
+  return (await gradeSvc()).shadowRegrade(assessmentId);
+}
+
+export async function gradeApplyRegradeAction(assessmentId: string, gradeIds: string[]) {
+  return (await gradeSvc()).applyRegrade(assessmentId, gradeIds, true, "instructor-approved regrade");
+}
+
+export async function gradeCalibrationSaveAction(formData: FormData) {
+  const { calibrationSchema } = await import("@n0va/modules-booklm/grading");
+  const scores: Record<string, number> = {};
+  for (const [k, v] of formData.entries()) {
+    if (k.startsWith("s_") && v !== "") scores[k.slice(2)] = Number(v);
+  }
+  const parsed = calibrationSchema.parse({
+    assessmentId: String(formData.get("assessmentId") ?? ""),
+    response: String(formData.get("response") ?? ""),
+    instructorScores: scores,
+  });
+  await (await gradeSvc()).saveCalibration(parsed);
+}
+
+export async function gradeCalibrationAction(assessmentId: string) {
+  const [examples, metrics] = await Promise.all([
+    (await gradeSvc()).listCalibration(assessmentId),
+    (await gradeSvc()).calibrationMetrics(assessmentId),
+  ]);
+  return {
+    examples: examples.map((e) => ({
+      id: e.id, response: e.response.slice(0, 300),
+      instructorScores: e.instructorScores, aiScores: e.aiScores, status: e.status,
+    })),
+    metrics,
+  };
+}
+
+export async function gradeBlindQueueAction() {
+  return (await gradeSvc()).blindQueue();
+}
+
+export async function gradeDashboardAction(assessmentId: string) {
+  return (await gradeSvc()).dashboard(assessmentId);
+}
+
+export async function gradeFairnessListAction(setId: string) {
+  const rows = await (await gradeSvc()).listFairness(setId);
+  return rows.map((r) => ({
+    id: r.id, scope: r.scope, dimension: r.dimension,
+    groups: (r.groups ?? []) as { name: string; mean: number; sd: number; n: number }[],
+    finding: r.finding, action: r.action, status: r.status,
+  }));
+}
+
+export async function gradeFairnessSaveAction(formData: FormData) {
+  const { fairnessSchema } = await import("@n0va/modules-booklm/grading");
+  let groups: { name: string; mean: number; sd: number; n: number }[] = [];
+  try {
+    groups = JSON.parse(String(formData.get("groups") ?? "[]"));
+  } catch { /* invalid groups rejected by schema */ }
+  const parsed = fairnessSchema.parse({
+    setId: String(formData.get("setId") ?? "") || undefined,
+    scope: String(formData.get("scope") ?? ""),
+    dimension: String(formData.get("dimension") ?? ""),
+    groups, finding: String(formData.get("finding") ?? ""), action: "",
+  });
+  await (await gradeSvc()).saveFairness(parsed);
+}
+
+export async function gradeFairnessMetricsAction(groups: { name: string; mean: number; sd: number; n: number }[]) {
+  return (await gradeSvc()).fairnessMetrics(groups);
+}
+
+export async function gradeFairnessResolveAction(id: string, status: string, action: string) {
+  await (await gradeSvc()).resolveFairness(id, status, action);
+}
+
+export async function gradesForAssessmentAction(assessmentId: string) {
+  const { AssessmentService } = await import("@n0va/modules-booklm/assessment");
+  const { workspaceId, userId, role } = await actionContext();
+  const rows = await new AssessmentService(workspaceId, userId, role).gradesForAssessment(assessmentId);
+  return rows.map((g) => ({
+    id: g.id, totalPoints: g.totalPoints, maxPoints: g.maxPoints,
+    explanation: g.explanation, approved: g.approved,
+    uncertainty: (g as { uncertainty?: number }).uncertainty ?? 0.5,
+    reviewStatus: (g as { reviewStatus?: string }).reviewStatus ?? "",
+    learner: `${(g.user.email ?? "").slice(0, 3)}***`,
+    criteria: g.evidence.map((e) => ({
+      criterionId: e.criterionId, label: e.criterion.label,
+      points: e.points, max: e.criterion.maxPoints,
+    })),
+  }));
+}
+
+// --- Assessment analytics ---
+
+const insightSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new AssessInsightsService(workspaceId, userId, role);
+};
+
+export async function insightsItemsAction(setId: string) {
+  return (await insightSvc()).itemAnalysis(setId, 90);
+}
+
+export async function insightsClustersAction(setId: string) {
+  return (await insightSvc()).misconceptionClusters(setId);
+}
+
+export async function insightsGainsAction(setId: string) {
+  return (await insightSvc()).gainByConcept(setId, 90);
+}
+
+export async function insightsMasteryAction(setId: string, conceptKey?: string) {
+  return (await insightSvc()).timeToMastery(setId, conceptKey);
+}
+
+export async function insightsCalibrationAction(setId: string, conceptKey?: string) {
+  return (await insightSvc()).calibration(setId, conceptKey);
+}
+
+export async function insightsDropoffAction(setId: string) {
+  return (await insightSvc()).dropoff(setId, 90);
+}
+
+export async function insightsQualityAction(setId: string) {
+  return (await insightSvc()).questionQuality(setId, 90);
+}
+
+export async function insightsWarningsAction(setId: string) {
+  const rows = await (await insightSvc()).earlyWarnings(setId);
+  return rows.map((r) => ({
+    userId: r.userId, warnings: r.warnings.map((w) => ({
+      kind: w.kind, evidence: w.evidence, severity: w.severity,
+      disclaimer: w.disclaimer, suggestion: w.suggestion, dismissHint: w.dismissHint,
+    })),
+  }));
+}
+
+export async function insightsOutcomesAction(setId: string) {
+  return (await insightSvc()).interventionOutcomes(setId);
+}
+
+export async function insightsMapAction(setId: string) {
+  return (await insightSvc()).learnerMap(setId);
+}
+
+export async function insightsCohortAction(setA: string, setB: string, conceptKey: string) {
+  return (await insightSvc()).cohortReport(setA, setB, conceptKey, 90);
+}
+
+export async function insightsDismissAction(conceptKey: string, reason: string) {
+  await (await insightSvc()).dismissWarning(conceptKey, reason);
+}
+
+export async function insightsDefsAction() {
+  return (await insightSvc()).metricDefinitions();
 }
 
 export async function decisionDetailAction(id: string) {

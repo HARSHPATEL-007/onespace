@@ -11,6 +11,8 @@ import { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
 import { MemoryCenterPanel, type MemoryActions } from "./memory-ui";
 import { AssessmentProfilePanel, type AssessActions } from "./assess-ui";
 import { IntegrityPanel, type IntegrityActions } from "./integrity-ui";
+import { GradingPanel, type GradingActions } from "./grading-ui";
+import { AnalyticsPanel, type InsightsActions } from "./insights-ui";
 import { DecisionGovernance, type GovernanceDecision } from "./pedagogy-ui";
 
 export interface CockpitData {
@@ -80,7 +82,7 @@ export interface TutorSessionRow {
 }
 
 export interface MemoryRow { id: string; scope: string; key: string; value: string; confidence: number; provenance: string; }
-export interface AssessmentRow { id: string; title: string; description: string; criteria: { id: string; label: string; maxPoints: number; weight: number }[]; }
+export interface AssessmentRow { id: string; title: string; description: string; criteria: { id: string; label: string; maxPoints: number; weight: number; levels?: Record<string, string> | null; mustHave?: string[]; acceptableVariants?: string[]; nonEvidence?: string[] }[]; }
 export interface GradeRow { id: string; totalPoints: number; maxPoints: number; explanation: string; approved: boolean; assessment?: { title: string }; }
 
 const bar = (v: number) => ({ width: `${Math.round(Math.min(1, Math.max(0, v)) * 100)}%` });
@@ -607,6 +609,8 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     memory: MemoryActions;
     assess: AssessActions;
     integrity: IntegrityActions;
+    grading: GradingActions;
+    insights: InsightsActions;
     decisionDetail: (id: string) => Promise<{
       trigger: string; issueType: string; issueDescription: string; severity: string;
       evidence: { type: string; ref: string; result: string; context: string; at: string; invalid?: boolean }[];
@@ -722,16 +726,22 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
         <TutorAgentsPanel setId={setId} concepts={graphConcepts} actions={actions.tutorAgents} isInstructor={isInstructor} />
       )}
       {tab === "grades" && (
-        <GradesPanel assessments={assessments} myGrades={myGrades} isInstructor={isInstructor}
-          onCreateAssessment={(fd) => { fd.set("setId", setId); void actions.createAssessment(fd).then(refresh); }}
-          onGrade={(fd) => void actions.grade(fd).then(refresh)}
-          onAppeal={(fd) => void actions.appeal(fd).then(refresh)} />
+        <>
+          <GradesPanel assessments={assessments} myGrades={myGrades} isInstructor={isInstructor}
+            onCreateAssessment={(fd) => { fd.set("setId", setId); void actions.createAssessment(fd).then(refresh); }}
+            onGrade={(fd) => void actions.grade(fd).then(refresh)}
+            onAppeal={(fd) => void actions.appeal(fd).then(refresh)} />
+          <GradingPanel setId={setId} assessments={assessments} actions={actions.grading} isInstructor={isInstructor} />
+        </>
       )}
       {tab === "materials" && (
         <MaterialsPanel setId={setId} onGenerate={actions.materials} />
       )}
-      {tab === "insights" && dashboard && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
+      {tab === "insights" && (
+        <>
+          <AnalyticsPanel setId={setId} actions={actions.insights} isInstructor={isInstructor} />
+          {dashboard && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13, marginTop: 12 }}>
           <div>Attempts <b>{dashboard.attempts}</b> · avg score <b>{Math.round(dashboard.avgScore * 100)}%</b></div>
           {dashboard.heatmap.map((h) => (
             <div key={h.conceptId} className="nv-card" style={{ fontSize: 13 }}>
@@ -752,7 +762,9 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
             </div>
           ))}
           {dashboard.earlyWarnings.length === 0 && <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No early warnings. All tracked learners above thresholds.</div>}
-        </div>
+          </div>
+          )}
+        </>
       )}
     </div>
   );

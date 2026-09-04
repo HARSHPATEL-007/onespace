@@ -1,0 +1,54 @@
+-- N0VA BOOKLM+EDUCATION Better Grading: rubric contracts, evidence objects, uncertainty, calibration, fairness
+
+ALTER TABLE "Assessment" ADD COLUMN IF NOT EXISTS "rubricVersion" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "Assessment" ADD COLUMN IF NOT EXISTS "rubricFrozen" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Assessment" ADD COLUMN IF NOT EXISTS "gradingMode" TEXT NOT NULL DEFAULT 'co_grading';
+
+ALTER TABLE "RubricCriterion" ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "RubricCriterion" ADD COLUMN IF NOT EXISTS "levels" JSONB;
+ALTER TABLE "RubricCriterion" ADD COLUMN IF NOT EXISTS "mustHave" TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE "RubricCriterion" ADD COLUMN IF NOT EXISTS "acceptableVariants" TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE "RubricCriterion" ADD COLUMN IF NOT EXISTS "nonEvidence" TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE "RubricCriterion" ADD COLUMN IF NOT EXISTS "dependsOn" TEXT[] NOT NULL DEFAULT '{}';
+
+ALTER TABLE "Grade" ADD COLUMN IF NOT EXISTS "uncertainty" DOUBLE PRECISION NOT NULL DEFAULT 0.5;
+ALTER TABLE "Grade" ADD COLUMN IF NOT EXISTS "uncertaintyReasons" TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE "Grade" ADD COLUMN IF NOT EXISTS "scoreLow" DOUBLE PRECISION;
+ALTER TABLE "Grade" ADD COLUMN IF NOT EXISTS "scoreHigh" DOUBLE PRECISION;
+ALTER TABLE "Grade" ADD COLUMN IF NOT EXISTS "reviewStatus" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "Grade" ADD COLUMN IF NOT EXISTS "gradingContext" JSONB;
+ALTER TABLE "Grade" ADD COLUMN IF NOT EXISTS "gradingMode" TEXT NOT NULL DEFAULT 'co_grading';
+
+ALTER TABLE "GradeEvidence" ADD COLUMN IF NOT EXISTS "location" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "GradeEvidence" ADD COLUMN IF NOT EXISTS "supports" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "GradeEvidence" ADD COLUMN IF NOT EXISTS "strength" DOUBLE PRECISION NOT NULL DEFAULT 0.5;
+ALTER TABLE "GradeEvidence" ADD COLUMN IF NOT EXISTS "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0.5;
+ALTER TABLE "GradeEvidence" ADD COLUMN IF NOT EXISTS "reviewStatus" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "GradeEvidence" ADD COLUMN IF NOT EXISTS "subscores" JSONB;
+ALTER TABLE "GradeEvidence" ADD COLUMN IF NOT EXISTS "errorKind" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "GradeEvidence" ADD COLUMN IF NOT EXISTS "diagnosis" TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE "GradeAudit" ADD COLUMN IF NOT EXISTS "previousScore" DOUBLE PRECISION;
+ALTER TABLE "GradeAudit" ADD COLUMN IF NOT EXISTS "newScore" DOUBLE PRECISION;
+ALTER TABLE "GradeAudit" ADD COLUMN IF NOT EXISTS "reason" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "GradeAudit" ADD COLUMN IF NOT EXISTS "learnerNotified" BOOLEAN NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS "CalibrationExample" (
+  "id" TEXT NOT NULL, "workspaceId" TEXT NOT NULL, "assessmentId" TEXT NOT NULL,
+  "response" TEXT NOT NULL, "instructorScores" JSONB NOT NULL, "aiScores" JSONB,
+  "status" TEXT NOT NULL DEFAULT 'pending', "createdById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CalibrationExample_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "CalibrationExample_workspaceId_assessmentId_idx" ON "CalibrationExample"("workspaceId", "assessmentId");
+
+CREATE TABLE IF NOT EXISTS "FairnessAudit" (
+  "id" TEXT NOT NULL, "workspaceId" TEXT NOT NULL, "setId" TEXT,
+  "scope" TEXT NOT NULL DEFAULT '', "dimension" TEXT NOT NULL DEFAULT '',
+  "groups" JSONB, "metrics" JSONB,
+  "finding" TEXT NOT NULL DEFAULT '', "action" TEXT NOT NULL DEFAULT '',
+  "status" TEXT NOT NULL DEFAULT 'open', "createdById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "FairnessAudit_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "FairnessAudit_workspaceId_setId_idx" ON "FairnessAudit"("workspaceId", "setId");
