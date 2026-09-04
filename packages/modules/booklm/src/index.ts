@@ -7,6 +7,14 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { AdaptivePanel, type AdaptActions } from "./adapt-ui";
+export { AdaptiveService, loopPlanSchema, loopRespondSchema, policySchemaAdaptive, overrideSchema } from "./adapt";
+export {
+  nextDifficulty, dimensionToMove, classifyError, REMEDIATION,
+  sequenceModality, planInterleave, estimateGain, buildDiagnostic,
+  scoreElaboration, assembleSession, LADDER, DIFFICULTY_DIMS,
+  type ErrorType, type DifficultyDim,
+} from "./adaptive";
 export {
   decomposeClaims, detectQualifiers, detectCausalOverreach, freshnessScore, FRESHNESS_LAMBDAS,
   compositeRerank, DEFAULT_WEIGHTS, detectQueryType, policyForQueryType,

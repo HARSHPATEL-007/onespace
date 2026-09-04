@@ -6,6 +6,7 @@ import { Button } from "@n0va/ui";
 import { materialsToMarkdown, type MaterialsKind } from "./pure";
 import { classifyContradiction } from "./epistemics";
 import { LearnerGraphPanel, type GraphData, type GraphActions, type GraphConcept } from "./graph-ui";
+import { AdaptivePanel, type AdaptActions } from "./adapt-ui";
 
 export interface CockpitData {
   goal: string; nextAction: string; nextActionReason: string; difficulty: string;
@@ -570,10 +571,11 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     appeal: (fd: FormData) => Promise<void>;
     materials: (setId: string, kind: MaterialsKind) => Promise<unknown>;
     graph: GraphActions;
+    adapt: AdaptActions;
   };
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "grades" | "materials" | "graph" | "insights" | "governance">("evidence");
+  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "grades" | "materials" | "graph" | "adapt" | "insights" | "governance">("evidence");
   const [disOnly, setDisOnly] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<V2Answer | null>(null);
@@ -590,6 +592,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     { id: "evidence", label: "📖 Evidence" },
     { id: "concepts", label: "🕸 Concepts" },
     { id: "graph", label: "🧠 Graph" },
+    { id: "adapt", label: "🎛 Adapt" },
     { id: "tutor", label: "🤖 Tutor" },
     { id: "grades", label: "📝 Grades" },
     { id: "materials", label: "📦 Materials" },
@@ -641,6 +644,9 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
       )}
       {tab === "graph" && !graphData && (
         <div style={{ fontSize: 13, color: "var(--nv-color-text-faint)" }}>Graph data unavailable.</div>
+      )}
+      {tab === "adapt" && (
+        <AdaptivePanel setId={setId} concepts={graphConcepts} actions={actions.adapt} isInstructor={isInstructor} />
       )}
       {tab === "tutor" && (
         <TutorPanel modes={modes} sessions={sessions} memories={memories}

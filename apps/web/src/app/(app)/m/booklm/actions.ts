@@ -7,6 +7,7 @@ import { EvalService } from "@n0va/modules-booklm/eval";
 import { LearnerGraphService, profileSchema, goalSchema, observeSchema, correctionSchema } from "@n0va/modules-booklm/graph";
 import { MisconceptionService, misconceptionSchema } from "@n0va/modules-booklm/misconceptions";
 import { RecommendationService } from "@n0va/modules-booklm/recommend";
+import { AdaptiveService } from "@n0va/modules-booklm/adapt";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -268,6 +269,86 @@ export async function getConceptDetailAction(conceptId: string) {
 export async function getGraphExportAction(level: string) {
   const g = await graphSvc();
   return g.exportGraph({ level });
+}
+
+// --- Adaptive loop ---
+
+const adaptSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new AdaptiveService(workspaceId, userId, role);
+};
+
+export async function adaptPlanAction(conceptId: string, setId: string, minutes = 25) {
+  return (await adaptSvc()).planLoop({ conceptId, setId, minutes });
+}
+
+export async function adaptRespondAction(input: {
+  loopId: string; correct: boolean; answer?: string; responseTimeMs?: number;
+  hintsUsed?: number; confidence?: number; novelty?: number;
+  overridden?: boolean; overrideReason?: string;
+}) {
+  return (await adaptSvc()).respondLoop({
+    loopId: input.loopId, correct: input.correct,
+    answer: input.answer ?? "", reasoning: "",
+    responseTimeMs: input.responseTimeMs ?? 0, hintsUsed: input.hintsUsed ?? 0,
+    confidence: input.confidence ?? 0.5, novelty: input.novelty ?? 0,
+    overridden: input.overridden ?? false, overrideReason: input.overrideReason ?? "",
+  });
+}
+
+export async function adaptStateAction(conceptId: string) {
+  return (await adaptSvc()).stateVector(conceptId);
+}
+
+export async function adaptSessionAction(setId: string, minutes: number) {
+  return (await adaptSvc()).planSession(setId, minutes);
+}
+
+export async function adaptSessionAcceptAction(planId: string, accepted: boolean, modification: string) {
+  await (await adaptSvc()).acceptSessionPlan(planId, accepted, modification);
+}
+
+export async function adaptDueAction() {
+  const due = await (await adaptSvc()).retrievalDue(10);
+  return due.map((d) => ({
+    itemKey: d.itemKey, conceptId: d.conceptId, format: d.format,
+    stabilityDays: d.stabilityDays, retrievability: d.retrievability,
+    nextDue: d.nextDue.toISOString(),
+  }));
+}
+
+export async function adaptAnswerRetrievalAction(itemKey: string, conceptId: string, correct: boolean) {
+  return (await adaptSvc()).answerRetrieval(itemKey, conceptId, correct, 3000, 0);
+}
+
+export async function adaptElaborateAction(conceptId: string, text: string) {
+  return (await adaptSvc()).scoreElaboration(conceptId, text, []);
+}
+
+export async function adaptControlAction(control: string, value: unknown) {
+  return (await adaptSvc()).setControl(control, value);
+}
+
+export async function adaptControlsAction() {
+  return (await adaptSvc()).getControls();
+}
+
+export async function adaptOverrideAction(formData: FormData) {
+  const { overrideSchema } = await import("@n0va/modules-booklm/adapt");
+  const parsed = overrideSchema.parse({
+    setId: String(formData.get("setId") ?? "") || undefined,
+    targetType: String(formData.get("targetType") ?? "concept"),
+    targetId: String(formData.get("targetId") ?? ""),
+    kind: String(formData.get("kind") ?? "SET_LEVEL"),
+    reason: String(formData.get("reason") ?? ""),
+    scope: String(formData.get("scope") ?? "CONCEPT"),
+    expiresInDays: formData.get("expiresInDays") ? Number(formData.get("expiresInDays")) : undefined,
+  });
+  await (await adaptSvc()).createOverride(parsed);
+}
+
+export async function adaptInterleaveAction(setId: string, level: "low" | "moderate" | "high") {
+  return (await adaptSvc()).interleaveSet(setId, level);
 }
 
 export async function seedConceptsAction(formData: FormData) {

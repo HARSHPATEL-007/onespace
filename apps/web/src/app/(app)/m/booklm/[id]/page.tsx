@@ -8,7 +8,7 @@ import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction } from "../actions";
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -124,6 +124,20 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             undo: graphUndoAction,
             conceptDetail: getConceptDetailAction,
             exportGraph: getGraphExportAction,
+          },
+          adapt: {
+            plan: adaptPlanAction,
+            respond: adaptRespondAction,
+            state: adaptStateAction,
+            session: adaptSessionAction,
+            sessionAccept: adaptSessionAcceptAction,
+            due: adaptDueAction,
+            answerRetrieval: adaptAnswerRetrievalAction,
+            elaborate: adaptElaborateAction,
+            controls: adaptControlsAction,
+            setControl: adaptControlAction,
+            interleave: adaptInterleaveAction,
+            override: adaptOverrideAction,
           },
         }}
       />

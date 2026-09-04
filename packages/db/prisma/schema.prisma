@@ -433,6 +433,13 @@ model Workspace {
   conceptDependencies          ConceptDependency[]
   recommendations              Recommendation[]
   graphCorrections             GraphCorrection[]
+  adaptiveLoops                AdaptiveLoop[]
+  difficultyStates             DifficultyState[]
+  retrievalItems               RetrievalItem[]
+  adaptivePolicies             AdaptivePolicy[]
+  instructorOverrides          InstructorOverride[]
+  sessionPlans                 SessionPlan[]
+  modalityEffects              ModalityEffect[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -4117,6 +4124,190 @@ model LearnerMastery {
   @@index([workspaceId, userId, status])
 }
 
+/// N0VA BOOKLM+EDUCATION Adaptive Loop — closed-loop pedagogical control.
+enum OverrideKind {
+  SET_LEVEL
+  LOCK_DIFFICULTY
+  ASSIGN_REPAIR_PATH
+  EXEMPT_CONCEPT
+  FORCE_MODALITY
+  CUSTOM_MISCONCEPTION_RULE
+  MARK_VERIFIED
+  PAUSE_PERSONALIZATION
+  RESTORE_STATE
+}
+
+enum OverrideScope {
+  CONCEPT
+  COURSE
+  PROFILE
+  GLOBAL
+}
+
+/// Closed-loop adaptive learning: observe → diagnose → intervene → measure.
+/// Every loop records state before/after, evidence, strategy, alternatives,
+/// response, estimated gain, overrides, and model/policy/curriculum versions.
+model AdaptiveLoop {
+  id               String   @id @default(uuid())
+  workspaceId      String
+  setId            String?
+  conceptId        String?
+  userId           String
+  stateBefore      Json?
+  evidence         String[] @default([])
+  strategy         String   @default("")
+  alternatives     String[] @default([])
+  contentRef       String   @default("")
+  difficulty       Json?
+  response         Json?
+  learningGain     Float?
+  gainConfidence   Float    @default(0.5)
+  overriddenById   String?
+  overrideReason   String   @default("")
+  modelVersion     String   @default("")
+  policyVersion    String   @default("")
+  curriculumVersion String  @default("")
+  createdAt        DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, conceptId])
+  @@index([workspaceId, setId])
+}
+
+/// Per-learner per-concept difficulty state: ladder level 0-9 plus the
+/// 13 difficulty dimensions, so one dimension moves without flattening all.
+model DifficultyState {
+  id          String   @id @default(uuid())
+  workspaceId String
+  conceptId   String
+  userId      String
+  level       Int      @default(1)
+  dims        Json?
+  targetBand  Float    @default(0.75)
+  eta         Float    @default(0.4)
+  mu          Float    @default(0.3)
+  nu          Float    @default(0.2)
+  locked      Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, conceptId, userId])
+  @@index([workspaceId, userId])
+}
+
+/// Item-level retrieval memory state (stability/retrievability scheduler).
+model RetrievalItem {
+  id            String    @id @default(uuid())
+  workspaceId   String
+  setId         String?
+  conceptId     String
+  userId        String
+  itemKey       String
+  stabilityDays Float     @default(1)
+  retrievability Float    @default(0.5)
+  difficulty    Float     @default(0.5)
+  lastAttempt   DateTime?
+  nextDue       DateTime  @default(now())
+  contextCount  Int       @default(0)
+  transferCount Int       @default(0)
+  scheduleType  String    @default("expanding")
+  format        String    @default("recall")
+  successes     Int       @default(0)
+  attempts      Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, conceptId, userId, itemKey])
+  @@index([workspaceId, userId, nextDue])
+}
+
+/// Instructor-configured adaptive policy per course (set).
+model AdaptivePolicy {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  setId               String
+  difficultyMin       Int      @default(0)
+  difficultyMax       Int      @default(9)
+  prereqThreshold     Float    @default(0.4)
+  hintLimit           Int      @default(3)
+  masteryDefinition   Json?
+  transferRequired    Boolean  @default(true)
+  minIntervalHours    Int      @default(12)
+  interleaving        Json?
+  accommodations      Json?
+  escalationThreshold Int      @default(3)
+  externalAllowed     Boolean  @default(true)
+  weights             Json?
+  highStakesReview    Boolean  @default(false)
+  version             Int      @default(1)
+  updatedById         String?
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, setId])
+}
+
+/// Instructor overrides with reason, author, timestamp, scope, expiration.
+model InstructorOverride {
+  id         String        @id @default(uuid())
+  workspaceId String
+  setId      String?
+  targetType String
+  targetId   String
+  kind       OverrideKind
+  payload    Json?
+  reason     String
+  authorId   String
+  scope      OverrideScope @default(CONCEPT)
+  expiresAt  DateTime?
+  active     Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, targetId, active])
+}
+
+/// Transparent session plans: generated, learner-modifiable, accepted.
+model SessionPlan {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  setId        String?
+  userId       String
+  plan         Json
+  rationale    String[] @default([])
+  accepted     Boolean  @default(false)
+  modification String   @default("")
+  createdAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId])
+}
+
+/// Modality effectiveness per learner×concept (never a fixed trait).
+model ModalityEffect {
+  id        String   @id @default(uuid())
+  workspaceId String
+  conceptId String?
+  userId    String
+  modality  String
+  gainSum   Float    @default(0)
+  trials    Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, conceptId, userId, modality])
+  @@index([workspaceId, userId])
+}
+
 /// Learner-controlled profiles: academic, role, certification, project,
 /// language, research, teaching, personal-interest, accessibility, intensive.
 model LearnerProfile {
@@ -4135,6 +4326,7 @@ model LearnerProfile {
   privacy     Json?
   isDefault   Boolean   @default(false)
   expiresAt   DateTime?
+  preferences Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
