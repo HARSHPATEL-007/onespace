@@ -9,6 +9,10 @@ export interface WorkbenchQueryResult {
   plan: QueryPlan;
   results: EvidenceCard[];
   graph_paths: { nodes: string[]; relations: string[]; reason: string; evidence: string; confidence: number }[];
+  prerequisite_chains?: { hops: { label: string; relation: string; evidence: string }[]; reason: string }[];
+  citation_paths?: { from: string; relation: string; to: string; evidence: string }[];
+  contradictions?: { group: string; supporting: string; contradicting: string; location: string }[];
+  study_path?: { next: { conceptId: string; key: string; label: string; mastery: number | null; blockedBy: string[]; reason: string }[]; deferred: { conceptId: string; key: string; label: string; mastery: number | null; blockedBy: string[]; reason: string }[] } | null;
   temporal_comparisons: { document_id: string; oldStatus: string; newStatus: string; changed: boolean; summary: string; oldExcerpt: string; newExcerpt: string }[];
   federated_unavailable: string[];
   refused: boolean;
@@ -132,6 +136,46 @@ export function RetrievalWorkbench({ setId, actions }: { setId: string; actions:
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+          {(result.prerequisite_chains ?? []).length > 0 && (
+            <div data-testid="prerequisite-chains">
+              <h4>Prerequisite chains</h4>
+              <ul>
+                {(result.prerequisite_chains ?? []).map((ch, i) => (
+                  <li key={i}>
+                    {ch.hops.map((h) => h.label).join(" → ")} — {ch.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(result.contradictions ?? []).length > 0 && (
+            <div data-testid="contradictions">
+              <h4>Contradictions — both sides, not averaged</h4>
+              <ul>
+                {(result.contradictions ?? []).map((c, i) => (
+                  <li key={i}>
+                    <strong>{c.group}</strong> ({c.location}): supports “{c.supporting.slice(0, 120)}” vs contradicts
+                    “{c.contradicting.slice(0, 120)}”
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {result.study_path && (result.study_path.next.length > 0 || result.study_path.deferred.length > 0) && (
+            <div data-testid="study-path">
+              <h4>What to study next</h4>
+              <ol>
+                {result.study_path.next.map((n) => (
+                  <li key={n.conceptId}>
+                    {n.label} — {n.reason}
+                  </li>
+                ))}
+              </ol>
+              {result.study_path.deferred.length > 0 && (
+                <p>Later, once unblocked: {result.study_path.deferred.map((d) => d.label).join(", ")}</p>
+              )}
             </div>
           )}
           {result.temporal_comparisons.length > 0 && (

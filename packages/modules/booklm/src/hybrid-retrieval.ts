@@ -75,6 +75,12 @@ export const metadataFilterSchema = z.object({
   access: z.string().optional(),
   artifact_types: z.array(z.string()).default([]),
   learner_enrollment: z.string().optional(),
+  geo_within: z.object({
+    lat_min: z.number(),
+    lat_max: z.number(),
+    lon_min: z.number(),
+    lon_max: z.number(),
+  }).optional(),
 });
 
 export const temporalQuerySchema = z.object({
@@ -718,6 +724,138 @@ export function sanitizeForRender<T extends { title?: string; text?: string; sou
 }
 
 // ---------------------------------------------------------------------------
+// Second-stage joint rerank + definitional (glossary-style) boost.
+// ---------------------------------------------------------------------------
+
+/**
+ * Joint query–document scorer used as a second-stage rerank over fused
+ * candidates. Deterministic feature proxy for a cross-encoder: it scores the
+ * (query, passage) pair jointly — exact-phrase hits, query-term coverage,
+ * and source reliability — rather than reusing the independent per-signal
+ * similarities from fusion. Blended as 0.7·fusion + 0.3·joint.
+ */
+export function jointRerankScore(query: string, text: string, sourceReliability = 0.5): number {
+  const qLow = query.toLowerCase();
+  const tLow = text.toLowerCase();
+  const terms = [...new Set(qLow.split(/[^a-z0-9]+/).filter((t) => t.length > 2))];
+  if (terms.length === 0) return 0;
+  const quoted = [...qLow.matchAll(/"([^"]+)"/g)].map((m) => m[1]!).filter(Boolean);
+  let phrase = 0;
+  for (const ph of quoted) if (tLow.includes(ph)) phrase += 1;
+  const phraseScore = quoted.length > 0 ? Math.min(1, phrase / quoted.length) : 0;
+  let covered = 0;
+  for (const t of terms) if (tLow.includes(t)) covered++;
+  const coverage = covered / terms.length;
+  const rel = Math.max(0, Math.min(1, sourceReliability));
+  // Long passages dilute: prefer the tightest span carrying the terms.
+  const brevity = Math.max(0.4, 1 - Math.max(0, text.length - 300) / 2000);
+  const r = 0.45 * phraseScore + 0.3 * coverage + 0.15 * rel + 0.1 * brevity;
+  return Math.round(Math.max(0, Math.min(1, r)) * 1000) / 1000;
+}
+
+const DEFINITIONAL_RES = [
+  /\b(is|are)\s+(a|an|the)\b/i,
+  /\bmeans?\b/i,
+  /\brefers?\s+to\b/i,
+  /\bdefined?\s+as\b/i,
+  /\bdescribes?\b/i,
+];
+
+/**
+ * Glossary-style boost for exact-definition intents. Rewards passages that
+ * state a definition of a query term ("X is a …", "X means …") without any
+ * glossary index: +0.1 flat when a definitional pattern wraps a query term.
+ * Never overrides quoted phrases — it only fires on the term itself.
+ */
+export function definitionalBonus(query: string, text: string): { bonus: number; label: string | null } {
+  const terms = [...new Set(query.toLowerCase().replace(/"[^"]*"/g, " ").split(/[^a-z0-9]+/).filter((t) => t.length > 3))];
+  if (terms.length === 0) return { bonus: 0, label: null };
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  for (const s of sentences) {
+    const low = s.toLowerCase();
+    if (!DEFINITIONAL_RES.some((re) => re.test(s))) continue;
+    if (terms.some((t) => new RegExp(`\\b${t}\\b`, "i").test(low))) {
+      return { bonus: 0.1, label: "Glossary-style definition" };
+    }
+  }
+  return { bonus: 0, label: null };
+}
+
+export interface StudyPathNode {
+  conceptId: string;
+  key: string;
+  label: string;
+  mastery: number | null;
+  blockedBy: string[];
+  reason: string;
+}
+
+export interface StudyPath {
+  next: StudyPathNode[];
+  deferred: StudyPathNode[];
+}
+
+/**
+ * "What should I study next" path builder (pure). Candidates are concepts
+ * with unknown or sub-threshold mastery (< 0.7). A concept is `next` when
+ * every prerequisite is met (mastery ≥ 0.7 or no recorded mastery row yet
+ * treated as unblocked only when it has no prerequisite edges at all);
+ * otherwise it lands in `deferred` naming its blockers. Misconception-flagged
+ * concepts sort first — repair before advance. Historical mistakes are an
+ * input signal here, never a permanent label: only current mastery rows count.
+ */
+export function buildStudyPath(
+  concepts: { id: string; key: string; label: string }[],
+  prereqEdges: { from: string; to: string }[],
+  mastery: Map<string, { mastery: number; misconceptionFlag?: boolean }>,
+  limit = 5,
+): StudyPath {
+  const prereqsOf = new Map<string, string[]>();
+  for (const e of prereqEdges) {
+    const arr = prereqsOf.get(e.to) ?? [];
+    arr.push(e.from);
+    prereqsOf.set(e.to, arr);
+  }
+  const labelOf = new Map(concepts.map((c) => [c.id, c.label]));
+  const next: (StudyPathNode & { flag: boolean; m: number })[] = [];
+  const deferred: StudyPathNode[] = [];
+  for (const c of concepts) {
+    const m = mastery.get(c.id);
+    const level = m?.mastery ?? null;
+    if (level != null && level >= 0.7 && !m?.misconceptionFlag) continue; // already known
+    const prereqs = prereqsOf.get(c.id) ?? [];
+    const blockers = prereqs.filter((p) => {
+      const pm = mastery.get(p)?.mastery;
+      return pm == null || pm < 0.7;
+    });
+    if (blockers.length === 0) {
+      const noEdges = prereqs.length === 0;
+      next.push({
+        conceptId: c.id, key: c.key, label: c.label,
+        mastery: level, blockedBy: [],
+        reason: m?.misconceptionFlag
+          ? "Misconception flagged — repair this before advancing"
+          : noEdges
+            ? "Foundational — unlocks downstream topics"
+            : "Prerequisites met — ready to study next",
+        flag: !!m?.misconceptionFlag, m: level ?? 0,
+      });
+    } else {
+      deferred.push({
+        conceptId: c.id, key: c.key, label: c.label,
+        mastery: level, blockedBy: blockers.map((b) => labelOf.get(b) ?? b),
+        reason: `Needs prerequisite${blockers.length > 1 ? "s" : ""} first: ${blockers.map((b) => labelOf.get(b) ?? b).join(", ")}`,
+      });
+    }
+  }
+  next.sort((a, b) => (b.flag ? 1 : 0) - (a.flag ? 1 : 0) || a.m - b.m);
+  return {
+    next: next.slice(0, limit).map(({ flag: _f, m: _m, ...n }) => n),
+    deferred: deferred.slice(0, limit),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Personalization — allowlist only, with explanation + global fallback.
 // ---------------------------------------------------------------------------
 
@@ -939,6 +1077,7 @@ export function applyDeepFilterGate(
     access?: string;
   },
   scopeSetId?: string,
+  geoRequested = false,
 ): { kept: ScoredCard[]; report: DeepFilterReport } {
   const report: DeepFilterReport = { excluded: 0, excludedBy: [], unverified: [], enforced: ["acl", "workspace"] };
   const langs = (filters.language ?? []).map((l) => l.toLowerCase());
@@ -951,6 +1090,9 @@ export function applyDeepFilterGate(
   // Approval status has no backing field on SourceDocument (its `status` is
   // ingest state) — report as unverified instead of fake-enforcing.
   report.unverified.push("status: no approval field on indexed documents — workspace scoping + ACL enforced instead");
+  if (geoRequested) {
+    report.unverified.push("geo: indexed units carry no coordinates — bounding-box filter not enforced");
+  }
 
   const kept: ScoredCard[] = [];
   for (const c of cards) {
@@ -1020,8 +1162,10 @@ export class HybridRetrievalService {
       ...(req.scope.setId ? { setId: req.scope.setId } : {}),
     };
 
+    // Study-next intents also load mastery + prereq edges for the path planner.
+    const wantStudyPath = plan.intent === "study_next";
     // Parallel retrieval across specialized indexes.
-    const [keyword, vector, tables, formulas, images, media, codeRes, citations, graph, savedSources] = await Promise.all([
+    const [keyword, vector, tables, formulas, images, media, codeRes, citations, graph, savedSources, citeGraph, studyPath] = await Promise.all([
       this.keywordUnits(req.query, scopeFilter, req.limit),
       this.vectorUnits(req.query, scopeFilter, req.limit),
       req.modalities.includes("table") || req.modalities.includes("text") || req.modalities.includes("lab") ? this.tableUnits(req.query, scopeFilter) : Promise.resolve([] as ScoredCard[]),
@@ -1032,6 +1176,8 @@ export class HybridRetrievalService {
       this.citationUnits(req.query, scopeFilter, req.limit),
       this.graphContext(req.query, req.scope.setId),
       this.savedSourceIds(req.scope.setId),
+      this.citationContext(req.scope.setId),
+      wantStudyPath ? this.studyPathContext(req.scope.setId) : Promise.resolve(null),
     ]);
     const graphPath = graph.score;
 
@@ -1093,10 +1239,19 @@ export class HybridRetrievalService {
       citations.map((c) => c.unit.chunk_id),
     ]).map((r) => [r.id, r.score]));
 
+    // Second-stage joint rerank (0.7·fusion + 0.3·joint) + glossary-style
+    // boost for exact-definition intents.
+    const wantDefinition = plan.intent === "exact_definition";
     for (const c of all) {
       const rrfBoost = Math.min(0.2, (rrf.get(c.unit.chunk_id) ?? 0) * 2);
-      c.score = Math.round(Math.min(1, fusionScore(c.signals, this.weights) + rrfBoost) * 1000) / 1000;
-      c.why = [...explainResult(c.signals), ...c.why.filter((w) => w.startsWith("You are seeing"))];
+      const base = Math.min(1, fusionScore(c.signals, this.weights) + rrfBoost);
+      const joint = jointRerankScore(req.query, c.unit.text, c.unit.source_reliability);
+      const def = wantDefinition ? definitionalBonus(req.query, c.unit.text) : { bonus: 0, label: null as string | null };
+      c.score = Math.round(Math.min(1, 0.7 * base + 0.3 * joint + def.bonus) * 1000) / 1000;
+      const extra: string[] = [];
+      if (joint >= 0.6) extra.push("Joint rerank: exact terms + source reliability");
+      if (def.label) extra.push(def.label);
+      c.why = [...explainResult(c.signals), ...extra, ...c.why.filter((w) => w.startsWith("You are seeing"))];
     }
 
     // Permission + source filtering (query time). Restricted items are dropped
@@ -1107,14 +1262,14 @@ export class HybridRetrievalService {
     // Deep metadata pre-rank gate: hard constraints (language, validity
     // window, course/institution scope, artifact types) before MMR/diversity.
     const gated = applyDeepFilterGate(permitted, {
-      institution_id: req.filters.institution_id,
+      institution_id: req.filters.institution_id ?? req.scope.institution_id,
       course_id: req.filters.course_id ?? req.scope.course_id,
       language: req.filters.language ?? [],
       status: req.filters.status,
       artifact_types: req.filters.artifact_types ?? [],
       valid_at: req.filters.valid_at ?? req.time.valid_at,
       access: req.filters.access,
-    }, req.scope.setId);
+    }, req.scope.setId, !!req.filters.geo_within);
     const filtered = gated.kept;
 
     // Redundancy control: penalize near-duplicate evidence spans.
@@ -1136,11 +1291,15 @@ export class HybridRetrievalService {
     );
 
     // Temporal status labels + stale penalty already in S(d,q).
+    // Contradiction notes from the citation graph flip the card's
+    // contradiction field so both sides stay visible.
     for (const c of diverse) {
       c.validity = temporalLabel({
         validFrom: c.unit.valid_time.from, validUntil: c.unit.valid_time.until,
         isLatest: !c.unit.version.includes("superseded"),
       });
+      const contra = c.citation.id ? citeGraph.notesByCitationId.get(c.citation.id) : undefined;
+      if (contra) c.contradictions = contra;
     }
 
     const cards: EvidenceCard[] = diverse.map(({ signals: _s, unit: _u, meta: _m, ...card }) => card);
@@ -1160,6 +1319,10 @@ export class HybridRetrievalService {
         nodes: p.nodes, relations: p.relations,
         reason: p.reason, evidence: p.evidence, confidence: p.confidence,
       })),
+      prerequisite_chains: graph.chains,
+      citation_paths: citeGraph.paths,
+      contradictions: citeGraph.contradictions,
+      study_path: studyPath,
       temporal_comparisons: temporalComparisons,
       federated: federated.slice(0, req.limit).map((h) => ({
         repository: h.repository, document_id: h.document_id, title: h.title,
@@ -1172,6 +1335,9 @@ export class HybridRetrievalService {
         leaksPrevented,
         filter_report: gated.report,
         graph_path_count: graph.paths.length,
+        prerequisite_chain_count: graph.chains.length,
+        citation_path_count: citeGraph.paths.length,
+        contradiction_count: citeGraph.contradictions.length,
         secrets_redacted: secretsRedacted,
         federated_duplicates_collapsed: federatedDuplicatesCollapsed,
         validation,
@@ -1593,7 +1759,11 @@ export class HybridRetrievalService {
    * expose pH → logarithmic scale → logarithms with reason and evidence —
    * never causality inferred from proximity alone.
    */
-  private async graphContext(query: string, setId?: string): Promise<{ score: number; paths: GraphPath[] }> {
+  private async graphContext(query: string, setId?: string): Promise<{
+    score: number;
+    paths: GraphPath[];
+    chains: { hops: { label: string; relation: string; evidence: string }[]; reason: string }[];
+  }> {
     try {
       const concepts = await prisma.learnerConcept.findMany({
         where: { workspaceId: this.workspaceId, ...(setId ? { setId } : {}) }, take: 50,
@@ -1602,7 +1772,7 @@ export class HybridRetrievalService {
       const hit = concepts.find((c) =>
         low.includes(c.label.toLowerCase()) || low.includes(c.key.replace(/-/g, " ")),
       );
-      if (!hit) return { score: 0, paths: [] };
+      if (!hit) return { score: 0, paths: [], chains: [] };
       const edges = await prisma.conceptEdge.findMany({ where: { workspaceId: this.workspaceId }, take: 200 }).catch(() => []);
       // Map the Prisma enum to the retrieval relation vocabulary exactly —
       // the old lowercase-and-dash fold produced invalid relations.
@@ -1616,6 +1786,8 @@ export class HybridRetrievalService {
         }
       };
       const nodes = new Map(concepts.map((c) => [c.id, { id: c.id, label: c.label, kind: String(c.kind) }]));
+      const labelOf = new Map(concepts.map((c) => [c.id, c.label]));
+      const descOf = new Map(concepts.map((c) => [c.id, (c.description ?? "").slice(0, 200)]));
       const gEdges: GraphEdge[] = edges.map((e) => ({
         from: e.fromId, to: e.toId,
         relation: relOf(String(e.relation)),
@@ -1634,9 +1806,126 @@ export class HybridRetrievalService {
         if (p) paths.push(p);
         if (paths.length >= 5) break;
       }
-      return { score: Math.min(0.9, 0.4 + 0.15 * neighborIds.length), paths };
+      // Multi-hop prerequisite chains: walk backwards from the hit along
+      // prerequisite-of edges (hit ← … ← foundation), depth ≤ 3. Answers
+      // "why do I need X before Y" with per-hop evidence, not proximity.
+      const pred = new Map<string, { from: string; conf: number }[]>();
+      for (const e of gEdges) {
+        if (e.relation !== "prerequisite-of") continue;
+        const arr = pred.get(e.to) ?? [];
+        arr.push({ from: e.from, conf: e.confidence });
+        pred.set(e.to, arr);
+      }
+      const chains: { hops: { label: string; relation: string; evidence: string }[]; reason: string }[] = [];
+      const queue: { id: string; trail: string[] }[] = [{ id: hit.id, trail: [hit.id] }];
+      const seenChain = new Set<string>([hit.id]);
+      while (queue.length > 0 && chains.length < 3) {
+        const cur = queue.shift()!;
+        const pres = (pred.get(cur.id) ?? []).sort((a, b) => b.conf - a.conf);
+        for (const p of pres) {
+          if (seenChain.has(p.from)) continue;
+          seenChain.add(p.from);
+          const trail = [...cur.trail, p.from];
+          // Present foundation → target.
+          const ordered = [...trail].reverse();
+          chains.push({
+            hops: ordered.map((id, i) => ({
+              label: labelOf.get(id) ?? id,
+              relation: i === 0 ? "foundation" : "prerequisite-of",
+              evidence: descOf.get(id) || "No course description indexed for this concept.",
+            })),
+            reason: "Prerequisite chain — each step unlocks the next; study foundation-first.",
+          });
+          if (chains.length >= 3) break;
+          if (trail.length <= 3) queue.push({ id: p.from, trail });
+        }
+      }
+      return { score: Math.min(0.9, 0.4 + 0.15 * neighborIds.length), paths, chains };
     } catch {
-      return { score: 0, paths: [] };
+      return { score: 0, paths: [], chains: [] };
+    }
+  }
+
+  /**
+   * Citation-graph context: supports / contradicts / qualifies / cited-by
+   * edges between evidence citations. Groups citations by their target
+   * (source document → item → claim head) and surfaces SUPPORTS-vs-
+   * CONTRADICTS collisions as contradictions with both quotes — surfaced,
+   * never averaged.
+   */
+  private async citationContext(setId?: string): Promise<{
+    paths: { from: string; relation: string; to: string; evidence: string }[];
+    contradictions: { group: string; supporting: string; contradicting: string; location: string }[];
+    notesByCitationId: Map<string, string>;
+  }> {
+    try {
+      const cites = await prisma.evidenceCitation.findMany({
+        where: { workspaceId: this.workspaceId, ...(setId ? { setId } : {}) }, take: 200,
+      }).catch(() => []);
+      const paths: { from: string; relation: string; to: string; evidence: string }[] = [];
+      const byGroup = new Map<string, typeof cites>();
+      for (const c of cites) {
+        const key = c.sourceDocId ?? c.itemId ?? c.claim.slice(0, 40);
+        const arr = byGroup.get(key) ?? [];
+        arr.push(c);
+        byGroup.set(key, arr);
+        if (c.itemId) {
+          paths.push({
+            from: `item:${c.itemId}`,
+            relation: String(c.support).toLowerCase(),
+            to: `doc:${c.sourceDocId ?? c.id}`,
+            evidence: (c.quote || c.claim).slice(0, 200),
+          });
+        }
+      }
+      const contradictions: { group: string; supporting: string; contradicting: string; location: string }[] = [];
+      const notesByCitationId = new Map<string, string>();
+      for (const [key, group] of byGroup) {
+        if (group.length < 2) continue;
+        const sup = group.find((c) => c.support === "SUPPORTS");
+        const con = group.find((c) => c.support === "CONTRADICTS" || c.support === "QUALIFIES");
+        if (!sup || !con) continue;
+        const label = sup.sourceTitle || sup.claim.slice(0, 60) || key;
+        contradictions.push({
+          group: label,
+          supporting: (sup.quote || sup.claim).slice(0, 240),
+          contradicting: (con.quote || con.claim).slice(0, 240),
+          location: `Page ${sup.locatorPage ?? "?"}${sup.locatorHeading ? `, ${sup.locatorHeading}` : ""}`,
+        });
+        for (const c of group) {
+          notesByCitationId.set(c.id, `Contradiction flagged in "${label}" — both sides surfaced, not averaged`);
+        }
+        if (contradictions.length >= 3) break;
+      }
+      return { paths: paths.slice(0, 20), contradictions, notesByCitationId };
+    } catch {
+      return { paths: [], contradictions: [], notesByCitationId: new Map() };
+    }
+  }
+
+  /**
+   * Study-next context: current mastery rows + prerequisite edges through
+   * the pure buildStudyPath planner. Only loaded for study_next intents.
+   */
+  private async studyPathContext(setId?: string): Promise<StudyPath | null> {
+    try {
+      const [concepts, edges, masteryRows] = await Promise.all([
+        prisma.learnerConcept.findMany({ where: { workspaceId: this.workspaceId, ...(setId ? { setId } : {}) }, take: 100 }).catch(() => []),
+        prisma.conceptEdge.findMany({ where: { workspaceId: this.workspaceId }, take: 300 }).catch(() => []),
+        prisma.learnerMastery.findMany({ where: { workspaceId: this.workspaceId, userId: this.userId }, take: 200 }).catch(() => []),
+      ]);
+      if (concepts.length === 0) return null;
+      const prereqEdges = edges
+        .filter((e) => e.relation === "PREREQUISITE" || e.relation === "UNLOCKS")
+        .map((e) => ({ from: e.fromId, to: e.toId }));
+      const mastery = new Map(masteryRows.map((m) => [m.conceptId, { mastery: m.mastery, misconceptionFlag: m.misconceptionFlag }]));
+      return buildStudyPath(
+        concepts.map((c) => ({ id: c.id, key: c.key, label: c.label })),
+        prereqEdges,
+        mastery,
+      );
+    } catch {
+      return null;
     }
   }
 }
