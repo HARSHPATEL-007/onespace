@@ -11,6 +11,7 @@ import { AdaptiveService } from "@n0va/modules-booklm/adapt";
 import { OrchestratorService, runTurnSchema, modePolicySchema } from "@n0va/modules-booklm/orchestrate";
 import { MemoryService } from "@n0va/modules-booklm/memories";
 import { DecisionService } from "@n0va/modules-booklm/decisions";
+import { AssessProfileService } from "@n0va/modules-booklm/assess-profile";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -568,6 +569,74 @@ export async function decisionEducatorAction(formData: FormData) {
 
 export async function decisionMetricsAction(setId: string) {
   return (await decSvc()).metrics(setId);
+}
+
+// --- Deep assessment profile ---
+
+const assessSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new AssessProfileService(workspaceId, userId, role);
+};
+
+export async function assessProfileAction(setId: string, conceptKey?: string) {
+  return (await assessSvc()).profile(setId, conceptKey);
+}
+
+export async function assessLogEvidenceAction(input: {
+  setId: string; conceptKey: string; conceptId?: string; dimension: string;
+  score: number; correct?: boolean; supportLevel?: string; condition?: string;
+  transferLevel?: number; prompt?: string; answer?: string; confidence?: number;
+  reasonableMethod?: boolean;
+}) {
+  const { evidenceSchema } = await import("@n0va/modules-booklm/assess-profile");
+  const parsed = evidenceSchema.parse({
+    setId: input.setId, conceptKey: input.conceptKey, conceptId: input.conceptId,
+    dimension: input.dimension, score: input.score, correct: input.correct ?? input.score >= 0.6,
+    supportLevel: input.supportLevel ?? "independent", condition: input.condition ?? "unspecified",
+    transferLevel: input.transferLevel, prompt: input.prompt ?? "", answer: input.answer ?? "",
+    confidence: input.confidence ?? 0.5, reasonableMethod: input.reasonableMethod ?? true,
+  });
+  return (await assessSvc()).recordEvidence(parsed);
+}
+
+export async function assessReportsAction(setId: string, conceptKey: string, conceptLabel: string) {
+  const s = await assessSvc();
+  const [learner, educator, sequence] = await Promise.all([
+    s.learnerReport(setId, conceptKey, conceptLabel),
+    s.educatorReport(setId, conceptKey, conceptLabel),
+    s.sequence(setId, conceptKey),
+  ]);
+  return { learner, educator, sequence };
+}
+
+export async function assessBlueprintAction(formData: FormData) {
+  const { blueprintSchema } = await import("@n0va/modules-booklm/assess-profile");
+  const weights: Record<string, number> = {};
+  const minimums: Record<string, number> = {};
+  for (const [k, v] of formData.entries()) {
+    const key = String(k);
+    if (key.startsWith("w_")) weights[key.slice(2)] = Number(v) || 0;
+    if (key.startsWith("m_")) minimums[key.slice(2)] = Math.max(0, parseInt(String(v), 10) || 0);
+  }
+  const parsed = blueprintSchema.parse({
+    setId: String(formData.get("setId") ?? ""),
+    objective: String(formData.get("objective") ?? ""),
+    weights, minimums,
+  });
+  await (await assessSvc()).upsertBlueprint(parsed);
+}
+
+export async function assessBlueprintsAction(setId: string) {
+  const rows = await (await assessSvc()).listBlueprints(setId);
+  return rows.map((r) => ({
+    id: r.id, objective: r.objective,
+    weights: (r.weights ?? {}) as Record<string, number>,
+    minimums: (r.minimums ?? {}) as Record<string, number>,
+  }));
+}
+
+export async function assessBlueprintCheckAction(setId: string, objective: string) {
+  return (await assessSvc()).blueprintCheck(setId, objective);
 }
 
 export async function decisionDetailAction(id: string) {

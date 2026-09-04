@@ -7,6 +7,8 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { AssessmentProfilePanel, type AssessActions } from "./assess-ui";
+export { AssessProfileService, evidenceSchema, blueprintSchema } from "./assess-profile";
 export { ExplanationCard, DecisionQueue, EducatorDecisionPanel, DecisionMetricsView, DecisionGovernance, type DecisionCardData } from "./pedagogy-ui";
 export { DecisionService, pedagogyDecisionSchema, reviewSchema, evidenceItemSchema, alternativeSchema } from "./decisions";
 export { MemoryCenterPanel, type MemoryActions, type MemoryCard } from "./memory-ui";
@@ -29,6 +31,12 @@ export {
   mustShowAlternatives, adaptationRecord, governanceChecks, outcomeQuality,
   type IssueType, type EvidenceKind, type StrategyFit, type ConfidenceBand,
 } from "./pedagogy";
+export {
+  ASSESS_DIMS, DIM_QUESTIONS, scoreDimension, PROJECT_WEIGHTS, scoreProject,
+  calibrationError, aggregateDimension, conditionSplit, decisionRule,
+  ASSESS_SEQUENCE, validateBlueprint, compositeGrade,
+  type AssessDim,
+} from "./assess-dims";
 export {
   classifyDocSpan, trustRank, injectionScan, confidenceLevelFor,
   canTransition, scopeRank, mayPromoteScope, retrievalOrder, rankMemories,

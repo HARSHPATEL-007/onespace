@@ -451,6 +451,7 @@ model Workspace {
   teachingModePolicies         TeachingModePolicy[]
   decisionRecords              DecisionRecord[]
   decisionReviews              DecisionReview[]
+  assessmentBlueprints         AssessmentBlueprint[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -4530,6 +4531,8 @@ model QuizAttempt {
   accommodation  String          @default("")
   startedAt      DateTime        @default(now())
   submittedAt    DateTime?
+  dimension      String          @default("")
+  condition      Json?
 
   workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   set       LearningSet    @relation(fields: [setId], references: [id], onDelete: Cascade)
@@ -4549,10 +4552,34 @@ model QuizResponse {
   responseTimeMs Int     @default(0)
   confidence     Float   @default(0.5)
   conceptKey     String  @default("")
+  dimension      String  @default("")
+  subscores      Json?
+  supportLevel   String  @default("independent")
+  transferLevel  Int?
+  conditionLabel String  @default("")
 
   attempt QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   @@index([attemptId])
+}
+
+/// Assessment blueprints: educator-defined dimension weights + minimum
+/// evidence requirements per learning objective. Weights are chosen by
+/// educators, never invented by the tutor.
+model AssessmentBlueprint {
+  id          String   @id @default(uuid())
+  workspaceId String
+  setId       String
+  objective   String
+  weights     Json
+  minimums    Json
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, setId, objective])
 }
 
 /// Multi-agent tutor sessions with explicit orchestration + memory controls.

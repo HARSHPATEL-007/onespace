@@ -8,7 +8,7 @@ import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction, decisionListAction, decisionCardAction, decisionControlAction, decisionDetailAction, decisionEducatorAction, decisionMetricsAction } from "../actions";
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction, decisionListAction, decisionCardAction, decisionControlAction, decisionDetailAction, decisionEducatorAction, decisionMetricsAction, assessProfileAction, assessLogEvidenceAction, assessReportsAction, assessBlueprintAction, assessBlueprintsAction, assessBlueprintCheckAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -170,6 +170,14 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             classroomApprove: memoryClassroomApproveAction,
             exportAll: memoryExportAction,
             scan: memoryScanAction,
+          },
+          assess: {
+            profile: assessProfileAction,
+            logEvidence: assessLogEvidenceAction,
+            reports: assessReportsAction,
+            saveBlueprint: assessBlueprintAction,
+            blueprints: assessBlueprintsAction,
+            blueprintCheck: assessBlueprintCheckAction,
           },
           decisionDetail: decisionDetailAction,
           decisionEducator: decisionEducatorAction,
