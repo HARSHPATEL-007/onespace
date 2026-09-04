@@ -124,4 +124,19 @@ export {
   type Dimension, type MasteryState,
 } from "./learner";
 export { LearningSets, LearningSetView } from "./components";
+export { QueryPlanView, EvidenceCardView, PersonalizationControls, type RetrievalUiActions } from "./retrieval-ui";
+export {
+  HybridRetrievalService, classifyHybridIntent, extractEntities, detectAmbiguity,
+  keywordScore, vectorProxyScore, descendToSpan, traverseGraph, graphRelevance,
+  temporalLabel, temporalFit, tableCellScore, normalizeFormula, formulaScore,
+  imageScore, mediaScore, codeScore, fusionScore, rrfFuse, diversify, explainResult,
+  passesAcl, sanitizeForRender, personalizationBoost, federatedSearch,
+  validateEvidencePackage, evaluateRetrieval,
+  DEFAULT_FUSION_WEIGHTS, RETRIEVAL_ROUTES, RETRIEVAL_BENCHMARKS,
+  EVIDENCE_ACTIONS, NO_EVIDENCE_MESSAGE,
+  indexedUnitSchema, retrievalRequestSchema, metadataFilterSchema,
+  temporalQuerySchema, personalizationSchema,
+  type IndexedUnit, type RetrievalRequest, type QueryPlan, type EvidenceCard,
+  type FusionSignals, type FusionWeights, type GraphPath, type FederatedHit,
+} from "./hybrid-retrieval";
 export { LearningCockpit, EvidencePanel, ConceptsPanel, TutorPanel, GradesPanel, BooklmEnhancements, MaterialsPanel, GovernancePanel, type V2Answer, type V2Claim, type PolicyData, type ChallengeRow } from "./enhanced";

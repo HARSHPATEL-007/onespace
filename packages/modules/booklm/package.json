@@ -53,6 +53,8 @@
     "./orchestrate": "./src/orchestrate.ts",
     "./tutor-agents": "./src/tutor-agents.ts",
     "./graph-ui": "./src/graph.tsx",
+    "./retrieval": "./src/hybrid-retrieval.ts",
+    "./retrieval-ui": "./src/retrieval-ui.tsx",
     "./pure": "./src/pure.ts",
     "./materials": "./src/materials.ts",
     "./analytics": "./src/analytics.ts",

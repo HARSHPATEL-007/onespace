@@ -1,0 +1,87 @@
+import type { EvidenceCard, QueryPlan } from "./hybrid-retrieval";
+
+export interface RetrievalUiActions {
+  openSource?: (citationId: string) => void;
+  addCitation?: (card: EvidenceCard) => void;
+  compareVersions?: (card: EvidenceCard) => void;
+  showRelated?: (card: EvidenceCard) => void;
+  traversePrereqs?: (card: EvidenceCard) => void;
+  findDiagram?: (card: EvidenceCard) => void;
+  findTimestamp?: (card: EvidenceCard) => void;
+  findPractice?: (card: EvidenceCard) => void;
+  searchBroader?: (query: string) => void;
+  reportIncorrect?: (card: EvidenceCard) => void;
+  resolveAmbiguity?: (choice: string) => void;
+}
+
+export function QueryPlanView({ plan }: { plan: QueryPlan }) {
+  return (
+    <div data-testid="query-plan">
+      <div>
+        <strong>Interpreted as:</strong> {plan.interpretedAs} ({Math.round(plan.confidence * 100)}%)
+      </div>
+      <div>Primary: {plan.primary.join(" + ")} | Fan-out: {plan.parallel.join(", ")}</div>
+      {plan.ambiguity && (
+        <div data-testid="ambiguity-prompt">
+          <p>
+            I found {plan.ambiguity.options.length} meanings for &ldquo;{plan.ambiguity.term}&rdquo;:
+          </p>
+          <ul>
+            {plan.ambiguity.options.map((o) => (
+              <li key={o}>{o}</li>
+            ))}
+          </ul>
+          <p>Search both, or pick one — history never decides silently.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function EvidenceCardView({ card, actions }: { card: EvidenceCard; actions?: RetrievalUiActions }) {
+  return (
+    <article data-testid="evidence-card">
+      <h4>{card.title}</h4>
+      <p>
+        {card.source} · {card.location} · Validity: {card.validity} · Rights: {card.rights}
+      </p>
+      <p>Match: {card.match}</p>
+      <blockquote>{card.evidence}</blockquote>
+      <ul>
+        {card.why.map((w) => (
+          <li key={w}>{w}</li>
+        ))}
+      </ul>
+      <p>Related: {card.relatedConcepts.join(", ") || "—"}</p>
+      <p>Contradictions: {card.contradictions}</p>
+      <div>
+        <button onClick={() => actions?.openSource?.(card.citation.id)}>Open source location</button>
+        <button onClick={() => actions?.addCitation?.(card)}>Add citation</button>
+        <button onClick={() => actions?.compareVersions?.(card)}>Compare versions</button>
+        <button onClick={() => actions?.findDiagram?.(card)}>Find diagram</button>
+        <button onClick={() => actions?.findTimestamp?.(card)}>Find lecture timestamp</button>
+        <button onClick={() => actions?.reportIncorrect?.(card)}>Report incorrect</button>
+      </div>
+    </article>
+  );
+}
+
+export function PersonalizationControls({
+  value, onChange,
+}: {
+  value: { useCourseContext: boolean; useStudyHistory: boolean; useSavedSources: boolean; searchGlobally: boolean };
+  onChange: (v: { useCourseContext: boolean; useStudyHistory: boolean; useSavedSources: boolean; searchGlobally: boolean }) => void;
+}) {
+  const toggle = (k: keyof typeof value) => onChange({ ...value, [k]: !value[k] });
+  return (
+    <fieldset data-testid="personalization-controls">
+      <legend>Personalization (never silent)</legend>
+      <label><input type="checkbox" checked={value.useCourseContext} onChange={() => toggle("useCourseContext")} /> Use my course context</label>
+      <label><input type="checkbox" checked={value.useStudyHistory} onChange={() => toggle("useStudyHistory")} /> Use my recent study history</label>
+      <label><input type="checkbox" checked={value.useSavedSources} onChange={() => toggle("useSavedSources")} /> Use my saved sources</label>
+      <label><input type="checkbox" checked={value.searchGlobally} onChange={() => toggle("searchGlobally")} /> Search globally</label>
+      <button onClick={() => onChange({ useCourseContext: true, useStudyHistory: false, useSavedSources: false, searchGlobally: false })}>Reset personalization</button>
+      <p>Why did I see this result? — every boosted card carries its reason.</p>
+    </fieldset>
+  );
+}

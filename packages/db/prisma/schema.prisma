@@ -476,6 +476,8 @@ model Workspace {
   qualityReviews               QualityReview[]
   rightsRecords                RightsRecord[]
   freshnessRules               FreshnessRule[]
+  retrievalQueries             RetrievalQuery[]
+  federatedConnectors          FederatedConnector[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -5203,6 +5205,46 @@ model FreshnessRule {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, setId])
+}
+
+/// Hybrid retrieval — persisted query plans and evidence packages plus
+/// federated connector registry. Queries decompose into channel signals;
+/// fusion is recorded so every ranking is explainable and replayable.
+model RetrievalQuery {
+  id          String   @id @default(uuid())
+  workspaceId String
+  userId      String
+  setId       String?
+  query       String
+  intent      String   @default("general")
+  plan        Json?
+  results     Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId])
+}
+
+/// Federated connectors: capability, auth, provenance, rate limits, audit.
+/// Remote fetches report unavailability honestly instead of implying coverage.
+model FederatedConnector {
+  id          String   @id @default(uuid())
+  workspaceId String
+  key         String
+  name        String
+  kind        String   @default("local")
+  baseUrl     String   @default("")
+  authType    String   @default("none")
+  scopeTag    String   @default("")
+  enabled     Boolean  @default(true)
+  lastIndexed DateTime?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, key])
 }
 
 /// N0VA BOOKLM+EDUCATION Multi-Agent Tutor — supervised agents, event-driven
