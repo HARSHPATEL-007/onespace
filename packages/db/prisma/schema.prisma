@@ -460,6 +460,16 @@ model Workspace {
   oralDefenses                 OralDefense[]
   calibrationExamples          CalibrationExample[]
   fairnessAudits               FairnessAudit[]
+  sourceDocuments              SourceDocument[]
+  docBlocks                    DocBlock[]
+  docTables                    DocTable[]
+  docFormulas                  DocFormula[]
+  docFigures                   DocFigure[]
+  docCitations                 DocCitation[]
+  docCode                      DocCode[]
+  docTranscripts               DocTranscript[]
+  docCorrections               DocCorrection[]
+  docVersions                  DocVersion[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -4806,6 +4816,240 @@ model DecisionReview {
   decision  DecisionRecord  @relation(fields: [decisionId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, decisionId])
+}
+
+/// Document understanding — provenance-preserving extraction graph.
+/// Immutable originals; derived representations with location, method,
+/// confidence, and correction history. Nothing extracted is ground truth
+/// until structure, location, and confidence are validated.
+enum DocStatus {
+  UPLOADED
+  VALIDATED
+  EXTRACTED
+  REVIEW_RECOMMENDED
+  VERIFIED
+  INCOMPLETE_POSSIBLE
+  CORRUPT
+}
+
+model SourceDocument {
+  id          String    @id @default(uuid())
+  workspaceId String
+  setId       String?
+  title       String
+  format      String    @default("txt")
+  language    String    @default("")
+  pageCount   Int?
+  fileHash    String    @default("")
+  fileBytes   Int?
+  status      DocStatus @default(UPLOADED)
+  quality     Json?
+  parserVersion String   @default("")
+  version     Int       @default(1)
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  blocks    DocBlock[]
+  tables    DocTable[]
+  formulas  DocFormula[]
+  figures   DocFigure[]
+  citations DocCitation[]
+  code      DocCode[]
+  segments  DocTranscript[]
+  corrections DocCorrection[]
+  versions  DocVersion[]
+
+  @@index([workspaceId, setId])
+}
+
+/// Layout blocks: heading/paragraph/list/quote with reading order + section path.
+model DocBlock {
+  id          String   @id @default(uuid())
+  workspaceId String
+  documentId  String
+  blockKey    String
+  kind        String   @default("paragraph")
+  page        Int      @default(1)
+  readingOrder Int     @default(0)
+  sectionPath String[] @default([])
+  text        String   @default("")
+  language    String   @default("")
+  confidence  Float    @default(0.5)
+  method      String   @default("")
+  corrected   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, blockKey])
+  @@index([workspaceId, documentId, page])
+}
+
+/// Structured tables with cell-level confidence; visual form retained in caption/context.
+model DocTable {
+  id         String   @id @default(uuid())
+  workspaceId String
+  documentId String
+  tableKey   String
+  caption    String   @default("")
+  headers    String[] @default([])
+  cells      Json
+  footnotes  String[] @default([])
+  units      String[] @default([])
+  page       Int      @default(1)
+  confidence Float    @default(0.5)
+  needsReview Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, tableKey])
+}
+
+/// Formulas in synchronized forms (latex/mathml/plain) with validation.
+model DocFormula {
+  id         String   @id @default(uuid())
+  workspaceId String
+  documentId String
+  formulaKey String
+  latex      String   @default("")
+  mathml     String   @default("")
+  plain      String   @default("")
+  variables  String[] @default([])
+  page       Int      @default(1)
+  confidence Float    @default(0.5)
+  validation Json?
+  needsReview Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, formulaKey])
+}
+
+/// Diagrams/figures as structured visual objects (nodes/edges/axes/legends).
+model DocFigure {
+  id         String   @id @default(uuid())
+  workspaceId String
+  documentId String
+  figureKey  String
+  kind       String   @default("figure")
+  caption    String   @default("")
+  nodes      Json?
+  edges      Json?
+  page       Int      @default(1)
+  confidence Float    @default(0.5)
+  createdAt  DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, figureKey])
+}
+
+/// Typed citations linked to targets; presence ≠ support.
+model DocCitation {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  documentId   String
+  citationKey  String
+  rawText      String   @default("")
+  normalized   Json?
+  citationType String   @default("unknown")
+  resolution   String   @default("")
+  page         Int      @default(1)
+  confidence   Float    @default(0.5)
+  createdAt    DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, citationKey])
+}
+
+/// Language-aware code blocks; parsed sandboxed, never executed on ingest.
+model DocCode {
+  id         String   @id @default(uuid())
+  workspaceId String
+  documentId String
+  codeKey    String
+  language   String   @default("")
+  content    String
+  page       Int      @default(1)
+  confidence Float    @default(0.5)
+  parseStatus String  @default("unknown")
+  warnings   String[] @default([])
+  createdAt  DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, codeKey])
+}
+
+/// Timestamped transcript segments; speaker labels only, never identity.
+model DocTranscript {
+  id            String   @id @default(uuid())
+  workspaceId   String
+  documentId    String
+  segmentKey    String
+  startSec      Float    @default(0)
+  endSec        Float    @default(0)
+  speaker       String   @default("speaker_1")
+  speakerConfidence Float @default(0.5)
+  text          String
+  confidence    Float    @default(0.5)
+  language      String   @default("")
+  linkedSlide   String   @default("")
+  createdAt     DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, segmentKey])
+  @@index([workspaceId, documentId, startSec])
+}
+
+/// Versioned, reversible, attributed corrections on derived content.
+model DocCorrection {
+  id          String   @id @default(uuid())
+  workspaceId String
+  documentId  String
+  location    String   @default("")
+  targetType  String   @default("block")
+  targetId    String   @default("")
+  before      String   @default("")
+  after       String   @default("")
+  actorId     String?
+  reason      String   @default("")
+  reindexStatus String  @default("pending")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, documentId])
+}
+
+/// Immutable version snapshots of derived representations.
+model DocVersion {
+  id          String   @id @default(uuid())
+  workspaceId String
+  documentId  String
+  version     Int
+  snapshot    Json
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  document  SourceDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, version])
 }
 
 /// N0VA BOOKLM+EDUCATION Multi-Agent Tutor — supervised agents, event-driven

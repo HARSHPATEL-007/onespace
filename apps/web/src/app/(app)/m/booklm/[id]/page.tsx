@@ -20,6 +20,10 @@ import {
   insightsMasteryAction, insightsCalibrationAction, insightsDropoffAction,
   insightsQualityAction, insightsWarningsAction, insightsOutcomesAction,
   insightsMapAction, insightsCohortAction, insightsDismissAction, insightsDefsAction,
+  docDocumentsAction, docRegisterAction, docExtractAction, docQualityAction,
+  docLayoutAction, docTablesAction, docFormulasAction, docFiguresAction,
+  docCitationsAction, docTranscriptAction, docSegmentsAction, docCorrectAction,
+  docCorrectionsAction, docCiteAction,
 } from "../actions";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -251,6 +255,22 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             cohort: insightsCohortAction,
             dismiss: insightsDismissAction,
             defs: insightsDefsAction,
+          },
+          sources: {
+            list: docDocumentsAction,
+            register: docRegisterAction,
+            extract: docExtractAction,
+            quality: docQualityAction,
+            layout: docLayoutAction,
+            tables: docTablesAction,
+            formulas: docFormulasAction,
+            figures: docFiguresAction,
+            citations: docCitationsAction,
+            transcript: docTranscriptAction,
+            segments: docSegmentsAction,
+            correct: docCorrectAction,
+            corrections: docCorrectionsAction,
+            cite: docCiteAction,
           },
           decisionDetail: decisionDetailAction,
           decisionEducator: decisionEducatorAction,

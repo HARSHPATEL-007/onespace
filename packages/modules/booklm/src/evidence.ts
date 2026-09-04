@@ -350,7 +350,10 @@ export class EvidenceService {
         const coverage = ((c.locatorPage ? 0.4 : 0) + (c.quote ? 0.3 : 0) + (c.contentHash ? 0.3 : 0));
         const contradiction = challengedIds.has(c.id) || c.support === "CONTRADICTS" ? 1 : 0;
         const supportN = c.support === "SUPPORTS" ? 1 : c.support === "QUALIFIES" ? 0.6 : 0.2;
-        const score = compositeRerank({ semantic, lexical, authority, freshness: temporal, coverage, temporal, contradiction, duplicate: 0 }, policy.weights) * (0.7 + 0.3 * supportN);
+        // Uncertain extraction propagates: low-confidence spans rank lower and
+        // surface an explicit verification flag downstream — never silently.
+        const extraction = 0.75 + 0.25 * (c.extractionConfidence ?? 0.5);
+        const score = compositeRerank({ semantic, lexical, authority, freshness: temporal, coverage, temporal, contradiction, duplicate: 0 }, policy.weights) * (0.7 + 0.3 * supportN) * extraction;
         const check = this.policies().checkSource(policy, c, { approvedOnly: opts?.approvedOnly });
         const docKey = (c.sourceDocId || c.sourceTitle || c.id).toLowerCase();
         const isCurrent = !c.sourceVersion || latestVersion.get(docKey) === c.sourceVersion;

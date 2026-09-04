@@ -7,6 +7,8 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { SourcesPanel, type SourcesActions } from "./sources-ui";
+export { DocIngestService, registerSchema, ingestSchema, docCorrectionSchema, sha256 } from "./doc-ingest";
 export { AnalyticsPanel, type InsightsActions } from "./insights-ui";
 export { AssessInsightsService, windowSchema } from "./assess-insights";
 export { GradingPanel, type GradingActions } from "./grading-ui";
@@ -61,6 +63,12 @@ export {
   METRIC_DEFS, COHORT_MIN_CELL,
   type MetricEnvelope, type WarningKind,
 } from "./assess-analytics";
+export {
+  parseMarkdownTables, parseCodeFences, detectCodeLanguage, parseLatex,
+  parseCitations, matchBibliography, detectLanguage, detectMixedBlocks,
+  detectSequenceGaps, detectTruncation, figureNumberGaps,
+  aggregateQuality, parseTranscriptTimestamps,
+} from "./doc-parse";
 export {
   classifyDocSpan, trustRank, injectionScan, confidenceLevelFor,
   canTransition, scopeRank, mayPromoteScope, retrievalOrder, rankMemories,

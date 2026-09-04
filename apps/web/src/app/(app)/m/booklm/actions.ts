@@ -15,6 +15,7 @@ import { AssessProfileService } from "@n0va/modules-booklm/assess-profile";
 import { IntegrityService } from "@n0va/modules-booklm/integrity-service";
 import { GradingService } from "@n0va/modules-booklm/grading";
 import { AssessInsightsService } from "@n0va/modules-booklm/assess-insights";
+import { DocIngestService } from "@n0va/modules-booklm/doc-ingest";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -993,6 +994,126 @@ export async function insightsDismissAction(conceptKey: string, reason: string) 
 
 export async function insightsDefsAction() {
   return (await insightSvc()).metricDefinitions();
+}
+
+// --- Document understanding ---
+
+const docSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new DocIngestService(workspaceId, userId, role);
+};
+
+export async function docRegisterAction(input: { setId: string; title: string; format?: string; pageCount?: number; content?: string }) {
+  const { registerSchema } = await import("@n0va/modules-booklm/doc-ingest");
+  const parsed = registerSchema.parse({
+    setId: input.setId || undefined, title: input.title,
+    format: input.format ?? "txt", pageCount: input.pageCount,
+    content: (input.content ?? "").slice(0, 200000),
+  });
+  return (await docSvc()).register(parsed);
+}
+
+export async function docDocumentsAction(setId: string) {
+  const rows = await (await docSvc()).documents(setId);
+  return rows.map((d) => ({
+    id: d.id, title: d.title, format: d.format, status: d.status,
+    version: d.version, pageCount: d.pageCount, language: d.language,
+    quality: (d.quality ?? {}) as { confidence?: Record<string, number>; overallStatus?: string; warnings?: { type: string; locations: string[]; reason: string }[] },
+  }));
+}
+
+export async function docExtractAction(documentId: string, text: string) {
+  return (await docSvc()).ingestText(documentId, { text: text.slice(0, 500000) });
+}
+
+export async function docQualityAction(documentId: string) {
+  const r = await (await docSvc()).qualityReport(documentId);
+  return {
+    document: r.document,
+    quality: (r.quality ?? null) as {
+      confidence?: Record<string, number>; overallStatus?: string;
+      warnings?: { type: string; locations: string[]; reason: string }[];
+    } | null,
+    counts: r.counts,
+    reviewItems: r.reviewItems,
+  };
+}
+
+export async function docLayoutAction(documentId: string) {
+  const rows = await (await docSvc()).layout(documentId);
+  return rows.map((b) => ({
+    blockKey: b.blockKey, kind: b.kind, page: b.page, readingOrder: b.readingOrder,
+    sectionPath: b.sectionPath, text: b.text.slice(0, 600),
+    language: b.language, confidence: b.confidence, corrected: b.corrected,
+  }));
+}
+
+export async function docTablesAction(documentId: string) {
+  const rows = await (await docSvc()).tables(documentId);
+  return rows.map((t) => ({
+    tableKey: t.tableKey, caption: t.caption, headers: t.headers,
+    cells: (t.cells ?? []) as { row: number; column: number; text: string; confidence?: number }[][],
+    footnotes: t.footnotes, units: t.units, page: t.page,
+    confidence: t.confidence, needsReview: t.needsReview,
+  }));
+}
+
+export async function docFormulasAction(documentId: string) {
+  const rows = await (await docSvc()).formulas(documentId);
+  return rows.map((f) => ({
+    formulaKey: f.formulaKey, latex: f.latex, plain: f.plain,
+    variables: f.variables, page: f.page, confidence: f.confidence,
+    validation: (f.validation ?? null) as { confusions?: string[] } | null,
+    needsReview: f.needsReview,
+  }));
+}
+
+export async function docFiguresAction(documentId: string) {
+  const rows = await (await docSvc()).figures(documentId);
+  return rows.map((f) => ({
+    figureKey: f.figureKey, kind: f.kind, caption: f.caption,
+    page: f.page, confidence: f.confidence,
+  }));
+}
+
+export async function docCitationsAction(documentId: string) {
+  const rows = await (await docSvc()).citations(documentId);
+  return rows.map((c) => ({
+    citationKey: c.citationKey, rawText: c.rawText,
+    normalized: (c.normalized ?? null) as { authors?: string[]; year?: string; doi?: string } | null,
+    citationType: c.citationType, resolution: c.resolution,
+    page: c.page, confidence: c.confidence,
+  }));
+}
+
+export async function docTranscriptAction(documentId: string, text: string, format: "srt" | "vtt" | "plain") {
+  return (await docSvc()).uploadTranscript(documentId, text.slice(0, 200000), format);
+}
+
+export async function docSegmentsAction(documentId: string) {
+  const rows = await (await docSvc()).transcript(documentId);
+  return rows.map((s) => ({
+    segmentKey: s.segmentKey, start: s.startSec, end: s.endSec,
+    speaker: s.speaker, text: s.text.slice(0, 500),
+    confidence: s.confidence, linkedSlide: s.linkedSlide,
+  }));
+}
+
+export async function docCorrectAction(documentId: string, input: { location?: string; targetType: string; targetId: string; after: string; reason?: string }) {
+  const { docCorrectionSchema } = await import("@n0va/modules-booklm/doc-ingest");
+  const parsed = docCorrectionSchema.parse({
+    location: input.location ?? "", targetType: input.targetType,
+    targetId: input.targetId, after: input.after, reason: input.reason ?? "",
+  });
+  return (await docSvc()).correct(documentId, parsed);
+}
+
+export async function docCorrectionsAction(documentId: string) {
+  return (await docSvc()).corrections(documentId);
+}
+
+export async function docCiteAction(documentId: string, blockKey: string, claim: string, setId: string) {
+  return (await docSvc()).citeBlock(documentId, blockKey, claim, setId);
 }
 
 export async function decisionDetailAction(id: string) {
