@@ -8,7 +8,7 @@ import { LearningAnalyticsService } from "@n0va/modules-booklm/analytics";
 import { LearningSetView } from "@n0va/modules-booklm/components";
 import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction } from "../actions";
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction, getGraphDataAction, getConceptDetailAction, getGraphExportAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
 
 export default async function LearningSetPage({ params }: { params: Promise<{ id: string }> }) {
@@ -145,6 +145,22 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             escalations: tutorEscalationsAction,
             resolveEscalation: tutorResolveEscalationAction,
             agents: tutorAgentsAction,
+          },
+          memory: {
+            list: memoryListAction,
+            create: memoryCreateAction,
+            confirm: memoryConfirmAction,
+            correct: memoryCorrectAction,
+            remove: memoryDeleteAction,
+            pause: memoryPauseAction,
+            setScope: memoryScopeAction,
+            forget: memoryForgetAction,
+            doNotInfer: memoryDoNotInferAction,
+            classroom: memoryClassroomAction,
+            classroomPropose: memoryClassroomProposeAction,
+            classroomApprove: memoryClassroomApproveAction,
+            exportAll: memoryExportAction,
+            scan: memoryScanAction,
           },
         }}
       />

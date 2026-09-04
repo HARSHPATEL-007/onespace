@@ -8,6 +8,7 @@ import { classifyContradiction } from "./epistemics";
 import { LearnerGraphPanel, type GraphData, type GraphActions, type GraphConcept } from "./graph-ui";
 import { AdaptivePanel, type AdaptActions } from "./adapt-ui";
 import { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
+import { MemoryCenterPanel, type MemoryActions } from "./memory-ui";
 
 export interface CockpitData {
   goal: string; nextAction: string; nextActionReason: string; difficulty: string;
@@ -574,10 +575,11 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     graph: GraphActions;
     adapt: AdaptActions;
     tutorAgents: TutorAgentActions;
+    memory: MemoryActions;
   };
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "agents" | "grades" | "materials" | "graph" | "adapt" | "insights" | "governance">("evidence");
+  const [tab, setTab] = useState<"evidence" | "concepts" | "tutor" | "agents" | "grades" | "materials" | "graph" | "adapt" | "memory" | "insights" | "governance">("evidence");
   const [disOnly, setDisOnly] = useState(false);
   const [asking, setAsking] = useState(false);
   const [answer, setAnswer] = useState<V2Answer | null>(null);
@@ -595,6 +597,7 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
     { id: "concepts", label: "🕸 Concepts" },
     { id: "graph", label: "🧠 Graph" },
     { id: "adapt", label: "🎛 Adapt" },
+    { id: "memory", label: "🗂 Memory" },
     { id: "tutor", label: "🤖 Tutor" },
     { id: "agents", label: "💬 Agents" },
     { id: "grades", label: "📝 Grades" },
@@ -650,6 +653,9 @@ export function BooklmEnhancements({ setId, cockpit, nextAction, coverage, claim
       )}
       {tab === "adapt" && (
         <AdaptivePanel setId={setId} concepts={graphConcepts} actions={actions.adapt} isInstructor={isInstructor} />
+      )}
+      {tab === "memory" && (
+        <MemoryCenterPanel setId={setId} actions={actions.memory} isInstructor={isInstructor} />
       )}
       {tab === "tutor" && (
         <TutorPanel modes={modes} sessions={sessions} memories={memories}

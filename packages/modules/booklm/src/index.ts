@@ -7,6 +7,8 @@ export {
 export { PolicyService, policySchema, type PolicyInput, type EffectivePolicy } from "./policies";
 export { EvalService } from "./eval";
 export { LearningAnalyticsService } from "./analytics";
+export { MemoryCenterPanel, type MemoryActions, type MemoryCard } from "./memory-ui";
+export { MemoryService, memoryRecordSchema, classroomSchema } from "./memories";
 export { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
 export { OrchestratorService, runTurnSchema } from "./orchestrate";
 export { AdaptivePanel, type AdaptActions } from "./adapt-ui";
@@ -15,6 +17,12 @@ export {
   resolveConflictRank, escalationTriggers, verdictFor, socraticShouldStop,
   type AgentDef, type Intent, type Workflow, type FactVerdict,
 } from "./tutor-agents";
+export {
+  classifyDocSpan, trustRank, injectionScan, confidenceLevelFor,
+  canTransition, scopeRank, mayPromoteScope, retrievalOrder, rankMemories,
+  resolveContradiction, agentAccess, snapshotScopes,
+  type DocSpanLabel, type ConfidenceLevel, type MemoryLifecycle, type Access,
+} from "./memory-trust";
 export { AdaptiveService, loopPlanSchema, loopRespondSchema, policySchemaAdaptive, overrideSchema } from "./adapt";
 export {
   nextDifficulty, dimensionToMove, classifyError, REMEDIATION,

@@ -445,6 +445,9 @@ model Workspace {
   agentEvents                  AgentEvent[]
   stateSnapshots               StateSnapshot[]
   escalations                  Escalation[]
+  memoryRecords                MemoryRecord[]
+  classroomMemories            ClassroomMemory[]
+  memoryEvents                 MemoryEvent[]
   learnerConcepts              LearnerConcept[]
   conceptEdges                 ConceptEdge[]
   learnerMasteries             LearnerMastery[]
@@ -4550,6 +4553,132 @@ model QuizResponse {
 }
 
 /// Multi-agent tutor sessions with explicit orchestration + memory controls.
+/// N0VA BOOKLM+EDUCATION Tutor Memory — permissioned, typed, inspectable
+/// hierarchy. Every memory has scope, owner, purpose, confidence, provenance,
+/// retention, and a deletion path. Lower scopes never silently escalate.
+enum MemoryScope {
+  TASK
+  SESSION
+  COURSE
+  LONG_TERM
+  CLASSROOM
+  TENANT
+  SYSTEM
+}
+
+enum MemoryStatus {
+  CANDIDATE
+  PROPOSED
+  CONFIRMED
+  ACTIVE
+  REVALIDATED
+  STALE
+  EXPIRED
+  DELETED
+  ARCHIVED
+}
+
+enum MemoryClassification {
+  TASK_LOCAL
+  SESSION_DERIVED
+  LEARNER_DECLARED
+  ASSESSMENT_DERIVED
+  INSTRUCTOR_VERIFIED
+  COURSE_SCOPED
+  CLASSROOM_SHARED
+  TENANT_POLICY
+  SYSTEM_POLICY
+  SENSITIVE
+  UNTRUSTED_DOCUMENT
+  MODEL_HYPOTHESIS
+}
+
+enum ClassroomMemoryStatus {
+  PROPOSED
+  APPROVED
+  REVOKED
+  SUPERSEDED
+}
+
+/// Canonical memory object: typed, scoped, versioned, expiring.
+model MemoryRecord {
+  id               String               @id @default(uuid())
+  workspaceId      String
+  ownerId          String
+  profileId        String?
+  scope            MemoryScope          @default(SESSION)
+  type             String               @default("learner_attribute")
+  key              String
+  value            String               @default("")
+  valueJson        Json?
+  status           MemoryStatus         @default(ACTIVE)
+  confidence       Float                @default(0.5)
+  confidenceLevel  String               @default("weak")
+  provenance       Json?
+  evidenceRefs     String[]             @default([])
+  lastVerifiedAt   DateTime?
+  lastUsedAt       DateTime?
+  expiresAt        DateTime?
+  visibility       String               @default("learner_only")
+  deletionPolicy   String               @default("learner_controlled")
+  version          Int                  @default(1)
+  classification   MemoryClassification @default(SESSION_DERIVED)
+  sensitive        Boolean              @default(false)
+  courseId         String?
+  sectionId        String?
+  paused           Boolean              @default(false)
+  tombstoneOf      String?
+  createdById      String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, ownerId, scope, status])
+  @@index([workspaceId, courseId, scope, status])
+  @@index([workspaceId, expiresAt])
+}
+
+/// Instructor-approved classroom namespace: course → section → shared memory.
+model ClassroomMemory {
+  id          String                 @id @default(uuid())
+  workspaceId String
+  setId       String
+  section     String                 @default("default")
+  key         String
+  value       String
+  status      ClassroomMemoryStatus  @default(PROPOSED)
+  version     Int                    @default(1)
+  proposedById String?
+  approvedById String?
+  expiresAt   DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, setId, section, status])
+}
+
+/// Memory audit trail: operation metadata + policy results, never deleted
+/// personal content.
+model MemoryEvent {
+  id          String   @id @default(uuid())
+  workspaceId String
+  memoryId    String?
+  operation   String
+  actor       String   @default("")
+  actorRole   String   @default("")
+  policyResult String  @default("")
+  meta        Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, memoryId, createdAt])
+  @@index([workspaceId, operation])
+}
+
 /// N0VA BOOKLM+EDUCATION Multi-Agent Tutor — supervised agents, event-driven
 /// orchestration, versioned shared state. Learner state lives in the state
 /// service; agents propose, only authorized parties commit.

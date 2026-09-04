@@ -9,6 +9,7 @@ import { MisconceptionService, misconceptionSchema } from "@n0va/modules-booklm/
 import { RecommendationService } from "@n0va/modules-booklm/recommend";
 import { AdaptiveService } from "@n0va/modules-booklm/adapt";
 import { OrchestratorService, runTurnSchema } from "@n0va/modules-booklm/orchestrate";
+import { MemoryService } from "@n0va/modules-booklm/memories";
 import { KnowledgeService } from "@n0va/modules-booklm/knowledge";
 import { TutorService, sessionSchema, memorySchema, decisionSchema } from "@n0va/modules-booklm/tutor";
 import { AssessmentService, assessmentSchema, gradeSchema, attemptSchema } from "@n0va/modules-booklm/assessment";
@@ -406,6 +407,102 @@ export async function tutorResolveEscalationAction(formData: FormData) {
     String(formData.get("resolution") ?? ""),
     String(formData.get("status") ?? "RESOLVED") === "DISMISSED" ? "DISMISSED" : "RESOLVED",
   );
+}
+
+// --- Tutor memory center ---
+
+const memSvc = async () => {
+  const { workspaceId, userId, role } = await actionContext();
+  return new MemoryService(workspaceId, userId, role);
+};
+
+export async function memoryListAction(scope?: string, search?: string) {
+  const rows = await (await memSvc()).list({ scope, search });
+  return rows.map((r) => ({
+    id: r.id, key: r.key, value: r.value, scope: r.scope, status: r.status,
+    confidence: r.confidence, confidenceLevel: r.confidenceLevel,
+    classification: r.classification, provenance: r.provenance as { kind?: string; sourceRef?: string; createdBy?: string; model?: string } | null,
+    evidenceRefs: r.evidenceRefs, visibility: r.visibility,
+    lastVerifiedAt: r.lastVerifiedAt?.toISOString() ?? null,
+    lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
+    expiresAt: r.expiresAt?.toISOString() ?? null,
+    paused: r.paused, sensitive: r.sensitive, courseId: r.courseId,
+    dependentRecommendations: r.dependentRecommendations,
+  }));
+}
+
+export async function memoryCreateAction(input: {
+  key: string; value: string; scope?: string; classification?: string;
+  courseId?: string; confirmed?: boolean; expiresInDays?: number;
+}) {
+  const { memoryRecordSchema } = await import("@n0va/modules-booklm/memories");
+  const parsed = memoryRecordSchema.parse({
+    key: input.key, value: input.value,
+    scope: input.scope ?? "SESSION",
+    classification: input.classification ?? "LEARNER_DECLARED",
+    courseId: input.courseId, confirmed: input.confirmed ?? true,
+    expiresInDays: input.expiresInDays,
+  });
+  return (await memSvc()).create(parsed);
+}
+
+export async function memoryConfirmAction(id: string, scope?: string) {
+  return (await memSvc()).confirm(id, scope);
+}
+
+export async function memoryCorrectAction(id: string, correction: string, newValue: string, reason: string) {
+  return (await memSvc()).correct(id, correction, newValue, reason);
+}
+
+export async function memoryDeleteAction(id: string) {
+  return (await memSvc()).remove(id);
+}
+
+export async function memoryPauseAction(id: string, paused: boolean) {
+  await (await memSvc()).setPaused(id, paused);
+}
+
+export async function memoryScopeAction(id: string, scope: string, confirmed: boolean) {
+  return (await memSvc()).setScope(id, scope, confirmed);
+}
+
+export async function memoryForgetAction() {
+  return (await memSvc()).forgetConversation("");
+}
+
+export async function memoryDoNotInferAction(key: string, on: boolean) {
+  return (await memSvc()).setDoNotInfer(key, on);
+}
+
+export async function memoryClassroomAction(setId: string) {
+  const rows = await (await memSvc()).listClassroom(setId, "default", true);
+  return rows.map((r) => ({
+    id: r.id, key: r.key, value: r.value, status: r.status,
+    version: r.version, section: r.section,
+    expiresAt: r.expiresAt?.toISOString() ?? null,
+  }));
+}
+
+export async function memoryClassroomProposeAction(formData: FormData) {
+  const { classroomSchema } = await import("@n0va/modules-booklm/memories");
+  const parsed = classroomSchema.parse({
+    setId: String(formData.get("setId") ?? ""),
+    key: String(formData.get("key") ?? ""),
+    value: String(formData.get("value") ?? ""),
+  });
+  await (await memSvc()).proposeClassroom(parsed);
+}
+
+export async function memoryClassroomApproveAction(id: string, approve: boolean) {
+  await (await memSvc()).approveClassroom(id, approve);
+}
+
+export async function memoryExportAction() {
+  return (await memSvc()).exportAll();
+}
+
+export async function memoryScanAction(text: string) {
+  return (await memSvc()).scanDocument(text.slice(0, 20000));
 }
 
 export async function seedConceptsAction(formData: FormData) {

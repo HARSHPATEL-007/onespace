@@ -5,6 +5,7 @@ import {
   verdictFor, socraticShouldStop,
   type Intent, type AgentDef,
 } from "./tutor-agents";
+import { snapshotScopes, agentAccess } from "./memory-trust";
 import { deriveVerificationLabel } from "./epistemics";
 
 export const runTurnSchema = z.object({
@@ -209,9 +210,11 @@ export class OrchestratorService {
       },
     });
     await this.log(sessionId, task.id, "agent.task.requested", { agent: agentKey, intent });
+    // Access-matrix enforcement: agents receive a filtered snapshot, never raw state.
+    const snapshot = await this.agentSnapshot(sessionId, agentKey).catch(() => null);
     const t0 = Date.now();
     try {
-      const out = await this.runAgent(agentKey, target);
+      const out = await this.runAgent(agentKey, { ...target, snapshot });
       await prisma.agentTask.update({
         where: { id: task.id },
         data: {
@@ -231,6 +234,38 @@ export class OrchestratorService {
       await this.log(sessionId, task.id, "agent.task.failed", { agent: agentKey, error: msg });
       return { key: agentKey, out: { ...empty, warnings: [`${agentKey} unavailable — continuing without it`] }, status: "degraded" };
     }
+  }
+
+  // -- Access-matrix snapshots ----------------------------------------------------------
+  /**
+   * Filtered per-agent snapshot. Research/debate/fact-check get no goals or
+   * preferences and dimension-stripped mastery; sensitive data flows only to
+   * authorized agents. Every filtering is logged.
+   */
+  private async agentSnapshot(sessionId: string, agentKey: string) {
+    const latest = await prisma.stateSnapshot.findMany({
+      where: { workspaceId: this.workspaceId, sessionId },
+      orderBy: { version: "desc" }, take: 1,
+    });
+    const full = (latest[0]?.state ?? {}) as Record<string, unknown>;
+    const scopes = snapshotScopes(agentKey);
+    const longTerm = scopes.includes("LONG_TERM");
+    const goals = longTerm ? full.goals : undefined;
+    const preferences = ["accessibility", "safety", "supervisor", "planner", "tutor"].includes(agentKey)
+      ? full.preferences : undefined;
+    const mastery = Array.isArray(full.mastery)
+      ? (full.mastery as Record<string, unknown>[]).map((m) =>
+          longTerm ? m : { conceptId: m.conceptId, key: m.key, status: m.status },
+        )
+      : full.mastery;
+    const filtered = {
+      goals, preferences, mastery,
+      misconceptions: full.misconceptions,
+      instructorRules: full.instructorRules,
+      scopes, sensitiveWithheld: agentAccess(agentKey, "SESSION", true) === "none",
+    };
+    await this.log(sessionId, null, "state.snapshot.filtered", { agent: agentKey, scopes });
+    return filtered;
   }
 
   // -- Specialist runners (narrow mandates, structured outputs) ------------------
