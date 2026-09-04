@@ -176,14 +176,17 @@ export type CardType = "definition" | "recall" | "cloze" | "formula" | "compare"
 
 export function genFlashcards(nodes: ModelNode[], perConcept = 2): Record<string, unknown> {
   const concepts = byKind(nodes, "concept").slice(0, 15);
-  const defs = new Map(byKind(nodes, "definition").map((d) => [d.label, d]));
-  const formulae = new Map(byKind(nodes, "formula").map((f) => [f.label, f]));
+  // Case-insensitive label indexes: model keys ("slope") and concept labels
+  // ("Slope") must resolve to the same definition/formula cards.
+  const defs = new Map(byKind(nodes, "definition").map((d) => [d.label.toLowerCase(), d]));
+  const formulae = new Map(byKind(nodes, "formula").map((f) => [f.label.toLowerCase(), f]));
   const misc = byKind(nodes, "misconception");
   const cards: Record<string, unknown>[] = [];
   for (const c of concepts) {
-    const d = defs.get(c.label);
-    const f = formulae.get(c.label);
-    const m = misc.find((x) => x.label === c.label || x.text.toLowerCase().includes(c.label.toLowerCase()));
+    const key = c.label.toLowerCase();
+    const d = defs.get(key);
+    const f = formulae.get(key);
+    const m = misc.find((x) => x.label.toLowerCase() === key || x.text.toLowerCase().includes(key));
     const base = { concept: c.label, difficulty: "introductory", citation: cite(c), confidence: 0.85 };
     cards.push({ ...base, cardType: "definition" as CardType, front: `Define ${c.label}.`, back: d ? d.text : c.text });
     if (cards.filter((x) => (x as { concept: string }).concept === c.label).length >= perConcept) continue;
@@ -436,7 +439,12 @@ export function validateArtifact(draft: ArtifactDraft, model: ModelNode[], curre
   const latexHits = text.match(/E\s*=\s*mc\^?2|\\frac\{[^}]*\}\{[^}]*\}|[a-zA-Z]_\{?[^}]*\}?/g) ?? [];
   void latexHits;
   if (draft.type === "practice_test" || draft.type === "flashcard_set") {
-    const formulae = byKind(model, "formula");
+    // Scope to formula-bearing concepts this artifact actually covers: a set
+    // on other concepts must not fail because the model holds a formula.
+    const covered = new Set(
+      [...text.matchAll(/"concept"\s*:\s*"([^"]+)"/g)].map((m) => m[1]!.toLowerCase()),
+    );
+    const formulae = byKind(model, "formula").filter((f) => covered.has(f.label.toLowerCase()));
     if (formulae.length > 0 && !formulae.some((f) => text.replace(/\s+/g, "").includes(f.text.replace(/\s+/g, "").slice(0, 20)))) {
       issues.push("formula content not traceable to verified formula representation");
     }
@@ -515,4 +523,186 @@ export function reviewPolicy(type: string, confidence: number, highStakes = fals
   if (highStakes || mandatoryTypes.includes(type) || confidence < 0.7) return "mandatory";
   if (!autoTypes.includes(type) || confidence < 0.85) return "review";
   return "auto";
+}
+
+// ---------------------------------------------------------------------------
+// Artifact envelope — the spec header every artifact carries.
+// ---------------------------------------------------------------------------
+
+export interface ArtifactEnvelope {
+  artifact_id: string;
+  type: string;
+  title: string;
+  source_documents: string[];
+  source_versions: string[];
+  concepts: string[];
+  learning_objectives: string[];
+  audience: Audience;
+  citations: boolean;
+  extraction_confidence: number;
+  review_status: string;
+  generated_at: string;
+  source_status: {
+    verified: boolean;
+    stale_versions: string[];
+    affected_by_source_change: boolean;
+  };
+}
+
+/**
+ * First-class artifact envelope. `affected_by_source_change` compares the
+ * artifact's pinned versions against the model's current versions — the
+ * display behind "Source status / Last source update / Affected: yes/no".
+ */
+export function artifactEnvelope(
+  a: {
+    id: string; type: string; title?: string;
+    sourceDocs: string[]; sourceVersions: string[];
+    concepts: string[]; objectives?: string[]; audience?: Audience;
+    extractionConfidence: number; reviewStatus: string; createdAt: string | Date;
+  },
+  currentVersions: string[],
+  opts: { hasCitations?: boolean } = {},
+): ArtifactEnvelope {
+  const stale = a.sourceVersions.filter((v) => !currentVersions.includes(v));
+  return {
+    artifact_id: a.id,
+    type: a.type,
+    title: a.title ?? "",
+    source_documents: a.sourceDocs,
+    source_versions: a.sourceVersions,
+    concepts: a.concepts,
+    learning_objectives: a.objectives ?? [],
+    audience: a.audience ?? {},
+    citations: opts.hasCitations ?? false,
+    extraction_confidence: a.extractionConfidence,
+    review_status: a.reviewStatus,
+    generated_at: typeof a.createdAt === "string" ? a.createdAt : a.createdAt.toISOString(),
+    source_status: {
+      verified: stale.length === 0,
+      stale_versions: stale,
+      affected_by_source_change: stale.length > 0,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Assessment leakage — practice material must not reveal graded answers.
+// ---------------------------------------------------------------------------
+
+function tokenOverlap(a: string, b: string): number {
+  const ta = new Set(a.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2));
+  const tb = new Set(b.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2));
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  return inter / Math.max(ta.size, tb.size);
+}
+
+export interface LeakageFinding {
+  practiceId: string;
+  practiceTitle: string;
+  gradedId: string;
+  gradedTitle: string;
+  similarity: number;
+  sharedAnswers: string[];
+  action: string;
+}
+
+/**
+ * Practice-vs-graded leakage screen. Flags practice material that is
+ * near-identical to graded items or reuses graded answer spans verbatim —
+ * regenerate with fresh items, never reuse graded answer spans.
+ */
+export function assessmentLeakageCheck(
+  practice: { id: string; title: string; text: string; answerSpans: string[] }[],
+  graded: { id: string; title: string; text: string; answerSpans: string[] }[],
+): { leaks: LeakageFinding[]; status: "clear" | "leak_detected" } {
+  const leaks: LeakageFinding[] = [];
+  for (const p of practice) {
+    for (const g of graded) {
+      if (p.id === g.id) continue;
+      const sim = Math.round(tokenOverlap(p.text, g.text) * 100) / 100;
+      const shared = g.answerSpans
+        .filter((s) => s.trim().length > 8)
+        .filter((s) => p.text.toLowerCase().includes(s.toLowerCase().slice(0, 60)))
+        .slice(0, 5);
+      if (sim >= 0.5 || shared.length > 0) {
+        leaks.push({
+          practiceId: p.id, practiceTitle: p.title,
+          gradedId: g.id, gradedTitle: g.title,
+          similarity: sim, sharedAnswers: shared.map((s) => s.slice(0, 120)),
+          action: "regenerate practice with fresh items and varied inputs; never reuse graded answer spans",
+        });
+      }
+    }
+  }
+  return { leaks: leaks.slice(0, 20), status: leaks.length > 0 ? "leak_detected" : "clear" };
+}
+
+// ---------------------------------------------------------------------------
+// Translation term-equivalence check.
+// ---------------------------------------------------------------------------
+
+export interface TermCheck {
+  covered: string[];
+  missingPolicy: string[];
+  emptyTranslations: string[];
+  status: "ok" | "review_required";
+  note: string;
+}
+
+/**
+ * Every model term needs a term-policy entry; empty translations signal a
+ * forced one-to-one mapping. No exact equivalent is invented — unexplained
+ * adaptations are flagged, not silently passed.
+ */
+export function translationTermCheck(modelTerms: string[], policy: Record<string, string>): TermCheck {
+  const covered: string[] = [];
+  const missingPolicy: string[] = [];
+  const emptyTranslations: string[] = [];
+  for (const t of [...new Set(modelTerms)].slice(0, 60)) {
+    if (!(t in policy)) {
+      missingPolicy.push(t);
+      continue;
+    }
+    if (!policy[t]!.trim()) emptyTranslations.push(t);
+    else covered.push(t);
+  }
+  return {
+    covered, missingPolicy, emptyTranslations,
+    status: missingPolicy.length + emptyTranslations.length > 0 ? "review_required" : "ok",
+    note: "Unexplained adaptations flagged — explain the adaptation instead of creating a false one-to-one translation.",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Personalized gap sheet — misconception-focused revision for known gaps.
+// ---------------------------------------------------------------------------
+
+/**
+ * Concise, conceptually complete revision scoped to the learner's gap
+ * concepts: must-know, must-do, targeted misconceptions, formulas, quick
+ * checks, sources. One sheet per gap set — not a generic re-summary.
+ */
+export function genGapSheet(nodes: ModelNode[], gapLabels: string[]): Record<string, unknown> {
+  const gaps = new Set(gapLabels.map((g) => g.toLowerCase()));
+  const concepts = byKind(nodes, "concept").filter((c) => gaps.size === 0 || gaps.has(c.label.toLowerCase()));
+  const misc = byKind(nodes, "misconception").filter((m) =>
+    gaps.size === 0 || gaps.has(m.label.toLowerCase()) || [...gaps].some((g) => m.text.toLowerCase().includes(g)),
+  );
+  const formulae = byKind(nodes, "formula").filter((f) =>
+    gaps.size === 0 || gaps.has(f.label.toLowerCase()),
+  );
+  return {
+    kind: "gap_sheet",
+    gaps: [...gaps],
+    mustKnow: concepts.slice(0, 8).map((c) => ({ label: c.label, text: c.text, citation: cite(c) })),
+    mustDo: concepts.slice(0, 6).map((c) => `Apply ${c.label} in context`),
+    misconceptions: misc.slice(0, 6).map((m) => ({ text: m.text, correction: "see source evidence", citation: cite(m) })),
+    formulas: formulae.slice(0, 6).map((f) => ({ latex: f.text, citation: cite(f) })),
+    quickChecks: concepts.slice(0, 4).map((c) => `Check: ${c.label}?`),
+    sources: [...new Set([...concepts, ...misc].map((x) => cite(x)))].slice(0, 10),
+    rule: "scoped to known gaps — deliberate repetition for spaced practice is kept, generic re-summary is not",
+  };
 }

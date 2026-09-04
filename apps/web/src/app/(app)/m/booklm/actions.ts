@@ -1132,13 +1132,14 @@ export async function factoryBuildAction(setId: string) {
 
 export async function factoryGenerateAction(input: {
   setId: string; type: string; title?: string; depth?: string; topic?: string;
-  language?: string; objectives?: string[]; highStakes?: boolean;
+  language?: string; objectives?: string[]; gaps?: string[]; highStakes?: boolean;
 }) {
   const { generateSchema } = await import("@n0va/modules-booklm/factory");
   const parsed = generateSchema.parse({
     setId: input.setId, type: input.type, title: input.title ?? "",
     depth: input.depth ?? "standard", topic: input.topic ?? "",
     language: input.language ?? "python", objectives: input.objectives ?? [],
+    gaps: input.gaps ?? [],
     highStakes: input.highStakes ?? false,
   });
   const res = await (await factorySvc()).generate(parsed);
@@ -1152,7 +1153,16 @@ export async function factoryGenerateAction(input: {
     },
     content: res.artifact.content as Record<string, unknown>,
     validation: res.validation, route: res.route, autoPublished: res.autoPublished,
+    envelope: res.envelope,
   };
+}
+
+export async function factoryEnvelopeAction(id: string) {
+  return (await factorySvc()).envelope(id);
+}
+
+export async function factoryLeakageAction(setId: string) {
+  return (await factorySvc()).leakage(setId);
 }
 
 export async function factoryListAction(setId: string) {

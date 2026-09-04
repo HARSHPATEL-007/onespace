@@ -22,6 +22,10 @@ export {
   type ApprovalState, type ApprovalStateResult,
 } from "./quality-deep";
 export { FactoryPanel, type FactoryActions } from "./factory-ui";
+export {
+  artifactEnvelope, assessmentLeakageCheck, translationTermCheck, genGapSheet,
+  type ArtifactEnvelope, type LeakageFinding, type TermCheck,
+} from "./study-factory";
 export { StudyFactoryService, generateSchema } from "./factory";
 export { SourcesPanel, type SourcesActions } from "./sources-ui";
 export { DocIngestService, registerSchema, ingestSchema, docCorrectionSchema, sha256 } from "./doc-ingest";

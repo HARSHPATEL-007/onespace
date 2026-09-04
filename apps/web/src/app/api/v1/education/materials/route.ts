@@ -18,7 +18,8 @@ function svc(c: { workspace: { id: string }; user: { id: string }; memberRole: s
 
 /**
  * GET /v1/education/materials?setId=...&type=... | /{id} |
- * /{id}/provenance | /{id}/impact?doc=...
+ * /{id}/provenance | /{id}/impact?doc=... | /{id}/envelope |
+ * /leakage?setId=...
  * POST /v1/education/materials — build-model | generate | validate |
  * review | publish | translate | adapt | accessibility | regenerate |
  * consistency-check
@@ -44,6 +45,14 @@ export async function GET(req: Request) {
     if (view === "consistency") {
       if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });
       return NextResponse.json(await f.consistency(setId));
+    }
+    if (view === "envelope") {
+      if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+      return NextResponse.json(await f.envelope(id));
+    }
+    if (view === "leakage") {
+      if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });
+      return NextResponse.json(await f.leakage(setId));
     }
     if (id) return NextResponse.json(await f.get(id));
     if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });

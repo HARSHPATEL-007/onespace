@@ -3,11 +3,13 @@ import { prisma } from "@n0va/db";
 import {
   buildStudyModel, genSummary, genGlossary, genConceptMap, genPrereqMap,
   genFlashcards, genPracticeTest, genCaseStudy, genDebate, genLab, genCoding,
-  genViva, genRevision, genAudioScript, genDeck, genTeachingNotes,
+  genViva, genRevision, genAudioScript, genDeck, genTeachingNotes, genGapSheet,
   adaptAccessibility, adaptAge, adaptLanguage,
   validateArtifact, consistencyCheck, reviewPolicy,
+  artifactEnvelope, assessmentLeakageCheck, translationTermCheck,
   type SummaryDepth, type TestBlueprint, type Audience,
 } from "./study-factory";
+import { rightsDecision } from "./quality-checks";
 
 export const generateSchema = z.object({
   setId: z.string().min(1),
@@ -15,6 +17,7 @@ export const generateSchema = z.object({
     "summary", "glossary", "concept_map", "prereq_map", "flashcard_set",
     "practice_test", "case_study", "debate", "lab", "coding_assignment",
     "viva", "revision_sheet", "audio_lesson", "deck", "teaching_notes",
+    "gap_sheet",
   ]),
   title: z.string().max(300).default(""),
   depth: z.enum(["quick", "standard", "deep", "exam", "instructor"]).default("standard"),
@@ -33,6 +36,7 @@ export const generateSchema = z.object({
   topic: z.string().max(300).default(""),
   language: z.string().max(20).default("python"),
   objectives: z.array(z.string().max(200)).max(20).default([]),
+  gaps: z.array(z.string().max(200)).max(20).default([]),
   highStakes: z.boolean().default(false),
 });
 
@@ -134,6 +138,7 @@ export class StudyFactoryService {
       case "audio_lesson": content = genAudioScript(nodes, input.title || "course audio"); break;
       case "deck": content = genDeck(nodes, input.title || "course deck"); break;
       case "teaching_notes": content = genTeachingNotes(nodes, input.topic || "course topic"); break;
+      case "gap_sheet": content = genGapSheet(nodes, input.gaps); break;
     }
     const sourceDocs = [...new Set(nodes.map((x) => x.source))].slice(0, 20);
     const sourceVersions = (model.sourceVersions ?? []) as string[];
@@ -149,6 +154,19 @@ export class StudyFactoryService {
     );
     const route = reviewPolicy(input.type, extractionConfidence, input.highStakes);
     const autoPublish = route === "auto" && extractionConfidence >= AUTO_PUBLISH_CONFIDENCE;
+    const envelope = artifactEnvelope(
+      {
+        id: "pending", type: input.type, title: input.title,
+        sourceDocs, sourceVersions,
+        concepts: [...new Set(nodes.filter((x) => x.kind === "concept").map((x) => x.label))].slice(0, 20),
+        objectives: nodes.filter((x) => x.kind === "objective").map((x) => x.label).slice(0, 10),
+        audience, extractionConfidence,
+        reviewStatus: autoPublish ? "PUBLISHED" : route === "mandatory" ? "IN_REVIEW" : "DRAFT",
+        createdAt: new Date().toISOString(),
+      },
+      sourceVersions,
+      { hasCitations: /citation/i.test(JSON.stringify(content).slice(0, 20000)) },
+    );
     const artifact = await prisma.studyArtifact.create({
       data: {
         workspaceId: this.workspaceId, setId: input.setId, modelId: model.id,
@@ -163,7 +181,8 @@ export class StudyFactoryService {
         createdById: this.userId,
       },
     });
-    return { artifact, validation, route, autoPublished: autoPublish };
+    envelope.artifact_id = artifact.id;
+    return { artifact, validation, route, autoPublished: autoPublish, envelope };
   }
 
   async list(setId: string, type?: string) {
@@ -219,17 +238,62 @@ export class StudyFactoryService {
     });
   }
 
+  /** Copyright status of each source doc backing an artifact. */
+  private async derivativeRights(sourceDocs: string[]): Promise<{ source: string; status: string }[]> {
+    const out: { source: string; status: string }[] = [];
+    for (const s of sourceDocs.slice(0, 20)) {
+      const rec = await prisma.rightsRecord.findUnique({
+        where: { workspaceId_sourceKey: { workspaceId: this.workspaceId, sourceKey: s } },
+      }).catch(() => null);
+      if (!rec) {
+        out.push({ source: s, status: "unknown" });
+        continue;
+      }
+      out.push({
+        source: s,
+        status: rightsDecision({
+          license: rec.license, derivativeAllowed: rec.derivativeAllowed,
+          attributionRequired: rec.attributionRequired,
+          expiresAt: rec.expiresAt ? new Date(rec.expiresAt).getTime() : null,
+        }).status,
+      });
+    }
+    return out;
+  }
+
   /** Transforms keep provenance + review rules of the base artifact. */
   async transform(id: string, kind: "translate" | "adapt" | "accessibility", opts: Record<string, unknown>) {
     const a = await this.get(id);
+    // Copyright controls apply to derivatives: prohibited sources block;
+    // unknown/disputed licenses hold with an explicit flag — never silent.
+    const rights = await this.derivativeRights(a.sourceDocs);
+    const blocked = rights.filter((r) => r.status === "prohibited");
+    if (blocked.length > 0) {
+      throw new Error(`Rights block derivative: prohibited source (${blocked.map((r) => r.source).join(", ")})`);
+    }
+    const held = rights.filter((r) => ["unknown", "disputed", "expiring"].includes(r.status));
     const base = (a.content ?? {}) as Record<string, unknown>;
     let content: Record<string, unknown>;
     if (kind === "translate") {
-      content = adaptLanguage(base, String(opts.target ?? "hi"), (opts.terms ?? {}) as Record<string, string>);
+      const terms = (opts.terms ?? {}) as Record<string, string>;
+      content = {
+        ...adaptLanguage(base, String(opts.target ?? "hi"), terms),
+        // Term-equivalence check: unexplained adaptations flagged, never invented.
+        termCheck: translationTermCheck(a.concepts, terms),
+      };
     } else if (kind === "adapt") {
       content = adaptAge(base, String(opts.ageBand ?? "11-13"));
     } else {
       content = adaptAccessibility(base, (opts.formats as string[]) ?? ["text", "audio-transcript"]);
+    }
+    if (held.length > 0) {
+      content = {
+        ...content,
+        rightsHold: {
+          sources: held.map((r) => r.source),
+          note: "Unknown/disputed license — hold external export and request rights review",
+        },
+      };
     }
     return prisma.studyArtifact.create({
       data: {
@@ -258,6 +322,7 @@ export class StudyFactoryService {
       topic: String(opts.topic ?? a.title),
       language: String(opts.language ?? "python"),
       objectives: (opts.objectives as string[]) ?? [],
+      gaps: (opts.gaps as string[]) ?? [],
       highStakes: Boolean(opts.highStakes ?? false),
     });
     await prisma.studyArtifact.updateMany({
@@ -279,7 +344,67 @@ export class StudyFactoryService {
         reviewStatus: a.reviewStatus, reviewedBy: a.reviewedById,
         generatedAt: a.createdAt,
       },
+      envelope: await this.envelope(id).catch(() => null),
       model: model ? { id: model.id, nodes: (model.nodes as unknown[]).length, builtAt: model.createdAt } : null,
+    };
+  }
+
+  /** First-class artifact envelope (spec header + source-change staleness). */
+  async envelope(id: string) {
+    const a = await this.get(id);
+    const model = a.modelId
+      ? await prisma.studyModel.findFirst({ where: { id: a.modelId, workspaceId: this.workspaceId } })
+      : await this.latestModel(a.setId).catch(() => null);
+    const currentVersions = ((model?.sourceVersions ?? []) as string[]);
+    const hasCitations = /citation/i.test(JSON.stringify(a.content ?? {}).slice(0, 20000));
+    return artifactEnvelope(
+      {
+        id: a.id, type: a.type, title: a.title,
+        sourceDocs: a.sourceDocs, sourceVersions: a.sourceVersions,
+        concepts: a.concepts, objectives: a.objectives,
+        audience: (a.audience ?? {}) as Audience,
+        extractionConfidence: a.extractionConfidence,
+        reviewStatus: String(a.reviewStatus), createdAt: a.createdAt,
+      },
+      currentVersions,
+      { hasCitations },
+    );
+  }
+
+  /**
+   * Assessment leakage screen: practice tests vs high-stakes (graded) tests
+   * in the set. Shared answer spans or near-identical items flag for
+   * regeneration with fresh items.
+   */
+  async leakage(setId: string) {
+    const rows = await prisma.studyArtifact.findMany({
+      where: { workspaceId: this.workspaceId, setId, type: "practice_test" },
+      take: 100,
+    });
+    const spansOf = (content: unknown): string[] => {
+      const q = ((content ?? {}) as { questions?: { back?: unknown; answer?: { requiredElements?: unknown[] } }[] }).questions ?? [];
+      return q.flatMap((x) => [
+        ...(Array.isArray(x.answer?.requiredElements) ? x.answer.requiredElements : []),
+        x.back,
+      ]).filter((s): s is string => typeof s === "string");
+    };
+    const textOf = (content: unknown): string => JSON.stringify(content ?? {}).slice(0, 4000);
+    const isGraded = (content: unknown): boolean =>
+      ((content ?? {}) as { _opts?: { highStakes?: boolean } })._opts?.highStakes === true;
+    const practice = rows.filter((r) => !isGraded(r.content)).map((r) => ({
+      id: r.id, title: r.title, text: textOf(r.content), answerSpans: spansOf(r.content),
+    }));
+    const graded = rows.filter((r) => isGraded(r.content)).map((r) => ({
+      id: r.id, title: r.title, text: textOf(r.content), answerSpans: spansOf(r.content),
+    }));
+    const { leaks, status } = assessmentLeakageCheck(practice, graded);
+    return {
+      setId, status,
+      practiceCount: practice.length, gradedCount: graded.length,
+      leaks,
+      note: graded.length === 0
+        ? "No high-stakes tests in this set — mark graded tests highStakes for the screen to apply."
+        : "Regenerate leaking practice with fresh items and varied inputs; require explanation alongside output.",
     };
   }
 

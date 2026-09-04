@@ -28,12 +28,30 @@ export interface FactoryActions {
   provenance: (id: string) => Promise<unknown>;
   impact: (documentKey: string) => Promise<{ affected: { id: string; type: string; title: string; reviewStatus: string }[]; note: string }>;
   consistency: (setId: string) => Promise<{ checked: { id: string; type: string }[]; alerts: { kinds: string[]; detail: string; artifactIds: string[] }[] }>;
+  envelope: (id: string) => Promise<EnvelopeShape>;
+  leakage: (setId: string) => Promise<LeakageShape>;
+}
+
+export interface EnvelopeShape {
+  artifact_id: string; type: string; title: string;
+  source_documents: string[]; source_versions: string[];
+  concepts: string[]; learning_objectives: string[];
+  citations: boolean; extraction_confidence: number; review_status: string;
+  generated_at: string;
+  source_status: { verified: boolean; stale_versions: string[]; affected_by_source_change: boolean };
+}
+
+export interface LeakageShape {
+  setId: string; status: string; practiceCount: number; gradedCount: number;
+  leaks: { practiceId: string; practiceTitle: string; gradedId: string; gradedTitle: string; similarity: number; sharedAnswers: string[]; action: string }[];
+  note: string;
 }
 
 const TYPES = [
   "summary", "glossary", "concept_map", "prereq_map", "flashcard_set",
   "practice_test", "case_study", "debate", "lab", "coding_assignment",
   "viva", "revision_sheet", "audio_lesson", "deck", "teaching_notes",
+  "gap_sheet",
 ];
 
 const STATUS_BADGE: Record<string, string> = {
@@ -54,6 +72,8 @@ export function FactoryPanel({ setId, actions, isInstructor }: {
   const [impact, setImpact] = useState<{ affected: { id: string; type: string; title: string; reviewStatus: string }[]; note: string } | null>(null);
   const [provenance, setProvenance] = useState<Record<string, unknown> | null>(null);
   const [provFor, setProvFor] = useState("");
+  const [envelopes, setEnvelopes] = useState<Record<string, EnvelopeShape>>({});
+  const [leakage, setLeakage] = useState<LeakageShape | null>(null);
   // generate form
   const [type, setType] = useState("summary");
   const [depth, setDepth] = useState("standard");
@@ -135,6 +155,9 @@ export function FactoryPanel({ setId, actions, isInstructor }: {
           </div>
           <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
             Sources: {a.sourceVersions.slice(0, 3).join(" · ") || "model"} · concepts: {a.concepts.slice(0, 4).join(", ")}
+            {envelopes[a.id] && (
+              <span> · {envelopes[a.id]!.source_status.verified ? "source verified" : `stale: ${envelopes[a.id]!.source_status.stale_versions.join(", ")}`}</span>
+            )}
           </div>
           {validation[a.id] && (
             <div style={{ fontSize: 12, marginTop: 4 }}>
@@ -147,6 +170,7 @@ export function FactoryPanel({ setId, actions, isInstructor }: {
             <div style={{ marginTop: 6 }}>
               <ArtifactView content={open[a.id]!} />
               <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                <Button variant="ghost" size="sm" onClick={() => void actions.envelope(a.id).then((e) => setEnvelopes((m) => ({ ...m, [a.id]: e }))).catch(() => undefined)}>Envelope</Button>
                 <Button variant="ghost" size="sm" onClick={() => { setProvFor(a.id); void actions.provenance(a.id).then((p) => setProvenance(p as Record<string, unknown>)); }}>Provenance</Button>
                 <Button variant="ghost" size="sm" onClick={() => void actions.regenerate(a.id).then(() => { load(); refresh(); })}>Regenerate (supersede)</Button>
                 <Button variant="ghost" size="sm" onClick={() => void actions.transform(a.id, "accessibility", { formats: ["text", "audio-transcript"] }).then(() => { load(); refresh(); })}>Accessibility version</Button>
@@ -163,6 +187,27 @@ export function FactoryPanel({ setId, actions, isInstructor }: {
       {artifacts !== null && artifacts.length === 0 && (
         <div style={{ fontSize: 13, color: "var(--nv-color-text-faint)" }}>No artifacts yet — build the model, then generate.</div>
       )}
+
+      {/* Assessment leakage */}
+      <div className="nv-card" style={{ fontSize: 13 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontWeight: 800 }}>🔒 Assessment leakage screen (practice vs graded)</span>
+          <div style={{ flex: 1 }} />
+          <Button variant="secondary" size="sm" onClick={() => void actions.leakage(setId).then((r) => setLeakage(r)).catch(() => undefined)}>Screen set</Button>
+        </div>
+        {leakage && (
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            {leakage.status === "clear"
+              ? <span style={{ color: "var(--nv-color-success)" }}>✅ Clear — practice {leakage.practiceCount} · graded {leakage.gradedCount}.</span>
+              : leakage.leaks.map((l, i) => (
+                <div key={i} style={{ color: "var(--nv-color-danger)" }}>
+                  ⚠ “{l.practiceTitle}” leaks “{l.gradedTitle}” (sim {l.similarity}{l.sharedAnswers.length > 0 ? ` · shared: ${l.sharedAnswers.join("; ")}` : ""}) — {l.action}.
+                </div>
+              ))}
+            <div style={{ color: "var(--nv-color-text-faint)" }}>{leakage.note}</div>
+          </div>
+        )}
+      </div>
 
       {/* Impact */}
       <div className="nv-card" style={{ fontSize: 13 }}>
