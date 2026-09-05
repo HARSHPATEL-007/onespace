@@ -28,6 +28,9 @@ export interface MemoryActions {
   pause: (id: string, paused: boolean) => Promise<void>;
   setScope: (id: string, scope: string, confirmed: boolean) => Promise<unknown>;
   forget: () => Promise<unknown>;
+  forgetScope: (scope: "TASK" | "SESSION" | "COURSE", courseId?: string) => Promise<{ count: number }>;
+  propose: (id: string, scope: string, expiresInDays: number, occurrences?: number, distinctContexts?: number) => Promise<{ needsConfirmation?: boolean; guard?: string } & Record<string, unknown>>;
+  classroomConflict: (id: string, externalUsage: string) => Promise<{ classroomId: string; note: string }>;
   doNotInfer: (key: string, on: boolean) => Promise<unknown>;
   classroom: (setId: string) => Promise<ClassroomCard[]>;
   classroomPropose: (fd: FormData) => Promise<void>;
@@ -125,6 +128,20 @@ export function MemoryCenterPanel({ setId, actions, isInstructor }: {
         <Button variant="ghost" size="sm" onClick={() => { if (confirm("Forget this conversation's task + session memories?")) void actions.forget().then(() => load()); }}>
           Forget conversation
         </Button>
+        <Button variant="ghost" size="sm" onClick={() => {
+          if (confirm("Delete ALL session-scope memories? Values are cleared; academic records are untouched.")) {
+            void actions.forgetScope("SESSION").then(() => load());
+          }
+        }}>
+          Forget session scope
+        </Button>
+        <Button variant="ghost" size="sm" onClick={() => {
+          if (confirm(`Delete ALL course memories for this course? Values are cleared; grades and notes are untouched.`)) {
+            void actions.forgetScope("COURSE", setId).then(() => load());
+          }
+        }}>
+          Forget course scope
+        </Button>
       </div>
 
       {/* Cards */}
@@ -211,6 +228,9 @@ export function MemoryCenterPanel({ setId, actions, isInstructor }: {
                 <Button variant="ghost" size="sm" onClick={() => void actions.classroomApprove(c.id, false).then(loadClassroom)}>Revoke</Button>
               </span>
             )}
+            {isInstructor && c.status === "APPROVED" && (
+              <ClassroomConflict id={c.id} actions={actions} />
+            )}
           </div>
         ))}
         <details style={{ marginTop: 6 }}>
@@ -242,5 +262,22 @@ export function MemoryCenterPanel({ setId, actions, isInstructor }: {
         )}
       </div>
     </div>
+  );
+}
+
+export function ClassroomConflict({ id, actions }: {
+  id: string; actions: Pick<MemoryActions, "classroomConflict">;
+}) {
+  const [external, setExternal] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  return (
+    <span style={{ marginLeft: 8 }}>
+      <input className="nv-input" value={external} onChange={(e) => setExternal(e.target.value)} placeholder="broader disciplinary usage…" style={{ width: 200 }} />
+      <Button variant="ghost" size="sm" onClick={() => {
+        if (!external.trim()) return;
+        void actions.classroomConflict(id, external.trim()).then((r) => setNote(r.note)).catch(() => undefined);
+      }}>Flag conflict</Button>
+      {note && <div style={{ color: "var(--nv-color-text-faint)" }}>{note}</div>}
+    </span>
   );
 }

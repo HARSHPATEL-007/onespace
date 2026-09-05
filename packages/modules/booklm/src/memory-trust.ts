@@ -151,6 +151,105 @@ function recency(ts: number): number {
   return Math.max(0.1, 1 / (1 + days / 30));
 }
 
+/**
+ * State explanation for memory-affected responses. Names the memory, scope,
+ * and basis — with a distinct variant for sensitive or inferred memories
+ * that are explicitly not saved as permanent attributes.
+ */
+export function explainUsage(memory: {
+  key: string; scope: string; classification?: string; confidenceLevel?: string;
+}): string {
+  const label = memory.key.replace(/_/g, " ");
+  const scope = memory.scope.toLowerCase().replace(/_/g, " ");
+  const cls = (memory.classification ?? "").toUpperCase();
+  if (memory.classification === "SENSITIVE" || cls === "MODEL_HYPOTHESIS" || memory.confidenceLevel === "hypothesis") {
+    return `I inferred that ${label} from limited evidence (${scope}). This is not saved as a permanent learner attribute. Change this?`;
+  }
+  return `I used your ${scope} preference for ${label} (${(memory.classification ?? "saved").toLowerCase().replace(/_/g, " ")}). Change this?`;
+}
+
+export interface PromotionEvidence {
+  occurrences: number;
+  distinctContexts: number;
+  confirmed: boolean;
+  classification: string;
+}
+
+/**
+ * Promotion eligibility: repetition alone never promotes. A candidate needs
+ * either explicit confirmation or repeated observation across distinct
+ * contexts (an assignment repeated daily is one context, not three).
+ * Untrusted documents and bare model hypotheses are never auto-eligible.
+ */
+export function promotionEligibility(e: PromotionEvidence): { eligible: boolean; reason: string } {
+  if (e.classification === "UNTRUSTED_DOCUMENT") {
+    return { eligible: false, reason: "untrusted document content — file as evidence, never promote" };
+  }
+  if (e.classification === "MODEL_HYPOTHESIS" && !e.confirmed) {
+    return { eligible: false, reason: "unconfirmed model hypothesis — confirm with the learner first" };
+  }
+  if (e.confirmed) return { eligible: true, reason: "explicitly confirmed" };
+  if (e.occurrences >= 3 && e.distinctContexts >= 2) {
+    return { eligible: true, reason: `${e.occurrences} observations across ${e.distinctContexts} contexts` };
+  }
+  return {
+    eligible: false,
+    reason: `only ${e.occurrences} occurrence(s) in ${e.distinctContexts} context(s) — repetition may reflect the current assignment, not a stable preference`,
+  };
+}
+
+export interface ScopeCheckRow {
+  id: string; ownerId: string; profileId?: string | null; scope: string; status: string;
+}
+
+export interface ScopeCheckResult {
+  allowed: { id: string }[];
+  rejected: { id: string; reason: string }[];
+}
+
+/**
+ * Tenant/profile isolation test helper: every candidate row is checked
+ * against owner, profile, scope allowlist, and lifecycle. Anything failing
+ * is rejected with a reason — retrieval results must pass this before use.
+ */
+export function enforceScopes(
+  rows: ScopeCheckRow[],
+  ctx: { ownerId: string; profileId?: string | null; allowedScopes?: string[] },
+): ScopeCheckResult {
+  const allowed: { id: string }[] = [];
+  const rejected: { id: string; reason: string }[] = [];
+  for (const r of rows) {
+    if (r.ownerId !== ctx.ownerId) {
+      rejected.push({ id: r.id, reason: "owner mismatch — cross-learner leak blocked" });
+      continue;
+    }
+    if (ctx.profileId !== undefined && r.profileId != null && r.profileId !== ctx.profileId) {
+      rejected.push({ id: r.id, reason: "profile mismatch — cross-profile use needs permission" });
+      continue;
+    }
+    if (ctx.allowedScopes && !ctx.allowedScopes.includes(r.scope)) {
+      rejected.push({ id: r.id, reason: `scope ${r.scope} outside the authorized snapshot` });
+      continue;
+    }
+    if (["DELETED", "EXPIRED"].includes(r.status)) {
+      rejected.push({ id: r.id, reason: `lifecycle ${r.status} — excluded from retrieval` });
+      continue;
+    }
+    allowed.push({ id: r.id });
+  }
+  return { allowed, rejected };
+}
+
+/**
+ * Classroom-vs-external conflict note: preserves both versions, marks the
+ * course definition course-local, and routes substantive contradictions to
+ * the instructor — never silently overwrites either side.
+ */
+export function classroomConflictNote(courseDefinition: string, externalUsage: string): string {
+  return `Course-local definition (“${courseDefinition.slice(0, 120)}”) differs from broader usage (“${externalUsage.slice(0, 120)}”). ` +
+    `Both are preserved; the course definition applies to assignments. Substantive contradiction escalated to the instructor.`;
+}
+
 /** Contradiction resolution order: correction > scope/time > newer verified. */
 export function resolveContradiction(args: {
   hasCorrection: boolean; scopeNarrower: boolean; newerVerified: boolean;

@@ -498,6 +498,23 @@ export async function memoryForgetAction() {
   return (await memSvc()).forgetConversation("");
 }
 
+export async function memoryForgetScopeAction(scope: "TASK" | "SESSION" | "COURSE", courseId?: string) {
+  return (await memSvc()).forgetScope(scope, courseId);
+}
+
+export async function memoryProposeAction(id: string, scope: string, expiresInDays: number, occurrences?: number, distinctContexts?: number) {
+  return (await memSvc()).propose(
+    id, scope, expiresInDays,
+    occurrences != null || distinctContexts != null
+      ? { occurrences: occurrences ?? 1, distinctContexts: distinctContexts ?? 1 }
+      : undefined,
+  );
+}
+
+export async function memoryClassroomConflictAction(id: string, externalUsage: string) {
+  return (await memSvc()).flagClassroomConflict(id, externalUsage.slice(0, 500));
+}
+
 export async function memoryDoNotInferAction(key: string, on: boolean) {
   return (await memSvc()).setDoNotInfer(key, on);
 }

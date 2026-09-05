@@ -59,8 +59,8 @@ export async function GET(req: Request) {
 
 /**
  * POST /v1/learner/memory — create | propose | confirm | correct | delete |
- * pause | scope | forget | do-not-infer | classroom-propose | classroom-approve |
- * scan | retrieve
+ * pause | scope | forget | forget-scope | do-not-infer | classroom-propose |
+ * classroom-approve | classroom-conflict | scan | retrieve
  */
 export async function POST(req: Request) {
   const c = await ctx();
@@ -82,9 +82,14 @@ export async function POST(req: Request) {
         return NextResponse.json(await m.create(parsed.data), { status: 201 });
       }
       case "propose": {
-        const { id, scope, expiresInDays } = b as { id?: string; scope?: string; expiresInDays?: number };
+        const { id, scope, expiresInDays, occurrences, distinctContexts } = b as {
+          id?: string; scope?: string; expiresInDays?: number; occurrences?: number; distinctContexts?: number;
+        };
         if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-        return NextResponse.json(await m.propose(id, scope ?? "SESSION", expiresInDays ?? 30));
+        const evidence = occurrences != null || distinctContexts != null
+          ? { occurrences: Number(occurrences ?? 1), distinctContexts: Number(distinctContexts ?? 1) }
+          : undefined;
+        return NextResponse.json(await m.propose(id, scope ?? "SESSION", expiresInDays ?? 30, evidence));
       }
       case "confirm": {
         const { id, scope } = b as { id?: string; scope?: string };
@@ -116,6 +121,18 @@ export async function POST(req: Request) {
         const sessionId = String(b.sessionId ?? "");
         return NextResponse.json(await m.forgetConversation(sessionId));
       }
+      case "forget-scope": {
+        const { scope, courseId } = b as { scope?: string; courseId?: string };
+        if (!["TASK", "SESSION", "COURSE"].includes(scope ?? "")) {
+          return NextResponse.json({ error: "scope must be TASK, SESSION, or COURSE" }, { status: 400 });
+        }
+        return NextResponse.json(await m.forgetScope(scope as "TASK" | "SESSION" | "COURSE", courseId));
+      }
+      case "classroom-conflict": {
+        const { id, externalUsage } = b as { id?: string; externalUsage?: string };
+        if (!id || !externalUsage) return NextResponse.json({ error: "id + externalUsage required" }, { status: 400 });
+        return NextResponse.json(await m.flagClassroomConflict(id, externalUsage));
+      }
       case "do-not-infer": {
         const { key, on } = b as { key?: string; on?: boolean };
         if (!key) return NextResponse.json({ error: "key required" }, { status: 400 });
@@ -138,9 +155,9 @@ export async function POST(req: Request) {
         return NextResponse.json(m.scanDocument(text));
       }
       case "retrieve": {
-        const { scopes, limit, courseId } = b as { scopes?: string[]; limit?: number; courseId?: string };
+        const { scopes, limit, courseId, profileId } = b as { scopes?: string[]; limit?: number; courseId?: string; profileId?: string | null };
         return NextResponse.json({
-          memories: await m.retrieveForTask({ scopes, limit: limit ?? 20, courseId }),
+          memories: await m.retrieveForTask({ scopes, limit: limit ?? 20, courseId, profileId }),
         });
       }
       default:

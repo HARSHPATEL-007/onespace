@@ -41,8 +41,12 @@ export { AssessmentProfilePanel, type AssessActions } from "./assess-ui";
 export { AssessProfileService, evidenceSchema, blueprintSchema } from "./assess-profile";
 export { ExplanationCard, DecisionQueue, EducatorDecisionPanel, DecisionMetricsView, DecisionGovernance, type DecisionCardData } from "./pedagogy-ui";
 export { DecisionService, pedagogyDecisionSchema, reviewSchema, evidenceItemSchema, alternativeSchema } from "./decisions";
-export { MemoryCenterPanel, type MemoryActions, type MemoryCard } from "./memory-ui";
+export { MemoryCenterPanel, ClassroomConflict, type MemoryActions, type MemoryCard } from "./memory-ui";
 export { MemoryService, memoryRecordSchema, classroomSchema } from "./memories";
+export {
+  explainUsage, promotionEligibility, enforceScopes, classroomConflictNote,
+  type PromotionEvidence, type ScopeCheckRow, type ScopeCheckResult,
+} from "./memory-trust";
 export { TutorAgentsPanel, ModeContractView, type TutorAgentActions } from "./tutor-ui";
 export { OrchestratorService, runTurnSchema, modePolicySchema } from "./orchestrate";
 export { AdaptivePanel, type AdaptActions } from "./adapt-ui";

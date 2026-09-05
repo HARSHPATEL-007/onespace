@@ -2,7 +2,8 @@ import { z } from "zod";
 import { prisma } from "@n0va/db";
 import {
   confidenceLevelFor, canTransition, mayPromoteScope,
-  injectionScan, resolveContradiction,
+  injectionScan, resolveContradiction, explainUsage, promotionEligibility,
+  classroomConflictNote,
   type MemoryLifecycle,
 } from "./memory-trust";
 
@@ -141,8 +142,21 @@ export class MemoryService {
   }
 
   // -- Promotion workflow -----------------------------------------------------------
-  async propose(id: string, scope: string, expiresInDays: number) {
+  async propose(id: string, scope: string, expiresInDays: number, evidence?: { occurrences: number; distinctContexts: number }) {
     const m = await this.owned(id);
+    // Repetition guard: frequency alone never promotes. Proposal precedes
+    // confirmation, so occurrence evidence must already show multi-context
+    // support or the flow routes to explicit learner confirmation.
+    if (evidence) {
+      const check = promotionEligibility({
+        occurrences: evidence.occurrences, distinctContexts: evidence.distinctContexts,
+        confirmed: false, classification: m.classification,
+      });
+      if (!check.eligible) {
+        await this.event(id, "memory.confirmation.requested", `repetition guard: ${check.reason}`, { scope });
+        return { needsConfirmation: true as const, from: m.scope, to: scope, memory: m, guard: check.reason };
+      }
+    }
     if (!canTransition(m.status as MemoryLifecycle, "PROPOSED")) throw new Error(`Cannot propose from ${m.status}`);
     if (!mayPromoteScope(m.scope, scope, false) && scope !== m.scope) {
       // Widening needs confirmation — record the request, stay put.
@@ -201,15 +215,26 @@ export class MemoryService {
     }));
   }
 
-  /** Minimum-necessary retrieval for a task (ordered scopes, no expired/paused/deleted). */
-  async retrieveForTask(opts?: { scopes?: string[]; limit?: number; courseId?: string }) {
+  /**
+   * Minimum-necessary retrieval for a task (ordered scopes, no
+   * expired/paused/deleted). Optional profileId excludes other profiles'
+   * memories; every row carries a state-explanation line for response-time
+   * disclosure ("I used your X… Change this?").
+   */
+  async retrieveForTask(opts?: { scopes?: string[]; limit?: number; courseId?: string; profileId?: string | null }) {
     await this.sweep();
+    // Combined with AND: profile isolation and course scoping must both
+    // hold (two OR keys in one object would overwrite each other).
+    const extra: Record<string, unknown>[] = [
+      ...(opts?.profileId !== undefined ? [{ OR: [{ profileId: opts.profileId }, { profileId: null }] }] : []),
+      ...(opts?.courseId ? [{ OR: [{ courseId: opts.courseId }, { scope: { in: ["LONG_TERM", "TENANT", "SYSTEM"] as never } }] }] : []),
+    ];
     const rows = await prisma.memoryRecord.findMany({
       where: {
         workspaceId: this.workspaceId, ownerId: this.userId,
         status: { in: ["ACTIVE", "REVALIDATED", "CONFIRMED"] as never },
         paused: false,
-        ...(opts?.courseId ? { OR: [{ courseId: opts.courseId }, { scope: { in: ["LONG_TERM", "TENANT", "SYSTEM"] as never } }] } : {}),
+        ...(extra.length > 0 ? { AND: extra } : {}),
       },
       take: 200, orderBy: { updatedAt: "desc" },
     });
@@ -217,7 +242,11 @@ export class MemoryService {
     return rows
       .filter((r) => order.includes(r.scope))
       .sort((a, b) => order.indexOf(a.scope) - order.indexOf(b.scope) || b.confidence - a.confidence)
-      .slice(0, Math.min(opts?.limit ?? 20, 50));
+      .slice(0, Math.min(opts?.limit ?? 20, 50))
+      .map((r) => ({
+        ...r,
+        usageLine: explainUsage({ key: r.key, scope: r.scope, classification: r.classification, confidenceLevel: r.confidenceLevel }),
+      }));
   }
 
   async markUsed(id: string, usedFor: string) {
@@ -308,6 +337,44 @@ export class MemoryService {
     }).catch(() => null);
     await this.event(null, "memory.deleted", "forget-conversation", { sessionId });
     return { count };
+  }
+
+  /**
+   * Bulk forget for "delete all session/course memory" controls. Clears
+   * values and marks DELETED (bulk path: no per-item tombstone rows, unlike
+   * single remove()). Official academic records are untouched — only memory
+   * rows in the requested scopes.
+   */
+  async forgetScope(scope: "TASK" | "SESSION" | "COURSE", courseId?: string) {
+    const res = await prisma.memoryRecord.updateMany({
+      where: {
+        workspaceId: this.workspaceId, ownerId: this.userId,
+        scope: scope as never,
+        ...(courseId ? { courseId } : {}),
+        status: { notIn: ["DELETED"] as never },
+      },
+      data: { status: "DELETED" as never, value: "", paused: true },
+    }).catch(() => ({ count: 0 }));
+    await this.event(null, "memory.deleted", `forget-scope ${scope}`, { scope, courseId: courseId ?? null, count: res.count });
+    return { count: res.count };
+  }
+
+  /**
+   * Classroom-vs-external conflict flag: preserves both versions, marks the
+   * course definition course-local, and logs instructor escalation — without
+   * touching either text (no schema migration; the note travels in the audit
+   * event until a dedicated field exists).
+   */
+  async flagClassroomConflict(classroomId: string, externalUsage: string) {
+    const rec = await prisma.classroomMemory.findFirst({
+      where: { id: classroomId, workspaceId: this.workspaceId },
+    });
+    if (!rec) throw new Error("Classroom memory not found");
+    const note = classroomConflictNote(rec.value, externalUsage);
+    await this.event(null, "memory.classroom.conflict", "conflict flagged — both versions preserved", {
+      classroomId, courseDefinition: rec.value.slice(0, 300), externalUsage: externalUsage.slice(0, 300), note,
+    });
+    return { classroomId, note };
   }
 
   async setPaused(id: string, paused: boolean) {
