@@ -577,6 +577,26 @@ export async function decisionMetricsAction(setId: string) {
   return (await decSvc()).metrics(setId);
 }
 
+export async function decisionDraftAction(input: {
+  evidence: { type: string; result: string; context?: string }[];
+  evidenceKinds?: string[];
+  candidates: { strategy: string; fit: Record<string, number>; risks?: string[] }[];
+  confidences?: { strategy?: number; outcome?: number; policy?: number };
+  agents?: string[];
+}) {
+  return (await decSvc()).draftDecision({
+    evidence: input.evidence,
+    evidenceKinds: input.evidenceKinds,
+    candidates: input.candidates.map((c) => ({
+      strategy: c.strategy,
+      fit: c.fit as import("@n0va/modules-booklm/pedagogy").StrategyFit,
+      risks: c.risks,
+    })),
+    confidences: input.confidences,
+    agents: input.agents,
+  });
+}
+
 // --- Deep assessment profile ---
 
 const assessSvc = async () => {
@@ -693,6 +713,27 @@ export async function integrityQueueAction() {
 
 export async function integrityReviewAction(recordId: string, decision: "CLEARED" | "VIOLATION", reason: string) {
   await (await integSvc()).reviewDecision(recordId, decision, reason);
+}
+
+export async function integrityTechnicalEventAction(recordId: string, category: string, detail = "") {
+  return (await integSvc()).logTechnicalEvent(recordId, { category, detail });
+}
+
+export async function integrityCodeProcessAction(recordId: string) {
+  return (await integSvc()).codeProcess(recordId);
+}
+
+export async function integrityPacketAction(recordId: string) {
+  const p = await (await integSvc()).reviewerPacket(recordId);
+  return {
+    assessmentStakes: p.assessmentStakes,
+    assessmentPolicy: p.assessmentPolicy,
+    alternativeExplanations: p.alternativeExplanations,
+    learnerResponse: p.learnerResponse,
+    aiLimits: p.aiLimits,
+    signals: ((p.record.signals ?? []) as { type: string; severity: string; evidence: string }[]),
+    excludedSignals: (p.record as { excludedSignals?: string[] }).excludedSignals ?? [],
+  };
 }
 
 export async function integrityAppealResolveAction(appealId: string, status: "UPHELD" | "OVERTURNED", resolution: string) {

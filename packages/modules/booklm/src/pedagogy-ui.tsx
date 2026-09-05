@@ -68,6 +68,17 @@ export function ExplanationCard({ card, onControl }: {
         <Button variant="ghost" size="sm" onClick={() => act("ask_why")}>Ask why</Button>
         <Button variant="ghost" size="sm" onClick={() => act("ask_teacher", note)}>Ask teacher</Button>
       </div>
+      <details style={{ marginTop: 6 }}>
+        <summary style={{ fontSize: 12, cursor: "pointer" }}>More controls (pause, intensity, modality, corrections)</summary>
+        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+          <Button variant="ghost" size="sm" onClick={() => act("pause_adaptation", note)}>Pause adaptation</Button>
+          <Button variant="ghost" size="sm" onClick={() => act("change_intensity", note || "lower intensity")}>Lower intensity</Button>
+          <Button variant="ghost" size="sm" onClick={() => act("change_modality", note || "different format")}>Change format</Button>
+          <Button variant="ghost" size="sm" onClick={() => act("correct_issue", note)}>Correct the issue label</Button>
+          <Button variant="ghost" size="sm" onClick={() => act("report_inaccurate", note)}>Report inaccurate explanation</Button>
+          <Button variant="ghost" size="sm" onClick={() => act("dont_reuse_evidence", note)}>Don&apos;t reuse this evidence</Button>
+        </div>
+      </details>
       {modifying && (
         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
           <input className="nv-input" value={modifyText} onChange={(e) => setModifyText(e.target.value)} placeholder="Your modified strategy…" style={{ flex: 1 }} />

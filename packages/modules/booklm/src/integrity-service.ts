@@ -3,7 +3,8 @@ import { prisma } from "@n0va/db";
 import {
   triageLevel, reviewRequired, EXCLUDED_SIGNALS, buildVariant,
   analyzeSimilarity, authorshipFollowUp, interpretWithAccommodation,
-  buildNotice, type IntegritySignal,
+  buildNotice, telemetryEventAllowed, codeProcessSummary, browserControlEvent,
+  alternativeExplanations, type IntegritySignal,
 } from "./integrity";
 
 export const policySchemaIntegrity = z.object({
@@ -60,6 +61,12 @@ const DEFAULT_POLICY = {
   item_randomization: true, item_exposure_tracking: true,
   plagiarism_analysis: "review_signal_only", authorship_analysis: "review_signal_only",
   biometrics: { enabled: false, high_stakes_decision_use: "prohibited" },
+  secure_browser: {
+    enabled: false, copy_paste: "allowed", external_web: "allowed",
+    screen_recording: false, assistive_technology_compatible: true,
+    practice_run_offered: true, disconnect_recovery: true,
+  },
+  code_telemetry: { enabled: false, scope: ["assessment_workspace", "test_runs", "file_versions"] },
   human_review: { required_for_penalty: true, required_for_appeal: true },
   appeal: { deadline_days: 14, evidence_access: true, no_penalty_during_review: true },
   accommodations: { separate_workflow: true, assistive_technology_allowed: true },
@@ -183,13 +190,29 @@ export class IntegrityService {
   async recordSubmission(input: z.infer<typeof recordSchema>) {
     const targetUser = input.userId || this.userId;
     if (targetUser !== this.userId) this.assertInstructor();
-    const signals = input.signals as IntegritySignal[];
+    // Hard rule: biometric/behavioral signals never enter integrity scoring.
+    // Stripped at ingest with a count — never stored, never scored.
+    const raw = input.signals as IntegritySignal[];
+    const stripped = raw.filter((s) =>
+      EXCLUDED_SIGNALS.some((x) => s.type.toLowerCase().includes(x)),
+    ).length;
+    const signals = raw.filter((s) =>
+      !EXCLUDED_SIGNALS.some((x) => s.type.toLowerCase().includes(x)),
+    );
+    // Assessment stakes feed the review triggers (high stakes ⇒ human review).
+    const assessment = input.assessmentId
+      ? await prisma.assessment.findFirst({
+        where: { id: input.assessmentId, workspaceId: this.workspaceId },
+        select: { stakes: true },
+      }).catch(() => null)
+      : null;
+    const highStakes = assessment?.stakes === "high";
     const { level, reason } = triageLevel({
       signals,
       policyRelevant: true, accommodationChecked: true, learnerCanRespond: true,
     });
     const triggers = reviewRequired({
-      highStakes: false, ambiguous: level === "moderate",
+      highStakes, ambiguous: level === "moderate",
       signalsConflict: signals.some((s) => s.severity === "high") && signals.some((s) => s.severity === "low"),
       lowConfidence: signals.length > 0 && Math.max(...signals.map((s) => s.confidence)) < 0.5,
     });
@@ -218,7 +241,51 @@ export class IntegrityService {
         appealDeadline: needsReview ? new Date(Date.now() + 14 * 86_400_000) : null,
       },
     });
-    return { record: rec, triage: { level, reason }, reviewTriggers: triggers };
+    return {
+      record: rec, triage: { level, reason }, reviewTriggers: triggers,
+      excludedSignalsStripped: stripped,
+      stakes: assessment?.stakes ?? "low",
+    };
+  }
+
+  /**
+   * Allowlist-gated technical/code event log on a record. Learners may log
+   * their own record's events (disconnects, tool errors); instructors any
+   * record. Prohibited categories are rejected, never stored.
+   */
+  async logTechnicalEvent(recordId: string, event: { category: string; detail?: string; at?: string }) {
+    const rec = await prisma.integrityRecord.findFirst({
+      where: { id: recordId, workspaceId: this.workspaceId },
+    });
+    if (!rec) throw new Error("Record not found");
+    if (rec.userId !== this.userId) this.assertInstructor();
+    const gate = telemetryEventAllowed(event.category);
+    if (!gate.allowed) throw new Error(`Rejected: ${gate.reason}`);
+    const existing = Array.isArray(rec.technicalEvents) ? rec.technicalEvents as Record<string, unknown>[] : [];
+    const entry = {
+      category: event.category.toLowerCase().trim(),
+      detail: (event.detail ?? "").slice(0, 500),
+      at: event.at ?? new Date().toISOString(),
+      actorId: this.userId,
+    };
+    await prisma.integrityRecord.update({
+      where: { id: recordId },
+      data: { technicalEvents: [...existing, entry].slice(-100) as never },
+    });
+    return { ok: true, entry };
+  }
+
+  /** Programming process summary for a record's code telemetry. */
+  async codeProcess(recordId: string) {
+    const rec = await prisma.integrityRecord.findFirst({
+      where: { id: recordId, workspaceId: this.workspaceId },
+    });
+    if (!rec) throw new Error("Record not found");
+    if (rec.userId !== this.userId) this.assertInstructor();
+    const events = (Array.isArray(rec.technicalEvents) ? rec.technicalEvents : []) as { category?: string; at?: string; detail?: string }[];
+    return codeProcessSummary(events.map((e) => ({
+      t: String(e.at ?? ""), event: String(e.category ?? ""), detail: String(e.detail ?? ""),
+    })));
   }
 
   async myRecords() {
@@ -252,10 +319,14 @@ export class IntegrityService {
     const assessment = rec.assessmentId
       ? await prisma.assessment.findFirst({ where: { id: rec.assessmentId, workspaceId: this.workspaceId } })
       : null;
+    const signals = (rec.signals ?? []) as { type: string; severity: string; evidence: string }[];
+    const accommodation = (rec.accommodation ?? {}) as { effects?: string[] };
     return {
       record: rec,
-      assessmentPolicy: (assessment?.policy ?? DEFAULT_POLICY) as Record<string, unknown>,
+      assessmentPolicy: { ...DEFAULT_POLICY, ...((assessment?.policy ?? {}) as Record<string, unknown>) },
       assessmentStakes: assessment?.stakes ?? "low",
+      alternativeExplanations: alternativeExplanations(signals, accommodation.effects ?? []),
+      learnerResponse: rec.appeals.map((a) => ({ status: a.status, reason: a.reason.slice(0, 500) })),
       aiLimits: "AI confidence expresses model uncertainty, not guilt. Biometric/behavioral signals are excluded by policy and were not used.",
     };
   }
@@ -464,6 +535,10 @@ export class IntegrityService {
     ]);
     const decided = appeals.filter((a) => a.status === "UPHELD" || a.status === "OVERTURNED");
     const overturns = appeals.filter((a) => a.status === "OVERTURNED").length;
+    const overdueAppeals = appeals.filter((a) =>
+      (a.status === "OPEN" || a.status === "UNDER_REVIEW") &&
+      Date.now() - new Date(a.createdAt).getTime() > 14 * 86_400_000,
+    ).length;
     const turnaroundHrs = reviews.length
       ? reviews.reduce((s, r) => s + (new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime()) / 3_600_000, 0) / reviews.length : 0;
     const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -475,6 +550,7 @@ export class IntegrityService {
       humanReviewCoverage: records.length
         ? r2(records.filter((r) => ["CLEARED", "VIOLATION"].includes(r.status)).length / records.length) : 0,
       noPenaltyDuringReview: true,
+      overdueAppeals,
     };
   }
 }

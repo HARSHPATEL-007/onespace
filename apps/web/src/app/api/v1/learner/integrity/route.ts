@@ -41,6 +41,11 @@ export async function GET(req: Request) {
         if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
         return NextResponse.json(await s.reviewerPacket(id));
       }
+      case "code-process": {
+        const id = url.searchParams.get("id") ?? "";
+        if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+        return NextResponse.json(await s.codeProcess(id));
+      }
       case "appeals":
         return NextResponse.json({ appeals: await s.listAppeals(url.searchParams.get("recordId") ?? undefined) });
       case "exposure": {
@@ -74,7 +79,8 @@ export async function GET(req: Request) {
 /**
  * POST /v1/learner/integrity — policy | item | variant | expose | record |
  * review | appeal | appeal-resolve | similarity | authorship |
- * accommodation | accommodation-off | defense | defense-score | leak-respond
+ * accommodation | accommodation-off | defense | defense-score | leak-respond |
+ * technical-event | code-process
  */
 export async function POST(req: Request) {
   const c = await ctx();
@@ -128,6 +134,22 @@ export async function POST(req: Request) {
         const parsed = recordSchema.safeParse(b);
         if (!parsed.success) return NextResponse.json({ error: "Invalid body", issues: parsed.error.issues }, { status: 400 });
         return NextResponse.json(await s.recordSubmission(parsed.data), { status: 201 });
+      }
+      case "technical-event": {
+        const { recordId, category, detail } = b as { recordId?: string; category?: string; detail?: string };
+        if (!recordId || !category) return NextResponse.json({ error: "recordId + category required" }, { status: 400 });
+        try {
+          return NextResponse.json(await s.logTechnicalEvent(recordId, { category, detail }));
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Failed";
+          const status = msg.startsWith("Rejected") ? 422 : msg.startsWith("Forbidden") ? 403 : 500;
+          return NextResponse.json({ error: msg }, { status });
+        }
+      }
+      case "code-process": {
+        const { recordId } = b as { recordId?: string };
+        if (!recordId) return NextResponse.json({ error: "recordId required" }, { status: 400 });
+        return NextResponse.json(await s.codeProcess(recordId));
       }
       case "review": {
         const { id, decision, reason } = b as Record<string, string>;

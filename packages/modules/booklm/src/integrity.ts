@@ -201,6 +201,122 @@ export function interpretWithAccommodation(event: string, effects: string[]): { 
   };
 }
 
+/**
+ * Telemetry allowlist: only assessment-workspace events the policy permits.
+ * Private files, unrelated browsing, passwords, personal keystrokes, hidden
+ * data outside the environment, and biometrics are prohibited — collection
+ * attempts in these categories are rejected, never stored.
+ */
+export const TELEMETRY_ALLOWLIST = [
+  "compile", "run", "test", "test_pass", "test_fail",
+  "edit_milestone", "save", "commit", "checkpoint",
+  "debug_attempt", "coverage", "dependency_install",
+  "file_create", "file_modify",
+  "browser_fullscreen", "browser_copy_paste", "browser_resource",
+  "browser_switch", "browser_network", "browser_calculator",
+  "browser_device", "browser_identity", "browser_technical", "browser_disconnect",
+];
+
+const PROHIBITED_TELEMETRY = [
+  "private_file", "browsing", "password", "keystroke", "hidden_data",
+  "biometric", "screen_content", "webcam", "microphone",
+];
+
+export function telemetryEventAllowed(category: string): { allowed: boolean; reason: string } {
+  const c = category.toLowerCase().trim();
+  if (PROHIBITED_TELEMETRY.some((p) => c.includes(p))) {
+    return { allowed: false, reason: `prohibited telemetry category “${category}” — rejected, never stored` };
+  }
+  if ((TELEMETRY_ALLOWLIST as string[]).includes(c)) {
+    return { allowed: true, reason: "within assessment-workspace policy scope" };
+  }
+  return { allowed: false, reason: `unknown telemetry category “${category}” — allowlist-only collection` };
+}
+
+export interface CodeProcessSummary {
+  milestones: { t: string; event: string }[];
+  testProgression: string;
+  interpretation: "consistent_with_independent_development" | "thin_process_evidence" | "needs_context";
+  note: string;
+}
+
+/**
+ * Programming process summary from milestone events. Supports learning and
+ * debugging — never a hidden productivity or surveillance score.
+ */
+export function codeProcessSummary(events: { t: string; event: string; detail?: string }[]): CodeProcessSummary {
+  const milestones = events.slice(0, 40).map((e) => ({ t: e.t, event: e.event }));
+  const kinds = new Set(events.map((e) => e.event));
+  const has = (...ks: string[]) => ks.some((k) => kinds.has(k));
+  const testRuns = events.filter((e) => e.event === "test_pass" || e.event === "test_fail").length;
+  let interpretation: CodeProcessSummary["interpretation"];
+  let testProgression = testRuns > 0 ? `${testRuns} test run(s) recorded` : "no test runs recorded";
+  if (has("function_stub_created", "edit_milestone") && has("first_test_run", "test_fail", "test_pass") && has("all_visible_tests_pass", "commit", "checkpoint")) {
+    interpretation = "consistent_with_independent_development";
+  } else if (events.length <= 1) {
+    interpretation = "thin_process_evidence";
+    testProgression += " — final artifact only; process says little either way";
+  } else {
+    interpretation = "needs_context";
+  }
+  return {
+    milestones,
+    testProgression,
+    interpretation,
+    note: "Process evidence supports learning and debugging, not productivity scoring or misconduct findings alone.",
+  };
+}
+
+/**
+ * Secure-browser control event with real-vs-software-error distinction.
+ * Restrictions triggered by software error must never read as violations.
+ */
+export function browserControlEvent(args: {
+  control: string; triggered: boolean; realEvent: boolean; detail?: string;
+}): { kind: string; control: string; outcome: string; note: string } {
+  return {
+    kind: "browser_control",
+    control: args.control,
+    outcome: !args.triggered
+      ? "not_triggered"
+      : args.realEvent
+        ? "restriction_applied_on_real_event"
+        : "triggered_by_software_error — not a violation",
+    note: (args.detail ?? "").slice(0, 200) || "logged with trigger cause",
+  };
+}
+
+/**
+ * Alternative explanations per signal for reviewer packets. Every flag
+ * travels with its innocent readings — reviewers see them by default.
+ */
+export function alternativeExplanations(
+  signals: { type: string }[],
+  accommodationEffects: string[] = [],
+): string[] {
+  const out: string[] = [];
+  const hasAccomm = accommodationEffects.length > 0;
+  for (const s of signals) {
+    const t = s.type.toLowerCase();
+    if (/exposure|preview|view/.test(t)) {
+      out.push("authorized practice exposure — encountering an item in practice does not punish the learner");
+    } else if (/similar|overlap|plagiar|copy/.test(t)) {
+      out.push("shared prompt, starter code, or approved collaboration");
+    } else if (/time|pause|duration|speed/.test(t)) {
+      out.push(hasAccomm
+        ? `approved accommodation effect (${accommodationEffects.join(", ")}) — excluded from integrity scoring`
+        : "assistive technology, interruption, or device issue");
+    } else if (/switch|focus|fullscreen|browser|technical|disconnect/.test(t)) {
+      out.push("technical event or software error — verify against the event log before any reading");
+    } else if (/authorship|style|vocab/.test(t)) {
+      out.push("draft evolution, second-language writing, or assistive tooling — conversation first");
+    } else {
+      out.push("single-signal reading pending — converging evidence required before escalation");
+    }
+  }
+  return [...new Set(out)].slice(0, 10);
+}
+
 /** Learner notice: what, meaning, evidence in/out, options, deadline, no penalty pending. */
 export function buildNotice(args: {
   flagged: string; evidenceIn: string[]; evidenceOut?: string[];

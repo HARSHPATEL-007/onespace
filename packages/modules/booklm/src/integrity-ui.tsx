@@ -47,6 +47,14 @@ export interface IntegrityActions {
   scheduleDefense: (fd: FormData) => Promise<void>;
   defenses: () => Promise<{ id: string; topic: string; status: string; userId: string; scores: Record<string, number | string>; consentRecording: boolean }[]>;
   scoreDefense: (id: string, fd: FormData) => Promise<void>;
+  packet: (recordId: string) => Promise<{
+    assessmentStakes: string; assessmentPolicy: Record<string, unknown>;
+    alternativeExplanations: string[]; learnerResponse: { status: string; reason: string }[];
+    aiLimits: string; signals: { type: string; severity: string; evidence: string }[];
+    excludedSignals: string[];
+  }>;
+  technicalEvent: (recordId: string, category: string, detail?: string) => Promise<unknown>;
+  codeProcess: (recordId: string) => Promise<{ milestones: { t: string; event: string }[]; testProgression: string; interpretation: string; note: string }>;
 }
 
 export function IntegrityPanel({ setId, actions, isInstructor }: {
@@ -71,6 +79,10 @@ export function IntegrityPanel({ setId, actions, isInstructor }: {
   const [tplKey, setTplKey] = useState("");
   const [variant, setVariant] = useState<Awaited<ReturnType<IntegrityActions["makeVariant"]>> | null>(null);
   const [exposure, setExposure] = useState<Awaited<ReturnType<IntegrityActions["exposure"]>> | null>(null);
+  const [packets, setPackets] = useState<Record<string, Awaited<ReturnType<IntegrityActions["packet"]>>>>({});
+  const [processes, setProcesses] = useState<Record<string, Awaited<ReturnType<IntegrityActions["codeProcess"]>>>>({});
+  const [techCat, setTechCat] = useState("browser_disconnect");
+  const [techDetail, setTechDetail] = useState("");
 
   if (status === null) void actions.status().then((s) => setStatus(s)).catch(() => undefined);
   if (appeals === null) void actions.appeals().then((a) => setAppeals(a)).catch(() => undefined);
@@ -205,6 +217,42 @@ export function IntegrityPanel({ setId, actions, isInstructor }: {
                     void actions.review(r.id, "VIOLATION", el.value.trim()).then(() => { setQueue(null); refresh(); });
                   }}>Violation</Button>
                   <Button variant="ghost" size="sm" onClick={() => setReviewFor(reviewFor === r.id ? null : r.id)}>Appeals</Button>
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    if (packets[r.id]) setPackets((m) => { const c = { ...m }; delete c[r.id]; return c; });
+                    else void actions.packet(r.id).then((p) => setPackets((m) => ({ ...m, [r.id]: p }))).catch(() => undefined);
+                  }}>Packet</Button>
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    if (processes[r.id]) setProcesses((m) => { const c = { ...m }; delete c[r.id]; return c; });
+                    else void actions.codeProcess(r.id).then((p) => setProcesses((m) => ({ ...m, [r.id]: p }))).catch(() => undefined);
+                  }}>Process</Button>
+                </div>
+                {packets[r.id] && (
+                  <div style={{ fontSize: 12, marginTop: 4, borderTop: "1px solid var(--nv-color-border)", paddingTop: 4 }}>
+                    <div><b>Reviewer packet</b> · stakes: {packets[r.id]!.assessmentStakes}</div>
+                    <div style={{ color: "var(--nv-color-text-faint)" }}>Alternative readings: {packets[r.id]!.alternativeExplanations.join(" · ") || "—"}</div>
+                    {packets[r.id]!.learnerResponse.length > 0 && (
+                      <div>Learner response: {packets[r.id]!.learnerResponse.map((a) => `${a.status.toLowerCase()}: ${a.reason.slice(0, 100)}`).join(" · ")}</div>
+                    )}
+                    <div style={{ color: "var(--nv-color-text-faint)" }}>{packets[r.id]!.aiLimits}</div>
+                  </div>
+                )}
+                {processes[r.id] && (
+                  <div style={{ fontSize: 12, marginTop: 4 }}>
+                    <div><b>Process:</b> {processes[r.id]!.interpretation.replace(/_/g, " ")} — {processes[r.id]!.testProgression}</div>
+                    <div style={{ color: "var(--nv-color-text-faint)" }}>{processes[r.id]!.milestones.slice(0, 6).map((m) => `${m.t} ${m.event}`).join(" → ") || "no milestones"}</div>
+                    <div style={{ color: "var(--nv-color-text-faint)" }}>{processes[r.id]!.note}</div>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                  <select className="nv-input" value={techCat} onChange={(e) => setTechCat(e.target.value)} style={{ width: 200 }}>
+                    {["browser_disconnect", "browser_technical", "compile", "test_fail", "dependency_install", "browser_switch"].map((c) => (
+                      <option key={c} value={c}>{c.replace(/_/g, " ")}</option>
+                    ))}
+                  </select>
+                  <input className="nv-input" value={techDetail} onChange={(e) => setTechDetail(e.target.value)} placeholder="event detail…" style={{ flex: 1, minWidth: 160 }} />
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    void actions.technicalEvent(r.id, techCat, techDetail).then(() => { setTechDetail(""); setQueue(null); refresh(); }).catch(() => undefined);
+                  }}>Log event</Button>
                 </div>
                 {reviewFor === r.id && <AppealList recordId={r.id} actions={actions} />}
               </div>

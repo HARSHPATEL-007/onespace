@@ -2,7 +2,8 @@ import { z } from "zod";
 import { prisma } from "@n0va/db";
 import {
   ISSUES, strategyScore, confidenceBand, mustShowAlternatives,
-  governanceChecks, outcomeQuality, type IssueType,
+  governanceChecks, outcomeQuality, detectIssue, selectStrategy,
+  aggregateConfidence, scoreEvidence, type IssueType, type StrategyFit,
 } from "./pedagogy";
 
 export const evidenceItemSchema = z.object({
@@ -61,7 +62,11 @@ export const reviewSchema = z.object({
   confStrategy: z.number().min(0).max(1).optional(),
 });
 
-const LEARNER_CONTROLS = ["accept", "modify", "reject", "defer", "ask_why", "ask_teacher"] as const;
+const LEARNER_CONTROLS = [
+  "accept", "modify", "reject", "defer", "ask_why", "ask_teacher",
+  "pause_adaptation", "change_intensity", "change_modality",
+  "correct_issue", "report_inaccurate", "dont_reuse_evidence",
+] as const;
 const EDUCATOR_CONTROLS = [
   "approve", "reject", "modify_strategy", "correct_issue", "invalidate_evidence",
   "lock_strategy", "require_review", "block_inference", "add_context",
@@ -169,7 +174,13 @@ export class DecisionService {
     };
   }
 
-  /** Learner control: accept / modify / reject / defer / ask_why / ask_teacher. */
+  /**
+   * Learner controls: accept / modify / reject / defer / ask_why /
+   * ask_teacher plus pause, intensity/modality change, issue correction,
+   * inaccuracy reports, and evidence-reuse blocks. Feedback-type controls
+   * record preference/context evidence without disturbing workflow state;
+   * rejection is never treated as resistance.
+   */
   async control(id: string, action: string, note = "", modifiedAction = "") {
     if (!(LEARNER_CONTROLS as readonly string[]).includes(action)) throw new Error(`Unknown control ${action}`);
     const rec = await this.get(id);
@@ -181,6 +192,25 @@ export class DecisionService {
       });
       return updated;
     }
+    // Feedback controls: recorded with a version bump, workflow state kept.
+    const feedbackNote: Partial<Record<string, string>> = {
+      pause_adaptation: "adaptation paused by learner — no further automated changes until resumed",
+      change_intensity: `intensity change requested${note ? `: ${note}` : ""}`,
+      change_modality: `modality change requested${note ? `: ${note}` : ""}`,
+      correct_issue: `learner-corrected issue classification${note ? `: ${note}` : ""} — advisory, educator confirms`,
+      report_inaccurate: `explanation reported inaccurate${note ? `: ${note}` : ""} — review the card wording`,
+      dont_reuse_evidence: `evidence reuse blocked by learner${note ? `: ${note}` : ""} — exclude from future decisions`,
+    };
+    if (action in feedbackNote) {
+      return prisma.decisionRecord.update({
+        where: { id },
+        data: {
+          controlBy: this.userId,
+          controlNote: feedbackNote[action]!.slice(0, 1000),
+          version: { increment: 1 },
+        },
+      });
+    }
     const status = action === "accept" ? "ACCEPTED" : action === "reject" ? "REJECTED" : action === "defer" ? "DEFERRED" : "MODIFIED";
     // Rejection is preference/context evidence — record it as such, never as resistance.
     const updated = await prisma.decisionRecord.update({
@@ -191,6 +221,47 @@ export class DecisionService {
       },
     });
     return updated;
+  }
+
+  /**
+   * Decision draft pipeline (no persistence): detect the issue from
+   * evidence, score and select strategies explicitly, aggregate
+   * five-part confidence, run governance. The caller reviews the draft
+   * and then calls create() — superposition made transparent.
+   */
+  draftDecision(input: {
+    evidence: { type: string; result: string; context?: string }[];
+    evidenceKinds?: string[];
+    candidates: { strategy: string; fit: StrategyFit; risks?: string[] }[];
+    confidences?: { strategy?: number; outcome?: number; policy?: number };
+    agents?: string[];
+  }) {
+    const detected = detectIssue(input.evidence);
+    const evidenceScore = scoreEvidence((input.evidenceKinds ?? []).map((kind) => ({ kind })));
+    const { ranked, winner, margin, closeCall } = selectStrategy(input.candidates);
+    const confidence = aggregateConfidence({
+      issue: detected.severity === "high" ? 0.8 : detected.severity === "moderate" ? 0.65 : 0.45,
+      strategy: input.confidences?.strategy ?? 0.6,
+      evidence: evidenceScore.quality || 0.4,
+      outcome: input.confidences?.outcome ?? 0.55,
+      policy: input.confidences?.policy,
+    });
+    const mustShow = ranked.length > 1 && (closeCall || confidence.overall < 0.7);
+    return {
+      detected,
+      evidenceScore,
+      ranked: ranked.map((r) => ({
+        ...r,
+        selectionStatus: r.strategy === winner ? ("selected" as const) : ("not_selected" as const),
+      })),
+      winner,
+      margin,
+      closeCall,
+      confidence,
+      mustShowAlternatives: mustShow,
+      governance: governanceChecks({ hasRationale: true }),
+      note: "Draft only — nothing persisted. Review, then create(). Confidence is not correctness.",
+    };
   }
 
   /** Educator actions: 11 authorized operations with labeled attribution. */

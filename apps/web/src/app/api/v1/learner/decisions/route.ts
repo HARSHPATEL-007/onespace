@@ -48,8 +48,8 @@ export async function GET(req: Request) {
 }
 
 /**
- * POST /v1/learner/decisions — create | control | educator | deliver |
- * measure | review.
+ * POST /v1/learner/decisions — create | draft | control | educator |
+ * deliver | measure | review. Draft plans without persisting.
  */
 export async function POST(req: Request) {
   const c = await ctx();
@@ -70,10 +70,37 @@ export async function POST(req: Request) {
         if (!parsed.success) return NextResponse.json({ error: "Invalid body", issues: parsed.error.issues }, { status: 400 });
         return NextResponse.json(await d.create(parsed.data), { status: 201 });
       }
+      case "draft": {
+        const { evidence, evidenceKinds, candidates, confidences, agents } = b as {
+          evidence?: { type: string; result: string; context?: string }[];
+          evidenceKinds?: string[]; agents?: string[];
+          candidates?: { strategy: string; fit: Record<string, number>; risks?: string[] }[];
+          confidences?: { strategy?: number; outcome?: number; policy?: number };
+        };
+        if (!Array.isArray(evidence) || !Array.isArray(candidates) || candidates.length === 0) {
+          return NextResponse.json({ error: "evidence[] + non-empty candidates[] required" }, { status: 400 });
+        }
+        return NextResponse.json(d.draftDecision({
+          evidence: evidence.map((e) => ({ type: String(e.type), result: String(e.result), context: e.context ? String(e.context) : undefined })),
+          evidenceKinds: Array.isArray(evidenceKinds) ? evidenceKinds.map(String) : undefined,
+          candidates: candidates.map((c) => ({
+            strategy: String(c.strategy),
+            fit: (c.fit ?? {}) as import("@n0va/modules-booklm/pedagogy").StrategyFit,
+            risks: Array.isArray(c.risks) ? c.risks.map(String) : undefined,
+          })),
+          confidences, agents: Array.isArray(agents) ? agents.map(String) : undefined,
+        }));
+      }
       case "control": {
         const { id, control, note, modifiedAction } = b as Record<string, string>;
         if (!id || !control) return NextResponse.json({ error: "id + control required" }, { status: 400 });
-        return NextResponse.json(await d.control(id, control, note ?? "", modifiedAction ?? ""));
+        try {
+          return NextResponse.json(await d.control(id, control, note ?? "", modifiedAction ?? ""));
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Failed";
+          const status = msg.startsWith("Unknown control") ? 400 : msg.startsWith("Forbidden") ? 403 : 500;
+          return NextResponse.json({ error: msg }, { status });
+        }
       }
       case "educator": {
         const { id, control, note, payload } = b as { id?: string; control?: string; note?: string; payload?: Record<string, unknown> };

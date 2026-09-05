@@ -67,7 +67,10 @@ export {
 export {
   ISSUES, EVIDENCE_RELIABILITY, strategyScore, confidenceBand,
   mustShowAlternatives, adaptationRecord, governanceChecks, outcomeQuality,
+  detectIssue, selectStrategy, aggregateConfidence, scoreEvidence,
+  checkOutcome, decisionTransition,
   type IssueType, type EvidenceKind, type StrategyFit, type ConfidenceBand,
+  type RankedStrategy, type OutcomeResult, type DecisionState, type DecisionEvent,
 } from "./pedagogy";
 export {
   ASSESS_DIMS, DIM_QUESTIONS, scoreDimension, PROJECT_WEIGHTS, scoreProject,
@@ -78,7 +81,10 @@ export {
 export {
   triageLevel, reviewRequired, EXCLUDED_SIGNALS, buildVariant,
   analyzeSimilarity, authorshipFollowUp, interpretWithAccommodation, buildNotice,
+  TELEMETRY_ALLOWLIST, telemetryEventAllowed, codeProcessSummary,
+  browserControlEvent, alternativeExplanations,
   type TriageLevel, type IntegritySignal, type VariantSpec,
+  type CodeProcessSummary,
 } from "./integrity";
 export {
   gradeUncertainty, classifyPartialCredit, approvalGate, explainGrade,

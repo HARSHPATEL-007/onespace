@@ -184,6 +184,169 @@ export function governanceChecks(d: {
   return rules;
 }
 
+/**
+ * Issue detection from evidence items (assessment responses, hints, latency
+ * flags, reports). Deterministic triage into the controlled taxonomy —
+ * advisory for the decision draft, never a learner label.
+ */
+export function detectIssue(evidence: { type: string; result: string; context?: string }[]): {
+  issueType: IssueType; severity: "low" | "moderate" | "high"; rationale: string;
+} {
+  const norm = evidence.map((e) => `${e.type} ${e.result} ${e.context ?? ""}`.toLowerCase());
+  const has = (re: RegExp) => norm.some((t) => re.test(t));
+  const count = (re: RegExp) => norm.filter((t) => re.test(t)).length;
+  if (evidence.length === 0) {
+    return { issueType: "insufficient_evidence", severity: "low", rationale: "no evidence items supplied" };
+  }
+  if (evidence.length === 1) {
+    return { issueType: "insufficient_evidence", severity: "low", rationale: "single observation — candidate issue only, collect more before intervening" };
+  }
+  const familiarOk = has(/familiar.*correct|correct.*familiar/);
+  const novelBad = has(/novel.*incorrect|incorrect.*novel|transfer.*(incorrect|fail)/);
+  if (familiarOk && novelBad) {
+    return { issueType: "transfer_gap", severity: "moderate", rationale: "familiar-context success with novel-context failure" };
+  }
+  if (has(/prerequisite|missing.*found|foundational/) && count(/incorrect|fail|wrong/) >= 2) {
+    return { issueType: "missing_prerequisite", severity: "moderate", rationale: "repeated failure on prerequisite-linked items" };
+  }
+  if (has(/high confidence.*incorrect|incorrect.*high confidence|confident.*wrong/)) {
+    return { issueType: "confidence_miscalibration", severity: "moderate", rationale: "high confidence attached to errors" };
+  }
+  if (has(/vocab|wording|language|term|ambiguous|unclear/)) {
+    return { issueType: "language_or_representation_barrier", severity: "low", rationale: "wording/term signals present — clarify before re-pathing" };
+  }
+  if (has(/hint/) && count(/incorrect|fail/) >= 2) {
+    return { issueType: "retrieval_gap", severity: "moderate", rationale: "errors persist despite hints" };
+  }
+  if (has(/misconception|same error|repeated/) && count(/incorrect|fail/) >= 2) {
+    return { issueType: "misconception", severity: "high", rationale: "repeated same-shape errors" };
+  }
+  if (has(/definition|means|confus.*term/)) {
+    return { issueType: "definition_confusion", severity: "low", rationale: "term-meaning signals" };
+  }
+  return { issueType: "insufficient_evidence", severity: "low", rationale: "pattern does not match a controlled issue — gather more evidence" };
+}
+
+export interface RankedStrategy {
+  strategy: string;
+  score: number;
+  factors: { name: string; value: number }[];
+  risks: string[];
+  selectionStatus: "selected" | "not_selected";
+}
+
+/**
+ * Explicit strategy selection over scored candidates ("superposition" made
+ * transparent). Winner needs a reasonNotSelected-style margin note when the
+ * runner-up is close (<0.3): alternatives stay comparable, not buried.
+ */
+export function selectStrategy(candidates: { strategy: string; fit: StrategyFit; risks?: string[] }[]): {
+  ranked: RankedStrategy[]; winner: string; margin: number; closeCall: boolean;
+} {
+  const ranked = candidates
+    .map((c) => {
+      const { score, factors } = strategyScore(c.fit);
+      return { strategy: c.strategy, score, factors, risks: c.risks ?? [], selectionStatus: "not_selected" as const };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map((r, i) => ({ ...r, selectionStatus: (i === 0 ? "selected" : "not_selected") as "selected" | "not_selected" }));
+  const winner = ranked[0]?.strategy ?? "";
+  const margin = ranked.length > 1 ? Math.round((ranked[0]!.score - ranked[1]!.score) * 100) / 100 : Infinity;
+  return { ranked, winner, margin, closeCall: margin < 0.3 };
+}
+
+/**
+ * Five-part confidence aggregate. Policy confidence joins issue, strategy,
+ * evidence, and outcome — overall is weighted, banded, and always paired
+ * with "confidence is not correctness".
+ */
+export function aggregateConfidence(parts: {
+  issue?: number; strategy?: number; evidence?: number; outcome?: number; policy?: number;
+}): { overall: number; band: ConfidenceBand; parts: Record<string, number> } {
+  const p = {
+    issue: parts.issue ?? 0.5, strategy: parts.strategy ?? 0.5,
+    evidence: parts.evidence ?? 0.5, outcome: parts.outcome ?? 0.5,
+    policy: parts.policy ?? 0.8,
+  };
+  const overall = Math.round((p.issue * 0.3 + p.strategy * 0.25 + p.evidence * 0.2 + p.outcome * 0.15 + p.policy * 0.1) * 100) / 100;
+  return { overall, band: confidenceBand(overall).band, parts: p };
+}
+
+/**
+ * Evidence-quality score from the reliability table: mean of present-kind
+ * weights (0 when nothing qualifies). Feeds confidence + strategy fit.
+ */
+export function scoreEvidence(items: { kind: string }[]): { quality: number; contributions: { kind: string; weight: number }[] } {
+  const contributions = items.map((i) => ({
+    kind: i.kind,
+    weight: EVIDENCE_RELIABILITY[i.kind as EvidenceKind]?.weight ?? 0,
+  }));
+  const usable = contributions.filter((c) => c.weight > 0);
+  return {
+    quality: usable.length ? Math.round((usable.reduce((s, c) => s + c.weight, 0) / usable.length) * 100) / 100 : 0,
+    contributions,
+  };
+}
+
+export type OutcomeResult = "attained" | "partial" | "missed";
+
+/**
+ * Outcome check against the success test. A miss revises the hypothesis —
+ * never repeats automatically, never blames the learner.
+ */
+export function checkOutcome(args: {
+  successMeasure: string; attained: boolean; partialEvidence?: string;
+}): { result: OutcomeResult; reviseNote: string } {
+  if (args.attained) {
+    return { result: "attained", reviseNote: "outcome met — record effectiveness, continue the path" };
+  }
+  if (args.partialEvidence) {
+    return { result: "partial", reviseNote: `partial progress (${args.partialEvidence.slice(0, 160)}) — narrow the next step, do not repeat the full intervention` };
+  }
+  return { result: "missed", reviseNote: "outcome not reached — revise the issue hypothesis rather than blaming the learner; do not repeat automatically" };
+}
+
+export type DecisionState =
+  | "detected" | "evidence_collected" | "candidates_generated" | "policy_checked"
+  | "recommended" | "choice" | "delivered" | "measured" | "reviewed" | "updated";
+
+export type DecisionEvent =
+  | "collect" | "generate" | "check_policy" | "recommend" | "choose"
+  | "deliver" | "measure" | "review" | "update"
+  | "insufficient" | "low_confidence" | "policy_conflict" | "rejected"
+  | "missed" | "disagreement" | "clarified" | "options_shown" | "escalated"
+  | "agency_kept" | "reassessed" | "fact_checked";
+
+const DECISION_TRANSITIONS: Record<DecisionState, Partial<Record<DecisionEvent, DecisionState>>> = {
+  detected: { collect: "evidence_collected", insufficient: "detected" },
+  evidence_collected: { generate: "candidates_generated", insufficient: "detected" },
+  candidates_generated: { check_policy: "policy_checked", low_confidence: "candidates_generated" },
+  policy_checked: { recommend: "recommended", policy_conflict: "detected" },
+  recommended: { choose: "choice", rejected: "choice", low_confidence: "candidates_generated" },
+  choice: { deliver: "delivered", rejected: "choice" },
+  delivered: { measure: "measured" },
+  measured: { review: "reviewed", missed: "detected" },
+  reviewed: { update: "updated", missed: "detected", disagreement: "candidates_generated" },
+  updated: {},
+};
+
+/** Intervention state machine with named failure branches (never silent). */
+export function decisionTransition(state: DecisionState, event: DecisionEvent): {
+  to: DecisionState; branch: string | null;
+} {
+  const to = DECISION_TRANSITIONS[state]?.[event];
+  if (!to) return { to: state, branch: `rejected: ${event} invalid from ${state} — recorded, not applied` };
+  const branches: Partial<Record<DecisionEvent, string>> = {
+    insufficient: "clarification branch — ask, do not intervene",
+    low_confidence: "options branch — offer multiple strategies",
+    policy_conflict: "escalation branch — restrict or escalate",
+    rejected: "agency branch — preserve the preferred path",
+    missed: "reassess branch — new hypothesis required",
+    disagreement: "fact-check branch — supervisor review",
+  };
+  return { to, branch: branches[event] ?? null };
+}
+
 /** Strong vs weak expected-outcome phrasing check (measurable + success test). */
 export function outcomeQuality(target: string, successMeasure: string): { strong: boolean; reasons: string[] } {
   const reasons: string[] = [];
