@@ -36,7 +36,7 @@ const INTENT_PATTERNS: { intent: Intent; re: RegExp }[] = [
   { intent: "verify", re: /\b(is it true|verify|fact.?check|is that (right|correct)|source\??)\b/i },
   { intent: "debate", re: /\b(debate|argue|pros and cons|opposing|other side|controvers\w*|both sides)\b/i },
   { intent: "retrieve_sources", re: /\b(sources?|papers?|references?|evidence for|research on|cite)\b/i },
-  { intent: "diagnose_gap", re: /\b(don't understand|dont understand|confused|stuck|lost|why .*wrong|what am i missing|gap)\b/i },
+  { intent: "diagnose_gap", re: /\b(don't understand|dont understand|do not understand|does not make sense|confused|stuck|lost|not (clear|clicking|sinking in)|why .*wrong|what am i missing|gap)\b/i },
   { intent: "accessibility_request", re: /\b(accessib\w*|audio|transcript|caption|alt text|screen reader|larger|slower|dyslex\w*)\b/i },
   { intent: "explain_concept", re: /\b(explain|what is|what are|how does|why does|teach|show me|walk me through|eli5|simplify)\b/i },
 ];

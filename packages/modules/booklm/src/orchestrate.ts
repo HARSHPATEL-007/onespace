@@ -239,16 +239,31 @@ export class OrchestratorService {
     });
 
     // Execute agents (mode travels in the task target for enforcement).
+    // Parallel workflows fan out independent agents concurrently and merge
+    // in declared order; sequential/debate/escalation workflows chain with
+    // prior outputs so each agent sees upstream results.
     const outputs: { key: string; out: RunnerOutput; status: string }[] = [];
     let degraded = false;
-    for (const key of agents) {
-      if (key === "safety") { outputs.push(safety); continue; }
-      const out = await this.execTask(session.id, key, intent, {
-        message: input.message, setId: input.setId, conceptId: input.conceptId, mode,
-        prior: Object.fromEntries(outputs.map((o) => [o.key, o.out])),
-      }, {});
-      outputs.push(out);
-      if (out.status !== "completed") degraded = true;
+    await this.log(session.id, null, "plan.created", { workflow, agents, fanOut: workflow === "parallel" });
+    if (workflow === "parallel") {
+      const base = { message: input.message, setId: input.setId, conceptId: input.conceptId, mode };
+      const settled = await Promise.all(
+        agents.filter((key) => key !== "safety").map((key) => this.execTask(session.id, key, intent, { ...base }, {})),
+      );
+      if (agents.includes("safety")) settled.unshift(safety);
+      settled.sort((a, b) => agents.indexOf(a.key) - agents.indexOf(b.key));
+      outputs.push(...settled);
+      if (settled.some((o) => o.status !== "completed")) degraded = true;
+    } else {
+      for (const key of agents) {
+        if (key === "safety") { outputs.push(safety); continue; }
+        const out = await this.execTask(session.id, key, intent, {
+          message: input.message, setId: input.setId, conceptId: input.conceptId, mode,
+          prior: Object.fromEntries(outputs.map((o) => [o.key, o.out])),
+        }, {});
+        outputs.push(out);
+        if (out.status !== "completed") degraded = true;
+      }
     }
 
     // Fact-check pass over produced claims.
