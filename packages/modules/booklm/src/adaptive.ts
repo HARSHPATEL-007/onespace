@@ -60,7 +60,7 @@ export type ErrorType =
   | "language" | "ambiguous_prompt";
 
 const ERR_PATTERNS: { type: ErrorType; re: RegExp }[] = [
-  { type: "vocabulary", re: /\b(means|definition|term|word|called|refers to|confus\w*(\s+\w+){0,3}\s+(terms?|words?|names?|definitions?|meanings?))\b/i },
+  { type: "vocabulary", re: /\b(what does(\s+\w+){0,4}\s+mean|means\?|defin\w+|term|word|called|refers to|confus\w*(\s+\w+){0,3}\s+(terms?|words?|names?|definitions?|meanings?))\b/i },
   { type: "prerequisite", re: /\b(prerequisite|missing (step|basic|foundation)|need.*first|haven't learned|never (learned|studied))\b/i },
   { type: "sequence", re: /\b(order|sequence|steps? out of|wrong order|before|after)\b/i },
   { type: "calculation", re: /\b(arithmet\w*|comput\w*|math error|sign error|off by|miscalc)\b/i },

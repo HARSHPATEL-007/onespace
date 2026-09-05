@@ -242,6 +242,7 @@ export class AdaptiveService {
           ...(diagnosis.errorType ? [`error:${diagnosis.errorType}`] : []),
           ...diagnosis.blockingPrerequisites.map((b) => `prereq-gap:${b.id}`),
           ...(diagnosis.misconceptions.map((m) => `misconception:${m.id}`)),
+          `delivered-modality:${modality}`,
         ],
         strategy, alternatives, contentRef,
         difficulty: { level: difficulty.level, dims: difficulty.dims } as never,
@@ -372,6 +373,13 @@ export class AdaptiveService {
         overrideReason: input.overrideReason,
       },
     });
+    // Close the modality loop: the delivered modality was tagged on the loop
+    // at plan time, so measured gain feeds per-concept effectiveness.
+    const delivered = (loop.evidence ?? []).find((e) => e.startsWith("delivered-modality:"));
+    if (conceptId && delivered) {
+      await this.recordModality(conceptId, delivered.slice("delivered-modality:".length), gain)
+        .catch(() => undefined);
+    }
     // Self-monitoring: mark linked decision measured + append immutable review.
     try {
       const { DecisionService } = await import("./decisions");

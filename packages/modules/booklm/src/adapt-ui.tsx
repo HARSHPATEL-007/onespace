@@ -22,6 +22,13 @@ export interface AdaptActions {
   decisionControl: (id: string, control: string, note: string, modifiedAction?: string) => Promise<unknown>;
   modalityEffects: (conceptId: string | null) => Promise<{ modality: string; trials: number; gainPerTrial: number; verdict: string; note: string }[]>;
   resetLevel: (conceptId: string) => Promise<{ reset: boolean; note: string }>;
+  diagnose: (conceptId: string) => Promise<DiagnoseView>;
+  loopHistory: (conceptId: string) => Promise<LoopRow[]>;
+  diagnostic: (conceptId: string) => Promise<DiagnosticViewItem[]>;
+  policy: (setId: string) => Promise<Record<string, unknown>>;
+  policySave: (fd: FormData) => Promise<void>;
+  overrides: (targetId?: string) => Promise<OverrideRow[]>;
+  overrideDeactivate: (id: string) => Promise<void>;
 }
 
 export interface RemediationStageView { stage: string; action: string; retest: string | null }
@@ -42,6 +49,29 @@ export interface AdaptState {
 
 export interface RetrievalDue {
   itemKey: string; conceptId: string; format: string; stabilityDays: number; retrievability: number; nextDue: string;
+}
+
+export interface DiagnoseView {
+  concept: { id: string; label: string; key: string }; status: string;
+  errorType: string | null; remediation: { first: string; kind: string } | null;
+  misconceptions: { id: string; statement: string; status: string }[];
+  blockingPrerequisites: { id: string; label: string; mastery: number }[];
+  softPrerequisites: { id: string; label: string; mastery: number | null; kind: string }[];
+  transferGap: boolean;
+}
+
+export interface LoopRow {
+  id: string; strategy: string; contentRef: string; evidence: string[]; alternatives: string[];
+  response: unknown; learningGain: number | null; gainConfidence: number;
+  overriddenById: string | null; overrideReason: string;
+  modelVersion: string; policyVersion: string; createdAt: string;
+}
+
+export interface DiagnosticViewItem { kind: string; prompt: string }
+
+export interface OverrideRow {
+  id: string; kind: string; targetId: string; scope: string;
+  reason: string; expiresAt: string | null; createdAt: string;
 }
 
 const CONTROLS: { id: string; label: string; hint: string }[] = [
@@ -86,6 +116,13 @@ export function AdaptivePanel({ setId, concepts, actions, isInstructor }: {
   const [iset, setIset] = useState<{ sets: { conceptKey: string; label: string; count: number; kind: string }[]; comparisonItems: number; reason: string } | null>(null);
   // modality effectiveness
   const [effects, setEffects] = useState<{ modality: string; trials: number; gainPerTrial: number; verdict: string; note: string }[] | null>(null);
+  // diagnosis + diagnostic placement + loop audit
+  const [diagnosis, setDiagnosis] = useState<DiagnoseView | null>(null);
+  const [diagItems, setDiagItems] = useState<DiagnosticViewItem[] | null>(null);
+  const [history, setHistory] = useState<LoopRow[] | null>(null);
+  // instructor policy + overrides
+  const [policy, setPolicy] = useState<Record<string, unknown> | null>(null);
+  const [overrideRows, setOverrideRows] = useState<OverrideRow[] | null>(null);
 
   const loadState = (id: string) => {
     setConceptId(id);
@@ -278,6 +315,69 @@ export function AdaptivePanel({ setId, concepts, actions, isInstructor }: {
         )}
       </div>
 
+      {/* Diagnostic placement + error-mechanism diagnosis */}
+      <div className="nv-card" style={{ fontSize: 13 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 800 }}>🩺 Diagnose first (mechanism before material)</span>
+          <div style={{ flex: 1 }} />
+          <Button variant="secondary" size="sm" onClick={() => {
+            if (!conceptId) return;
+            void actions.diagnostic(conceptId).then(setDiagItems).catch(() => undefined);
+          }}>Placement items</Button>
+          <Button variant="secondary" size="sm" onClick={() => {
+            if (!conceptId) return;
+            void actions.diagnose(conceptId).then(setDiagnosis).catch(() => undefined);
+          }}>Diagnose</Button>
+        </div>
+        {diagItems && (
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            <div style={{ color: "var(--nv-color-text-faint)" }}>Short diagnostic — no penalty, establishes level + calibration:</div>
+            {diagItems.map((d, i) => <div key={i} style={{ marginTop: 2 }}><b>{i + 1}. [{d.kind}]</b> {d.prompt}</div>)}
+          </div>
+        )}
+        {diagnosis && (
+          <div style={{ fontSize: 12, marginTop: 6 }}>
+            <div>Status <b>{diagnosis.status.toLowerCase().replace(/_/g, " ")}</b>
+              {diagnosis.errorType && <> · error mechanism: <b>{diagnosis.errorType}</b> → {diagnosis.remediation?.first}</>}
+              {diagnosis.transferGap && <> · <b>transfer gap</b>: familiar items pass, novel contexts fail</>}
+            </div>
+            {diagnosis.blockingPrerequisites.length > 0 && (
+              <div style={{ color: "var(--nv-color-danger)" }}>Hard blockers: {diagnosis.blockingPrerequisites.map((b) => `${b.label} (${Math.round(b.mastery * 100)}%)`).join(", ")}</div>
+            )}
+            {diagnosis.softPrerequisites.length > 0 && (
+              <div style={{ color: "var(--nv-color-text-faint)" }}>Helpful context: {diagnosis.softPrerequisites.map((b) => b.label).join(", ")}</div>
+            )}
+            {diagnosis.misconceptions.length > 0 && (
+              <div style={{ color: "var(--nv-color-text-faint)" }}>Active interpretations: {diagnosis.misconceptions.map((m) => `“${m.statement.slice(0, 80)}”`).join(" · ")}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Loop audit trail */}
+      <div className="nv-card" style={{ fontSize: 13 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontWeight: 800 }}>📜 Loop history (every intervention audited)</span>
+          <div style={{ flex: 1 }} />
+          <Button variant="secondary" size="sm" onClick={() => {
+            if (!conceptId) return;
+            void actions.loopHistory(conceptId).then(setHistory).catch(() => undefined);
+          }}>Load</Button>
+        </div>
+        {(history ?? []).slice(0, 8).map((l) => (
+          <div key={l.id} style={{ fontSize: 12, marginTop: 4, borderTop: "1px solid var(--nv-color-border)", paddingTop: 4 }}>
+            <div><b>{l.strategy}</b> · gain {l.learningGain === null ? "pending" : `${l.learningGain > 0 ? "+" : ""}${l.learningGain} (conf ${Math.round(l.gainConfidence * 100)}%)`}</div>
+            <div style={{ color: "var(--nv-color-text-faint)" }}>
+              {new Date(l.createdAt).toLocaleString()} · {l.modelVersion} · {l.policyVersion}
+              {l.overriddenById ? ` · overridden: ${l.overrideReason || "no reason given"}` : ""}
+            </div>
+          </div>
+        ))}
+        {history !== null && history.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No loops yet for this concept.</div>
+        )}
+      </div>
+
       {/* Strategy effectiveness */}
       <div className="nv-card" style={{ fontSize: 13 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
@@ -329,6 +429,54 @@ export function AdaptivePanel({ setId, concepts, actions, isInstructor }: {
             <input className="nv-input" name="reason" placeholder="reason (required)" required style={{ flex: 1, minWidth: 160 }} />
             <input className="nv-input" name="expiresInDays" placeholder="expires days" style={{ width: 110 }} />
             <Button size="sm" type="submit">Apply</Button>
+          </form>
+          <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>Active overrides</span>
+            <Button variant="secondary" size="sm" onClick={() => {
+              void actions.overrides(conceptId || undefined).then(setOverrideRows).catch(() => undefined);
+            }}>Refresh</Button>
+          </div>
+          {(overrideRows ?? []).map((o) => (
+            <div key={o.id} style={{ fontSize: 12, marginTop: 4, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span><b>{o.kind.replace(/_/g, " ")}</b> · {o.scope.toLowerCase()} · {o.reason.slice(0, 80)}{o.expiresAt ? ` · expires ${new Date(o.expiresAt).toLocaleDateString()}` : " · no expiry"}</span>
+              <div style={{ flex: 1 }} />
+              <Button variant="ghost" size="sm" onClick={() => void actions.overrideDeactivate(o.id).then(() => void actions.overrides(conceptId || undefined).then(setOverrideRows))}>Revoke</Button>
+            </div>
+          ))}
+          {overrideRows !== null && overrideRows.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", marginTop: 4 }}>No active overrides.</div>
+          )}
+        </div>
+      )}
+
+      {/* Instructor adaptive policy */}
+      {isInstructor && (
+        <div className="nv-card" style={{ fontSize: 13 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+            <span style={{ fontWeight: 800 }}>📏 Adaptive policy (difficulty, hints, escalation)</span>
+            <div style={{ flex: 1 }} />
+            <Button variant="secondary" size="sm" onClick={() => void actions.policy(setId).then(setPolicy).catch(() => undefined)}>Load current</Button>
+          </div>
+          {policy && (
+            <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>
+              difficulty {String(policy.difficultyMin)}–{String(policy.difficultyMax)} · prereq ≥ {String(policy.prereqThreshold)} ·
+              hints ≤ {String(policy.hintLimit)} · target {Math.round(Number(policy.targetBand) * 100)}% ·
+              escalation ≥ {String(policy.escalationThreshold)} · external {policy.externalAllowed ? "allowed" : "blocked"} ·
+              high-stakes review {policy.highStakesReview ? "on" : "off"} · v{String(policy.version)}
+            </div>
+          )}
+          <form action={(fd) => void actions.policySave(fd).then(() => void actions.policy(setId).then(setPolicy)).catch(() => undefined)} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            <input type="hidden" name="setId" value={setId} />
+            <label style={{ fontSize: 12 }}>Min <input className="nv-input" name="difficultyMin" defaultValue={String(policy?.difficultyMin ?? 0)} style={{ width: 60 }} /></label>
+            <label style={{ fontSize: 12 }}>Max <input className="nv-input" name="difficultyMax" defaultValue={String(policy?.difficultyMax ?? 9)} style={{ width: 60 }} /></label>
+            <label style={{ fontSize: 12 }}>Prereq <input className="nv-input" name="prereqThreshold" defaultValue={String(policy?.prereqThreshold ?? 0.4)} style={{ width: 70 }} /></label>
+            <label style={{ fontSize: 12 }}>Hints <input className="nv-input" name="hintLimit" defaultValue={String(policy?.hintLimit ?? 3)} style={{ width: 60 }} /></label>
+            <label style={{ fontSize: 12 }}>Target <input className="nv-input" name="targetBand" defaultValue={String(policy?.targetBand ?? 0.75)} style={{ width: 70 }} /></label>
+            <label style={{ fontSize: 12 }}>Escalate ≥ <input className="nv-input" name="escalationThreshold" defaultValue={String(policy?.escalationThreshold ?? 3)} style={{ width: 60 }} /></label>
+            <label style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}><input type="checkbox" name="transferRequired" defaultChecked={policy?.transferRequired !== false} /> Transfer required</label>
+            <label style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}><input type="checkbox" name="externalAllowed" defaultChecked={policy?.externalAllowed !== false} /> External allowed</label>
+            <label style={{ fontSize: 12, display: "flex", gap: 4, alignItems: "center" }}><input type="checkbox" name="highStakesReview" defaultChecked={policy?.highStakesReview === true} /> High-stakes review</label>
+            <Button size="sm" type="submit">Save policy</Button>
           </form>
         </div>
       )}

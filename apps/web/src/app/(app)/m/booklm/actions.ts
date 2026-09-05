@@ -403,6 +403,65 @@ export async function adaptInterleaveAction(setId: string, level: "low" | "moder
   return (await adaptSvc()).interleaveSet(setId, level);
 }
 
+export async function adaptDiagnoseAction(conceptId: string) {
+  return (await adaptSvc()).diagnose(conceptId);
+}
+
+export async function adaptLoopHistoryAction(conceptId: string) {
+  const rows = await (await adaptSvc()).loopHistory(conceptId, 10);
+  return rows.map((l) => ({
+    id: l.id, strategy: l.strategy, contentRef: l.contentRef,
+    evidence: l.evidence, alternatives: l.alternatives,
+    response: l.response as unknown, learningGain: l.learningGain,
+    gainConfidence: l.gainConfidence, overriddenById: l.overriddenById,
+    overrideReason: l.overrideReason, modelVersion: l.modelVersion,
+    policyVersion: l.policyVersion, createdAt: l.createdAt.toISOString(),
+  }));
+}
+
+export async function adaptDiagnosticAction(conceptId: string) {
+  return (await adaptSvc()).calibrateDiagnostic(conceptId);
+}
+
+export async function adaptPolicyAction(setId: string) {
+  return (await adaptSvc()).effectivePolicy(setId);
+}
+
+export async function adaptPolicySaveAction(formData: FormData) {
+  const { policySchemaAdaptive } = await import("@n0va/modules-booklm/adapt");
+  const num = (v: FormDataEntryValue | null, fb: number) => {
+    const n = Number(v);
+    return v === null || v === "" || Number.isNaN(n) ? fb : n;
+  };
+  const parsed = policySchemaAdaptive.parse({
+    setId: String(formData.get("setId") ?? ""),
+    difficultyMin: num(formData.get("difficultyMin"), 0),
+    difficultyMax: num(formData.get("difficultyMax"), 9),
+    prereqThreshold: num(formData.get("prereqThreshold"), 0.4),
+    hintLimit: num(formData.get("hintLimit"), 3),
+    transferRequired: formData.get("transferRequired") !== "off",
+    minIntervalHours: num(formData.get("minIntervalHours"), 12),
+    escalationThreshold: num(formData.get("escalationThreshold"), 3),
+    externalAllowed: formData.get("externalAllowed") !== "off",
+    highStakesReview: formData.get("highStakesReview") === "on",
+    targetBand: num(formData.get("targetBand"), 0.75),
+  });
+  await (await adaptSvc()).upsertPolicy(parsed);
+}
+
+export async function adaptOverridesAction(targetId?: string) {
+  const rows = await (await adaptSvc()).activeOverrides(targetId || undefined);
+  return rows.map((o) => ({
+    id: o.id, kind: o.kind, targetId: o.targetId, scope: o.scope,
+    reason: o.reason, expiresAt: o.expiresAt?.toISOString() ?? null,
+    createdAt: o.createdAt.toISOString(),
+  }));
+}
+
+export async function adaptOverrideDeactivateAction(id: string) {
+  await (await adaptSvc()).deactivateOverride(id);
+}
+
 // --- Multi-agent tutor ---
 
 const orchSvc = async () => {
