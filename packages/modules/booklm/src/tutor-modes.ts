@@ -228,6 +228,381 @@ export const MODE_MEMORY: Record<TeachingMode, { dimension: string; sourceType: 
   ACCESSIBILITY: { dimension: "recall", sourceType: "accessible_delivery" },
 };
 
+/** Worked-example fading schedule: full demo → labels missing → partial → hint-only → independent. */
+export const FADING_STAGES = [
+  "full_demonstration",
+  "labels_missing",
+  "partially_completed",
+  "hint_only",
+  "independent",
+] as const;
+
+export type FadingStage = (typeof FADING_STAGES)[number];
+
+/**
+ * Support-adjusted mastery credit. "Solved with full scaffolding" must not
+ * be recorded as independent mastery: credit scales with fading stage.
+ */
+export function fadingSupportCredit(stage: FadingStage): { credit: number; recordAs: string } {
+  switch (stage) {
+    case "full_demonstration": return { credit: 0.1, recordAs: "exposure — no mastery inferred" };
+    case "labels_missing": return { credit: 0.25, recordAs: "guided participation" };
+    case "partially_completed": return { credit: 0.5, recordAs: "partial independence" };
+    case "hint_only": return { credit: 0.75, recordAs: "near-independent with hints" };
+    case "independent": return { credit: 1, recordAs: "independent mastery evidence" };
+  }
+}
+
+/** Practice feedback ladder L0-L4: correctness → category → hint → explanation → solution. */
+export function practiceFeedback(attempt: number, correct: boolean): { level: number; show: string } {
+  if (correct) return { level: 0, show: "correct" };
+  const ladder = [
+    "correct / incorrect only",
+    "correct plus error category",
+    "correct plus one hint",
+    "correct plus concise explanation",
+    "full worked solution",
+  ];
+  const level = Math.min(4, Math.max(1, attempt));
+  return { level, show: ladder[level]! };
+}
+
+// ---------------------------------------------------------------------------
+// Debugging loop: observe → reproduce → localize → classify → test → fix.
+// ---------------------------------------------------------------------------
+
+export const ERROR_LABELS = [
+  "definition_error", "assumption_error", "unit_error", "sign_error",
+  "boundary_condition_error", "algorithm_error", "syntax_error", "data_error",
+  "citation_error", "interpretation_error",
+] as const;
+
+export type ErrorLabel = (typeof ERROR_LABELS)[number];
+
+/** Heuristic error classifier over learner-visible symptoms (not hidden chain-of-thought). */
+export function classifyErrorLabel(symptoms: string): ErrorLabel {
+  const t = symptoms.toLowerCase();
+  if (/syntax|parse|indent|bracket|colon|undefined/.test(t)) return "syntax_error";
+  if (/\bunits?\b|km\/h|m\/s|degrees|percent/.test(t)) return "unit_error";
+  if (/\bsign\b|negative|minus|-\s*vs/.test(t)) return "sign_error";
+  if (/boundar|edge case|empty|off.by.one|limit/.test(t)) return "boundary_condition_error";
+  if (/assum|suppose|took for granted/.test(t)) return "assumption_error";
+  if (/defin|means|refers to/.test(t)) return "definition_error";
+  if (/data|input|dataset|value/.test(t)) return "data_error";
+  if (/cit|source|reference/.test(t)) return "citation_error";
+  if (/interpret|misread|confus/.test(t)) return "interpretation_error";
+  return "algorithm_error";
+}
+
+export interface DebuggingReport {
+  observed: string;
+  expected: string;
+  firstDivergence: string;
+  likelyCause: string;
+  errorLabel: ErrorLabel;
+  evidence: string[];
+  smallestTest: string;
+  fix: string;
+  whyFixWorks: string;
+  prevention: string;
+}
+
+/** Debugging output template — preserves the attempt, tests one hypothesis. */
+export function debuggingReport(args: {
+  observed: string; expected: string; firstDivergence?: string;
+  evidence?: string[]; smallestTest?: string; fix?: string;
+}): DebuggingReport {
+  const label = classifyErrorLabel(`${args.observed} ${args.expected}`);
+  return {
+    observed: args.observed.slice(0, 300),
+    expected: args.expected.slice(0, 300),
+    firstDivergence: args.firstDivergence?.slice(0, 300) ?? "not yet localized — reproduce first",
+    likelyCause: `hypothesis (${label}) — test before fixing`,
+    errorLabel: label,
+    evidence: (args.evidence ?? []).slice(0, 5),
+    smallestTest: args.smallestTest?.slice(0, 200) ?? "smallest case that shows the divergence",
+    fix: args.fix?.slice(0, 300) ?? "proposed after the hypothesis test passes",
+    whyFixWorks: "addresses the localized cause, not the symptom",
+    prevention: "regression check + note the error pattern for review",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Research-supervisor artifact, peer-review feedback, oral-exam plan.
+// ---------------------------------------------------------------------------
+
+export interface ResearchArtifact {
+  question: string;
+  scope: string;
+  knownEvidence: string[];
+  evidenceGaps: string[];
+  candidateHypotheses: string[];
+  methodOptions: string[];
+  risks: string[];
+  provisionalClaim: string | null;
+  requiredValidation: string[];
+  nextAction: string;
+  claimLedger: { sourceBacked: string[]; learnerHypotheses: string[]; tutorSuggestions: string[]; openQuestions: string[] };
+}
+
+/** Inquiry scaffold — distinguishes source claims, learner hypotheses, tutor suggestions, open questions. */
+export function researchArtifact(args: {
+  question: string; scope?: string; knownEvidence?: string[]; gaps?: string[];
+  hypotheses?: string[]; methods?: string[]; risks?: string[];
+}): ResearchArtifact {
+  return {
+    question: args.question.slice(0, 300),
+    scope: args.scope?.slice(0, 200) ?? "unscoped — narrow before collecting evidence",
+    knownEvidence: (args.knownEvidence ?? []).slice(0, 8),
+    evidenceGaps: (args.gaps ?? []).slice(0, 8),
+    candidateHypotheses: (args.hypotheses ?? []).slice(0, 5),
+    methodOptions: (args.methods ?? []).slice(0, 5),
+    risks: (args.risks ?? []).slice(0, 5),
+    provisionalClaim: null,
+    requiredValidation: ["citation audit", "counterevidence check", "falsifiability check"],
+    nextAction: "operationalize one term, then map one source",
+    claimLedger: { sourceBacked: [], learnerHypotheses: args.hypotheses?.slice(0, 5) ?? [], tutorSuggestions: [], openQuestions: args.gaps?.slice(0, 8) ?? [] },
+  };
+}
+
+export interface PeerFeedback {
+  criterion: string;
+  currentEvidence: string;
+  strength: string;
+  concern: string;
+  whyItMatters: string;
+  suggestedRevision: string;
+  questionForAuthor: string;
+  confidence: number;
+  aiCritiqueLabel: string;
+}
+
+/** Peer-review feedback format — labeled AI critique, never peer consensus. */
+export function peerReviewFeedback(args: {
+  criterion: string; evidence?: string; strength?: string; concern?: string;
+}): PeerFeedback {
+  return {
+    criterion: args.criterion.slice(0, 200),
+    currentEvidence: (args.evidence ?? "not yet quoted").slice(0, 300),
+    strength: (args.strength ?? "identify one grounded strength").slice(0, 200),
+    concern: (args.concern ?? "identify the highest-impact issue").slice(0, 200),
+    whyItMatters: "ties the concern to the criterion, not to taste",
+    suggestedRevision: "one concrete revision path, then re-review",
+    questionForAuthor: "what did you intend here?",
+    confidence: 0.6,
+    aiCritiqueLabel: "AI critique — not human peer feedback, not an official grade",
+  };
+}
+
+export const ORAL_PROGRESSION = ["recall", "explain", "apply", "compare", "defend", "counterexample", "reflect"] as const;
+
+export const ORAL_FAIRNESS: string[] = [
+  "fluency is not scored as mastery",
+  "typed, signed, AAC, or recorded responses permitted when authorized",
+  "language proficiency separated from subject reasoning",
+  "repetition and clarification allowed under the rubric",
+  "no personality, accent, or affect scoring",
+  "transcript corrections provided",
+  "human review required for high-stakes oral grading",
+];
+
+/** Oral-exam plan: progression + fairness gates + consent tracking. */
+export function oralExamPlan(args: {
+  topic: string; followUps?: number; recordingConsent?: boolean; authorizedFormats?: string[];
+}): {
+  topic: string; progression: string[]; followUps: number;
+  fairness: string[]; consent: string; blocked: string | null;
+} {
+  const followUps = Math.max(1, Math.min(8, args.followUps ?? 3));
+  const blocked = args.recordingConsent === false ? "recording consent missing — oral examination cannot proceed" : null;
+  return {
+    topic: args.topic.slice(0, 200),
+    progression: [...ORAL_PROGRESSION],
+    followUps,
+    fairness: [...ORAL_FAIRNESS],
+    consent: args.recordingConsent ? "recording consent on file" : "consent not confirmed",
+    blocked,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Exam policy + session state machine.
+// ---------------------------------------------------------------------------
+
+export interface ExamPolicy {
+  timeLimitMinutes: number | null;
+  permittedResources: string[];
+  hintPolicy: "none" | "procedural_only" | "allowed";
+  calculatorOrCodePolicy: string;
+  accommodations: string[];
+  revealPolicy: "never_during" | "after_submission";
+  identityRequired: boolean;
+  auditSubmissions: boolean;
+}
+
+export const DEFAULT_EXAM_POLICY: ExamPolicy = {
+  timeLimitMinutes: null,
+  permittedResources: [],
+  hintPolicy: "none",
+  calculatorOrCodePolicy: "instructor-defined",
+  accommodations: [],
+  revealPolicy: "never_during",
+  identityRequired: false,
+  auditSubmissions: true,
+};
+
+export type ExamSessionState = "not_started" | "locked" | "delivering" | "recording" | "submitted" | "graded";
+
+const EXAM_TRANSITIONS: Record<ExamSessionState, Partial<Record<string, ExamSessionState>>> = {
+  not_started: { start: "locked" },
+  locked: { deliver: "delivering", abort: "not_started" },
+  delivering: { respond: "recording", submit: "submitted" },
+  recording: { respond: "recording", submit: "submitted" },
+  submitted: { grade: "graded" },
+  graded: {},
+};
+
+/** Controlled assessment states — illegal transitions rejected, never coerced. */
+export function examSessionTransition(state: ExamSessionState, event: string): { state: ExamSessionState; ok: boolean; note: string } {
+  const next = EXAM_TRANSITIONS[state]?.[event];
+  if (!next) return { state, ok: false, note: `illegal transition: ${event} from ${state} — recorded, not applied` };
+  return { state: next, ok: true, note: `transitioned to ${next}` };
+}
+
+/** Exam guard: what the tutor may do while an exam is active. */
+export function examGuard(action: string, policy: ExamPolicy = DEFAULT_EXAM_POLICY): { allowed: boolean; instead: string } {
+  const t = action.toLowerCase();
+  if (/clarif.*instruction|technical problem|accommodation|procedural/.test(t)) {
+    return { allowed: true, instead: "interface help, approved accommodations, and technical recording only" };
+  }
+  if (policy.hintPolicy === "allowed" && /hint/.test(t)) {
+    return { allowed: true, instead: "policy explicitly allows hints" };
+  }
+  return { allowed: false, instead: "no answers, paths, rubric details, or coaching during an active exam" };
+}
+
+// ---------------------------------------------------------------------------
+// Accessibility controls + equivalence check.
+// ---------------------------------------------------------------------------
+
+export const ACCESSIBILITY_CONTROLS = [
+  "text_only", "audio_with_transcript", "short_sections", "describe_diagrams",
+  "accessible_math", "more_processing_time", "no_timed_interaction",
+  "aac_compatible", "reduce_visual_complexity",
+] as const;
+
+export type AccessibilityControl = (typeof ACCESSIBILITY_CONTROLS)[number];
+
+/**
+ * Flags adaptations that could change what is assessed — those go to
+ * instructor review instead of silent delivery.
+ */
+export function adaptationEquivalenceCheck(controls: string[], assessedSkills: string[]): { equivalent: boolean; flags: string[] } {
+  const flags: string[] = [];
+  const has = (c: string) => controls.includes(c);
+  if (has("text_only") && assessedSkills.some((s) => /diagram|visual|chart|graph/i.test(s))) {
+    flags.push("text-only delivery with visual assessment targets — instructor review");
+  }
+  if (has("no_timed_interaction") && assessedSkills.some((s) => /fluency|speed|timed/i.test(s))) {
+    flags.push("untimed delivery with fluency assessment targets — instructor review");
+  }
+  if (has("audio_with_transcript") && assessedSkills.some((s) => /listening/i.test(s))) {
+    flags.push("transcript delivery with listening assessment targets — instructor review");
+  }
+  return { equivalent: flags.length === 0, flags };
+}
+
+// ---------------------------------------------------------------------------
+// Practice exit: error-pattern report. Transition triggers. Misconceptions.
+// ---------------------------------------------------------------------------
+
+export interface ErrorPatternReport {
+  attempts: number;
+  errors: number;
+  byCategory: { category: string; count: number }[];
+  topPattern: string | null;
+  reviewItem: string | null;
+}
+
+/** End-of-practice summary: error patterns + one scheduled review item. */
+export function errorPatternReport(errors: { category: string; item: string }[], attempts: number): ErrorPatternReport {
+  const counts = new Map<string, { count: number; item: string }>();
+  for (const e of errors) {
+    const cur = counts.get(e.category) ?? { count: 0, item: e.item };
+    cur.count++;
+    counts.set(e.category, cur);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1].count - a[1].count);
+  return {
+    attempts,
+    errors: errors.length,
+    byCategory: ranked.map(([category, v]) => ({ category, count: v.count })),
+    topPattern: ranked[0]?.[0] ?? null,
+    reviewItem: ranked[0] ? `revisit ${ranked[0][1].item} (${ranked[0][0]})` : null,
+  };
+}
+
+export interface TransitionTrigger {
+  to: TeachingMode;
+  reason: string;
+  message: string;
+}
+
+/**
+ * Transition triggers beyond exit conditions: prerequisite failure drops
+ * to DIRECT, policy changes lock EXAM, overload simplifies, readiness
+ * advances via evaluateExit. Learner agency preserved — suggestions,
+ * with stay-allowed messaging.
+ */
+export function transitionTrigger(
+  mode: TeachingMode,
+  signals: { prereqFailed?: boolean; readiness?: boolean; frustration?: boolean; policyChanged?: boolean; objectiveChanged?: string | null },
+): TransitionTrigger | null {
+  if (signals.policyChanged) {
+    return { to: "EXAM", reason: "assessment policy changed", message: transitionMessage(mode, "EXAM", "assessment policy changed") };
+  }
+  if (signals.prereqFailed && mode !== "DIRECT") {
+    return { to: "DIRECT", reason: "prerequisite check failed — repair before advancing", message: transitionMessage(mode, "DIRECT", "prerequisite check failed") };
+  }
+  if (signals.frustration && mode !== "ACCESSIBILITY" && mode !== "DIRECT") {
+    return { to: "DIRECT", reason: "load rising — simplify before continuing", message: transitionMessage(mode, "DIRECT", "cognitive load rising") };
+  }
+  if (signals.readiness) {
+    const next = evaluateExit(mode, { independentApplication: true, retrievalPassed: true, teachbackDone: true, transferDone: true });
+    if (next && next !== mode) {
+      return { to: next, reason: "readiness demonstrated", message: transitionMessage(mode, next, "readiness demonstrated") };
+    }
+  }
+  void signals.objectiveChanged;
+  return null;
+}
+
+/**
+ * Misconception candidates from learner reasoning: marker/token overlap
+ * against known misconceptions, with the triggering span as evidence.
+ * Advisory — instructor/confirmatory evidence decides, never this alone.
+ */
+export function detectMisconceptionFromReasoning(
+  text: string,
+  misconceptions: { id: string; statement: string; markers?: string[] }[],
+): { id: string; statement: string; evidence: string; overlap: number }[] {
+  const toks = (s: string) => new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 3));
+  const tt = toks(text);
+  const out: { id: string; statement: string; evidence: string; overlap: number }[] = [];
+  for (const m of misconceptions) {
+    const markers = (m.markers ?? []).map((x) => x.toLowerCase());
+    const hit = markers.find((mk) => text.toLowerCase().includes(mk));
+    const mt = toks(m.statement);
+    let inter = 0;
+    for (const t of mt) if (tt.has(t)) inter++;
+    const overlap = mt.size ? Math.round((inter / mt.size) * 100) / 100 : 0;
+    if (hit || overlap >= 0.5) {
+      out.push({ id: m.id, statement: m.statement, evidence: hit ?? `token overlap ${overlap}`, overlap });
+    }
+  }
+  return out.sort((a, b) => b.overlap - a.overlap).slice(0, 5);
+}
+
 /** Socratic hint ladder L0-L5. */
 export function socraticHint(level: number, conceptLabel: string): string {
   const ladder = [

@@ -3,6 +3,33 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@n0va/ui";
+import { MODE_CONTRACTS, MODE_SAFETY_RULES, type TeachingMode } from "./tutor-modes";
+
+/**
+ * Active mode contract — the pedagogical policy in force, shown always:
+ * objective, assistance, exits, escalation. Modes are policies, never vibes.
+ */
+export function ModeContractView({ mode }: { mode: string | null }) {
+  const key = (mode ?? "").toUpperCase() as TeachingMode;
+  const contract = (MODE_CONTRACTS as Record<string, (typeof MODE_CONTRACTS)[TeachingMode] | undefined>)[key];
+  if (!contract) return null;
+  const safety = MODE_SAFETY_RULES.filter((r) => r.mode === contract.mode);
+  return (
+    <div data-testid="mode-contract" style={{ fontSize: 12, marginTop: 8, borderTop: "1px solid var(--nv-color-border)", paddingTop: 6 }}>
+      <div><b>Contract:</b> {contract.objective}</div>
+      <div style={{ color: "var(--nv-color-text-faint)" }}>
+        Assistance: {contract.assistance} · Assessment: {contract.assessmentAllowed ? "allowed" : "not allowed"} · {contract.answerPolicy}
+      </div>
+      <div style={{ color: "var(--nv-color-text-faint)" }}>
+        Exits when: {contract.exitConditions.join("; ")}
+        {contract.supervisorIf.length > 0 && <> · Supervisor if: {contract.supervisorIf.join(", ")}</>}
+      </div>
+      {safety.length > 0 && (
+        <div style={{ color: "var(--nv-color-danger)" }}>Safety: {safety.map((s) => s.rule).join("; ")}</div>
+      )}
+    </div>
+  );
+}
 import type { GraphConcept } from "./graph-ui";
 import { ExplanationCard, type DecisionCardData } from "./pedagogy-ui";
 
@@ -111,6 +138,7 @@ export function TutorAgentsPanel({ setId, concepts, actions, isInstructor }: {
             placeholder="Explain photosynthesis — I still don't get it…" style={{ flex: 1, minWidth: 200 }} />
           <Button size="sm" onClick={send} disabled={busy}>{busy ? "…" : "Send"}</Button>
         </div>
+        <ModeContractView mode={reqMode || turns[turns.length - 1]?.r.mode || null} />
         {sessionId && (
           <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: 11, color: "var(--nv-color-text-faint)" }}>Mark progress:</span>

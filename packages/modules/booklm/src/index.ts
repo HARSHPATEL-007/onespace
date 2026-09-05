@@ -43,7 +43,7 @@ export { ExplanationCard, DecisionQueue, EducatorDecisionPanel, DecisionMetricsV
 export { DecisionService, pedagogyDecisionSchema, reviewSchema, evidenceItemSchema, alternativeSchema } from "./decisions";
 export { MemoryCenterPanel, type MemoryActions, type MemoryCard } from "./memory-ui";
 export { MemoryService, memoryRecordSchema, classroomSchema } from "./memories";
-export { TutorAgentsPanel, type TutorAgentActions } from "./tutor-ui";
+export { TutorAgentsPanel, ModeContractView, type TutorAgentActions } from "./tutor-ui";
 export { OrchestratorService, runTurnSchema, modePolicySchema } from "./orchestrate";
 export { AdaptivePanel, type AdaptActions } from "./adapt-ui";
 export {
@@ -53,8 +53,16 @@ export {
 } from "./tutor-agents";
 export {
   MODE_CONTRACTS, ALL_MODES, selectMode, evaluateExit, transitionMessage,
-  MODE_SAFETY_RULES, MODE_MEMORY, socraticHint,
-  type TeachingMode, type ModeContract,
+  MODE_SAFETY_RULES, MODE_MEMORY, socraticHint, FADING_STAGES,
+  fadingSupportCredit, practiceFeedback, ERROR_LABELS, classifyErrorLabel,
+  debuggingReport, researchArtifact, peerReviewFeedback, ORAL_PROGRESSION,
+  ORAL_FAIRNESS, oralExamPlan, DEFAULT_EXAM_POLICY, examSessionTransition,
+  examGuard, ACCESSIBILITY_CONTROLS, adaptationEquivalenceCheck,
+  errorPatternReport, transitionTrigger, detectMisconceptionFromReasoning,
+  type TeachingMode, type ModeContract, type FadingStage, type ErrorLabel,
+  type DebuggingReport, type ResearchArtifact, type PeerFeedback,
+  type ExamPolicy, type ExamSessionState, type AccessibilityControl,
+  type ErrorPatternReport, type TransitionTrigger,
 } from "./tutor-modes";
 export {
   ISSUES, EVIDENCE_RELIABILITY, strategyScore, confidenceBand,
