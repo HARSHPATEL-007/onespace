@@ -20,12 +20,18 @@ export interface AdaptActions {
   interleave: (setId: string, level: "low" | "moderate" | "high") => Promise<{ sets: { conceptKey: string; label: string; count: number; kind: string }[]; comparisonItems: number; reason: string }>;
   override: (fd: FormData) => Promise<void>;
   decisionControl: (id: string, control: string, note: string, modifiedAction?: string) => Promise<unknown>;
+  resetLevel: (conceptId: string) => Promise<{ reset: boolean; note: string }>;
 }
+
+export interface RemediationStageView { stage: string; action: string; retest: string | null }
+export interface RepairOptionView { mode: string; blockers: string[]; minutes: number; tradeoff: string }
 
 export interface AdaptPlan {
   loopId: string; decision: string; modality: string; difficultyLevel: number;
   difficultyLocked: boolean; ladder: string; evidence: string[]; alternatives: string[]; explanation: string[];
   decisionId?: string | null; decisionCard?: DecisionCardData | null;
+  remediation?: RemediationStageView[] | null;
+  repairOptions?: RepairOptionView[] | null;
 }
 
 export interface AdaptState {
@@ -116,6 +122,14 @@ export function AdaptivePanel({ setId, concepts, actions, isInstructor }: {
             </div>
             <div style={{ color: "var(--nv-color-text-faint)", marginTop: 2 }}>
               accuracy {String(state.behavior.recentAccuracy)} · calibration error {String(state.behavior.confidenceCalibrationError)} · responses {String(state.behavior.evidenceResponses)}
+              {typeof state.behavior.hintDependence === "number" ? ` · hints ${Math.round(state.behavior.hintDependence * 100)}%` : " · hints unmeasured"}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <Button variant="ghost" size="sm" onClick={() => {
+                if (!conceptId) return;
+                if (!confirm("Clear the adaptive estimate for this topic? Diagnosis restarts clean.")) return;
+                void actions.resetLevel(conceptId).then(() => loadState(conceptId));
+              }}>Reset my level</Button>
             </div>
           </div>
         )}
@@ -138,6 +152,22 @@ export function AdaptivePanel({ setId, concepts, actions, isInstructor }: {
                 card={plan.decisionCard}
                 onControl={(c, n, m) => actions.decisionControl(plan.decisionId!, c, n, m).then(() => refresh())}
               />
+            </div>
+          )}
+          {plan.remediation && plan.remediation.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              <b>Remediation path</b> (mechanism first, repetition never):
+              {plan.remediation.map((s, i) => (
+                <div key={i} style={{ marginTop: 2 }}>{i + 1}. <b>{s.stage.replace(/_/g, " ")}</b> — {s.action}{s.retest ? ` → re-test: ${s.retest.replace(/_/g, " ")}` : ""}</div>
+              ))}
+            </div>
+          )}
+          {plan.repairOptions && plan.repairOptions.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              <b>Repair paths</b> (speed vs depth — your choice):
+              {plan.repairOptions.map((r, i) => (
+                <div key={i} style={{ marginTop: 2 }}>• <b>{r.mode.replace(/_/g, " ")}</b> — ~{r.minutes} min · {r.blockers.join(", ") || "no blockers"} · <i>{r.tradeoff}</i></div>
+              ))}
             </div>
           )}
           <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>

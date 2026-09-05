@@ -3,7 +3,8 @@ import { prisma } from "@n0va/db";
 import {
   nextDifficulty, dimensionToMove, classifyError, REMEDIATION,
   sequenceModality, planInterleave, estimateGain, buildDiagnostic,
-  scoreElaboration, assembleSession, LADDER, type ErrorType,
+  scoreElaboration, assembleSession, remediationPath, repairPathOptions,
+  LADDER, type ErrorType,
 } from "./adaptive";
 
 export const loopPlanSchema = z.object({
@@ -65,7 +66,7 @@ export class AdaptiveService {
 
   // -- State vector (estimates with uncertainty, never verdicts) ---------------
   async stateVector(conceptId: string) {
-    const [mastery, attempts, prefs] = await Promise.all([
+    const [mastery, attempts, prefs, loops] = await Promise.all([
       prisma.learnerMastery.findUnique({
         where: { workspaceId_conceptId_userId: { workspaceId: this.workspaceId, conceptId, userId: this.userId } },
       }),
@@ -77,6 +78,12 @@ export class AdaptiveService {
       prisma.learnerProfile.findFirst({
         where: { workspaceId: this.workspaceId, userId: this.userId, isDefault: true },
       }),
+      // Hint channel: recent loop responses carry hintsUsed per concept.
+      prisma.adaptiveLoop.findMany({
+        where: { workspaceId: this.workspaceId, userId: this.userId, conceptId },
+        select: { response: true },
+        orderBy: { createdAt: "desc" }, take: 10,
+      }),
     ]);
     const dims = ((mastery?.dimensions ?? {}) as Record<string, number>);
     const resp = attempts.flatMap((a) => a.responses);
@@ -86,6 +93,14 @@ export class AdaptiveService {
     const avgTime = resp.length ? resp.reduce((s, r) => s + r.responseTimeMs, 0) / resp.length : 0;
     const conf = resp.length ? resp.reduce((s, r) => s + r.confidence, 0) / resp.length : 0.5;
     const calibration = Math.abs(conf - recentAccuracy);
+    // Hint dependence from instrumented loop responses (null when unmeasured).
+    const hintUses = loops
+      .map((l) => (l.response ?? {}) as { hintsUsed?: unknown })
+      .filter((r) => typeof r.hintsUsed === "number")
+      .map((r) => r.hintsUsed as number);
+    const hintDependence = hintUses.length > 0
+      ? Math.round((hintUses.filter((h) => h > 0).length / hintUses.length) * 100) / 100
+      : null;
     const preferences = ((prefs?.preferences ?? {}) as Record<string, unknown>);
     return {
       conceptId,
@@ -97,9 +112,10 @@ export class AdaptiveService {
       behavior: {
         recentAccuracy: Math.round(recentAccuracy * 100) / 100,
         responseTimeMedianMs: medianTime, responseTimeAvgMs: Math.round(avgTime),
-        hintDependence: null as number | null, // no hint channel yet — tracked once hints are instrumented
+        hintDependence,
         confidenceCalibrationError: Math.round(calibration * 100) / 100,
         evidenceResponses: resp.length,
+        hintEvidenceResponses: hintUses.length,
       },
       context: {
         availableMinutes: (preferences.timeCapMin as number | undefined) ?? (prefs?.timeCapMin ?? 25),
@@ -246,6 +262,7 @@ export class AdaptiveService {
       agents: ["adaptive:1.0"], stateSnapshot: "", policySnapshot: `adaptive-policy-v${policy.version}`,
     }).catch(() => null);
     const card = decision ? await decisions.card(decision.id).catch(() => null) : null;
+    const conceptLabel = diagnosis.concept.label;
     return {
       loopId: loop.id,
       decision: strategy,
@@ -253,6 +270,12 @@ export class AdaptiveService {
       difficultyLevel: lock ? difficulty.level : difficulty.level,
       difficultyLocked: !!lock,
       ladder: LADDER[difficulty.level] ?? "practice",
+      // Misconception-first remediation path + costed repair options ride
+      // with the plan so the learner sees stages and speed/depth tradeoffs.
+      remediation: diagnosis.errorType ? remediationPath(diagnosis.errorType, conceptLabel) : null,
+      repairOptions: diagnosis.blockingPrerequisites.length > 0
+        ? repairPathOptions(diagnosis.blockingPrerequisites)
+        : null,
       evidence: loop.evidence,
       alternatives,
       explanation: this.explainDecision(diagnosis, strategy, alternatives),
@@ -299,7 +322,18 @@ export class AdaptiveService {
         context: input.answer.slice(0, 200), novelty: input.novelty,
         visibility: "learner-and-instructor",
       }).catch(() => undefined);
-      await this.updateDifficulty(conceptId, input.correct ? 1 : 0, input.hintsUsed > 0 ? 0.6 : 0, input.novelty).catch(() => undefined);
+      // Bottleneck signals for dimension tracking: novelty-miss → transfer
+      // distance; hint use → scaffolding; very slow response → time pressure.
+      // The 60s slow bar is a documented heuristic, not a norm — it only
+      // records which dimension moved, never judges pace as ability.
+      await this.updateDifficulty(
+        conceptId, input.correct ? 1 : 0, input.hintsUsed > 0 ? 0.6 : 0, input.novelty,
+        {
+          slowResponse: input.responseTimeMs > 60000,
+          highHintUse: input.hintsUsed > 2,
+          novelFailure: input.novelty >= 0.5 && !input.correct,
+        },
+      ).catch(() => undefined);
       // Misconception-first: low accuracy + high confidence → candidate.
       if (!input.correct && input.confidence >= 0.7 && input.responseTimeMs < 8000) {
         const { MisconceptionService } = await import("./misconceptions");
@@ -377,14 +411,38 @@ export class AdaptiveService {
     return base;
   }
 
-  async updateDifficulty(conceptId: string, success: number, hintDependence: number, transfer: number) {
+  async updateDifficulty(
+    conceptId: string, success: number, hintDependence: number, transfer: number,
+    bottleneck?: { slowResponse?: boolean; highHintUse?: boolean; novelFailure?: boolean; ambiguityFailure?: boolean; timePressureFailure?: boolean; modalityFailure?: boolean },
+  ) {
     const st = await this.difficultyState(conceptId);
     if (st.locked) return st;
     const level = nextDifficulty(st.level, success, st.targetBand, hintDependence, transfer, st.eta, st.mu, st.nu);
+    // Track which single dimension moved and why — difficulty is decomposed,
+    // never one opaque number sliding silently.
+    const dims = ((st.dims ?? {}) as Record<string, unknown>);
+    if (bottleneck && (bottleneck.slowResponse || bottleneck.highHintUse || bottleneck.novelFailure || bottleneck.ambiguityFailure || bottleneck.timePressureFailure || bottleneck.modalityFailure)) {
+      const dim = dimensionToMove({
+        slowResponse: !!bottleneck.slowResponse, highHintUse: !!bottleneck.highHintUse,
+        novelFailure: !!bottleneck.novelFailure, ambiguityFailure: !!bottleneck.ambiguityFailure,
+        timePressureFailure: !!bottleneck.timePressureFailure, modalityFailure: !!bottleneck.modalityFailure,
+      });
+      dims.movedDim = dim;
+      dims.movedAt = new Date().toISOString();
+      dims.levelAtMove = Math.round(level);
+    }
     return prisma.difficultyState.update({
       where: { id: st.id },
-      data: { level: Math.round(level), dims: st.dims ?? undefined },
+      data: { level: Math.round(level), dims: dims as never },
     });
+  }
+
+  /** "Reset my level": clear the adaptive estimate so diagnosis restarts clean. */
+  async resetDifficulty(conceptId: string) {
+    await prisma.difficultyState.deleteMany({
+      where: { workspaceId: this.workspaceId, conceptId, userId: this.userId },
+    });
+    return { conceptId, reset: true as const, note: "Adaptive estimate cleared — next diagnostic re-establishes the level." };
   }
 
   async calibrateDiagnostic(conceptId: string) {

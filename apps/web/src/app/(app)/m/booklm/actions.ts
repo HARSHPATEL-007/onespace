@@ -339,6 +339,10 @@ export async function adaptControlAction(control: string, value: unknown) {
   return (await adaptSvc()).setControl(control, value);
 }
 
+export async function adaptResetLevelAction(conceptId: string) {
+  return (await adaptSvc()).resetDifficulty(conceptId);
+}
+
 export async function adaptControlsAction() {
   return (await adaptSvc()).getControls();
 }

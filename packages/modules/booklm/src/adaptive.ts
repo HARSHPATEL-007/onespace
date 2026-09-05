@@ -153,6 +153,66 @@ export function planInterleave(args: {
   };
 }
 
+export interface RemediationStage {
+  stage: string;
+  action: string;
+  retest: string | null;
+}
+
+/**
+ * Misconception-first remediation path: test the suspected cause, intervene
+ * on the mechanism, re-test similar then changed-surface, schedule delayed
+ * retrieval, escalate on persistent low confidence. Repeating the same
+ * material is never a stage.
+ */
+export function remediationPath(errorType: ErrorType, conceptLabel: string): RemediationStage[] {
+  const rem = REMEDIATION[errorType];
+  return [
+    { stage: "test_cause", action: `Probe: one item isolating ${conceptLabel} ${errorType.replace(/_/g, " ")}`, retest: null },
+    { stage: "intervene", action: `${rem.first} (${rem.kind})`, retest: null },
+    { stage: "retest_similar", action: "Structurally similar item, same surface", retest: "similar" },
+    { stage: "retest_changed", action: "Changed surface context, same structure", retest: "changed_surface" },
+    { stage: "delayed_retrieval", action: "Spaced retrieval after the interval", retest: "delayed" },
+    { stage: "escalate", action: "Human escalation + diagnostic reassessment if confidence stays low", retest: null },
+  ];
+}
+
+export interface RepairOption {
+  mode: "minimal" | "foundational" | "just_in_time" | "parallel";
+  blockers: string[];
+  minutes: number;
+  tradeoff: string;
+}
+
+/**
+ * Costed prerequisite repair options so the learner chooses speed vs depth.
+ * Minimal fixes only the blocker; foundational rebuilds the cluster;
+ * just-in-time teaches inside the target lesson; parallel continues the
+ * target while repairing a secondary gap.
+ */
+export function repairPathOptions(blockers: { label: string; mastery: number }[], minutesPerBlock = 10): RepairOption[] {
+  const labels = blockers.map((b) => b.label);
+  const cost = Math.max(1, blockers.length) * minutesPerBlock;
+  return [
+    {
+      mode: "minimal", blockers: labels.slice(0, 1), minutes: minutesPerBlock,
+      tradeoff: "fastest — fixes only the blocking prerequisite",
+    },
+    {
+      mode: "foundational", blockers: labels, minutes: cost + 10,
+      tradeoff: "slowest — rebuilds the broader dependency cluster",
+    },
+    {
+      mode: "just_in_time", blockers: labels.slice(0, 1), minutes: Math.max(4, Math.round(minutesPerBlock / 2)),
+      tradeoff: "taught inside the target lesson — least disruption, shallowest repair",
+    },
+    {
+      mode: "parallel", blockers: labels.slice(1), minutes: cost,
+      tradeoff: "continue the target lesson while repairing a secondary gap",
+    },
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Gain estimation: pre/post delta with uncertainty from evidence count.
 // ---------------------------------------------------------------------------

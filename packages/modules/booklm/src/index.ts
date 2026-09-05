@@ -155,8 +155,9 @@ export { AdaptiveService, loopPlanSchema, loopRespondSchema, policySchemaAdaptiv
 export {
   nextDifficulty, dimensionToMove, classifyError, REMEDIATION,
   sequenceModality, planInterleave, estimateGain, buildDiagnostic,
-  scoreElaboration, assembleSession, LADDER, DIFFICULTY_DIMS,
-  type ErrorType, type DifficultyDim,
+  scoreElaboration, assembleSession, remediationPath, repairPathOptions,
+  LADDER, DIFFICULTY_DIMS,
+  type ErrorType, type DifficultyDim, type RemediationStage, type RepairOption,
 } from "./adaptive";
 export {
   decomposeClaims, detectQualifiers, detectCausalOverreach, freshnessScore, FRESHNESS_LAMBDAS,

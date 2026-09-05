@@ -71,7 +71,7 @@ export async function GET(req: Request) {
 /**
  * POST /v1/learner/adaptive — plan | respond | retrieval-answer | session |
  * session-accept | elaborate | control | policy | override | override-off |
- * difficulty-bump | ensure-items
+ * difficulty-bump | difficulty-reset | ensure-items
  */
 export async function POST(req: Request) {
   const c = await ctx();
@@ -150,11 +150,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
     if (action === "difficulty-bump") {
-      const { conceptId, success, hints, transfer } = b as Record<string, never>;
+      const { conceptId, success, hints, transfer, bottleneck } = b as Record<string, never>;
       if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
+      const bn = (bottleneck ?? {}) as Record<string, boolean>;
       return NextResponse.json(await a.updateDifficulty(
         String(conceptId), Number(success ?? 0.5), Number(hints ?? 0), Number(transfer ?? 0),
+        {
+          slowResponse: bn.slowResponse === true, highHintUse: bn.highHintUse === true,
+          novelFailure: bn.novelFailure === true, ambiguityFailure: bn.ambiguityFailure === true,
+          timePressureFailure: bn.timePressureFailure === true, modalityFailure: bn.modalityFailure === true,
+        },
       ));
+    }
+    if (action === "difficulty-reset") {
+      const { conceptId } = b as Record<string, never>;
+      if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
+      return NextResponse.json(await a.resetDifficulty(String(conceptId)));
     }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (e) {
