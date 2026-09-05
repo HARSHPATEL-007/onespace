@@ -43,7 +43,7 @@ export interface TurnResponse {
     checkForUnderstanding: string | null; misconceptionCheck: string | null;
     citations: string[]; unresolvedClaims: number; verifiedClaims: number;
     nextAction: string; controls: string[]; allowedOnly: string[] | null;
-    metadata: { contributors: string[]; verifiedClaims: number; unresolvedClaims: number; humanReviewRequired: boolean };
+    metadata: { contributors: string[]; verifiedClaims: number; unresolvedClaims: number; humanReviewRequired: boolean; memoriesUsed?: number };
   };
 }
 

@@ -19,6 +19,11 @@ export interface ClassroomCard {
   section: string; expiresAt: string | null;
 }
 
+export interface MemoryConflict {
+  id: string; scope: string; value: string; status: string;
+  resolution: string; note: string;
+}
+
 export interface MemoryActions {
   list: (scope?: string, search?: string) => Promise<MemoryCard[]>;
   create: (input: { key: string; value: string; scope?: string; classification?: string; courseId?: string }) => Promise<unknown>;
@@ -37,6 +42,7 @@ export interface MemoryActions {
   classroomApprove: (id: string, approve: boolean) => Promise<void>;
   exportAll: () => Promise<Record<string, unknown>>;
   scan: (text: string) => Promise<{ quarantined: boolean; findings: { pattern: string; excerpt: string; severity: string }[]; rule: string }>;
+  contradictions: (id: string) => Promise<MemoryConflict[]>;
 }
 
 const SCOPES = ["TASK", "SESSION", "COURSE", "LONG_TERM", "CLASSROOM"];
@@ -166,6 +172,7 @@ export function MemoryCenterPanel({ setId, actions, isInstructor }: {
           )}
           <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
             <Button variant="ghost" size="sm" onClick={() => setCorrecting(correcting === m.id ? null : m.id)}>Correct</Button>
+            <MemoryConflicts id={m.id} actions={actions} />
             <Button variant="ghost" size="sm" onClick={() => void actions.pause(m.id, !m.paused).then(() => load())}>{m.paused ? "Resume" : "Pause"}</Button>
             <Button variant="ghost" size="sm" onClick={() => {
               const to = prompt("New scope (TASK, SESSION, COURSE, LONG_TERM):", m.scope);
@@ -262,6 +269,29 @@ export function MemoryCenterPanel({ setId, actions, isInstructor }: {
         )}
       </div>
     </div>
+  );
+}
+
+export function MemoryConflicts({ id, actions }: {
+  id: string; actions: Pick<MemoryActions, "contradictions">;
+}) {
+  const [conflicts, setConflicts] = useState<MemoryConflict[] | null>(null);
+  return (
+    <span>
+      <Button variant="ghost" size="sm" onClick={() => {
+        if (conflicts !== null) { setConflicts(null); return; }
+        void actions.contradictions(id).then(setConflicts).catch(() => undefined);
+      }}>Conflicts</Button>
+      {conflicts !== null && (
+        <span style={{ fontSize: 12, color: "var(--nv-color-text-faint)", marginLeft: 6 }}>
+          {conflicts.length === 0 ? "no conflicting memories" : conflicts.map((c) => (
+            <span key={c.id} style={{ marginRight: 8 }}>
+              ⚠ {c.scope.toLowerCase()}: “{c.value}” → {c.resolution.replace(/_/g, " ")}
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
   );
 }
 

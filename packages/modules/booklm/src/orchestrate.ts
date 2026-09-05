@@ -216,6 +216,20 @@ export class OrchestratorService {
       return { sessionId: session.id, intent, workflow: "safety" as const, refused: true, response: composed, escalationId: null as string | null, latencyMs: Date.now() - started };
     }
 
+    // Tutor memory: minimum-necessary retrieval for this turn. Retrieved
+    // memories are marked used (audit trail) and disclosed in the composed
+    // response — personalization stays inspectable, never silent.
+    const { MemoryService } = await import("./memories");
+    const memSvc = new MemoryService(this.workspaceId, this.userId, this.role);
+    const taskMemories = await memSvc.retrieveForTask({ limit: 6 }).catch(() => []);
+    const memoryUsage = taskMemories.map((m) => String((m as { usageLine?: unknown }).usageLine ?? m.key));
+    for (const m of taskMemories) {
+      await memSvc.markUsed(m.id, `tutor-turn:${session.id}`).catch(() => undefined);
+    }
+    if (taskMemories.length > 0) {
+      await this.log(session.id, null, "memory.used", { count: taskMemories.length, keys: taskMemories.map((m) => m.key) });
+    }
+
     // Workflow selection.
     const contested = false; // determined per-task below
     const risky = decision.decision === "escalate";
@@ -323,7 +337,7 @@ export class OrchestratorService {
     const composed = await this.compose(
       session.id, outputs, null, verdicts, degraded,
       decision.decision === "modify" ? (decision.allowed ?? []) : undefined,
-      mode, transitionSuggestion, committed,
+      mode, transitionSuggestion, committed, memoryUsage,
     );
     if (degraded) {
       await prisma.tutorSession.update({ where: { id: session.id }, data: { degraded: true } });
@@ -968,6 +982,7 @@ private shapeForMode(mode: TeachingMode, explanation: string, _example: string):
     mode: TeachingMode = "DIRECT",
     transitionSuggestion: string | null = null,
     committed = 0,
+    memoryUsage: string[] = [],
   ) {
     const tutorOut = outputs.find((o) => o.key === "tutor")?.out;
     const explanation = (tutorOut?.artifacts.find((a) => a.type === "explanation")?.content ?? {}) as {
@@ -989,6 +1004,9 @@ private shapeForMode(mode: TeachingMode, explanation: string, _example: string):
     // Claim-conflict resolutions: contested claims exposed with rationale,
     // review-required claims routed onward. Recorded in metadata.
     const claimResolutions = resolveClaimConflict(verdicts);
+    const memoryLine = !refusal && memoryUsage.length > 0
+      ? `\nPersonalization used: ${memoryUsage.slice(0, 3).join("; ")}. Change anytime in Memory Center.`
+      : "";
     const body = refusal ?? [
       explanation.explanation ?? "Here's a starting point — tell me which part is unclear.",
       question.question ? `\nOne question before we continue: ${question.question}` : "",
@@ -996,6 +1014,7 @@ private shapeForMode(mode: TeachingMode, explanation: string, _example: string):
       planBlocks.length > 0 ? `\nSuggested next: ${planBlocks[0]!.name} (${planBlocks[0]!.minutes} min) — ${planBlocks[0]!.detail}` : "",
       degraded ? "\nNote: one or more agents were unavailable, so this response is partial." : "",
       transitionSuggestion ? `\n${transitionSuggestion}` : "",
+      memoryLine,
     ].join("\n");
 
     const composed = {
@@ -1018,11 +1037,12 @@ private shapeForMode(mode: TeachingMode, explanation: string, _example: string):
         claimResolutions,
         stateUpdatesCommitted: committed,
         humanReviewRequired: verdicts.some((v) => v.verdict === "requires_human_review"),
+        memoriesUsed: memoryUsage.length,
       },
     };
     await this.log(sessionId, null, "response.composed", {
       contributors, degraded, refused: !!refusal, mode, transitionSuggested: !!transitionSuggestion,
-      committed, resolutions: claimResolutions.length,
+      committed, resolutions: claimResolutions.length, memoriesUsed: memoryUsage.length,
     });
     return composed;
   }

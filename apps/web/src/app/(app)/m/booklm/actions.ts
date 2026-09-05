@@ -663,6 +663,14 @@ export async function memoryScanAction(text: string) {
   return (await memSvc()).scanDocument(text.slice(0, 20000));
 }
 
+export async function memoryContradictionsAction(id: string) {
+  return (await memSvc()).contradictions(id);
+}
+
+export async function memoryMarkUsedAction(id: string, usedFor: string) {
+  return (await memSvc()).markUsed(id, usedFor.slice(0, 200));
+}
+
 // --- Explainable pedagogy ---
 
 const decSvc = async () => {
