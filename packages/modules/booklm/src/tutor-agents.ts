@@ -117,6 +117,129 @@ export function verdictFor(label: string, freshnessOk: boolean): FactVerdict {
   }
 }
 
+/** Per-agent timeout: a hung agent degrades the turn, never blocks it. */
+export const AGENT_TIMEOUT_MS = 30000;
+
+/**
+ * Timeout wrapper for idempotent agent runners. Resolves with a uniform
+ * outcome so callers handle timeouts and errors identically.
+ */
+export async function withAgentTimeout<T>(
+  agentKey: string,
+  work: () => Promise<T>,
+  timeoutMs: number = AGENT_TIMEOUT_MS,
+): Promise<{ ok: true; value: T } | { ok: false; error: string; timedOut: boolean }> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const value = await Promise.race([
+      work(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`agent ${agentKey} timed out after ${timeoutMs}ms`)), timeoutMs);
+      }),
+    ]);
+    return { ok: true, value };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "agent failed";
+    return { ok: false, error: msg.slice(0, 500), timedOut: msg.includes("timed out") };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export interface ClaimResolution {
+  claim: string;
+  outcome: "upheld" | "exposed" | "escalated";
+  rationale: string;
+}
+
+/**
+ * Claim-conflict resolution over fact-check verdicts. Verified claims are
+ * upheld; contested ones are exposed (both sides shown, never averaged);
+ * human-review verdicts escalate. The decision and rationale are recorded.
+ */
+export function resolveClaimConflict(
+  verdicts: { claim: string; verdict: string; confidence: number }[],
+): ClaimResolution[] {
+  return verdicts
+    .filter((v) => v.verdict === "contested" || v.verdict === "requires_human_review" || v.verdict === "unsupported" || v.verdict === "ambiguous")
+    .slice(0, 10)
+    .map((v) => {
+      if (v.verdict === "requires_human_review") {
+        return { claim: v.claim.slice(0, 200), outcome: "escalated" as const, rationale: `confidence ${v.confidence} with review-required verdict — routed to human` };
+      }
+      if (v.verdict === "contested") {
+        return { claim: v.claim.slice(0, 200), outcome: "exposed" as const, rationale: "contradictory evidence — both sides shown, learner decides with guidance" };
+      }
+      return { claim: v.claim.slice(0, 200), outcome: "exposed" as const, rationale: `verdict ${v.verdict} at confidence ${v.confidence} — shown as unresolved, not asserted` };
+    });
+}
+
+export interface SessionFold {
+  tasks: { requested: number; completed: number; failed: number; retried: number; degraded: string[] };
+  claims: { verified: number; disputed: number };
+  escalations: number;
+  commits: number;
+  modes: string[];
+  degraded: boolean;
+  steps: { type: string; at: string }[];
+}
+
+/**
+ * Event-log fold for replay, debugging, and evaluation. Reconstructs what
+ * happened in a session from its typed events without re-running anything.
+ */
+export function foldSessionEvents(events: { type: string; payload?: unknown; createdAt?: string | Date }[]): SessionFold {
+  const fold: SessionFold = {
+    tasks: { requested: 0, completed: 0, failed: 0, retried: 0, degraded: [] },
+    claims: { verified: 0, disputed: 0 },
+    escalations: 0, commits: 0, modes: [], degraded: false,
+    steps: [],
+  };
+  const at = (e: { createdAt?: string | Date }) => {
+    try {
+      return e.createdAt ? new Date(e.createdAt).toISOString() : "";
+    } catch {
+      return "";
+    }
+  };
+  for (const e of events) {
+    fold.steps.push({ type: e.type, at: at(e) });
+    switch (e.type) {
+      case "agent.task.requested": fold.tasks.requested++; break;
+      case "agent.task.completed": fold.tasks.completed++; break;
+      case "agent.task.failed":
+        fold.tasks.failed++;
+        fold.degraded = true;
+        break;
+      case "agent.task.retried": fold.tasks.retried++; break;
+      case "claim.verified": {
+        const v = ((e.payload ?? {}) as { verdict?: string }).verdict ?? "";
+        if (["verified", "supported_with_limits"].includes(v)) fold.claims.verified++;
+        else fold.claims.disputed++;
+        break;
+      }
+      case "escalation.created": fold.escalations++; break;
+      case "learner_state.update.committed":
+        fold.commits += Number(((e.payload ?? {}) as { committed?: unknown }).committed ?? 0) || 0;
+        break;
+      case "mode.selected": {
+        const m = String(((e.payload ?? {}) as { mode?: unknown }).mode ?? "");
+        if (m && !fold.modes.includes(m)) fold.modes.push(m);
+        break;
+      }
+      case "response.composed":
+        if (((e.payload ?? {}) as { degraded?: unknown }).degraded) fold.degraded = true;
+        break;
+      default: break;
+    }
+    const p = (e.payload ?? {}) as { agent?: string; status?: string };
+    if (e.type === "agent.task.failed" && p.agent && !fold.tasks.degraded.includes(String(p.agent))) {
+      fold.tasks.degraded.push(String(p.agent));
+    }
+  }
+  return fold;
+}
+
 /** Socratic stopping: stop when target uncertainty reduced or struggle cap hit. */
 export function socraticShouldStop(args: {
   questionsAsked: number; uncertaintyReduced: boolean; struggleSignals: number; learnerAskedDirect: boolean;

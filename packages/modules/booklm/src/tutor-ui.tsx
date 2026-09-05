@@ -57,6 +57,18 @@ export interface TutorAgentActions {
   modeQuality: (setId: string) => Promise<{ turnsByMode: { mode: string; turns: number }[]; taskOutcomes: { agent: string; status: string; count: number }[]; escalations: { status: string; count: number }[] }>;
   setModePolicy: (fd: FormData) => Promise<void>;
   decisionControl: (id: string, control: string, note: string, modifiedAction?: string) => Promise<unknown>;
+  replay: (sessionId: string) => Promise<ReplayFoldView>;
+}
+
+export interface ReplayFoldView {
+  session: { id: string; mode: string; intent: string; degraded: boolean };
+  events: number;
+  fold: {
+    tasks: { requested: number; completed: number; failed: number; retried: number; degraded: string[] };
+    claims: { verified: number; disputed: number };
+    escalations: number; commits: number; modes: string[]; degraded: boolean;
+    steps: { type: string; at: string }[];
+  };
 }
 
 export interface TaskRow { id: string; agentKey: string; intent: string; status: string; warnings: string[]; nextActions: string[]; modelVersion: string; latencyMs: number | null; error: string }
@@ -79,6 +91,7 @@ export function TutorAgentsPanel({ setId, concepts, actions, isInstructor }: {
   const [quality, setQuality] = useState<{ turnsByMode: { mode: string; turns: number }[]; taskOutcomes: { agent: string; status: string; count: number }[]; escalations: { status: string; count: number }[] } | null>(null);
   const [events, setEvents] = useState<EventRow[] | null>(null);
   const [tasks, setTasks] = useState<TaskRow[] | null>(null);
+  const [replay, setReplay] = useState<ReplayFoldView | null>(null);
   const [escalations, setEscalations] = useState<EscalationRow[] | null>(null);
   const [registry, setRegistry] = useState<{ key: string; name: string; mandate: string; version: string; tools: string[]; allowedActions: string[] }[] | null>(null);
 
@@ -204,7 +217,24 @@ export function TutorAgentsPanel({ setId, concepts, actions, isInstructor }: {
             <span style={{ fontWeight: 800 }}>🔍 Session inspection & replay</span>
             <div style={{ flex: 1 }} />
             <Button variant="secondary" size="sm" onClick={loadDetail}>Load tasks + events</Button>
+            <Button variant="ghost" size="sm" onClick={() => {
+              if (!sessionId) return;
+              void actions.replay(sessionId).then(setReplay).catch(() => undefined);
+            }}>Fold replay</Button>
           </div>
+          {replay && (
+            <div style={{ fontSize: 12, marginTop: 6 }}>
+              <div><b>Replay:</b> {replay.events} events · tasks {replay.fold.tasks.completed}/{replay.fold.tasks.requested} completed
+                {replay.fold.tasks.failed > 0 && <span> · {replay.fold.tasks.failed} failed ({replay.fold.tasks.degraded.join(", ")})</span>}
+                {replay.fold.tasks.retried > 0 && <span> · {replay.fold.tasks.retried} retried</span>}
+              </div>
+              <div style={{ color: "var(--nv-color-text-faint)" }}>
+                Claims: {replay.fold.claims.verified} verified · {replay.fold.claims.disputed} disputed ·
+                escalations {replay.fold.escalations} · commits {replay.fold.commits} · modes {replay.fold.modes.join(", ") || "—"}
+                {replay.fold.degraded ? " · degraded turn" : ""}
+              </div>
+            </div>
+          )}
           {tasks && (
             <div style={{ marginTop: 6 }}>
               {tasks.map((t) => (

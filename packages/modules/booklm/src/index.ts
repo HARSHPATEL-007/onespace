@@ -53,7 +53,9 @@ export { AdaptivePanel, type AdaptActions } from "./adapt-ui";
 export {
   AGENT_DEFS, classifyIntent, selectWorkflow, AUTHORITY_HIERARCHY,
   resolveConflictRank, escalationTriggers, verdictFor, socraticShouldStop,
+  AGENT_TIMEOUT_MS, withAgentTimeout, resolveClaimConflict, foldSessionEvents,
   type AgentDef, type Intent, type Workflow, type FactVerdict,
+  type ClaimResolution, type SessionFold,
 } from "./tutor-agents";
 export {
   MODE_CONTRACTS, ALL_MODES, selectMode, evaluateExit, transitionMessage,

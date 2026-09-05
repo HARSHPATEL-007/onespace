@@ -420,6 +420,18 @@ export async function tutorSessionDetailAction(sessionId: string) {
   };
 }
 
+export async function tutorReplayAction(sessionId: string) {
+  const r = await (await orchSvc()).replaySession(sessionId);
+  return {
+    session: r.session,
+    events: r.events,
+    fold: {
+      ...r.fold,
+      steps: r.fold.steps.slice(-40),
+    },
+  };
+}
+
 export async function tutorEscalationsAction() {
   const rows = await (await orchSvc()).listEscalations();
   return rows.map((e) => ({

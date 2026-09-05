@@ -25,8 +25,8 @@ function svc(c: { workspace: { id: string }; user: { id: string }; memberRole: s
 
 /**
  * GET /v1/tutor/agents?view=... — registry | sessions | session&id=... |
- * events&id=... | escalations[&status=...] | modes[&setId=...] | mode-quality[&setId=...] |
- * contract&mode=... | safety | memory-map
+ * events&id=... | replay&id=... | escalations[&status=...] | modes[&setId=...] |
+ * mode-quality[&setId=...] | contract&mode=... | safety | memory-map
  */
 export async function GET(req: Request) {
   const c = await ctx();
@@ -45,6 +45,9 @@ export async function GET(req: Request) {
       case "events":
         if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
         return NextResponse.json({ events: await o.sessionEvents(id) });
+      case "replay":
+        if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+        return NextResponse.json(await o.replaySession(id));
       case "escalations":
         return NextResponse.json({ escalations: await o.listEscalations(url.searchParams.get("status") ?? undefined) });
       case "modes":

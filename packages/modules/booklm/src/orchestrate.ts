@@ -2,7 +2,8 @@ import { z } from "zod";
 import { prisma } from "@n0va/db";
 import {
   AGENT_DEFS, classifyIntent, selectWorkflow, escalationTriggers,
-  verdictFor, socraticShouldStop,
+  verdictFor, socraticShouldStop, withAgentTimeout, AGENT_TIMEOUT_MS,
+  resolveClaimConflict, foldSessionEvents,
   type Intent, type AgentDef,
 } from "./tutor-agents";
 import { snapshotScopes, agentAccess } from "./memory-trust";
@@ -307,7 +308,7 @@ export class OrchestratorService {
     const composed = await this.compose(
       session.id, outputs, null, verdicts, degraded,
       decision.decision === "modify" ? (decision.allowed ?? []) : undefined,
-      mode, transitionSuggestion,
+      mode, transitionSuggestion, committed,
     );
     if (degraded) {
       await prisma.tutorSession.update({ where: { id: session.id }, data: { degraded: true } });
@@ -359,8 +360,18 @@ export class OrchestratorService {
     // Access-matrix enforcement: agents receive a filtered snapshot, never raw state.
     const snapshot = await this.agentSnapshot(sessionId, agentKey).catch(() => null);
     const t0 = Date.now();
-    try {
-      const out = await this.runAgent(agentKey, { ...target, snapshot });
+    // Runners are side-effect-free (reads + compute; persistence happens
+    // here and in commitProposals), so exactly one idempotent retry is safe.
+    // Every runner is bounded by AGENT_TIMEOUT_MS — a hung agent degrades
+    // the turn visibly instead of blocking it.
+    const attempt = () => withAgentTimeout(agentKey, () => this.runAgent(agentKey, { ...target, snapshot }), AGENT_TIMEOUT_MS);
+    let result = await attempt();
+    if (!result.ok) {
+      await this.log(sessionId, task.id, "agent.task.retried", { agent: agentKey, error: result.error, timedOut: result.timedOut });
+      result = await attempt();
+    }
+    if (result.ok) {
+      const out = result.value;
       await prisma.agentTask.update({
         where: { id: task.id },
         data: {
@@ -371,15 +382,13 @@ export class OrchestratorService {
       });
       await this.log(sessionId, task.id, "agent.task.completed", { agent: agentKey, latencyMs: Date.now() - t0 });
       return { key: agentKey, out, status: "completed" };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "agent failed";
-      await prisma.agentTask.update({
-        where: { id: task.id },
-        data: { status: "DEGRADED" as never, error: msg.slice(0, 1000), latencyMs: Date.now() - t0 },
-      });
-      await this.log(sessionId, task.id, "agent.task.failed", { agent: agentKey, error: msg });
-      return { key: agentKey, out: { ...empty, warnings: [`${agentKey} unavailable — continuing without it`] }, status: "degraded" };
     }
+    await prisma.agentTask.update({
+      where: { id: task.id },
+      data: { status: "DEGRADED" as never, error: result.error.slice(0, 1000), latencyMs: Date.now() - t0 },
+    });
+    await this.log(sessionId, task.id, "agent.task.failed", { agent: agentKey, error: result.error, timedOut: result.timedOut });
+    return { key: agentKey, out: { ...empty, warnings: [`${agentKey} unavailable — continuing without it`] }, status: "degraded" };
   }
 
   // -- Access-matrix snapshots ----------------------------------------------------------
@@ -943,6 +952,7 @@ private shapeForMode(mode: TeachingMode, explanation: string, _example: string):
     allowedOnly?: string[],
     mode: TeachingMode = "DIRECT",
     transitionSuggestion: string | null = null,
+    committed = 0,
   ) {
     const tutorOut = outputs.find((o) => o.key === "tutor")?.out;
     const explanation = (tutorOut?.artifacts.find((a) => a.type === "explanation")?.content ?? {}) as {
@@ -961,6 +971,9 @@ private shapeForMode(mode: TeachingMode, explanation: string, _example: string):
       const def = AGENT_DEFS.find((d) => d.key === o.key);
       return `${o.key}:${def?.version ?? "?"}`;
     });
+    // Claim-conflict resolutions: contested claims exposed with rationale,
+    // review-required claims routed onward. Recorded in metadata.
+    const claimResolutions = resolveClaimConflict(verdicts);
     const body = refusal ?? [
       explanation.explanation ?? "Here's a starting point — tell me which part is unclear.",
       question.question ? `\nOne question before we continue: ${question.question}` : "",
@@ -987,14 +1000,37 @@ private shapeForMode(mode: TeachingMode, explanation: string, _example: string):
         contributors,
         verifiedClaims: verdicts.filter((v) => ["verified", "supported_with_limits"].includes(v.verdict)).length,
         unresolvedClaims: verdicts.filter((v) => ["contested", "unsupported", "ambiguous"].includes(v.verdict)).length,
-        stateUpdatesCommitted: 0, // filled by caller path via events
+        claimResolutions,
+        stateUpdatesCommitted: committed,
         humanReviewRequired: verdicts.some((v) => v.verdict === "requires_human_review"),
       },
     };
     await this.log(sessionId, null, "response.composed", {
       contributors, degraded, refused: !!refusal, mode, transitionSuggested: !!transitionSuggestion,
+      committed, resolutions: claimResolutions.length,
     });
     return composed;
+  }
+
+  /**
+   * Session replay for debugging, rollback analysis, and evaluation.
+   * Folds the typed event log into a timeline summary without re-running
+   * anything — failed agents, disputed claims, and commits stay visible.
+   */
+  async replaySession(sessionId: string) {
+    const session = await prisma.tutorSession.findFirst({
+      where: { id: sessionId, workspaceId: this.workspaceId },
+    });
+    if (!session) throw new Error("Session not found");
+    if (this.role === "member" && session.userId !== this.userId) throw new Error("Forbidden");
+    const events = await this.sessionEvents(sessionId);
+    return {
+      session: { id: session.id, mode: session.mode, intent: session.intent, degraded: session.degraded },
+      events: events.length,
+      fold: foldSessionEvents(events.map((e) => ({
+        type: e.type, payload: e.payload, createdAt: e.createdAt,
+      }))),
+    };
   }
 
   /** Mode quality stats: turns per mode, task failure by agent, escalations. */
