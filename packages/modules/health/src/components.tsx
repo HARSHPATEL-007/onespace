@@ -656,12 +656,12 @@ export function WellnessBoard({
       {/* OVERVIEW */}
       {tab === "overview" && (
         <div style={{ display: "grid", gap: 12 }}>
-          <Section title="Penta-Consciousness Health Interface" subtitle="Clinical • Patient • Autonomous AI • Neural • Ambient — the workspace breathes with the human.">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-              <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #4f46e5" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Clinical (Provider)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Precognitive diagnostic UX • Gesture-intent surgical flow • Neural cache</div></div>
-              <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #059669" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Patient (Individual)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Bio-Digital Twin mirror • Embodied wellness • Circadian interface</div></div>
-              <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #d97706" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Autonomous (AI/Agent)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Synthetic physician • Predictive pathways • Swarm diagnostics</div></div>
-              <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #7c3aed" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Neural (BCI-Ready)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>EEG/EMG • Eye-tracking • Haptic biofeedback • Sub-vocal</div></div>
+<Section title="Health Interface" subtitle="Clinical • Patient • AI-assisted • Device inputs • Ambient — configurable per workspace.">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px,1fr))", gap: 10 }}>
+              <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #4f46e5" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Clinical (Provider)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Diagnostic workflow support • Standard clinical UX patterns</div></div>
+              <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #059669" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Patient (Individual)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Personal health record view • Wellness tracking with consent</div></div>
+              <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #d97706" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Assisted (AI/Agent)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Draft summaries for clinician review • No autonomous diagnosis</div></div>
+              <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #7c3aed" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Device inputs (opt-in)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Wearable data only with explicit consent • No neural interfaces in this pipeline</div></div>
               <div className="nv-card" style={{ padding: 12, borderLeft: "3px solid #0ea5e9" }}><div style={{ fontWeight: 800, fontSize: 13 }}>Ambient (Environmental)</div><div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Smart home mesh • Exposome grid • Omnipresent compute</div></div>
             </div>
           </Section>
@@ -2381,7 +2381,7 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
       {/* BIO-TWIN */}
       {tab === "twin" && (
         <div style={{ display:"grid", gap:12 }}>
-          <Section title="Bio-Digital Twin — Quantum-Encrypted Living Model" subtitle="Every patient is a 8192-dim health embedding. Temporal predictions (24h/7d/30d/1y) + branching what-if (increase cardio 30m → epigenetic age 33.1). 4096-dim similarity search across populations.">
+          <Section title="Patient record — longitudinal view" subtitle="Problems, biomarkers, exposures, and medications in one timeline. Projections shown here are demo placeholders — no predictive model runs in this build.">
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(240px, 1fr))", gap:10, fontSize:12 }}>
               <div className="nv-card" style={{ padding:12 }}><div style={{ fontWeight:800 }}>Anatomy</div><div>3D mesh refs (DICOM) • organ systems • biomarker baselines</div><div style={{ marginTop:6 }}><Pill>CV hr 62</Pill> <Pill>met HbA1c 5.4</Pill> <Pill>CRP 0.8</Pill></div></div>
               <div className="nv-card" style={{ padding:12 }}><div style={{ fontWeight:800 }}>Epigenetic Clock</div><div>Horvath 34.2 • Hannum 35.1 • PhenoAge 32.8 • GrimAge 33.5 • DunedinPACE 0.92 • velocity tracked</div><div style={{ marginTop:6 }}><Pill tone="success">Bio-age 32.8</Pill> <Pill>‑1.2y vs chrono</Pill></div></div>
@@ -2389,9 +2389,9 @@ approval: { clinical_review: required, regulatory_status: pending, jurisdiction:
               <div className="nv-card" style={{ padding:12 }}><div style={{ fontWeight:800 }}>Pharmacogenomics (CPIC)</div><div>CYP2D6 poor/intermediate • SLCO1B1 • HLA-B*57:01 • warfarin VKORC1/CYP2C9 dosing</div><div style={{ marginTop:6 }}><Pill tone="warning">codeine: avoid</Pill> <Pill>clopidogrel → ticagrelor</Pill></div></div>
             </div>
             <div style={{ marginTop:10, padding:10, border:"1px dashed var(--nv-color-border)", borderRadius:8, fontSize:12 }}>
-              <div style={{ fontWeight:800 }}>Neural Health Embedding (8192-dim)</div>
-              <div style={{ color:"var(--nv-color-text-faint)"}}>Vector: [0.023, -0.891, 0.445, …] • model vitality-embed-v7 • attention cardiovascular 0.34 • anomaly map</div>
-              <div style={{ marginTop:6, display:"flex", gap:6 }}><Pill tone="primary">Consciousness: active</Pill><Pill>Trajectory: homeostatic → optimal (67% 30d)</Pill><Pill tone="success">Intervention Δ epigenetic age -1.8y</Pill></div>
+              <div style={{ fontWeight:800 }}>Record summary (demo data)</div>
+              <div style={{ color:"var(--nv-color-text-faint)"}}>Values below are static demo placeholders, not model output. No embeddings, predictions, or consciousness states exist in this build.</div>
+              <div style={{ marginTop:6, display:"flex", gap:6 }}><Pill tone="primary">Demo record</Pill><Pill>Trajectory: not computed</Pill><Pill tone="success">Clinician review required</Pill></div>
             </div>
           </Section>
         </div>
@@ -3078,13 +3078,13 @@ Which measurements produced this estimate? Which model version? Did corrected re
               </tbody>
             </table>
           </div>
-          <Section title="Cryogenic Health Continuum" subtitle="Hot (NVMe <0.1ms) → Warm → Cool → Cold (Glacier 5m) → Frozen (WORM 12h) → Cryogenic (DNA + Quantum WORM 48h) → Deleted 90d recover → Purged (DoD+ Gutmann+ quantum noise) → Anonymized (differential privacy) → Synthetic. Pediatric retention age 21+7, 50y Vault.">
-            <div style={{ fontSize:12, color:"var(--nv-color-text-faint)"}}>RPO &lt;5m • RTO &lt;15m • DR &lt;1h multi-region active-active • incident response &lt;15m SOAR • compliance &lt;24h • DSAR &lt;24h • quantum-encrypted multiverse • DNA storage.</div>
+          <Section title="Data Retention Continuum" subtitle="Hot → Warm → Cool → Cold archive → Frozen (WORM, legal hold) → Deleted (90d recoverable) → Purged (cryptographic erasure) → Anonymized (differential privacy) → Synthetic. Pediatric retention age 21+7, 50y Vault.">
+            <div style={{ fontSize:12, color:"var(--nv-color-text-faint)"}}>RPO &lt;5m • RTO &lt;15m • DR &lt;1h multi-region active-active • incident response &lt;15m SOAR • compliance &lt;24h • DSAR &lt;24h • AES-256-GCM at rest, TLS 1.3 in transit • versioned backups.</div>
           </Section>
         </div>
       )}
 
-      <div style={{ marginTop:12, fontSize:11, color:"var(--nv-color-text-faint)", textAlign:"center" }}>VITALITY-Ω • Penta-Consciousness • Bio-Digital Twin • 12-Layer Mesh • FHIR R4/R5 • 24 Ani Capabilities • 1,000+ Integrations via 1 N0VA1O Gateway • Workspace-Native • Patent-Pending</div>
+      <div style={{ marginTop:12, fontSize:11, color:"var(--nv-color-text-faint)", textAlign:"center" }}>Health module • FHIR R4/R5 • Workspace-native • via N0VA1O gateway</div>
     </div>
   );
 }

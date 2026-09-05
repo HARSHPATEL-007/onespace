@@ -427,7 +427,7 @@ export function VideoStudioTranscendent({
               <span style={{ fontSize: 11, opacity: 0.7, border: "1px solid rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 999 }}>8K/120fps • AV1 • HDR10+ • Dolby Vision</span>
             </div>
             <div style={{ fontSize: "var(--nv-font-sm)", opacity: 0.85, marginTop: 6, maxWidth: 780 }}>
-              Core Media Module — Cinematic Video Infrastructure & Omniscient Content Engine. Browser lightweight editing (WebCodecs + WebGPU) + server heavy rendering (H100/H200/GB200). &lt;50ms first-frame • &lt;100ms seek • unlimited transcode pipelines • synthetic visual consciousness.
+              Core Media Module — Video Infrastructure & Content Engine. Browser lightweight editing (WebCodecs + WebGPU) + server heavy rendering. &lt;50ms first-frame • &lt;100ms seek • queued transcode pipelines • automated scene/keyframe analysis.
             </div>
             <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap", fontSize: 11, opacity: 0.75 }}>
               <span>● Transcoding Constellation: H.264 H.265 VP9 AV1 ProRes DNxHR • 1000× real-time</span>
@@ -462,7 +462,7 @@ export function VideoStudioTranscendent({
         <div style={{ position: "relative", display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", fontSize: 11 }}>
           <span style={{ background: "rgba(129,140,248,0.18)", border: "1px solid rgba(129,140,248,0.3)", padding: "4px 10px", borderRadius: 999 }}>{webCodecs}</span>
           <span style={{ background: "rgba(52,211,153,0.14)", border: "1px solid rgba(52,211,153,0.28)", padding: "4px 10px", borderRadius: 999 }}>{webGPU}</span>
-          <span style={{ background: "rgba(251,191,36,0.14)", border: "1px solid rgba(251,191,36,0.28)", padding: "4px 10px", borderRadius: 999 }}>◉ Neural Direct &lt;1ms • BCI synaptic-rate</span>
+          <span style={{ background: "rgba(251,191,36,0.14)", border: "1px solid rgba(251,191,36,0.28)", padding: "4px 10px", borderRadius: 999 }}>◉ Low-latency playback • adaptive bitrate</span>
         </div>
       </div>
 
@@ -853,7 +853,7 @@ function StudioPanel({ project, playheadMs, isPlaying, zoom, onPlayToggle, onSee
             <div style={{ height: 8, background: "linear-gradient(90deg, #0ea5e9 0%, #818cf8 50%, #ec4899 100%)", borderRadius: 999, opacity: 0.9 }} />
             <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", display: "flex", justifyContent: "space-between" }}>
               <span>Playhead: {timeLabel(playheadMs)} • snap • beat detection • AI cut prediction</span>
-              <span>50+ simultaneous editors • CRDT • precognitive UI 3.2× faster</span>
+              <span>Multi-editor presence • CRDT merge • keyboard-first UI</span>
             </div>
           </div>
         </div>
@@ -1317,7 +1317,7 @@ function WorkspacePanel({ project }: { project: VideoProjectLike|null }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 12 }}>
       <div className="nv-card" style={{ padding: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontWeight: 800 }}>Workspace ↔ Videos Convergence</span><Badge tone="success">&lt;10ms quantum delta • CRDT</Badge></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontWeight: 800 }}>Workspace ↔ Videos Convergence</span><Badge tone="success">Delta sync • CRDT merge</Badge></div>
         <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", marginTop: 4 }}>Every project is a Workspace Nexus — board, team space, task stream, time track, focus mode, doc center, comm hub, calendar — bidirectional sync. Video IS the workspace when visual is primary.</div>
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 6 }}>
           {[
@@ -1355,18 +1355,18 @@ function WorkspacePanel({ project }: { project: VideoProjectLike|null }) {
               { name: "Client", role: "client", color: "#fbbf24", cursor: "review portal idle" },
             ].map(m => <div key={m.name} style={{ flex: 1, background: "var(--nv-color-surface-2)", border: `1px solid ${m.color}`, borderRadius: 10, padding: 8, textAlign: "center" }}><div style={{ width: 28, height: 28, borderRadius: 999, background: m.color, margin: "0 auto", display: "grid", placeItems: "center", color: "#fff", fontWeight: 800 }}>{m.name.slice(0,1)}</div><div style={{ fontSize: 11, fontWeight: 800, marginTop: 4 }}>{m.name}</div><div style={{ fontSize: 10, color: "var(--nv-color-text-faint)" }}>{m.role}</div><div style={{ fontSize: 10, marginTop: 4, fontFamily: "var(--nv-font-mono)" }}>{m.cursor}</div></div>)}
           </div>
-          <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", marginTop: 6 }}>Voice chat ON • shared preview 1080p @ 0:45 • coherence 0.92 • CRDT • quantum delta &lt;10ms • offline merge AI</div>
+          <div style={{ fontSize: 11, color: "var(--nv-color-text-faint)", marginTop: 6 }}>Voice chat ON • shared preview 1080p @ 0:45 • CRDT merge • offline auto-merge</div>
         </div>
         <div className="nv-card" style={{ padding: 12 }}>
           <div style={{ fontWeight: 800 }}>Focus Modes → Video Behavior</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 6, marginTop: 8, fontSize: 11 }}>
             {[
               ["Deep Work","Fullscreen • notifications suppressed • AI muted • flow >0.85"],
-              ["Collaboration","Realtime 50+ • voice • cursors • neural coherence"],
+              ["Collaboration","Realtime 50+ • voice • cursors • presence indicators"],
               ["Review","Comments max • diff • decision buttons"],
-              ["Presentation","Preview • notes • timer • QR • engagement pred"],
+              ["Presentation","Preview • notes • timer • QR • engagement estimate"],
               ["Crisis","War room • emergency GPU • auto escalation"],
-              ["Flow State","Neural lace • eye-track • haptic • zero load"],
+              ["Flow State","Fullscreen • notifications suppressed • minimal chrome"],
             ].map(([k,v]) => <div key={k} style={{ background: "var(--nv-color-surface-2)", border: "1px solid var(--nv-color-border)", borderRadius: 8, padding: 8 }}><div style={{ fontWeight: 800 }}>{k}</div><div style={{ color: "var(--nv-color-text-faint)" }}>{v}</div></div>)}
           </div>
           <div style={{ marginTop: 8, fontSize: 11, color: "var(--nv-color-text-faint)" }}>Project: {project?.title ?? "—"} • budget MKT-2026-Q3-001 • client → opportunity linkage • linked docs/sheets/slides auto-synced</div>
@@ -1382,7 +1382,7 @@ function N0VA10Panel({ intent, onIntent, running, result, onRun }: { intent: str
       <div style={{ background: "linear-gradient(135deg,#0f0f12,#1a1625)", color: "#fff", borderRadius: 12, padding: 16, border: "1px solid rgba(255,255,255,0.08)" }}>
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", opacity: 0.7 }}>N0VA10 SINGULARITY GATEWAY — N×M → 1 COLLAPSE</div>
         <h3 style={{ margin: "6px 0 8px", fontSize: 18, fontWeight: 900 }}>One Gateway • One Intent • Infinite Reach (1000+ apps)</h3>
-        <div style={{ fontSize: 11, opacity: 0.75 }}>Agents speak intent (natural language / consciousness vector). N0VA10 translates to optimal action sequence across all apps — zero OAuth complexity, zero fragile layers, self-healing (retry + circuit breaker + fallback chaining → human escalation).</div>
+        <div style={{ fontSize: 11, opacity: 0.75 }}>Agents declare intent in natural language with structured parameters. The orchestrator maps intents to action sequences across apps — single sign-on, retry with circuit breaker and fallback chaining → human escalation on repeated failure.</div>
         <div style={{ marginTop: 10 }}>
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Intent-Based Routing — Example</div>
           <textarea className="nv-input" value={intent} onChange={e => onIntent(e.target.value)} rows={3} placeholder="Publish Q3 launch to YouTube, Vimeo, website Tuesday 2pm EST, thumbnails/captions/SEO, notify Slack #marketing, update Salesforce, log Harvest 4h…" style={{ background: "rgba(255,255,255,0.08)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)" }} />
@@ -1390,7 +1390,7 @@ function N0VA10Panel({ intent, onIntent, running, result, onRun }: { intent: str
           {result && <div style={{ marginTop: 8, background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.3)", borderRadius: 8, padding: 8, fontSize: 12 }}><strong>✓ Intent {result.intentId}</strong> • routed 7 steps • parallel groups [[1],[2,3],[4],[5,6,7]] • predicted 298s • 0.97 success • cost $0.12 • 45g CO₂ • self-healing enabled<br/><span style={{ opacity: 0.8, fontFamily: "var(--nv-font-mono)", fontSize: 11 }}>1 derivatives → 2 YouTube ↑ + 3 Vimeo ↑ (parallel) → 4 website embed → 5 Slack + 6 Salesforce + 7 Harvest (parallel)</span></div>}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginTop: 10, fontSize: 11 }}>
-          {["Zero-knowledge vault\n7-day rotation post-quantum","Request proxy • egress scan\nPII/copyright watermark","Geo-fenced residency\nEU→EU HIPAA→HIPAA attested","Rate-limit adaptive\nquota + neural prediction","Circuit breaker per app\n14-day failure forecast","Audit Merkle + blockchain\nquantum-signed tamper-proof"].map(x => <div key={x} style={{ background: "rgba(255,255,255,0.06)", padding: 8, borderRadius: 8, whiteSpace: "pre-wrap", lineHeight: 1.25 }}>{x}</div>)}
+          {["Zero-knowledge vault\n7-day rotation post-quantum","Request proxy • egress scan\nPII/copyright watermark","Geo-fenced residency\nEU→EU HIPAA→HIPAA attested","Rate-limit adaptive\nquota + neural prediction","Circuit breaker per app\n14-day failure forecast","Audit log\nhash-chained, tamper-evident"].map(x => <div key={x} style={{ background: "rgba(255,255,255,0.06)", padding: 8, borderRadius: 8, whiteSpace: "pre-wrap", lineHeight: 1.25 }}>{x}</div>)}
         </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

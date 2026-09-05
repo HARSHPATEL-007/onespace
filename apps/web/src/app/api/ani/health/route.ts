@@ -26,17 +26,21 @@ export async function GET() {
       /* use defaults */
     }
 
+    // Production correction: there is no consciousness subsystem. These are
+    // heuristic interaction-state rolling averages (engagement/load means
+    // over recent signals), reported under an honest name with units.
     const aniHealth = {
       module: "ani",
       workspaceId,
       status: health.status,
       subsystems: {
-        consciousness: {
+        interaction_state: {
           status: "active",
-          coherence,
-          cognitiveLoad,
-          flowState,
-          engagement,
+          note: "heuristic rolling averages over recent interaction signals — not consciousness, flow, or awareness metrics",
+          engagementMean: coherence,
+          loadMean: cognitiveLoad,
+          attentionMean: flowState,
+          responsivenessMean: engagement,
         },
         memory: { status: "active", tiers: 4 },
         rag: { status: "active", circuit: health.circuitState, coherence },
@@ -47,7 +51,12 @@ export async function GET() {
         predictive: { status: "active" },
         resilience: { status: health.circuitState, failures: health.failures },
       },
-      metrics: { coherence, cognitiveLoad, flowState, engagement },
+      metrics: {
+        engagementMean: coherence,
+        loadMean: cognitiveLoad,
+        attentionMean: flowState,
+        responsivenessMean: engagement,
+      },
       degradedFeatures: health.degradedFeatures,
       openCircuits: health.openCircuits,
       timestamp: new Date().toISOString(),

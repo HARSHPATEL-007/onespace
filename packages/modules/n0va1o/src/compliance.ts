@@ -275,33 +275,33 @@ const COMPLIANCE_RULES: ComplianceRule[] = [
   {
     id: "quantum-1",
     framework: "quantum",
-    name: "Quantum Security",
-    description: "Quantum-safe cryptography and QKD integration",
+    name: "Post-Quantum Cryptography Readiness",
+    description: "Post-quantum-safe cryptography readiness; no quantum hardware is required or assumed",
     severity: "critical",
     check: (ctx) => ({
       passed: ctx.quantumStates ? ctx.encryptionAtRest && ctx.encryptionInTransit : true,
       severity: "critical",
       message: ctx.quantumStates
-        ? "Quantum-encrypted state processing with encryption verified"
-        : "No quantum operations detected",
-      evidence: [`Quantum states: ${ctx.quantumStates}`, `Encryption at rest: ${ctx.encryptionAtRest}`],
-      remediation: "Enable quantum-safe cryptography for quantum operations",
+        ? "Quantum-flagged workload present: standard encryption at rest + in transit verified (no QKD hardware in this pipeline)"
+        : "No quantum-flagged operations detected",
+      evidence: [`Quantum-flagged: ${ctx.quantumStates}`, `Encryption at rest: ${ctx.encryptionAtRest}`],
+      remediation: "Enable post-quantum-safe cipher suites for flagged workloads",
     }),
   },
   {
     id: "neural-1",
     framework: "neural",
-    name: "Neural Privacy",
-    description: "Neural data protection and synaptic isolation",
+    name: "Neural-Data Privacy Gate",
+    description: "Minimization, encryption, and audit for neural data when present; collection stays opt-in",
     severity: "critical",
     check: (ctx) => ({
       passed: ctx.neuralData ? ctx.encryptionAtRest && ctx.auditTrailAvailable : true,
       severity: "critical",
       message: ctx.neuralData
-        ? "Neural data protected with encryption + audit"
+        ? "Neural data present: encryption + audit verified; verify opt-in consent separately"
         : "No neural data processing",
       evidence: [`Neural data: ${ctx.neuralData}`, `Audit trail: ${ctx.auditTrailAvailable}`],
-      remediation: "Implement neural privacy protocols with encryption",
+      remediation: "Confirm opt-in consent and encrypt neural data with audit trail",
     }),
   },
 ];

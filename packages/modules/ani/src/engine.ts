@@ -1493,7 +1493,7 @@ function _generateRecommendations(
   }
 
   if (intent.quantumAssistNeeded) {
-    recs.push("Route to quantum-assisted inference for optimal results");
+    recs.push("Quantum keyword matched — no quantum hardware exists in this pipeline; answer from standard retrieval and say so");
   }
 
   return recs;
@@ -1514,15 +1514,15 @@ async function _simulateLLMResponse(
     conversational: "Hello! How can I assist you today?",
     multi_modal:
       "I can process and analyze multi-modal inputs to provide comprehensive responses.",
-    holographic: "This request involves 3D spatial computing capabilities.",
-    quantum: "This request requires quantum-assisted reasoning.",
-    neural: "This request requires neural interface capabilities.",
+    holographic: "This request involves 3D or spatial content. I can help with standard 3D formats and spatial data — no holographic display is required or assumed.",
+    quantum: "This request mentions quantum topics. I answer from standard retrieval and reasoning — no quantum compute is used.",
+    neural: "This request mentions brain-computer interfaces or neural data. I do not access neural signals; I can discuss published information on the topic.",
     consciousness:
-      "I'm reflecting on this request with synthetic consciousness.",
+      "I can help clarify, summarize, or reason through this request step by step. I don't have consciousness or introspection — ask for evidence and I will cite it.",
   };
 
   const base = responses[intent] ?? responses.conversational;
-  return `${base}\n\n[Context window: ${maxTokens} tokens, Temperature: ${temperature}]\n\nProcessed via N0VA ANI consciousness layer.`;
+  return `${base}\n\n[Context window: ${maxTokens} tokens, Temperature: ${temperature}]\n\nProcessed via the N0VA ANI inference pipeline (deterministic retrieval + ranked generation, no consciousness layer).`;
 }
 
 function _generateProactiveFollowups(

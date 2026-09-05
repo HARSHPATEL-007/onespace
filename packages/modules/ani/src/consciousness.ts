@@ -1,3 +1,14 @@
+/**
+ * PRODUCTION CORRECTION (N0VA-BOOKLM-EDUCATION Critical Corrections):
+ * Nothing in this file is consciousness, quantum cognition, or neural
+ * interfacing. It tracks heuristic interaction state — rolling engagement /
+ * stress averages, bounded working-memory lists, static thresholds — plus
+ * inert placeholder shapes (e.g. QuantumConsciousnessState) for a research
+ * track that has no hardware, no QKD channel, and no BCI in this pipeline.
+ * Measurable requirement: thresholds and averages documented per field;
+ * any user-facing text must describe these as estimates, never as
+ * awareness, emotion, or neural measurement.
+ */
 import { type ConsciousnessState } from "./engine";
 
 export type ConsciousnessLevel =
