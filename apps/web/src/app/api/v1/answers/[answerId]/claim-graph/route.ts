@@ -64,8 +64,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ answerI
       evidence: evidence.map((e) => ({
         evidence_id: e.id, document_id: e.sourceDocId, document_version: e.sourceVersion,
         source_title: e.sourceTitle, source_type: e.sourceType,
+        source_date: e.sourceDate?.toISOString() ?? null,
+        retrieved_at: e.freshnessAt?.toISOString() ?? null,
+        freshness_score: e.freshnessScore ?? null,
         locator: { page: e.locatorPage, paragraph: e.locatorParagraph, heading: e.locatorHeading || undefined },
         content_hash: e.contentHash || undefined, exact_excerpt: e.quote,
+        evidence_type: e.evidenceType, language: e.language || null, license: e.license || null,
         authority_score: e.authority / 100, extraction_confidence: e.extractionConfidence,
         epistemic_state: e.epistemicState, verification_label: e.verificationLabel,
       })),
