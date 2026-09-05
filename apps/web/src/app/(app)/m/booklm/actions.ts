@@ -916,6 +916,36 @@ export async function gradeFairnessResolveAction(id: string, status: string, act
   await (await gradeSvc()).resolveFairness(id, status, action);
 }
 
+export async function gradeRubricValidateAction(assessmentId: string) {
+  return (await gradeSvc()).validateRubric(assessmentId);
+}
+
+export async function gradeDeploymentAction(assessmentId: string) {
+  return (await gradeSvc()).deploymentGate(assessmentId);
+}
+
+export async function gradeSourceCheckAction(gradeId: string, currentSnapshot: string, changedEvidence: string[] = []) {
+  return (await gradeSvc()).gradingSourceCheck(gradeId, currentSnapshot, changedEvidence);
+}
+
+export async function gradeReasoningPathAction(stages: Record<string, number>) {
+  const { scoreReasoningPath } = await import("@n0va/modules-booklm/assess-grading");
+  return scoreReasoningPath(stages);
+}
+
+export async function gradeAppealResolveAction(appealId: string, status: "UPHELD" | "OVERTURNED", resolution: string) {
+  return (await gradeSvc()).appealResolve(appealId, status, resolution);
+}
+
+export async function gradeAppealAction(gradeId: string, reason: string) {
+  const { workspaceId, userId, role } = await actionContext();
+  const { AssessmentService } = await import("@n0va/modules-booklm/assessment");
+  const svc = new AssessmentService(workspaceId, userId, role);
+  const mine = await svc.myGrades();
+  if (!mine.some((g) => g.id === gradeId)) throw new Error("Grade not found");
+  return svc.appealGrade(gradeId, reason.slice(0, 2000));
+}
+
 export async function gradesForAssessmentAction(assessmentId: string) {
   const { AssessmentService } = await import("@n0va/modules-booklm/assessment");
   const { workspaceId, userId, role } = await actionContext();
@@ -984,6 +1014,10 @@ export async function insightsOutcomesAction(setId: string) {
 
 export async function insightsMapAction(setId: string) {
   return (await insightSvc()).learnerMap(setId);
+}
+
+export async function insightsConceptMasteryAction(setId: string, conceptKey: string) {
+  return (await insightSvc()).conceptMastery(setId, conceptKey, 90);
 }
 
 export async function insightsCohortAction(setA: string, setB: string, conceptKey: string) {

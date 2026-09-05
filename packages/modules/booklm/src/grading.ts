@@ -2,7 +2,9 @@ import { z } from "zod";
 import { prisma } from "@n0va/db";
 import {
   gradeUncertainty, classifyPartialCredit, approvalGate, explainGrade,
-  disparityOfMeans, applyRegradeRule,
+  disparityOfMeans, applyRegradeRule, validateRubricContract,
+  doublePenaltyCheck, nonEvidenceCheck, calibrationDeploymentGate,
+  gradingSourceCheck, type DeploymentThresholds,
 } from "./assess-grading";
 
 export const richEvidenceSchema = z.object({
@@ -79,6 +81,35 @@ export class GradingService {
     const uncertainties: number[] = [];
     const reasons: string[] = [];
     const perEvidence: Record<string, unknown>[] = [];
+    // Contract-guard metadata per criterion (labels + non-evidence lists).
+    const evMeta = input.evidence.map((e) => {
+      const crit = assessment.criteria.find((c) => c.id === e.criterionId);
+      return {
+        id: e.criterionId, label: crit?.label ?? e.criterionId,
+        location: e.location, quote: e.evidenceQuote,
+        nonEvidence: crit?.nonEvidence ?? [],
+        reasoning: `${e.reasoning} ${e.diagnosis}`,
+      };
+    });
+    const flagsBy = new Map<string, string[]>();
+    const flag = (id: string, s: string) => flagsBy.set(id, [...(flagsBy.get(id) ?? []), s]);
+    // Double-penalty + non-evidence scans: warnings for the instructor.
+    // Shared evidence is sometimes legitimate, so these never auto-adjust.
+    for (const f of doublePenaltyCheck(evMeta.map((m) => ({
+      criterionId: m.id, criterionLabel: m.label, location: m.location, quote: m.quote,
+    })))) {
+      const a = assessment.criteria.find((c) => c.label === f.criterionA)?.id;
+      const b = assessment.criteria.find((c) => c.label === f.criterionB)?.id;
+      if (a) flag(a, `double-penalty risk with ${f.criterionB}`);
+      if (b) flag(b, `double-penalty risk with ${f.criterionA}`);
+      reasons.push(`double-penalty risk: ${f.criterionA} × ${f.criterionB} — confirm one error is not penalized twice`);
+    }
+    for (const m of evMeta) {
+      for (const hit of nonEvidenceCheck(m.reasoning, m.nonEvidence)) {
+        flag(m.id, hit);
+        reasons.push(`${m.label}: ${hit}`);
+      }
+    }
     for (const e of input.evidence) {
       const crit = assessment.criteria.find((c) => c.id === e.criterionId);
       if (!crit) throw new Error(`Unknown criterion ${e.criterionId}`);
@@ -96,7 +127,7 @@ export class GradingService {
       });
       uncertainties.push(u.confidence);
       reasons.push(...u.reasons.map((r) => `${crit.label}: ${r}`));
-      perEvidence.push({ criterionId: e.criterionId, uncertainty: u, action: u.action });
+      perEvidence.push({ criterionId: e.criterionId, uncertainty: u, action: u.action, flags: flagsBy.get(e.criterionId) ?? [] });
     }
     const confidence = uncertainties.length
       ? Math.round((uncertainties.reduce((s, v) => s + v, 0) / uncertainties.length) * 100) / 100 : 0.5;
@@ -232,6 +263,93 @@ export class GradingService {
         reviewed: e.reviewStatus === "instructor_approval_required",
       })),
     });
+  }
+
+  /** Rubric-as-contract validation: levels, must-haves, weights, dependencies. */
+  async validateRubric(assessmentId: string) {
+    const assessment = await prisma.assessment.findFirst({
+      where: { id: assessmentId, workspaceId: this.workspaceId },
+      include: { criteria: true },
+    });
+    if (!assessment) throw new Error("Assessment not found");
+    return {
+      assessmentId, title: assessment.title,
+      rubricVersion: assessment.rubricVersion, frozen: assessment.rubricFrozen,
+      ...validateRubricContract({
+        rubricVersion: assessment.rubricVersion,
+        frozen: assessment.rubricFrozen,
+        criteria: assessment.criteria.map((c) => ({
+          id: c.id, label: c.label, weight: c.weight, maxPoints: c.maxPoints,
+          levels: (c.levels ?? {}) as Record<string, string>,
+          mustHave: c.mustHave, acceptableVariants: c.acceptableVariants,
+          nonEvidence: c.nonEvidence, dependsOn: c.dependsOn,
+        })),
+      }),
+    };
+  }
+
+  /**
+   * Source-grounded grading check: snapshot drift mapped to the criteria
+   * it touches. Ambiguous sources flag review instead of penalizing
+   * reasonable learner interpretations.
+   */
+  async gradingSourceCheck(gradeId: string, currentSnapshot: string, changedEvidence: string[] = []) {
+    const grade = await prisma.grade.findFirst({
+      where: { id: gradeId, workspaceId: this.workspaceId },
+      include: { evidence: { include: { criterion: true } } },
+    });
+    if (!grade) throw new Error("Grade not found");
+    if (this.role === "member" && grade.userId !== this.userId) throw new Error("Forbidden");
+    const ctx = (grade.gradingContext ?? {}) as Record<string, unknown>;
+    // Snapshots ride in gradingContext when the caller records them; absent
+    // author/answer snapshots fall back to the grading snapshot (declared,
+    // never invented — the note carries the assumption).
+    const gradeSnapshot = String(ctx.gradeSnapshot ?? ctx.sourceSnapshot ?? "unknown");
+    return gradingSourceCheck({
+      authorSnapshot: String(ctx.authorSnapshot ?? gradeSnapshot),
+      answerSnapshot: String(ctx.answerSnapshot ?? gradeSnapshot),
+      gradeSnapshot,
+      currentSnapshot,
+      changedEvidence,
+      criteriaEvidence: grade.evidence.map((e) => ({
+        criterionId: e.criterionId, label: e.criterion.label, quotes: [e.evidenceQuote, e.reasoning],
+      })),
+    });
+  }
+
+  /** Calibration deployment gate: per-criterion go/no-go, never totals-only. */
+  async deploymentGate(assessmentId: string, thresholds?: DeploymentThresholds) {
+    const metrics = await this.calibrationMetrics(assessmentId);
+    return {
+      assessmentId,
+      ...calibrationDeploymentGate(
+        Object.fromEntries(Object.entries(metrics.byCriterion).map(([k, v]) => [k, { exact: v.exact, meanAbs: v.meanAbs, n: v.n }])),
+        thresholds,
+      ),
+    };
+  }
+
+  /** Instructor appeal resolution with an append-only audit entry. */
+  async appealResolve(appealId: string, status: "UPHELD" | "OVERTURNED", resolution: string) {
+    this.assertInstructor();
+    const appeal = await prisma.gradeAppeal.findFirst({
+      where: { id: appealId },
+      include: { grade: true },
+    });
+    if (!appeal || appeal.grade.workspaceId !== this.workspaceId) throw new Error("Appeal not found");
+    await prisma.gradeAppeal.update({
+      where: { id: appealId },
+      data: { status: status as never, resolution: resolution.slice(0, 2000) },
+    });
+    await prisma.gradeAudit.create({
+      data: {
+        gradeId: appeal.gradeId, workspaceId: this.workspaceId, actorId: this.userId,
+        action: status === "UPHELD" ? "APPEAL_UPHELD" : "APPEAL_OVERTURNED",
+        detail: `appeal ${appealId}: ${resolution}`.slice(0, 1000),
+        reason: resolution.slice(0, 1000), learnerNotified: true,
+      },
+    });
+    return { appealId, status };
   }
 
   // -- Rubric versioning ------------------------------------------------------------------
@@ -433,7 +551,7 @@ export class GradingService {
   // -- Dashboard -----------------------------------------------------------------------------------------------
   async dashboard(assessmentId: string) {
     this.assertInstructor();
-    const [assessment, grades, cal, fairness, challenges] = await Promise.all([
+    const [assessment, grades, cal, fairness, challenges, deployment] = await Promise.all([
       prisma.assessment.findFirst({ where: { id: assessmentId, workspaceId: this.workspaceId } }),
       prisma.grade.findMany({ where: { workspaceId: this.workspaceId, assessmentId }, select: { approved: true, reviewStatus: true, uncertainty: true } }),
       this.calibrationMetrics(assessmentId).catch(() => null),
@@ -441,6 +559,7 @@ export class GradingService {
       prisma.evidenceChallenge.count({
         where: { workspaceId: this.workspaceId, status: "OPEN" as never },
       }).catch(() => 0),
+      this.deploymentGate(assessmentId).catch(() => null),
     ]);
     if (!assessment) throw new Error("Assessment not found");
     const auto = grades.filter((g) => g.approved).length;
@@ -457,6 +576,7 @@ export class GradingService {
       } : null,
       fairness: { open: fairness.length },
       sourceStatus: { openChallenges: challenges },
+      deployment,
     };
   }
 }

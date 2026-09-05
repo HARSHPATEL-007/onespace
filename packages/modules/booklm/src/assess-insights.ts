@@ -5,6 +5,8 @@ import {
   pointBiserial, discriminationDiagnosis, absoluteGain, normalizedGain,
   meanCalibrationError, calibrationPattern, funnel, ABANDON_REASONS,
   suppressible, meetsMastery, evaluateWarnings, warningDisclaimer,
+  stratifiedRate, classifyClusterType, assignIntervention, distractorAnalysis,
+  timeVariance, readingBurden,
   METRIC_DEFS, COHORT_MIN_CELL,
 } from "./assess-analytics";
 
@@ -55,12 +57,15 @@ export class AssessInsightsService {
     const totalsByUser = new Map([...userTotals.entries()].map(([u, t]) => [u, t.total ? t.correct / t.total : 0]));
 
     // Group responses by prompt text (item proxy; limitation documented).
-    const groups = new Map<string, { prompt: string; conceptKey: string; condition: string; rows: { correct: boolean; userId: string }[] }>();
+    const groups = new Map<string, {
+      prompt: string; conceptKey: string; condition: string;
+      rows: { correct: boolean; userId: string; picked: string; responseTimeMs: number; condition: string }[];
+    }>();
     for (const a of attempts) {
       for (const r of a.responses) {
         const key = r.prompt.slice(0, 300);
         const g = groups.get(key) ?? { prompt: key, conceptKey: r.conceptKey, condition: r.conditionLabel || "unspecified", rows: [] };
-        g.rows.push({ correct: r.correct, userId: a.userId });
+        g.rows.push({ correct: r.correct, userId: a.userId, picked: r.picked ?? "", responseTimeMs: r.responseTimeMs ?? 0, condition: r.conditionLabel || "unspecified" });
         groups.set(key, g);
       }
     }
@@ -76,15 +81,31 @@ export class AssessInsightsService {
           g.rows.map((r) => r.correct),
           g.rows.map((r) => totalsByUser.get(r.userId) ?? 0),
         );
+        // Condition slices: same item under open- vs closed-book etc.
+        const byCondition = stratifiedRate(g.rows.map((r) => ({ correct: r.correct, slice: r.condition })));
+        // Distractor forensics: picks + high-group overlap (key-error review, never auto-delete).
+        const hiIdx = new Set(g.rows.map((r, i) => (high.has(r.userId) ? i : -1)).filter((i) => i >= 0));
+        const correctPick = g.rows.find((r) => r.correct)?.picked ?? "";
+        const distractors = distractorAnalysis(g.rows.map((r) => r.picked), correctPick, hiIdx);
+        const time = timeVariance(g.rows.map((r) => r.responseTimeMs));
+        const reading = readingBurden(g.prompt);
+        const extraFlags: string[] = [];
+        if (distractors.highGroupTopDistractor) extraFlags.push("distractor_by_high_performers");
+        if (time.flag) extraFlags.push("unusual_time_variance");
+        if (reading.flag) extraFlags.push("excessive_reading_burden");
         return {
           prompt: g.prompt.slice(0, 120), conceptKey: g.conceptKey, condition: g.condition,
           n: g.rows.length, p,
           interval: wilson(p, g.rows.length),
           band: difficultyBand(p),
           discrimination: d, pointBiserial: pb,
-          flag: d < 0 ? "negative_discrimination" : Math.abs(d) < 0.1 ? "low_discrimination" : null,
-          causes: discriminationDiagnosis(d, p),
-          action: d < 0 || Math.abs(d) < 0.1 ? "Hold item, inspect responses, require instructor review — never auto-delete." : null,
+          byCondition,
+          distractors,
+          timeVariance: time,
+          reading,
+          flag: d < 0 ? "negative_discrimination" : Math.abs(d) < 0.1 ? "low_discrimination" : extraFlags[0] ?? null,
+          causes: [...discriminationDiagnosis(d, p), ...extraFlags.map((f) => f.replace(/_/g, " "))],
+          action: d < 0 || Math.abs(d) < 0.1 || extraFlags.length > 0 ? "Hold item, inspect responses, require instructor review — never auto-delete." : null,
         };
       })
       .sort((a, b) => a.discrimination - b.discrimination);
@@ -116,20 +137,26 @@ export class AssessInsightsService {
       const first = members[0]!;
       const learners = new Set(members.map((m) => m.userId)).size;
       const conf = members.reduce((s, m) => s + m.confidence, 0) / members.length;
+      const pattern = [
+        ...new Set(members.flatMap((m) => m.detectedFrom).slice(0, 6)),
+        `${members.length} report(s)`,
+      ];
+      const clusterType = classifyClusterType(first.statement, pattern);
+      const assigned = assignIntervention({ clusterType });
       return {
         concept: first.concept.label, conceptKey: first.concept.key,
         label: first.statement.slice(0, 160),
-        evidencePattern: [
-          ...new Set(members.flatMap((m) => m.detectedFrom).slice(0, 6)),
-          `${members.length} report(s)`,
-        ],
+        evidencePattern: pattern,
+        clusterType,
         learnersAffected: learners,
         severity: members.some((m) => m.severity === "high") ? "high" : "medium",
         confidence: Math.round(conf * 100) / 100,
         exemplar: first.statement.slice(0, 200), // statement text only — never learner identity
         recommendedIntervention: {
-          type: /caus|forc|transfer/i.test(first.statement) ? "contrast_case" : "targeted_retrieval",
-          activity: "predict-observe-explain",
+          type: assigned.type,
+          activity: assigned.activity,
+          followUp: assigned.followUp,
+          rationale: assigned.rationale,
         },
       };
     }).sort((a, b) => b.learnersAffected - a.learnersAffected).slice(0, 50);
@@ -188,6 +215,53 @@ export class AssessInsightsService {
     }).sort((a, b) => (b.postScore - (b.preScore)) - (a.postScore - a.preScore));
   }
 
+  /**
+   * Concept mastery as a full metric envelope: value, window, sample size,
+   * confidence interval, evidence sources, limitations. No bare numbers —
+   * every figure carries its uncertainty and provenance.
+   */
+  async conceptMastery(setId: string, conceptKey: string, windowDays = 90, userId?: string) {
+    const since = windowSince(windowDays);
+    const target = this.role === "member" ? this.userId : (userId ?? undefined);
+    const obs = await prisma.masteryObservation.findMany({
+      where: {
+        workspaceId: this.workspaceId,
+        ...(target ? { userId: target } : {}),
+        createdAt: { gte: since },
+        concept: { setId, key: conceptKey },
+      },
+      include: { concept: { select: { id: true, key: true, label: true } } },
+      orderBy: { createdAt: "asc" }, take: 5000,
+    });
+    if (obs.length === 0) {
+      return envelope<number | null>({
+        metric: "concept_mastery", value: null,
+        timeWindow: `${since.toISOString().slice(0, 10)}/${new Date().toISOString().slice(0, 10)}`,
+        sampleSize: 0, evidenceSources: [],
+        limitations: ["no observations in window"],
+      });
+    }
+    const values = obs.map((o) => o.value);
+    const { mean, ci, n } = meanCI(values);
+    const hasTransfer = obs.some((o) => o.novelty >= 0.5);
+    const sources = ["retrieval", "application", ...(hasTransfer ? ["novel_transfer"] : [])];
+    const limitations = [
+      ...(n < 10 ? ["small sample — interpret cautiously"] : []),
+      ...(!hasTransfer ? ["few transfer items — transfer claim weak"] : []),
+      "practice exposure varies across learners",
+    ];
+    return {
+      ...envelope({
+        metric: "concept_mastery", value: mean,
+        timeWindow: `${since.toISOString().slice(0, 10)}/${new Date().toISOString().slice(0, 10)}`,
+        sampleSize: n, confidenceInterval: ci ?? undefined,
+        evidenceSources: sources, limitations,
+      }),
+      conceptKey,
+      label: obs[0]!.concept.label,
+    };
+  }
+
   // -- Time to mastery --------------------------------------------------------------------------
   async timeToMastery(setId: string, conceptKey?: string, userId?: string) {
     const target = this.scopeUser(userId);
@@ -197,7 +271,7 @@ export class AssessInsightsService {
     });
     const out = [];
     for (const c of concepts) {
-      const [obs, mastery, misc, attempts] = await Promise.all([
+      const [obs, mastery, misc, attempts, loops] = await Promise.all([
         prisma.masteryObservation.findMany({
           where: { workspaceId: this.workspaceId, conceptId: c.id, userId: target },
           orderBy: { createdAt: "asc" }, take: 500,
@@ -217,6 +291,10 @@ export class AssessInsightsService {
           select: { durationSec: true, score: true, total: true, startedAt: true },
           take: 200,
         }),
+        prisma.adaptiveLoop.findMany({
+          where: { workspaceId: this.workspaceId, conceptId: c.id, userId: target },
+          select: { createdAt: true, strategy: true }, take: 100,
+        }).catch(() => [] as { createdAt: Date; strategy: string }[]),
       ]);
       if (obs.length === 0) continue;
       const firstDate = obs[0]!.createdAt;
@@ -235,6 +313,14 @@ export class AssessInsightsService {
         calibrationError: null,
       });
       const masteredAt = met ? obs[obs.length - 1]!.createdAt : null;
+      // Remediation cycles: intervention loops before (or without) mastery.
+      const remediationCycles = loops.filter((l) => !masteredAt || l.createdAt <= masteredAt).length;
+      // Median hours between attempts (spacing signal, not effort judgment).
+      const starts = attempts.map((a) => new Date(a.startedAt).getTime()).sort((x, y) => x - y);
+      const gapsHrs = starts.slice(1).map((t, i) => (t - starts[i]!) / 3_600_000);
+      const medianGapHrs = gapsHrs.length > 0
+        ? Math.round([...gapsHrs].sort((x, y) => x - y)[Math.floor(gapsHrs.length / 2)]! * 10) / 10
+        : null;
       out.push({
         conceptId: c.id, key: c.key, label: c.label,
         firstExposure: first,
@@ -244,6 +330,8 @@ export class AssessInsightsService {
           ? Math.round(attempts.reduce((s, a) => s + a.durationSec, 0) / 60) : null,
         attempts: attempts.length,
         hintsUsed: null as number | null,
+        remediationCycles,
+        medianHoursBetweenAttempts: medianGapHrs,
         transferStatus: novelSuccess ? "achieved" : "partial",
         met,
         note: "Hints untracked at response level; time excludes accessibility pacing by design. Longer time is not lower ability.",

@@ -18,8 +18,9 @@ function svc(c: { workspace: { id: string }; user: { id: string }; memberRole: s
 
 /**
  * GET /v1/education/analytics/{domain} — items | concepts(gain) |
- * misconceptions | mastery(time-to-mastery) | calibration | dropoff |
- * question-quality | early-warning | interventions | map | metric-definitions
+ * misconceptions | mastery(time-to-mastery) | concept-mastery(envelope) |
+ * calibration | dropoff | question-quality | early-warning | interventions |
+ * map | metric-definitions
  * Query: setId, conceptKey, windowDays, userId (instructor).
  */
 export async function GET(req: Request, { params }: { params: Promise<{ domain: string }> }) {
@@ -45,6 +46,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ domain: 
       case "mastery":
         if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });
         return NextResponse.json({ mastery: await s.timeToMastery(setId, conceptKey, userId) });
+      case "concept-mastery": {
+        if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });
+        if (!conceptKey) return NextResponse.json({ error: "conceptKey required — the envelope is per concept" }, { status: 400 });
+        return NextResponse.json(await s.conceptMastery(setId, conceptKey, windowDays, userId));
+      }
       case "calibration":
         if (!setId) return NextResponse.json({ error: "setId required" }, { status: 400 });
         return NextResponse.json(await s.calibration(setId, conceptKey, userId));

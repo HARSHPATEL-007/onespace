@@ -45,6 +45,11 @@ export interface GradingActions {
   fairnessSave: (fd: FormData) => Promise<void>;
   fairnessMetrics: (groups: { name: string; mean: number; sd: number; n: number }[]) => Promise<{ comparable: boolean; pairs: { a: string; b: string; stdDiff: number; nA: number; nB: number }[] }>;
   fairnessResolve: (id: string, status: string, action: string) => Promise<void>;
+  rubricValidate: (assessmentId: string) => Promise<{ valid: boolean; issues: string[]; warnings: string[]; frozen: boolean; rubricVersion: number }>;
+  deployment: (assessmentId: string) => Promise<{ deployable: boolean; perCriterion: Record<string, { go: boolean; blockers: string[] }>; blockers: string[] }>;
+  sourceCheck: (gradeId: string, currentSnapshot: string, changedEvidence?: string[]) => Promise<{ changeDetected: boolean; affectedCriteria: { criterionId: string; label: string; matchedChange: string }[]; regradeRequired: boolean; note: string }>;
+  appeal: (gradeId: string, reason: string) => Promise<unknown>;
+  appealResolve: (appealId: string, status: "UPHELD" | "OVERTURNED", resolution: string) => Promise<unknown>;
 }
 
 export function GradingPanel({ setId, assessments, actions, isInstructor }: {
@@ -64,12 +69,15 @@ export function GradingPanel({ setId, assessments, actions, isInstructor }: {
   const [blind, setBlind] = useState<Awaited<ReturnType<GradingActions["blindQueue"]>> | null>(null);
   const [fair, setFair] = useState<Awaited<ReturnType<GradingActions["fairnessList"]>> | null>(null);
   const [shadow, setShadow] = useState<Awaited<ReturnType<GradingActions["shadow"]>> | null>(null);
+  const [contract, setContract] = useState<Awaited<ReturnType<GradingActions["rubricValidate"]>> | null>(null);
+  const [deployment, setDeployment] = useState<Awaited<ReturnType<GradingActions["deployment"]>> | null>(null);
+  const [appealReason, setAppealReason] = useState("");
   const [note, setNote] = useState("");
   const assessment = assessments.find((a) => a.id === assessmentId);
 
   const loadGrades = (id: string) => {
     setAssessmentId(id);
-    setHistory(null); setExplanation(null);
+    setHistory(null); setExplanation(null); setContract(null); setDeployment(null);
     void actions.grades(id).then((g) => setGrades(g)).catch(() => undefined);
     if (isInstructor) void actions.dashboard(id).then((d) => setDash(d)).catch(() => undefined);
   };
@@ -107,6 +115,15 @@ export function GradingPanel({ setId, assessments, actions, isInstructor }: {
             <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
               <Button variant="secondary" size="sm" onClick={() => void actions.freeze(assessmentId, true).then(refresh)}>Freeze rubric</Button>
               <Button variant="ghost" size="sm" onClick={() => void actions.bumpVersion(assessmentId).then(refresh)}>New version</Button>
+              <Button variant="ghost" size="sm" onClick={() => void actions.rubricValidate(assessmentId).then((r) => setContract(r)).catch(() => undefined)}>Validate contract</Button>
+            </div>
+          )}
+          {contract && (
+            <div style={{ fontSize: 12, marginTop: 6 }}>
+              {contract.valid
+                ? <span style={{ color: "var(--nv-color-success)" }}>✅ Contract valid (v{contract.rubricVersion}{contract.frozen ? ", frozen" : ", not frozen"}).</span>
+                : <span style={{ color: "var(--nv-color-danger)" }}>⛔ {contract.issues.join("; ")}</span>}
+              {contract.warnings.length > 0 && <div style={{ color: "var(--nv-color-text-faint)" }}>Warnings: {contract.warnings.join("; ")}</div>}
             </div>
           )}
         </div>
@@ -126,6 +143,18 @@ export function GradingPanel({ setId, assessments, actions, isInstructor }: {
             </div>
           )}
           <div style={{ fontSize: 12 }}>Fairness open: {dash.fairness.open} · source challenges open: {dash.sourceStatus.openChallenges}</div>
+          {isInstructor && (
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              <Button variant="ghost" size="sm" onClick={() => void actions.deployment(assessmentId).then(setDeployment).catch(() => undefined)}>Deployment gate</Button>
+              {deployment && (
+                <div style={{ marginTop: 4 }}>
+                  {deployment.deployable
+                    ? <span style={{ color: "var(--nv-color-success)" }}>✅ Deployable — all calibrated criteria pass thresholds.</span>
+                    : <span style={{ color: "var(--nv-color-danger)" }}>⛔ Blocked: {deployment.blockers.join("; ")}</span>}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -141,6 +170,15 @@ export function GradingPanel({ setId, assessments, actions, isInstructor }: {
             <Button variant="ghost" size="sm" onClick={() => void actions.history(g.id).then((h) => { setHistory(h); setExplanation(null); })}>History</Button>
             <Button variant="ghost" size="sm" onClick={() => void actions.explain(g.id).then((e) => { setExplanation(e); setHistory(null); })}>Explain</Button>
           </div>
+          {!isInstructor && (
+            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+              <input className="nv-input" value={appealReason} onChange={(e) => setAppealReason(e.target.value)} placeholder="appeal reason (no penalty during review)…" style={{ flex: 1 }} />
+              <Button variant="ghost" size="sm" onClick={() => {
+                if (!appealReason.trim()) return;
+                void actions.appeal(g.id, appealReason.trim()).then(() => setAppealReason("")).catch(() => undefined);
+              }}>Appeal</Button>
+            </div>
+          )}
           {g.criteria.map((c) => (
             <div key={c.criterionId} style={{ fontSize: 12, marginTop: 4 }}>
               {c.label}: <b>{c.points}/{c.max}</b>

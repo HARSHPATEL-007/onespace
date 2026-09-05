@@ -140,6 +140,234 @@ export function disparity(
   return { comparable, pairs };
 }
 
+export interface RubricContractCriterion {
+  id: string; label: string; weight: number; maxPoints: number;
+  levels?: Record<string, string> | null;
+  mustHave?: string[]; acceptableVariants?: string[];
+  nonEvidence?: string[]; dependsOn?: string[];
+}
+
+export interface RubricContractInput {
+  rubricVersion: number;
+  frozen: boolean;
+  criteria: RubricContractCriterion[];
+}
+
+/**
+ * Rubric-as-contract validation: levels present, must-have elements
+ * defined, weights summing to ~1, dependencies acyclic and referencing
+ * real criteria, non-evidence exclusions declared. A rubric that fails
+ * here must not take submissions.
+ */
+export function validateRubricContract(r: RubricContractInput): { valid: boolean; issues: string[]; warnings: string[] } {
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  if (r.criteria.length === 0) issues.push("rubric has no criteria");
+  const ids = new Set(r.criteria.map((c) => c.id));
+  let wsum = 0;
+  for (const c of r.criteria) {
+    if (!c.levels || Object.keys(c.levels).length === 0) issues.push(`${c.label}: no performance levels defined`);
+    if ((c.mustHave ?? []).length === 0) warnings.push(`${c.label}: no must-have elements — graders improvise`);
+    if ((c.nonEvidence ?? []).length === 0) warnings.push(`${c.label}: no non-evidence exclusions (style features may leak into scores)`);
+    if (!(c.maxPoints > 0)) issues.push(`${c.label}: maxPoints must be positive`);
+    if (c.weight < 0) issues.push(`${c.label}: negative weight`);
+    wsum += c.weight;
+    for (const d of c.dependsOn ?? []) {
+      if (!ids.has(d)) issues.push(`${c.label}: depends on unknown criterion ${d}`);
+      if (d === c.id) issues.push(`${c.label}: depends on itself`);
+    }
+  }
+  if (r.criteria.length > 0 && Math.abs(wsum - 1) > 0.01) {
+    warnings.push(`weights sum to ${Math.round(wsum * 100) / 100}, not 1 — totals will mislead`);
+  }
+  // Dependency cycles (A→B→A makes ordering ungradeable).
+  const adj = new Map(r.criteria.map((c) => [c.id, (c.dependsOn ?? []).filter((d) => ids.has(d))]));
+  const visiting = new Set<string>();
+  const done = new Set<string>();
+  const box: { cycle: string[] | null } = { cycle: null };
+  const dfs = (node: string, trail: string[]): void => {
+    if (box.cycle || done.has(node)) return;
+    if (visiting.has(node)) {
+      box.cycle = [...trail.slice(trail.indexOf(node)), node];
+      return;
+    }
+    visiting.add(node);
+    for (const next of adj.get(node) ?? []) dfs(next, [...trail, node]);
+    visiting.delete(node);
+    done.add(node);
+  };
+  for (const c of r.criteria) dfs(c.id, []);
+  if (box.cycle) issues.push(`dependency cycle: ${box.cycle.join(" → ")}`);
+  if (!r.frozen) warnings.push("rubric not frozen — freeze on open; changes after submissions need approval");
+  return { valid: issues.length === 0, issues, warnings };
+}
+
+/**
+ * Double-penalty check: the same evidence span (quote or location) cited
+ * under two criteria penalizes one error twice. Flags for the instructor —
+ * never auto-adjusts, since shared evidence is sometimes legitimate.
+ */
+export function doublePenaltyCheck(
+  evidence: { criterionId: string; criterionLabel?: string; location?: string; quote?: string }[],
+): { criterionA: string; criterionB: string; span: string; note: string }[] {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const findings: { criterionA: string; criterionB: string; span: string; note: string }[] = [];
+  for (let i = 0; i < evidence.length; i++) {
+    for (let j = i + 1; j < evidence.length; j++) {
+      const a = evidence[i]!, b = evidence[j]!;
+      if (a.criterionId === b.criterionId) continue;
+      const qa = norm(a.quote ?? ""), qb = norm(b.quote ?? "");
+      const sameQuote = qa.length > 20 && qb.length > 20 && (qa.includes(qb.slice(0, 40)) || qb.includes(qa.slice(0, 40)));
+      const sameLoc = !!a.location && a.location === b.location;
+      if (sameQuote || sameLoc) {
+        findings.push({
+          criterionA: a.criterionLabel ?? a.criterionId,
+          criterionB: b.criterionLabel ?? b.criterionId,
+          span: (a.quote || a.location || "").slice(0, 120),
+          note: "same span under two criteria — confirm one error is not penalized twice",
+        });
+      }
+    }
+  }
+  return findings.slice(0, 10);
+}
+
+/**
+ * non_evidence enforcement: reasoning that scores style features the
+ * rubric explicitly excludes (grammar, accent, formatting…) is flagged.
+ */
+export function nonEvidenceCheck(reasoning: string, nonEvidence: string[]): string[] {
+  const hits: string[] = [];
+  for (const n of nonEvidence) {
+    const term = n.trim().toLowerCase();
+    if (term.length < 3) continue;
+    if (new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(reasoning)) {
+      hits.push(`reasoning scores excluded feature: “${n.trim()}”`);
+    }
+  }
+  return hits;
+}
+
+export type ReasoningStage =
+  | "representation" | "concept_selection" | "assumptions" | "method"
+  | "steps" | "error_location" | "result" | "verification";
+
+const REASONING_WEIGHTS: Record<ReasoningStage, number> = {
+  representation: 0.1, concept_selection: 0.2, assumptions: 0.08, method: 0.15,
+  steps: 0.2, error_location: 0.05, result: 0.1, verification: 0.12,
+};
+
+/**
+ * Reasoning-path scoring: grades the path separately from the outcome.
+ * Returns the weighted aggregate plus the weakest stage as the diagnosis —
+ * the stage to remediate, not just a number.
+ */
+export function scoreReasoningPath(stages: Partial<Record<ReasoningStage, number>>): {
+  score: number; weakest: ReasoningStage | null; diagnosis: string;
+} {
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  let sum = 0, wsum = 0;
+  let weakest: ReasoningStage | null = null, weakestV = Infinity;
+  for (const [stage, w] of Object.entries(REASONING_WEIGHTS) as [ReasoningStage, number][]) {
+    const v = stages[stage];
+    if (v == null) continue;
+    sum += clamp(v) * w;
+    wsum += w;
+    if (clamp(v) < weakestV) {
+      weakestV = clamp(v);
+      weakest = stage;
+    }
+  }
+  const score = wsum > 0 ? Math.round((sum / wsum) * 100) / 100 : 0;
+  return {
+    score,
+    weakest,
+    diagnosis: weakest ? `weakest stage: ${weakest.replace(/_/g, " ")} — remediate there, not at the final answer` : "no stages provided",
+  };
+}
+
+export interface DeploymentThresholds {
+  minExact: number;
+  maxMeanAbs: number;
+  minN: number;
+}
+
+export const DEFAULT_DEPLOYMENT_THRESHOLDS: DeploymentThresholds = { minExact: 0.8, maxMeanAbs: 0.5, minN: 5 };
+
+/**
+ * Calibration deployment gate: per-criterion go/no-go against agreement
+ * thresholds. Never totals-only — a system can match totals while
+ * systematically misgrading one criterion.
+ */
+export function calibrationDeploymentGate(
+  byCriterion: Record<string, { exact: number; meanAbs: number; n: number }>,
+  thresholds: DeploymentThresholds = DEFAULT_DEPLOYMENT_THRESHOLDS,
+): { deployable: boolean; perCriterion: Record<string, { go: boolean; blockers: string[] }>; blockers: string[] } {
+  const perCriterion: Record<string, { go: boolean; blockers: string[] }> = {};
+  const blockers: string[] = [];
+  for (const [key, m] of Object.entries(byCriterion)) {
+    const b: string[] = [];
+    if (m.n < thresholds.minN) b.push(`only ${m.n} calibration examples (need ${thresholds.minN})`);
+    if (m.exact < thresholds.minExact) b.push(`exact agreement ${m.exact} below ${thresholds.minExact}`);
+    if (m.meanAbs > thresholds.maxMeanAbs) b.push(`mean abs difference ${m.meanAbs} above ${thresholds.maxMeanAbs}`);
+    perCriterion[key] = { go: b.length === 0, blockers: b };
+    if (b.length > 0) blockers.push(`${key}: ${b.join("; ")}`);
+  }
+  if (Object.keys(byCriterion).length === 0) blockers.push("no calibrated criteria — score instructor examples first");
+  return { deployable: blockers.length === 0, perCriterion, blockers: blockers.slice(0, 20) };
+}
+
+export interface SourceCheckInput {
+  authorSnapshot: string;
+  answerSnapshot: string;
+  gradeSnapshot: string;
+  currentSnapshot: string;
+  /** Changed source claims since grading (quotes or claim texts). */
+  changedEvidence: string[];
+  criteriaEvidence: { criterionId: string; label?: string; quotes: string[] }[];
+}
+
+/**
+ * Source-grounded grading check: snapshot drift between authoring,
+ * answering, grading, and now — with changed evidence mapped to the
+ * criteria it touches. Ambiguous or contradictory sources flag review
+ * instead of penalizing reasonable learner interpretations.
+ */
+export function gradingSourceCheck(input: SourceCheckInput): {
+  changeDetected: boolean; affectedCriteria: { criterionId: string; label: string; matchedChange: string }[];
+  regradeRequired: boolean; note: string;
+} {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const changeDetected = input.currentSnapshot !== input.gradeSnapshot;
+  const affected: { criterionId: string; label: string; matchedChange: string }[] = [];
+  if (changeDetected) {
+    for (const c of input.criteriaEvidence) {
+      for (const ch of input.changedEvidence) {
+        const nc = norm(ch);
+        if (nc.length < 15) continue;
+        const hit = c.quotes.some((q) => {
+          const nq = norm(q);
+          return nq.includes(nc.slice(0, 60)) || nc.includes(nq.slice(0, 60));
+        });
+        if (hit) {
+          affected.push({ criterionId: c.criterionId, label: c.label ?? c.criterionId, matchedChange: ch.slice(0, 160) });
+          break;
+        }
+      }
+    }
+  }
+  return {
+    changeDetected,
+    affectedCriteria: affected.slice(0, 20),
+    regradeRequired: affected.length > 0,
+    note: !changeDetected
+      ? "snapshots identical — no source drift since grading"
+      : affected.length > 0
+        ? `${affected.length} criteria touch changed evidence — shadow regrade, then instructor review`
+        : "source changed but no graded evidence overlaps the change — notification only",
+  };
+}
+
 /** Regrade applier: increases auto (policy permitting); decreases need review. */
 export function applyRegradeRule(oldScore: number, newScore: number, opts?: { allowAutoIncrease?: boolean }): {
   apply: "auto" | "review" | "none"; delta: number;

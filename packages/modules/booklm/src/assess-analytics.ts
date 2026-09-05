@@ -236,6 +236,182 @@ export function warningDisclaimer(): string {
 
 export interface MetricDef { name: string; version: string; definition: string; sources: string[] }
 
+// ---------------------------------------------------------------------------
+// IRT-lite: Rasch ability + item information. One evidence source with
+// uncertainty — never published as definitive learner ability.
+// ---------------------------------------------------------------------------
+
+/**
+ * Rasch (1PL) ability estimate by Newton–Raphson MLE over
+ * {difficulty, correct} pairs. Bounded to [-4, 4]; <3 responses returns
+ * null (insufficient evidence, not zero ability).
+ */
+export function raschAbility(responses: { difficulty: number; correct: boolean }[]): number | null {
+  const rows = responses.filter((r) => Number.isFinite(r.difficulty));
+  if (rows.length < 3) return null;
+  let theta = 0;
+  for (let iter = 0; iter < 25; iter++) {
+    let first = 0, second = 0;
+    for (const r of rows) {
+      const p = 1 / (1 + Math.exp(-(theta - r.difficulty)));
+      first += (r.correct ? 1 : 0) - p;
+      second -= p * (1 - p);
+    }
+    if (Math.abs(second) < 1e-9) break;
+    const step = first / second;
+    theta -= Math.max(-1, Math.min(1, step));
+    if (Math.abs(step) < 1e-6) break;
+  }
+  return r2(Math.max(-4, Math.min(4, theta)));
+}
+
+/** Item information at an ability level: peaks near difficulty ≈ ability. */
+export function itemInformation(ability: number, difficulty: number): number {
+  const p = 1 / (1 + Math.exp(-(ability - difficulty)));
+  return r2(p * (1 - p));
+}
+
+/** Guessing note: multiple-choice floors, not estimates. */
+export function guessingFloor(optionCount: number): number {
+  return optionCount > 1 ? r2(1 / optionCount) : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Stratification, cluster typing, intervention assignment, item forensics.
+// ---------------------------------------------------------------------------
+
+/** Group values by a key function for condition × population slices. */
+export function stratify<T>(rows: T[], keyFn: (r: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const r of rows) {
+    const k = keyFn(r) || "unspecified";
+    const arr = m.get(k) ?? [];
+    arr.push(r);
+    m.set(k, arr);
+  }
+  return m;
+}
+
+/** Stratified success rate per slice (slice → p with n). */
+export function stratifiedRate(rows: { correct: boolean; slice: string }[]): { slice: string; p: number; n: number }[] {
+  return [...stratify(rows, (r) => r.slice).entries()].map(([slice, rs]) => ({
+    slice,
+    p: r2(rs.filter((r) => r.correct).length / Math.max(1, rs.length)),
+    n: rs.length,
+  }));
+}
+
+export type MisconceptionClusterType =
+  | "shared_conceptual" | "procedural" | "representation" | "vocabulary"
+  | "prerequisite_gap" | "strategy_selection" | "metacognitive" | "transfer"
+  | "diagram" | "language";
+
+/**
+ * Cluster-type classifier over statement + evidence-pattern text.
+ * Heuristic triage for routing (contrast-case vs retrieval vs re-teach) —
+ * instructors confirm, never auto-label learners.
+ */
+export function classifyClusterType(statement: string, evidence: string[] = []): MisconceptionClusterType {
+  const t = `${statement} ${evidence.join(" ")}`.toLowerCase();
+  if (/diagram|graph|chart|figure|table|axis|label/.test(t)) return "diagram";
+  if (/translat|language|wording|vocabulary|term\b|means/.test(t)) return "vocabulary";
+  if (/transfer|new case|unfamiliar|novel/.test(t)) return "transfer";
+  if (/confiden|certain|sure|overestimat/.test(t)) return "metacognitive";
+  if (/prerequisite|missing|never learned|foundational|fractions|prior/.test(t)) return "prerequisite_gap";
+  if (/procedure|steps?|algorithm|order|method\b/.test(t)) return "procedural";
+  if (/strateg|approach|chose|instead of/.test(t)) return "strategy_selection";
+  if (/represent|notation|symbol|diagram|model of/.test(t)) return "representation";
+  if (/force|caus|motion|energy/.test(t)) return "shared_conceptual";
+  return "shared_conceptual";
+}
+
+export interface AssignedIntervention {
+  type: string;
+  activity: string;
+  followUp: string;
+  rationale: string;
+}
+
+/** Warning/cluster → concrete intervention assignment (not just a suggestion string). */
+export function assignIntervention(args: { warningKind?: string; clusterType?: MisconceptionClusterType }): AssignedIntervention {
+  const { warningKind, clusterType } = args;
+  if (clusterType === "transfer" || warningKind === "low_transfer") {
+    return { type: "transfer_task", activity: "unfamiliar case with the same structure", followUp: "second novel case", rationale: "recall is high but transfer lags" };
+  }
+  if (clusterType === "prerequisite_gap" || warningKind === "prereq_failures") {
+    return { type: "prereq_repair", activity: "10-minute prerequisite repair + two new questions", followUp: "recheck prerequisite", rationale: "downstream failure rooted upstream" };
+  }
+  if (clusterType === "metacognitive" || warningKind === "confidence_mismatch") {
+    return { type: "calibration_drill", activity: "prediction-before-feedback on three items", followUp: "error explanation", rationale: "confidence misaligned with performance" };
+  }
+  if (clusterType === "diagram") {
+    return { type: "diagram_probe", activity: "label-and-interpret task for the figure", followUp: "transfer figure", rationale: "visual interpretation, not concept, is the blocker" };
+  }
+  if (clusterType === "vocabulary" || clusterType === "language") {
+    return { type: "language_clarify", activity: "term-contrast with examples in the learner's language pathway", followUp: "re-ask without the term", rationale: "wording, not reasoning, may block" };
+  }
+  if (warningKind === "retries_stalled" || warningKind === "declining") {
+    return { type: "strategy_switch", activity: "contrast-case activity (predict-observe-explain)", followUp: "two new questions", rationale: "repetition without gain — change strategy" };
+  }
+  return { type: "targeted_retrieval", activity: "short retrieval session on the flagged concept", followUp: "spaced recheck", rationale: "default retrieval repair" };
+}
+
+export interface DistractorAnalysis {
+  topDistractor: string | null;
+  topDistractorRate: number;
+  highGroupTopDistractor: string | null;
+  highGroupRate: number;
+  note: string;
+}
+
+/**
+ * Distractor forensics: which wrong pick dominates, and — critically —
+ * whether high-performing learners chose it (possible key error or valid
+ * alternative interpretation, never auto-delete).
+ */
+export function distractorAnalysis(
+  picks: string[],
+  correctPick: string,
+  highPerformerIndexes: Set<number>,
+): DistractorAnalysis {
+  const wrong = picks.map((p, i) => ({ p, i })).filter((x) => x.p !== correctPick);
+  const counts = new Map<string, { n: number; hi: number }>();
+  for (const w of wrong) {
+    const c = counts.get(w.p) ?? { n: 0, hi: 0 };
+    c.n++;
+    if (highPerformerIndexes.has(w.i)) c.hi++;
+    counts.set(w.p, c);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1].n - a[1].n);
+  const top = ranked[0];
+  const hiTotal = Math.max(1, highPerformerIndexes.size);
+  return {
+    topDistractor: top ? top[0].slice(0, 120) : null,
+    topDistractorRate: top ? r2(top[1].n / Math.max(1, wrong.length)) : 0,
+    highGroupTopDistractor: top && top[1].hi > 0 ? top[0].slice(0, 120) : null,
+    highGroupRate: top ? r2(top[1].hi / hiTotal) : 0,
+    note: top && top[1].hi > 0
+      ? "high performers chose the top distractor — possible key error or valid alternative; hold for instructor review"
+      : "distractor pattern consistent with a working key",
+  };
+}
+
+/** Time variance as coefficient of variation (flags unusual variance, not effort). */
+export function timeVariance(timesMs: number[]): { cv: number | null; flag: boolean } {
+  const xs = timesMs.filter((t) => t > 0);
+  if (xs.length < 5) return { cv: null, flag: false };
+  const mean = xs.reduce((s, v) => s + v, 0) / xs.length;
+  const sd = Math.sqrt(xs.reduce((s, v) => s + (v - mean) ** 2, 0) / xs.length);
+  const cv = mean > 0 ? r2(sd / mean) : null;
+  return { cv, flag: cv != null && cv > 1.2 };
+}
+
+/** Reading burden: prompt length vs band (flags excessive burden, not difficulty). */
+export function readingBurden(prompt: string): { words: number; flag: boolean } {
+  const words = prompt.trim().split(/\s+/).filter(Boolean).length;
+  return { words, flag: words > 120 };
+}
+
 export const METRIC_DEFS: MetricDef[] = [
   { name: "item_difficulty_p", version: "1.0", definition: "correct / valid responses for a population × condition window", sources: ["quiz_responses"] },
   { name: "item_discrimination_d", version: "1.0", definition: "p(high group) − p(low group); point-biserial where n permits", sources: ["quiz_responses"] },
@@ -247,4 +423,9 @@ export const METRIC_DEFS: MetricDef[] = [
   { name: "retention_21d", version: "1.0", definition: "delayed retrieval ≥21 days after last success", sources: ["mastery_observations"] },
   { name: "intervention_effect", version: "1.0", definition: "pre/post around an intervention; associative unless experimental design", sources: ["adaptive_loops", "observations"] },
   { name: "funnel_conversion", version: "1.0", definition: "stage_n / stage_{n-1} on attempt lifecycle events", sources: ["quiz_attempts"] },
+  { name: "rasch_ability", version: "1.0", definition: "1PL MLE ability; one evidence source with uncertainty, min 3 responses", sources: ["quiz_responses"] },
+  { name: "item_information", version: "1.0", definition: "p(1-p) at ability level; peaks near difficulty ≈ ability", sources: ["quiz_responses"] },
+  { name: "distractor_analysis", version: "1.0", definition: "top wrong pick + high-group rate; flags key-error review, never auto-delete", sources: ["quiz_responses"] },
+  { name: "cluster_type", version: "1.0", definition: "heuristic triage of misconception clusters for intervention routing", sources: ["misconceptions"] },
+  { name: "intervention_assignment", version: "1.0", definition: "warning/cluster → concrete {type, activity, follow-up}", sources: ["warnings", "clusters"] },
 ];

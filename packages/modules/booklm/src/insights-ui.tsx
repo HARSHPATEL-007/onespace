@@ -14,6 +14,7 @@ export interface InsightsActions {
   warnings: (setId: string) => Promise<WarningGroup[]>;
   outcomes: (setId: string) => Promise<OutcomeRow[]>;
   map: (setId: string) => Promise<LearnerMap>;
+  conceptMastery: (setId: string, conceptKey: string) => Promise<MasteryEnvelopeView>;
   cohort: (setA: string, setB: string, conceptKey: string) => Promise<unknown>;
   dismiss: (targetId: string, reason: string) => Promise<void>;
   defs: () => Promise<{ name: string; version: string; definition: string; sources: string[] }[]>;
@@ -23,11 +24,16 @@ export interface ItemRow {
   prompt: string; conceptKey: string; condition: string; n: number; p: number;
   interval: [number, number] | null; band: string; discrimination: number;
   pointBiserial: number; flag: string | null; causes: string[]; action: string | null;
+  byCondition?: { slice: string; p: number; n: number }[];
+  distractors?: { topDistractor: string | null; topDistractorRate: number; highGroupTopDistractor: string | null; highGroupRate: number; note: string };
+  timeVariance?: { cv: number | null; flag: boolean };
+  reading?: { words: number; flag: boolean };
 }
 export interface ClusterRow {
   concept: string; conceptKey: string; label: string; evidencePattern: string[];
+  clusterType?: string;
   learnersAffected: number; severity: string; confidence: number; exemplar: string;
-  recommendedIntervention: { type: string; activity: string };
+  recommendedIntervention: { type: string; activity: string; followUp?: string; rationale?: string };
 }
 export interface GainRow {
   conceptId: string; key: string; label: string; preScore: number; postScore: number;
@@ -38,6 +44,12 @@ export interface MasteryRow {
   conceptId: string; key: string; label: string; firstExposure: string;
   stableMastery: string | null; calendarDays: number | null; activeMinutes: number | null;
   attempts: number; hintsUsed: number | null; transferStatus: string; met: boolean; note: string;
+  remediationCycles?: number; medianHoursBetweenAttempts?: number | null;
+}
+export interface MasteryEnvelopeView {
+  metric: string; value: number | null; timeWindow: string; sampleSize: number;
+  confidenceInterval: [number, number] | null; evidenceSources: string[];
+  limitations: string[]; conceptKey: string; label: string;
 }
 export interface CalibrationData {
   overall: { pattern: string; gap: number; meanConf: number; meanPerf: number; error: number; n: number };
@@ -84,6 +96,10 @@ export function AnalyticsPanel({ setId, actions, isInstructor }: {
     const done = (d: unknown) => { setData(d); setLoading(false); };
     const fail = () => setLoading(false);
     if (v === "map") void actions.map(setId).then(done).catch(fail);
+    else if (v === "envelope") {
+      if (!conceptKey.trim()) { setLoading(false); return; }
+      void actions.conceptMastery(setId, conceptKey.trim()).then(done).catch(fail);
+    }
     else if (v === "items") void actions.items(setId).then(done).catch(fail);
     else if (v === "clusters") void actions.clusters(setId).then(done).catch(fail);
     else if (v === "gains") void actions.gains(setId).then(done).catch(fail);
@@ -99,6 +115,7 @@ export function AnalyticsPanel({ setId, actions, isInstructor }: {
 
   const views: { id: string; label: string; instructorOnly?: boolean }[] = [
     { id: "map", label: "🗺 My map" },
+    { id: "envelope", label: "📏 Mastery envelope" },
     { id: "gains", label: "📈 Gains" },
     { id: "mastery", label: "⏱ Time-to-mastery" },
     { id: "calibration", label: "🎯 Calibration" },
@@ -148,6 +165,23 @@ function ViewBody({ view, data, setId, cohortB, setCohortB, actions, dismissReas
       </div>
     );
   }
+  if (view === "envelope") {
+    const m = data as MasteryEnvelopeView;
+    return (
+      <div className="nv-card" style={{ fontSize: 13 }}>
+        <div style={{ fontWeight: 800 }}>Mastery envelope — {m.label} ({m.conceptKey})</div>
+        {m.value === null ? (
+          <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No observations in window — {m.limitations.join("; ")}</div>
+        ) : (
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            <div>Mastery: <b>{Math.round(m.value * 100)}%</b>{m.confidenceInterval ? ` · 95% CI [{m.confidenceInterval[0]}, {m.confidenceInterval[1]}]` : " · CI n/a"} · n={m.sampleSize}</div>
+            <div style={{ color: "var(--nv-color-text-faint)" }}>Window: {m.timeWindow} · sources: {m.evidenceSources.join(", ")}</div>
+            {m.limitations.length > 0 && <div style={{ color: "var(--nv-color-warning, #b45309)" }}>Limitations: {m.limitations.join("; ")}</div>}
+          </div>
+        )}
+      </div>
+    );
+  }
   if (view === "gains") {
     const rows = (data as GainRow[]);
     return (
@@ -177,6 +211,8 @@ function ViewBody({ view, data, setId, cohortB, setCohortB, actions, dismissReas
             {r.stableMastery ? ` → stable ${r.stableMastery} (${r.calendarDays}d` : ""}
             {r.activeMinutes !== null ? `, ${r.activeMinutes} active min` : ""}{r.stableMastery ? ")" : ""}
             {" "}· attempts {r.attempts} · transfer {r.transferStatus}
+            {(r.remediationCycles ?? 0) > 0 && <span> · {r.remediationCycles} remediation cycle(s)</span>}
+            {r.medianHoursBetweenAttempts != null && <span> · median {r.medianHoursBetweenAttempts}h between attempts</span>}
             <div style={{ color: "var(--nv-color-text-faint)" }}>{r.note}</div>
           </div>
         ))}
@@ -240,6 +276,21 @@ function ViewBody({ view, data, setId, cohortB, setCohortB, actions, dismissReas
             “{i.prompt.slice(0, 90)}” · p={i.p} ({i.band}, n={i.n}, {i.condition}) · D={i.discrimination}
             {i.flag && <span style={{ color: "var(--nv-color-danger)" }}> · ⚠ {i.flag.replace(/_/g, " ")}: {i.causes.slice(0, 2).join("; ")}</span>}
             {i.action && <div style={{ color: "var(--nv-color-text-faint)" }}>{i.action}</div>}
+            {(i.byCondition ?? []).length > 1 && (
+              <div style={{ color: "var(--nv-color-text-faint)" }}>
+                By condition: {i.byCondition!.map((s) => `${s.slice}: p=${s.p} (n=${s.n})`).join(" · ")}
+              </div>
+            )}
+            {i.distractors?.highGroupTopDistractor && (
+              <div style={{ color: "var(--nv-color-danger)" }}>
+                High performers chose “{i.distractors.highGroupTopDistractor.slice(0, 60)}” ({Math.round(i.distractors.highGroupRate * 100)}%) — {i.distractors.note}
+              </div>
+            )}
+            {(i.timeVariance?.flag || i.reading?.flag) && (
+              <div style={{ color: "var(--nv-color-text-faint)" }}>
+                {[i.timeVariance?.flag ? "unusual time variance" : "", i.reading?.flag ? `${i.reading.words} words — reading burden` : ""].filter(Boolean).join(" · ")}
+              </div>
+            )}
           </div>
         ))}
         {d.items.length === 0 && <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>Need ≥5 responses per item.</div>}
@@ -254,8 +305,10 @@ function ViewBody({ view, data, setId, cohortB, setCohortB, actions, dismissReas
         {rows.map((m, i) => (
           <div key={i} style={{ fontSize: 12, marginTop: 4 }}>
             <b>{m.label}</b> ({m.concept}) · {m.learnersAffected} learner(s) · {m.severity} · conf {Math.round(m.confidence * 100)}%
+            {m.clusterType && <span style={{ color: "var(--nv-color-text-faint)" }}> · {m.clusterType.replace(/_/g, " ")}</span>}
             <div style={{ color: "var(--nv-color-text-faint)" }}>Pattern: {m.evidencePattern.join("; ")}</div>
-            <div>“{m.exemplar}” → {m.recommendedIntervention.type} ({m.recommendedIntervention.activity})</div>
+            <div>“{m.exemplar}” → {m.recommendedIntervention.type} ({m.recommendedIntervention.activity}){m.recommendedIntervention.followUp ? ` → follow-up: ${m.recommendedIntervention.followUp}` : ""}</div>
+            {m.recommendedIntervention.rationale && <div style={{ color: "var(--nv-color-text-faint)" }}>Why: {m.recommendedIntervention.rationale}</div>}
           </div>
         ))}
         {rows.length === 0 && <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No active clusters.</div>}

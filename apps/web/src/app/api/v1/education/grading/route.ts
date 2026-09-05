@@ -22,7 +22,8 @@ function svc(c: { workspace: { id: string }; user: { id: string }; memberRole: s
 /**
  * GET /v1/education/grading?view=... — history&id=... | explain&id=... |
  * calibration&assessmentId=... | calibration-metrics&assessmentId=... |
- * fairness | blind-queue | dashboard&assessmentId=...
+ * fairness | blind-queue | dashboard&assessmentId=... |
+ * rubric-validate&assessmentId=... | deployment-gate&assessmentId=...
  */
 export async function GET(req: Request) {
   const c = await ctx();
@@ -61,6 +62,16 @@ export async function GET(req: Request) {
         if (!assessmentId) return NextResponse.json({ error: "assessmentId required" }, { status: 400 });
         return NextResponse.json(await g.dashboard(assessmentId));
       }
+      case "rubric-validate": {
+        const assessmentId = url.searchParams.get("assessmentId") ?? "";
+        if (!assessmentId) return NextResponse.json({ error: "assessmentId required" }, { status: 400 });
+        return NextResponse.json(await g.validateRubric(assessmentId));
+      }
+      case "deployment-gate": {
+        const assessmentId = url.searchParams.get("assessmentId") ?? "";
+        if (!assessmentId) return NextResponse.json({ error: "assessmentId required" }, { status: 400 });
+        return NextResponse.json(await g.deploymentGate(assessmentId));
+      }
       default:
         return NextResponse.json({ error: "Unknown view" }, { status: 400 });
     }
@@ -80,7 +91,8 @@ const partialSchema = z.object({
 /**
  * POST /v1/education/grading — submit-v2 | approve-criterion | freeze |
  * bump-version | shadow | apply-regrade | calibration | ai-scores |
- * fairness | fairness-metrics | fairness-resolve | partial-credit
+ * fairness | fairness-metrics | fairness-resolve | partial-credit |
+ * reasoning-path | double-penalty | non-evidence | source-check | appeal-resolve
  */
 export async function POST(req: Request) {
   const c = await ctx();
@@ -162,6 +174,41 @@ export async function POST(req: Request) {
         const parsed = partialSchema.safeParse(b);
         if (!parsed.success) return NextResponse.json({ error: "Invalid body", issues: parsed.error.issues }, { status: 400 });
         return NextResponse.json(g.partialCredit(parsed.data));
+      }
+      case "reasoning-path": {
+        const { scoreReasoningPath } = await import("@n0va/modules-booklm/assess-grading");
+        const { stages } = b as { stages?: Record<string, number> };
+        if (!stages || typeof stages !== "object") return NextResponse.json({ error: "stages required" }, { status: 400 });
+        return NextResponse.json(scoreReasoningPath(stages));
+      }
+      case "double-penalty": {
+        const { doublePenaltyCheck } = await import("@n0va/modules-booklm/assess-grading");
+        const { evidence } = b as { evidence?: { criterionId: string; criterionLabel?: string; location?: string; quote?: string }[] };
+        if (!Array.isArray(evidence)) return NextResponse.json({ error: "evidence[] required" }, { status: 400 });
+        return NextResponse.json({ findings: doublePenaltyCheck(evidence) });
+      }
+      case "non-evidence": {
+        const { nonEvidenceCheck } = await import("@n0va/modules-booklm/assess-grading");
+        const { reasoning, nonEvidence } = b as { reasoning?: string; nonEvidence?: string[] };
+        if (typeof reasoning !== "string" || !Array.isArray(nonEvidence)) {
+          return NextResponse.json({ error: "reasoning + nonEvidence[] required" }, { status: 400 });
+        }
+        return NextResponse.json({ hits: nonEvidenceCheck(reasoning, nonEvidence.map(String)) });
+      }
+      case "source-check": {
+        const { gradeId, currentSnapshot, changedEvidence } = b as { gradeId?: string; currentSnapshot?: string; changedEvidence?: string[] };
+        if (!gradeId || !currentSnapshot) return NextResponse.json({ error: "gradeId + currentSnapshot required" }, { status: 400 });
+        return NextResponse.json(await g.gradingSourceCheck(
+          gradeId, currentSnapshot,
+          Array.isArray(changedEvidence) ? changedEvidence.map(String) : [],
+        ));
+      }
+      case "appeal-resolve": {
+        const { appealId, status, resolution } = b as { appealId?: string; status?: string; resolution?: string };
+        if (!appealId || !["UPHELD", "OVERTURNED"].includes(status ?? "")) {
+          return NextResponse.json({ error: "appealId + UPHELD|OVERTURNED required" }, { status: 400 });
+        }
+        return NextResponse.json(await g.appealResolve(appealId, status as "UPHELD" | "OVERTURNED", resolution ?? ""));
       }
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });

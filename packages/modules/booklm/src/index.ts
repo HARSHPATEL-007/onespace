@@ -82,16 +82,24 @@ export {
 } from "./integrity";
 export {
   gradeUncertainty, classifyPartialCredit, approvalGate, explainGrade,
-  disparity, disparityOfMeans, applyRegradeRule,
-  type ErrorKind as GradeErrorKind,
+  disparity, disparityOfMeans, applyRegradeRule, validateRubricContract,
+  doublePenaltyCheck, nonEvidenceCheck, scoreReasoningPath,
+  calibrationDeploymentGate, gradingSourceCheck, DEFAULT_DEPLOYMENT_THRESHOLDS,
+  type ErrorKind as GradeErrorKind, type RubricContractCriterion,
+  type RubricContractInput, type ReasoningStage, type DeploymentThresholds,
+  type SourceCheckInput,
 } from "./assess-grading";
 export {
   envelope, wilson, meanCI, difficulty, difficultyBand, discrimination,
   pointBiserial, discriminationDiagnosis, absoluteGain, normalizedGain,
   meanCalibrationError, calibrationPattern, funnel, ABANDON_REASONS,
   suppressible, meetsMastery, evaluateWarnings, warningDisclaimer,
+  raschAbility, itemInformation, guessingFloor, stratify, stratifiedRate,
+  classifyClusterType, assignIntervention, distractorAnalysis, timeVariance,
+  readingBurden,
   METRIC_DEFS, COHORT_MIN_CELL,
-  type MetricEnvelope, type WarningKind,
+  type MetricEnvelope, type WarningKind, type MisconceptionClusterType,
+  type AssignedIntervention, type DistractorAnalysis,
 } from "./assess-analytics";
 export {
   parseMarkdownTables, parseCodeFences, detectCodeLanguage, parseLatex,
