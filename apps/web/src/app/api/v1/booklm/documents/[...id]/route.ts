@@ -20,7 +20,7 @@ function svc(c: { workspace: { id: string }; user: { id: string }; memberRole: s
 /**
  * GET /v1/booklm/documents[/{id}/...] — list | quality-report |
  * confidence-map | layout | tables | formulas | figures | citations |
- * corrections | versions
+ * corrections | versions | integrity | validate-formulas | audit-tables
  * GET /v1/booklm/media/{id}/transcript[?from=...]
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id?: string[] }> }) {
@@ -53,6 +53,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id?: str
       case "citations": return NextResponse.json({ citations: await d.citations(docId) });
       case "corrections": return NextResponse.json({ corrections: await d.corrections(docId) });
       case "versions": return NextResponse.json({ versions: await d.versions(docId) });
+      case "integrity": {
+        const expected = url.searchParams.get("expectedPages");
+        return NextResponse.json(await d.integrity(docId, expected ? Number(expected) : undefined));
+      }
+      case "validate-formulas": return NextResponse.json(await d.validateFormulas(docId));
+      case "audit-tables": return NextResponse.json({ tables: await d.auditTables(docId) });
       case "transcript": {
         const from = url.searchParams.get("from");
         return NextResponse.json({ segments: await d.transcript(docId, from ? Number(from) : undefined) });

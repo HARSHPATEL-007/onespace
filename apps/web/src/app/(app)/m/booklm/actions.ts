@@ -1115,7 +1115,20 @@ export async function docCorrectionsAction(documentId: string) {
 }
 
 export async function docCiteAction(documentId: string, blockKey: string, claim: string, setId: string) {
-  return (await docSvc()).citeBlock(documentId, blockKey, claim, setId);
+  const { citation, chunk, disclosure } = await (await docSvc()).citeBlock(documentId, blockKey, claim, setId);
+  return { id: citation.id, correctionState: chunk.correction_state, confidence: chunk.extraction.confidence, disclosure };
+}
+
+export async function docIntegrityAction(documentId: string, expectedPages?: number) {
+  return (await docSvc()).integrity(documentId, expectedPages);
+}
+
+export async function docValidateFormulasAction(documentId: string) {
+  return (await docSvc()).validateFormulas(documentId);
+}
+
+export async function docAuditTablesAction(documentId: string) {
+  return (await docSvc()).auditTables(documentId);
 }
 
 // --- Study-material factory ---

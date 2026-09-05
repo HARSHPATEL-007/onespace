@@ -39,6 +39,7 @@
     "./quality-ui": "./src/quality-ui.tsx",
     "./doc-ingest": "./src/doc-ingest.ts",
     "./doc-parse": "./src/doc-parse.ts",
+    "./doc-understanding": "./src/doc-understanding.ts",
     "./quality": "./src/quality.ts",
     "./quality-checks": "./src/quality-checks.ts",
     "./quality-deep": "./src/quality-deep.ts",

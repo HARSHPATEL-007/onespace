@@ -7,6 +7,10 @@ import {
   detectSequenceGaps, detectTruncation, figureNumberGaps,
   aggregateQuality, parseTranscriptTimestamps,
 } from "./doc-parse";
+import {
+  assessDocumentIntegrity, validateFormulaRecord, auditTableCells,
+  repeatedHeaders, chunkProvenance, lowConfidenceDisclosure,
+} from "./doc-understanding";
 
 export const registerSchema = z.object({
   setId: z.string().optional(),
@@ -457,7 +461,7 @@ export class DocIngestService {
     });
     if (!block) throw new Error("Block not found");
     const locator = `${block.page}:${block.readingOrder}:${blockKey}`;
-    return prisma.evidenceCitation.create({
+    const citation = await prisma.evidenceCitation.create({
       data: {
         workspaceId: this.workspaceId, createdById: this.userId,
         setId: setId || doc.setId,
@@ -472,6 +476,123 @@ export class DocIngestService {
         support: "SUPPORTS" as never, confidence: block.confidence,
         provenance: `doc-extract:${documentId}:${blockKey}`,
       },
+    });
+    // Provenance-preserving chunk envelope for the retrieval index, with
+    // direct low-confidence disclosure when the reading is shaky.
+    const chunk = chunkProvenance({
+      chunkId: `${documentId.slice(0, 8)}_p${block.page}_r${block.readingOrder}`,
+      contentType: block.kind,
+      text: block.text,
+      documentId, page: block.page, snapshot: `v${doc.version}`,
+      method: block.method || "text_ocr", confidence: block.confidence,
+      corrected: block.corrected,
+    });
+    const disclosure = lowConfidenceDisclosure(block.confidence, `page ${block.page}, ${blockKey}`);
+    return { citation, chunk, disclosure };
+  }
+
+  /**
+   * Multi-signal integrity assessment: page-sequence gaps, figure-number
+   * gaps, truncation, orphan table continuations, expected-vs-actual page
+   * counts. Blocks high-stakes claims on missing regions until confirmed.
+   */
+  async integrity(documentId: string, expectedPages?: number) {
+    const doc = await this.owned(documentId);
+    const [blocks, figures, tables] = await Promise.all([
+      prisma.docBlock.findMany({
+        where: { workspaceId: this.workspaceId, documentId },
+        select: { page: true, text: true, readingOrder: true },
+        orderBy: { readingOrder: "asc" }, take: 2000,
+      }),
+      prisma.docFigure.findMany({
+        where: { workspaceId: this.workspaceId, documentId },
+        select: { figureKey: true, caption: true }, take: 200,
+      }),
+      prisma.docTable.findMany({
+        where: { workspaceId: this.workspaceId, documentId },
+        select: { tableKey: true, page: true, caption: true }, take: 200,
+      }),
+    ]);
+    const pages = blocks.map((b) => b.page);
+    const figureNumbers = figures.flatMap((f) => {
+      const m = `${f.figureKey} ${f.caption}`.match(/(?:fig(?:ure)?[ ._-]*)(\d+)/i);
+      return m ? [Number(m[1])] : [];
+    });
+    const tableStarts = new Set<number>();
+    const continuations: number[] = [];
+    for (const t of tables) {
+      if (/continu/i.test(t.caption) || /continued/i.test(t.tableKey)) continuations.push(t.page);
+      else tableStarts.add(t.page);
+    }
+    const last = blocks.length > 0 ? blocks[blocks.length - 1]!.text : "";
+    return {
+      document: { id: doc.id, title: doc.title, version: doc.version },
+      ...assessDocumentIntegrity({
+        pageNumbers: pages,
+        figureNumbers,
+        lastParagraph: last.slice(-500),
+        tableStarts: [...tableStarts],
+        tableContinuations: continuations,
+        expectedPages,
+        actualPages: doc.pageCount ?? Math.max(0, ...pages),
+      }),
+    };
+  }
+
+  /**
+   * Formula validation across the document: syntactic/render checks,
+   * symbol-ambiguity inventory, and variable-to-definition links from
+   * same-page text. Flags what needs visual confirmation.
+   */
+  async validateFormulas(documentId: string) {
+    await this.owned(documentId);
+    const [formulas, blocks] = await Promise.all([
+      prisma.docFormula.findMany({ where: { workspaceId: this.workspaceId, documentId }, take: 200 }),
+      prisma.docBlock.findMany({
+        where: { workspaceId: this.workspaceId, documentId },
+        select: { page: true, text: true }, take: 2000,
+      }),
+    ]);
+    const byPage = new Map<number, string>();
+    for (const b of blocks) byPage.set(b.page, `${byPage.get(b.page) ?? ""} ${b.text}`.slice(0, 4000));
+    const records = formulas.map((f) => ({
+      formulaKey: f.formulaKey,
+      latex: f.latex,
+      confidence: f.confidence,
+      ...validateFormulaRecord(f.latex, f.variables, byPage.get(f.page) ?? ""),
+    }));
+    return {
+      documentId,
+      formulas: records.length,
+      needVisualConfirmation: records.filter((r) => r.needsVisualConfirmation).map((r) => r.formulaKey),
+      records,
+    };
+  }
+
+  /**
+   * Structural table audit per table: ragged rows, blank-vs-zero, merged
+   * overlaps, low-confidence cells, repeated headers across pages.
+   */
+  async auditTables(documentId: string) {
+    await this.owned(documentId);
+    const tables = await prisma.docTable.findMany({
+      where: { workspaceId: this.workspaceId, documentId },
+      orderBy: { page: "asc" }, take: 100,
+    });
+    const seen: string[][] = [];
+    return tables.map((t) => {
+      const audit = auditTableCells(
+        (t.cells ?? []) as { row: number; column: number; text: string; confidence?: number; rowspan?: number; colspan?: number }[][],
+        t.headers,
+      );
+      const repeat = repeatedHeaders(t.headers, seen);
+      seen.push(t.headers);
+      return {
+        tableKey: t.tableKey, page: t.page, caption: t.caption,
+        footnotes: t.footnotes, units: t.units,
+        ...audit, repeatedHeader: repeat,
+        status: audit.status === "ok" && !repeat.repeated ? "ok" : "review_required",
+      };
     });
   }
 

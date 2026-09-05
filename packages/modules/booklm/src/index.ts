@@ -92,6 +92,17 @@ export {
   aggregateQuality, parseTranscriptTimestamps,
 } from "./doc-parse";
 export {
+  detectOcrConfusions, assessHandwritingBlock, validateFormulaRecord,
+  figureRecord, chartValueWording, auditTableCells, repeatedHeaders,
+  citationStage, assessDocumentIntegrity, chunkProvenance,
+  lowConfidenceDisclosure, alignTranscriptToSlides, checkCodeExtraction,
+  type OcrConfusion, type HandwritingAssessment, type FormulaValidation,
+  type ChartValueKind, type FigureRecord, type TableCellIssue,
+  type TableCellAudit, type CitationStage, type CitationStageResult,
+  type DocumentStatus, type IntegrityWarning, type IntegrityAssessment,
+  type ChunkProvenance, type AlignedSegment, type CodeExtractionCheck,
+} from "./doc-understanding";
+export {
   jaccard, textSimilarity, classifyDuplicate, extractPropositions,
   detectContradiction, auditCitations, readingProfile, scanBias, scanCultural,
   auditAccessibility, rightsDecision, scanSafety, freshnessState,

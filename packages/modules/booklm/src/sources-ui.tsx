@@ -31,7 +31,10 @@ export interface SourcesActions {
   segments: (documentId: string) => Promise<{ segmentKey: string; start: number; end: number; speaker: string; text: string; confidence: number; linkedSlide: string }[]>;
   correct: (documentId: string, input: { targetType: string; targetId: string; after: string; reason?: string }) => Promise<{ correction: { id: string }; citationsFlagged: number }>;
   corrections: (documentId: string) => Promise<{ id: string; location: string; targetType: string; targetId: string; before: string; after: string; reason: string; reindexStatus: string }[]>;
-  cite: (documentId: string, blockKey: string, claim: string, setId: string) => Promise<{ id: string }>;
+  cite: (documentId: string, blockKey: string, claim: string, setId: string) => Promise<{ id: string; correctionState: string; confidence: number; disclosure: string | null }>;
+  integrity: (documentId: string) => Promise<{ document_status: string; warnings: { type: string; locations: string[]; reason: string; confidence: number }[]; recommended_action: string; blocksHighStakes: boolean }>;
+  validateFormulas: (documentId: string) => Promise<{ formulas: number; needVisualConfirmation: string[] }>;
+  auditTables: (documentId: string) => Promise<{ tableKey: string; status: string; issues: { location: string; kind: string; detail: string }[] }[]>;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -66,6 +69,11 @@ export function SourcesPanel({ setId, actions }: { setId: string; actions: Sourc
   // cite
   const [citeBlock, setCiteBlock] = useState("");
   const [citeClaim, setCiteClaim] = useState("");
+  const [citeNote, setCiteNote] = useState<string | null>(null);
+  // deep validation
+  const [integrity, setIntegrity] = useState<Awaited<ReturnType<SourcesActions["integrity"]>> | null>(null);
+  const [formulaCheck, setFormulaCheck] = useState<Awaited<ReturnType<SourcesActions["validateFormulas"]>> | null>(null);
+  const [tableAudit, setTableAudit] = useState<Awaited<ReturnType<SourcesActions["auditTables"]>> | null>(null);
 
   const load = () => {
     void actions.list(setId).then((d) => {
@@ -79,6 +87,7 @@ export function SourcesPanel({ setId, actions }: { setId: string; actions: Sourc
     setDocId(id);
     setReport(null); setBlocks(null); setCdata(null); setCollection(null);
     setSegments(null); setCorrections(null);
+    setIntegrity(null); setFormulaCheck(null); setTableAudit(null); setCiteNote(null);
     void actions.quality(id).then((r) => setReport(r)).catch(() => undefined);
     void actions.layout(id).then((b) => setBlocks(b)).catch(() => undefined);
   };
@@ -180,9 +189,45 @@ export function SourcesPanel({ setId, actions }: { setId: string; actions: Sourc
             <input className="nv-input" value={citeClaim} onChange={(e) => setCiteClaim(e.target.value)} placeholder="claim this block supports…" style={{ flex: 1, minWidth: 160 }} />
             <Button variant="secondary" size="sm" onClick={() => {
               if (!citeBlock.trim() || !citeClaim.trim()) return;
-              void actions.cite(docId, citeBlock.trim(), citeClaim.trim(), setId).then(() => { setCiteBlock(""); setCiteClaim(""); refresh(); });
+              void actions.cite(docId, citeBlock.trim(), citeClaim.trim(), setId).then((r) => {
+                setCiteBlock(""); setCiteClaim("");
+                setCiteNote(r.disclosure ?? `Cited (${r.correctionState}, conf ${Math.round(r.confidence * 100)}%) — no low-confidence warning.`);
+                refresh();
+              });
             }}>Cite as evidence</Button>
           </div>
+          {citeNote && <div style={{ fontSize: 12, marginTop: 4, color: "var(--nv-color-warning, #b45309)" }}>{citeNote}</div>}
+          {/* Deep validation: integrity, formulas, tables */}
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            <Button variant="ghost" size="sm" onClick={() => void actions.integrity(docId).then(setIntegrity).catch(() => undefined)}>Integrity check</Button>
+            <Button variant="ghost" size="sm" onClick={() => void actions.validateFormulas(docId).then(setFormulaCheck).catch(() => undefined)}>Validate formulas</Button>
+            <Button variant="ghost" size="sm" onClick={() => void actions.auditTables(docId).then(setTableAudit).catch(() => undefined)}>Audit tables</Button>
+          </div>
+          {integrity && (
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              Status: <b>{integrity.document_status.replace(/_/g, " ")}</b>
+              {integrity.blocksHighStakes && <span style={{ color: "var(--nv-color-danger)" }}> — high-stakes claims blocked until confirmed</span>}
+              {integrity.warnings.map((w, i) => (
+                <div key={i} style={{ color: "var(--nv-color-text-faint)" }}>• {w.type.replace(/_/g, " ")}: {w.reason} ({w.locations.join(", ") || "document"})</div>
+              ))}
+            </div>
+          )}
+          {formulaCheck && (
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              {formulaCheck.formulas} formulas · {formulaCheck.needVisualConfirmation.length === 0
+                ? <span style={{ color: "var(--nv-color-success)" }}>all renderable, no ambiguity.</span>
+                : <span style={{ color: "var(--nv-color-danger)" }}>visual confirmation: {formulaCheck.needVisualConfirmation.join(", ")}</span>}
+            </div>
+          )}
+          {tableAudit && (
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              {tableAudit.map((t) => (
+                <div key={t.tableKey}>{t.tableKey}: <b>{t.status.replace(/_/g, " ")}</b>
+                  {t.issues.slice(0, 3).map((x, i) => <span key={i} style={{ color: "var(--nv-color-text-faint)" }}> · {x.kind.replace(/_/g, " ")} @{x.location}</span>)}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
