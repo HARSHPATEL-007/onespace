@@ -52,7 +52,7 @@ const TYPES = [
   "summary", "glossary", "concept_map", "prereq_map", "flashcard_set",
   "practice_test", "case_study", "debate", "lab", "coding_assignment",
   "viva", "revision_sheet", "audio_lesson", "deck", "teaching_notes",
-  "gap_sheet",
+  "gap_sheet", "evidence_graph",
 ];
 
 const STATUS_BADGE: Record<string, string> = {

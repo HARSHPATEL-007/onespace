@@ -17,7 +17,7 @@
  * LearnerConcept/ConceptEdge, LearningItem, SourceDocument).
  */
 import { z } from "zod";
-import { detectSourceGaps } from "./epistemics";
+import { detectSourceGaps, MODE_RULES, examHints, decomposeClaims } from "./epistemics";
 
 // ---------------------------------------------------------------------------
 // Indexed unit — every indexed unit preserves this shape.
@@ -121,6 +121,11 @@ export const retrievalRequestSchema = z.object({
   }).default({ enabled: false, repositories: [] }),
   require_citations: z.boolean().default(true),
   limit: z.number().int().min(1).max(50).default(10),
+  policy: z.object({
+    mode: z.enum(["STRICT", "GUIDED", "EXPLORATORY", "EXAM"]).default("GUIDED"),
+    source_policy: z.enum(["approved-only", "all"]).default("approved-only"),
+    min_coverage: z.number().min(0).max(1).default(0),
+  }).default({}),
 });
 
 export type RetrievalRequest = z.infer<typeof retrievalRequestSchema>;
@@ -1341,10 +1346,55 @@ export class HybridRetrievalService {
       contradictionsPresent: citeGraph.contradictions.length > 0,
     });
 
+    // Source-policy enforcement by course/assessment mode. Approved-only
+    // means the curated citation index (citation_id set) — the codebase's
+    // reviewed-evidence path. If nothing approved addresses the question,
+    // lower-authority results are kept but flagged, never silently passed
+    // off as approved.
+    const rules = MODE_RULES[req.policy.mode];
+    const policyNotes: string[] = [`mode=${req.policy.mode} (${rules.hintsInsteadOfAnswers ? "hints instead of answers" : "answers allowed"})`];
+    let policyCards = cards;
+    let unapprovedUsed = false;
+    if (req.policy.source_policy === "approved-only" || rules.requireApprovedOnly) {
+      const approved = cards.filter((c) => c.citation.id.length > 0);
+      if (approved.length > 0) {
+        policyNotes.push(`approved-only: kept ${approved.length}/${cards.length} cited results`);
+        policyCards = approved;
+      } else if (cards.length > 0) {
+        unapprovedUsed = true;
+        policyNotes.push("No approved source addresses the question — showing lower-authority results, flagged as unapproved.");
+      }
+    }
+    // External sources off: federated results dropped with a note.
+    let policyFederated = federated;
+    if (!rules.externalSources && federated.length > 0) {
+      policyNotes.push(`external sources disabled in ${req.policy.mode} mode — dropped ${federated.length} federated result(s)`);
+      policyFederated = [];
+    }
+    // Coverage gate: refuse thin answers instead of hallucinating depth.
+    const citedFrac = policyCards.length
+      ? policyCards.filter((c) => c.citation.id.length > 0).length / policyCards.length
+      : 0;
+    const minCoverage = Math.max(req.policy.min_coverage, rules.refuseBelowCoverage);
+    let policyRefused = false;
+    let policyRefusal: string | null = null;
+    if (policyCards.length > 0 && citedFrac < minCoverage) {
+      policyRefused = true;
+      policyRefusal = `Citation coverage ${citedFrac.toFixed(2)} below required ${minCoverage.toFixed(2)} (${req.policy.mode} mode) — refusing rather than answering thinly.`;
+      policyNotes.push(policyRefusal);
+    }
+    // Exam mode: hints and retrieval practice, never direct answers.
+    const examHintsOut = req.policy.mode === "EXAM"
+      ? examHints(req.query, decomposeClaims(req.query))
+      : null;
+    if (examHintsOut) {
+      policyNotes.push("Exam mode: hints and retrieval practice provided — direct answers withheld per instructor policy.");
+    }
+
     return {
       query_id: queryId,
       plan,
-      results: cards,
+      results: policyCards,
       // Parallel units array for ACL-bound persistence (GET re-checks).
       units: diverse.map((c) => c.unit),
       graph_paths: graph.paths.map((p) => ({
@@ -1358,7 +1408,9 @@ export class HybridRetrievalService {
       cross_language_fallback: crossLanguageFallback,
       temporal_comparisons: temporalComparisons,
       source_gaps: sourceGaps,
-      federated: federated.slice(0, req.limit).map((h) => ({
+      exam_hints: examHintsOut,
+      answers_withheld: req.policy.mode === "EXAM",
+      federated: policyFederated.slice(0, req.limit).map((h) => ({
         repository: h.repository, document_id: h.document_id, title: h.title,
         availability: h.availability, rights: h.rights, last_indexed: h.last_indexed, citation: h.citation,
       })),
@@ -1376,13 +1428,21 @@ export class HybridRetrievalService {
         source_gap_count: sourceGaps.length,
         secrets_redacted: secretsRedacted,
         federated_duplicates_collapsed: federatedDuplicatesCollapsed,
+        policy_enforcement: {
+          mode: req.policy.mode,
+          source_policy: req.policy.source_policy,
+          cited_fraction: Math.round(citedFrac * 100) / 100,
+          min_coverage: minCoverage,
+          unapproved_used: unapprovedUsed,
+          notes: policyNotes,
+        },
         validation,
         note: federatedUnavailable.length > 0
           ? `Not searched (unavailable): ${federatedUnavailable.join(", ")} — coverage is partial.`
           : "All requested repositories searched.",
       },
-      refused: cards.length === 0,
-      refusal: cards.length === 0 ? NO_EVIDENCE_MESSAGE : null,
+      refused: cards.length === 0 || policyRefused,
+      refusal: cards.length === 0 ? NO_EVIDENCE_MESSAGE : policyRefusal,
     };
   }
 

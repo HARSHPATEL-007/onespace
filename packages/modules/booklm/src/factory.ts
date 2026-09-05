@@ -3,7 +3,7 @@ import { prisma } from "@n0va/db";
 import {
   buildStudyModel, genSummary, genGlossary, genConceptMap, genPrereqMap,
   genFlashcards, genPracticeTest, genCaseStudy, genDebate, genLab, genCoding,
-  genViva, genRevision, genAudioScript, genDeck, genTeachingNotes, genGapSheet,
+  genViva, genRevision, genAudioScript, genDeck, genTeachingNotes, genGapSheet, genEvidenceGraph,
   adaptAccessibility, adaptAge, adaptLanguage,
   validateArtifact, consistencyCheck, reviewPolicy,
   artifactEnvelope, assessmentLeakageCheck, translationTermCheck,
@@ -18,7 +18,7 @@ export const generateSchema = z.object({
     "summary", "glossary", "concept_map", "prereq_map", "flashcard_set",
     "practice_test", "case_study", "debate", "lab", "coding_assignment",
     "viva", "revision_sheet", "audio_lesson", "deck", "teaching_notes",
-    "gap_sheet",
+    "gap_sheet", "evidence_graph",
   ]),
   title: z.string().max(300).default(""),
   depth: z.enum(["quick", "standard", "deep", "exam", "instructor"]).default("standard"),
@@ -143,6 +143,7 @@ export class StudyFactoryService {
       case "deck": content = genDeck(nodes, input.title || "course deck"); break;
       case "teaching_notes": content = genTeachingNotes(nodes, input.topic || "course topic"); break;
       case "gap_sheet": content = genGapSheet(nodes, input.gaps); break;
+      case "evidence_graph": content = genEvidenceGraph(nodes, input.topic || "course topic"); break;
     }
     const sourceDocs = [...new Set(nodes.map((x) => x.source))].slice(0, 20);
     const sourceVersions = (model.sourceVersions ?? []) as string[];

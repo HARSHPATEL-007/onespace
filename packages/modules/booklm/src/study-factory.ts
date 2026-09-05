@@ -1033,3 +1033,109 @@ export function genGapSheet(nodes: ModelNode[], gapLabels: string[]): Record<str
     rule: "scoped to known gaps — deliberate repetition for spaced practice is kept, generic re-summary is not",
   };
 }
+
+export interface EvidenceActivity {
+  activity: string;
+  prompt: string;
+  material: Record<string, string>;
+  answer_key: string;
+  skill: string;
+}
+
+const CAUSAL_HINT = /\b(caus|because|leads to|results in|produces|drives|triggers)\b/i;
+
+/**
+ * Evidence-graph assignments: turn model evidence into research-literacy
+ * practice. Every activity is emitted only when its required inputs exist
+ * in the model; anything unsupported lands in `not_supported` with the
+ * reason instead of being fabricated.
+ */
+export function genEvidenceGraph(nodes: ModelNode[], topic: string): Record<string, unknown> {
+  const evidence = byKind(nodes, "evidence");
+  const concepts = byKind(nodes, "concept");
+  const counter = byKind(nodes, "counterexample");
+  const misc = byKind(nodes, "misconception");
+  const activities: EvidenceActivity[] = [];
+  const notSupported: { activity: string; reason: string }[] = [];
+  const need = (activity: string, reason: string) => notSupported.push({ activity, reason });
+
+  for (const e of evidence.slice(0, 6)) {
+    activities.push({
+      activity: "find_sentence",
+      prompt: `Find the sentence in the source that supports this answer: "${e.label}"`,
+      material: { excerpt: e.text.slice(0, 300), citation: cite(e) },
+      answer_key: e.text.slice(0, 300),
+      skill: "citation location",
+    });
+  }
+  if (evidence.length === 0) need("find_sentence", "no evidence nodes in the model");
+
+  const multiSource = concepts.filter((c) =>
+    evidence.filter((e) => e.label.toLowerCase().includes(c.label.toLowerCase().split(" ")[0] ?? "")).length >= 2,
+  );
+  for (const c of multiSource.slice(0, 3)) {
+    const srcs = evidence.filter((e) => e.label.toLowerCase().includes(c.label.toLowerCase().split(" ")[0] ?? ""));
+    activities.push({
+      activity: "stronger_source",
+      prompt: `Which source is stronger for "${c.label}" and why?`,
+      material: { options: srcs.slice(0, 3).map((s) => `${s.text.slice(0, 120)} [${cite(s)}]`).join(" / ") },
+      answer_key: "Stronger = higher authority, newer version, primary over secondary; cite the comparison.",
+      skill: "source comparison",
+    });
+  }
+  if (concepts.length > 0 && multiSource.length === 0) {
+    need("stronger_source", "no concept has two independent evidence spans to compare");
+  }
+  for (const c of concepts.slice(0, 6)) {
+    activities.push({
+      activity: "classify_statement",
+      prompt: `Classify as fact, inference, or speculation: "${c.text.slice(0, 160)}"`,
+      material: { statement: c.text.slice(0, 300), citation: cite(c) },
+      answer_key: "fact if directly stated in the cited source, inference if concluded, speculation if hypothesized",
+      skill: "epistemic classification",
+    });
+  }
+  if (concepts.length === 0) need("classify_statement", "no concept nodes in the model");
+
+  for (const m of misc.slice(0, 3)) {
+    activities.push({
+      activity: "resolve_contradiction",
+      prompt: `This interpretation was flagged: "${m.text.slice(0, 160)}". What evidence would confirm or overturn it?`,
+      material: { flagged: m.text.slice(0, 300), citation: cite(m) },
+      answer_key: "Name the confirming/overturning evidence explicitly; unresolved stays flagged.",
+      skill: "contradiction resolution",
+    });
+  }
+  if (misc.length === 0) need("resolve_contradiction", "no flagged misconceptions to resolve");
+
+  for (const c of counter.slice(0, 3)) {
+    activities.push({
+      activity: "find_counterexample",
+      prompt: `Produce a counterexample to: "${c.label}"`,
+      material: { claim: c.text.slice(0, 300), citation: cite(c) },
+      answer_key: "A valid counterexample with its own citation; checked against model evidence.",
+      skill: "counterexample construction",
+    });
+  }
+  if (counter.length === 0) need("find_counterexample", "no counterexample nodes in the model");
+
+  const causal = [...concepts, ...evidence].filter((n) => CAUSAL_HINT.test(`${n.label} ${n.text}`));
+  for (const c of causal.slice(0, 3)) {
+    activities.push({
+      activity: "correlation_vs_causation",
+      prompt: `Does this show correlation or causation: "${c.text.slice(0, 160)}"?`,
+      material: { statement: c.text.slice(0, 300), citation: cite(c) },
+      answer_key: "Causation requires mechanism + controls; otherwise correlation — say which and why.",
+      skill: "causal reasoning",
+    });
+  }
+  if (causal.length === 0) need("correlation_vs_causation", "no causal-language statements in the model");
+
+  return {
+    kind: "evidence_graph",
+    topic,
+    activities: activities.slice(0, 24),
+    not_supported: notSupported,
+    rule: "every activity traces to model evidence with citations; unsupported activity kinds are listed, never fabricated",
+  };
+}
