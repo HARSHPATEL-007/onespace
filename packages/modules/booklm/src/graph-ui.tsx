@@ -18,6 +18,26 @@ export interface GraphMisconception {
 export interface GraphGoal { id: string; title: string; status: string; progress: number; competencyKeys: string[] }
 export interface GraphChange { conceptId: string; label: string; delta: number; observations: number; direction: string }
 export interface GraphDecaying { conceptId: string; label: string; key: string; status: string; recall: number; daysSinceVerified: number; predicted: number }
+export interface ClaimView {
+  claim: string; status: string; statusSentence: string;
+  supporting: { dimension: string; value: number; source: string; at: string }[];
+  contradicting: { kind: string; dimension: string; value: number | null; source: string; at: string }[];
+  lastVerifiedAt: string | null;
+}
+export interface TransferView {
+  succeededContexts: string[]; failedContexts: string[];
+  novelAttempts: number; avgNovelty: number | null;
+  transferDistance: string; dimsTransfer: number | null;
+}
+export interface ConfidenceRow {
+  conceptId: string; key: string; label: string; status: string;
+  confidence: number; evidenceCount: number;
+  intervals: Record<string, { lo: number; hi: number; band: string }>;
+}
+export interface SharedCompetency {
+  key: string; shared: boolean;
+  courses: { setId: string; conceptId: string; label: string; status: string; mastery: number | null }[];
+}
 
 export interface GraphData {
   recommendations: GraphRecommendation[];
@@ -38,7 +58,9 @@ export interface GraphActions {
   observe: (input: { conceptId: string; dimension: string; value: number; sourceType: string }) => Promise<unknown>;
   correct: (fd: FormData) => Promise<void>;
   undo: (fd: FormData) => Promise<void>;
-  conceptDetail: (conceptId: string) => Promise<{ history: unknown; cohort: unknown }>;
+  conceptDetail: (conceptId: string) => Promise<{ history: unknown; cohort: unknown; claim: ClaimView | null; transfer: TransferView | null }>;
+  confidenceMap: (setId: string) => Promise<ConfidenceRow[]>;
+  competencyMap: (setIds: string[]) => Promise<SharedCompetency[]>;
   exportGraph: (level: string) => Promise<Record<string, unknown>>;
 }
 
@@ -63,8 +85,11 @@ export function LearnerGraphPanel({ setId, concepts, data, actions }: {
   const refresh = () => router.refresh();
   const [pathIdx, setPathIdx] = useState(1);
   const [conceptId, setConceptId] = useState(concepts[0]?.id ?? "");
-  const [detail, setDetail] = useState<{ history: any; cohort: any } | null>(null);
+  const [detail, setDetail] = useState<{ history: any; cohort: any; claim: ClaimView | null; transfer: TransferView | null } | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [confidence, setConfidence] = useState<ConfidenceRow[] | null>(null);
+  const [compareSet, setCompareSet] = useState("");
+  const [shared, setShared] = useState<SharedCompetency[] | null>(null);
   const [obsDim, setObsDim] = useState("recall");
   const [obsVal, setObsVal] = useState("0.8");
   const [misText, setMisText] = useState("");
@@ -74,7 +99,7 @@ export function LearnerGraphPanel({ setId, concepts, data, actions }: {
     setConceptId(id);
     setLoadingDetail(true);
     void actions.conceptDetail(id)
-      .then((d) => { setDetail(d as { history: any; cohort: any }); setLoadingDetail(false); })
+      .then((d) => { setDetail(d); setLoadingDetail(false); })
       .catch(() => setLoadingDetail(false));
   };
 
@@ -241,7 +266,47 @@ export function LearnerGraphPanel({ setId, concepts, data, actions }: {
           </select>
           <Button variant="secondary" size="sm" onClick={() => conceptId && loadDetail(conceptId)}>{loadingDetail ? "…" : "Inspect"}</Button>
         </div>
-        {detail?.history && <ConceptDetailView history={detail.history as any} cohort={detail.cohort as any} />}
+        {detail?.history && <ConceptDetailView history={detail.history as any} cohort={detail.cohort as any} claim={detail.claim} transfer={detail.transfer} />}
+      </div>
+
+      {/* Confidence map */}
+      <div className="nv-card" style={{ fontSize: 13 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontWeight: 800 }}>📐 Confidence map (intervals, not false precision)</span>
+          <div style={{ flex: 1 }} />
+          <Button variant="secondary" size="sm" onClick={() => void actions.confidenceMap(setId).then(setConfidence).catch(() => undefined)}>Load</Button>
+        </div>
+        {(confidence ?? []).slice(0, 30).map((c) => (
+          <div key={c.conceptId} style={{ fontSize: 12, marginTop: 4 }}>
+            <b>{c.label}</b> · {c.status.toLowerCase()} · conf {Math.round(c.confidence * 100)}% · n={c.evidenceCount}
+            <div style={{ color: "var(--nv-color-text-faint)" }}>
+              {Object.entries(c.intervals).slice(0, 6).map(([d, r]) => `${d} ${r.lo}–${r.hi} (${r.band})`).join(" · ") || "no dimensional estimates yet"}
+            </div>
+          </div>
+        ))}
+        {confidence !== null && confidence.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No tracked concepts yet.</div>
+        )}
+      </div>
+
+      {/* Cross-course competencies */}
+      <div className="nv-card" style={{ fontSize: 13 }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>🔗 Shared competencies (related contexts, never merged)</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <input className="nv-input" value={compareSet} onChange={(e) => setCompareSet(e.target.value)} placeholder="other course/set id…" style={{ flex: 1, minWidth: 160 }} />
+          <Button variant="secondary" size="sm" onClick={() => {
+            if (!compareSet.trim()) return;
+            void actions.competencyMap([setId, compareSet.trim()]).then(setShared).catch(() => undefined);
+          }}>Compare</Button>
+        </div>
+        {(shared ?? []).slice(0, 20).map((g) => (
+          <div key={g.key} style={{ fontSize: 12, marginTop: 4 }}>
+            <b>{g.key}</b> — {g.courses.map((c) => `${c.label}: ${c.status.toLowerCase().replace(/_/g, " ")}${c.mastery !== null ? ` (${Math.round(c.mastery * 100)}%)` : ""}`).join(" · ")}
+          </div>
+        ))}
+        {shared !== null && shared.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No shared concept keys — distinct contexts, nothing forced together.</div>
+        )}
       </div>
 
       {/* Log evidence + corrections */}
@@ -295,7 +360,7 @@ export function LearnerGraphPanel({ setId, concepts, data, actions }: {
   );
 }
 
-function ConceptDetailView({ history, cohort }: { history: any; cohort: any }) {
+function ConceptDetailView({ history, cohort, claim, transfer }: { history: any; cohort: any; claim: ClaimView | null; transfer: TransferView | null }) {
   const m = history?.mastery;
   const dims = (m?.dimensions ?? {}) as Record<string, number>;
   const ranges = (m?.dimensionRanges ?? {}) as Record<string, { lo: number; hi: number; band: string }>;
@@ -340,6 +405,30 @@ function ConceptDetailView({ history, cohort }: { history: any; cohort: any }) {
       )}
       {cohort?.suppressed && (
         <div style={{ color: "var(--nv-color-text-faint)" }}>Cohort comparison suppressed: {cohort.reason}</div>
+      )}
+      {claim && (
+        <div style={{ marginTop: 6, borderTop: "1px solid var(--nv-color-border)", paddingTop: 6 }}>
+          <div><b>Mastery claim:</b> {claim.claim}</div>
+          <div style={{ color: "var(--nv-color-text-faint)" }}>{claim.statusSentence}</div>
+          {claim.supporting.slice(0, 3).map((s, i) => (
+            <div key={i} style={{ color: "var(--nv-color-text-faint)" }}>+ {s.dimension} {Math.round(s.value * 100)}% via {s.source}</div>
+          ))}
+          {claim.contradicting.slice(0, 3).map((c, i) => (
+            <div key={i} style={{ color: "var(--nv-color-danger)" }}>− {c.kind.replace(/_/g, " ")}: {c.dimension} via {c.source}</div>
+          ))}
+        </div>
+      )}
+      {transfer && (
+        <div style={{ marginTop: 6 }}>
+          <div><b>Transfer:</b> {transfer.transferDistance}
+            {transfer.avgNovelty !== null && <span> (avg novelty {transfer.avgNovelty}, {transfer.novelAttempts} novel attempt(s))</span>}
+          </div>
+          {(transfer.succeededContexts.length > 0 || transfer.failedContexts.length > 0) && (
+            <div style={{ color: "var(--nv-color-text-faint)" }}>
+              Succeeded: {transfer.succeededContexts.join(", ") || "—"} · Stalled: {transfer.failedContexts.join(", ") || "—"}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

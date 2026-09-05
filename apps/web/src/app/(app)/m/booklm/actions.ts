@@ -227,6 +227,26 @@ export async function graphUndoAction(formData: FormData) {
   await (await graphSvc()).undoCorrection(String(formData.get("id") ?? ""));
 }
 
+export async function graphClaimAction(conceptId: string) {
+  return (await graphSvc()).masteryClaim(conceptId);
+}
+
+export async function graphTransferAction(conceptId: string) {
+  return (await graphSvc()).transferProfile(conceptId);
+}
+
+export async function graphConfidenceMapAction(setId?: string) {
+  return (await graphSvc()).confidenceMap(setId);
+}
+
+export async function graphCompetencyMapAction(setIds: string[]) {
+  return (await graphSvc()).competencyMap(setIds.slice(0, 10));
+}
+
+export async function adaptModalityEffectsAction(conceptId: string | null) {
+  return (await adaptSvc()).modalityEffects(conceptId);
+}
+
 export async function recGenerateAction(setId: string) {
   return (await recSvc()).generate(setId);
 }
@@ -269,11 +289,13 @@ export async function getGraphDataAction(setId: string) {
 
 export async function getConceptDetailAction(conceptId: string) {
   const g = await graphSvc();
-  const [history, cohort] = await Promise.all([
+  const [history, cohort, claim, transfer] = await Promise.all([
     g.conceptHistory(conceptId).catch(() => null),
     g.cohortComparison(conceptId).catch(() => null),
+    g.masteryClaim(conceptId).catch(() => null),
+    g.transferProfile(conceptId).catch(() => null),
   ]);
-  return { history, cohort };
+  return { history, cohort, claim, transfer };
 }
 
 export async function getGraphExportAction(level: string) {

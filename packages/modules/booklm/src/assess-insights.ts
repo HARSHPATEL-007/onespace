@@ -234,12 +234,16 @@ export class AssessInsightsService {
       orderBy: { createdAt: "asc" }, take: 5000,
     });
     if (obs.length === 0) {
-      return envelope<number | null>({
-        metric: "concept_mastery", value: null,
-        timeWindow: `${since.toISOString().slice(0, 10)}/${new Date().toISOString().slice(0, 10)}`,
-        sampleSize: 0, evidenceSources: [],
-        limitations: ["no observations in window"],
-      });
+      return {
+        ...envelope<number | null>({
+          metric: "concept_mastery", value: null,
+          timeWindow: `${since.toISOString().slice(0, 10)}/${new Date().toISOString().slice(0, 10)}`,
+          sampleSize: 0, evidenceSources: [],
+          limitations: ["no observations in window"],
+        }),
+        conceptKey,
+        label: conceptKey,
+      };
     }
     const values = obs.map((o) => o.value);
     const { mean, ci, n } = meanCI(values);

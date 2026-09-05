@@ -19,8 +19,8 @@ function svc(c: { workspace: { id: string }; user: { id: string }; memberRole: s
 /**
  * GET /v1/learner/adaptive?view=...&conceptId=...&setId=...
  * views: state | diagnose | difficulty | loops | retrieval-due | session |
- * interleave | elaboration-prompts | diagnostic | modality | controls |
- * policy | overrides | strategies
+ * interleave | elaboration-prompts | diagnostic | modality | modality-effects |
+ * controls | policy | overrides | strategies
  */
 export async function GET(req: Request) {
   const c = await ctx();
@@ -54,6 +54,13 @@ export async function GET(req: Request) {
         return NextResponse.json({ items: await a.calibrateDiagnostic(conceptId) });
       case "modality":
         return NextResponse.json({ best: await a.bestModality(conceptId || null) });
+      case "modality-effects": {
+        const rows = await a.modalityEffects(conceptId || null);
+        return NextResponse.json({
+          effects: rows,
+          note: "Per-concept strategy effectiveness — never a universal learner trait.",
+        });
+      }
       case "controls":
         return NextResponse.json({ controls: await a.getControls() });
       case "policy":

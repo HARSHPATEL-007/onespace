@@ -202,6 +202,162 @@ export class LearnerGraphService {
     return { observation: obs, status: inferred.status, reason: inferred.reason };
   }
 
+  /**
+   * Evidence-linked mastery claim: what is asserted, what supports it,
+   * what contradicts it, and the current status in plain language. No
+   * leap from a single quiz score to a broad conclusion.
+   */
+  async masteryClaim(conceptId: string) {
+    const [concept, mastery, observations, misconceptions] = await Promise.all([
+      prisma.learnerConcept.findFirst({ where: { id: conceptId, workspaceId: this.workspaceId } }),
+      prisma.learnerMastery.findUnique({
+        where: { workspaceId_conceptId_userId: { workspaceId: this.workspaceId, conceptId, userId: this.userId } },
+        include: { concept: { select: { key: true, label: true } } },
+      }),
+      prisma.masteryObservation.findMany({
+        where: { workspaceId: this.workspaceId, conceptId, userId: this.userId },
+        orderBy: { createdAt: "desc" }, take: 50,
+      }),
+      prisma.misconception.findMany({
+        where: { workspaceId: this.workspaceId, conceptId, userId: this.userId, status: { notIn: ["RESOLVED", "DISMISSED"] as never } },
+        take: 10,
+      }),
+    ]);
+    if (!concept) throw new Error("Concept not found");
+    const dims = ((mastery?.dimensions ?? {}) as Record<string, number>);
+    const entries = Object.entries(dims).sort((a, b) => b[1] - a[1]);
+    const supporting = observations
+      .filter((o) => o.value >= 0.6)
+      .slice(0, 5)
+      .map((o) => ({
+        dimension: o.dimension, value: o.value,
+        source: `${o.sourceType}:${o.sourceId || "direct"}`,
+        at: o.createdAt.toISOString(), novelty: o.novelty,
+      }));
+    const contradicting = [
+      ...observations
+        .filter((o) => o.value < 0.4)
+        .slice(0, 3)
+        .map((o) => ({
+          kind: "low_observation" as const,
+          dimension: o.dimension, value: o.value,
+          source: `${o.sourceType}:${o.sourceId || "direct"}`,
+          at: o.createdAt.toISOString(),
+        })),
+      ...misconceptions.slice(0, 3).map((m) => ({
+        kind: "misconception" as const,
+        dimension: "conceptual", value: null as number | null,
+        source: `misconception:${m.id}`,
+        at: m.createdAt.toISOString(),
+      })),
+    ];
+    const statusSentence = !mastery
+      ? "No mastery record yet — exposure only, never treated as mastery."
+      : entries.length === 0
+        ? `Status ${mastery.status}: evidence still thin.`
+        : `${entries[0]![0]}: strong; ${entries[entries.length - 1]![0]}: developing. Status ${mastery.status}.`;
+    return {
+      conceptId, key: concept.key, label: concept.label,
+      claim: mastery
+        ? `Mastery ${Math.round(mastery.mastery * 100)}% (${mastery.status}) across ${entries.length} dimension(s), ${mastery.evidenceCount} evidence event(s)`
+        : "No mastery claim — insufficient evidence",
+      status: mastery?.status ?? "UNKNOWN",
+      dimensions: dims,
+      dimensionRanges: (mastery?.dimensionRanges ?? {}) as Record<string, { lo: number; hi: number; band: string }>,
+      supporting,
+      contradicting,
+      statusSentence,
+      lastVerifiedAt: mastery?.lastVerifiedAt?.toISOString() ?? null,
+    };
+  }
+
+  /**
+   * Transfer profile: where knowledge traveled and where it stalled.
+   * Contexts succeeded/failed, novelty distribution, and a distance
+   * summary — transfer measured in genuinely new contexts, not repeats.
+   */
+  async transferProfile(conceptId: string) {
+    const [concept, mastery] = await Promise.all([
+      prisma.learnerConcept.findFirst({ where: { id: conceptId, workspaceId: this.workspaceId } }),
+      prisma.learnerMastery.findUnique({
+        where: { workspaceId_conceptId_userId: { workspaceId: this.workspaceId, conceptId, userId: this.userId } },
+      }),
+    ]);
+    if (!concept) throw new Error("Concept not found");
+    const contexts = ((mastery?.transferContexts ?? []) as { context: string; success: boolean }[]).slice(-20);
+    const novel = await prisma.masteryObservation.findMany({
+      where: { workspaceId: this.workspaceId, conceptId, userId: this.userId, novelty: { gte: 0.5 } },
+      orderBy: { createdAt: "asc" }, take: 100,
+    });
+    const succeeded = contexts.filter((c) => c.success).map((c) => c.context);
+    const failed = contexts.filter((c) => !c.success).map((c) => c.context);
+    const novelties = novel.map((o) => o.novelty);
+    const avgNovelty = novelties.length ? Math.round((novelties.reduce((s, v) => s + v, 0) / novelties.length) * 100) / 100 : null;
+    return {
+      conceptId, key: concept.key, label: concept.label,
+      succeededContexts: [...new Set(succeeded)].slice(0, 10),
+      failedContexts: [...new Set(failed)].slice(0, 10),
+      novelAttempts: novel.length,
+      avgNovelty,
+      transferDistance: avgNovelty == null
+        ? "unmeasured — no novel-context attempts yet"
+        : avgNovelty >= 0.8 ? "far transfer tested" : avgNovelty >= 0.6 ? "near transfer tested" : "low-novelty practice only",
+      dimsTransfer: ((mastery?.dimensions ?? {}) as Record<string, number>).transfer ?? null,
+    };
+  }
+
+  /**
+   * Confidence map: per-concept dimensional intervals (estimate ranges,
+   * not false precision) for the confidence-map graph mode.
+   */
+  async confidenceMap(setId?: string) {
+    const rows = await prisma.learnerMastery.findMany({
+      where: { workspaceId: this.workspaceId, userId: this.userId },
+      include: { concept: { select: { id: true, key: true, label: true, setId: true } } },
+      take: 300,
+    });
+    return rows
+      .filter((m) => !setId || m.concept.setId === setId)
+      .map((m) => ({
+        conceptId: m.conceptId, key: m.concept.key, label: m.concept.label,
+        status: m.status, confidence: m.confidence, evidenceCount: m.evidenceCount,
+        intervals: (m.dimensionRanges ?? {}) as Record<string, { lo: number; hi: number; band: string }>,
+        lastVerifiedAt: m.lastVerifiedAt?.toISOString() ?? null,
+      }));
+  }
+
+  /**
+   * Cross-course competency map: shared concept keys across sets with
+   * per-course status. Related but distinct contexts — never merged into
+   * one number, never treated as contradictory data.
+   */
+  async competencyMap(setIds: string[]) {
+    const concepts = await prisma.learnerConcept.findMany({
+      where: { workspaceId: this.workspaceId, setId: { in: setIds.slice(0, 10) } },
+      take: 500,
+    });
+    const mastery = await prisma.learnerMastery.findMany({
+      where: { workspaceId: this.workspaceId, userId: this.userId },
+      take: 1000,
+    });
+    const byId = new Map(mastery.map((m) => [m.conceptId, m]));
+    const byKey = new Map<string, { key: string; courses: { setId: string; conceptId: string; label: string; status: string; mastery: number | null }[] }>();
+    for (const c of concepts) {
+      const g = byKey.get(c.key) ?? { key: c.key, courses: [] };
+      const m = byId.get(c.id);
+      g.courses.push({
+        setId: c.setId ?? "", conceptId: c.id, label: c.label,
+        status: m?.status ?? "UNKNOWN", mastery: m?.mastery ?? null,
+      });
+      byKey.set(c.key, g);
+    }
+    return [...byKey.values()]
+      .filter((g) => g.courses.length > 1)
+      .map((g) => ({ ...g, shared: true as const }))
+      .sort((a, b) => b.courses.length - a.courses.length)
+      .slice(0, 100);
+  }
+
   // -- Temporal queries -------------------------------------------------------
   async conceptHistory(conceptId: string, limit = 50) {
     const [concept, observations, mastery] = await Promise.all([

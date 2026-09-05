@@ -20,6 +20,7 @@ export interface AdaptActions {
   interleave: (setId: string, level: "low" | "moderate" | "high") => Promise<{ sets: { conceptKey: string; label: string; count: number; kind: string }[]; comparisonItems: number; reason: string }>;
   override: (fd: FormData) => Promise<void>;
   decisionControl: (id: string, control: string, note: string, modifiedAction?: string) => Promise<unknown>;
+  modalityEffects: (conceptId: string | null) => Promise<{ modality: string; trials: number; gainPerTrial: number; verdict: string; note: string }[]>;
   resetLevel: (conceptId: string) => Promise<{ reset: boolean; note: string }>;
 }
 
@@ -83,6 +84,8 @@ export function AdaptivePanel({ setId, concepts, actions, isInstructor }: {
   // interleave
   const [ilevel, setIlevel] = useState<"low" | "moderate" | "high">("moderate");
   const [iset, setIset] = useState<{ sets: { conceptKey: string; label: string; count: number; kind: string }[]; comparisonItems: number; reason: string } | null>(null);
+  // modality effectiveness
+  const [effects, setEffects] = useState<{ modality: string; trials: number; gainPerTrial: number; verdict: string; note: string }[] | null>(null);
 
   const loadState = (id: string) => {
     setConceptId(id);
@@ -272,6 +275,24 @@ export function AdaptivePanel({ setId, concepts, actions, isInstructor }: {
             {iset.sets.map((s, i) => <div key={i}>• {s.count}× {s.label} ({s.kind})</div>)}
             {iset.comparisonItems > 0 && <div>• 1× comparison question (confusable pair)</div>}
           </div>
+        )}
+      </div>
+
+      {/* Strategy effectiveness */}
+      <div className="nv-card" style={{ fontSize: 13 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontWeight: 800 }}>🧪 What works here (per concept, not a trait)</span>
+          <div style={{ flex: 1 }} />
+          <Button variant="secondary" size="sm" onClick={() => void actions.modalityEffects(conceptId || null).then(setEffects).catch(() => undefined)}>Load</Button>
+        </div>
+        {(effects ?? []).map((e) => (
+          <div key={e.modality} style={{ fontSize: 12, marginTop: 2 }}>
+            <b>{e.modality}</b> · {e.verdict} · gain/trial {e.gainPerTrial} · {e.trials} trial(s)
+            <span style={{ color: "var(--nv-color-text-faint)" }}> — {e.note}</span>
+          </div>
+        ))}
+        {effects !== null && effects.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>No tracked trials yet — effects appear after repeated use.</div>
         )}
       </div>
 

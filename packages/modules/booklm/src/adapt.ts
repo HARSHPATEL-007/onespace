@@ -157,6 +157,19 @@ export class AdaptiveService {
       const v = pm?.mastery ?? 0;
       if (v < policy.prereqThreshold) blocking.push({ id: d.fromId, label: d.from.label, mastery: v });
     }
+    // Soft prerequisites: helpful context, never blocking.
+    const softDeps = await prisma.conceptDependency.findMany({
+      where: { workspaceId: this.workspaceId, toId: conceptId, kind: { in: ["SOFT", "RECOMMENDED"] as never } },
+      include: { from: { select: { id: true, label: true, key: true } } },
+      take: 20,
+    });
+    const soft: { id: string; label: string; mastery: number | null; kind: string }[] = [];
+    for (const d of softDeps.slice(0, 10)) {
+      const pm = await prisma.learnerMastery.findUnique({
+        where: { workspaceId_conceptId_userId: { workspaceId: this.workspaceId, conceptId: d.fromId, userId: this.userId } },
+      }).catch(() => null);
+      soft.push({ id: d.fromId, label: d.from.label, mastery: pm?.mastery ?? null, kind: "soft" });
+    }
     let errorType: ErrorType | null = null;
     if (last && !last.correct) errorType = classifyError(last.answer, last.reasoning, last.correct);
     const dims = ((mastery?.dimensions ?? {}) as Record<string, number>);
@@ -169,6 +182,7 @@ export class AdaptiveService {
       remediation: errorType ? REMEDIATION[errorType] : null,
       misconceptions: activeMisc.map((m) => ({ id: m.id, statement: m.statement, status: m.status })),
       blockingPrerequisites: blocking,
+      softPrerequisites: soft,
       transferGap: familiar && novelWeak,
       calibrationIssue: null as string | null,
     };
@@ -606,6 +620,30 @@ export class AdaptiveService {
       .map((r) => ({ modality: r.modality, gainPerMin: r.gainSum / r.trials, trials: r.trials }))
       .sort((a, b) => b.gainPerMin - a.gainPerMin);
     return ranked[0] ?? null;
+  }
+
+  /**
+   * Strategy effectiveness by concept and context: every tracked modality
+   * with trials, gain rate, and an insufficiency note below 3 trials.
+   * Per-concept, never a universal learner trait.
+   */
+  async modalityEffects(conceptId: string | null) {
+    const rows = await prisma.modalityEffect.findMany({
+      where: { workspaceId: this.workspaceId, userId: this.userId, conceptId: conceptId ?? null },
+      take: 20,
+    });
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    return rows
+      .map((r) => ({
+        modality: r.modality,
+        trials: r.trials,
+        gainPerTrial: r.trials > 0 ? r2(r.gainSum / r.trials) : 0,
+        verdict: r.trials < 3
+          ? ("insufficient" as const)
+          : r.gainSum / r.trials >= 0.15 ? ("high" as const) : r.gainSum / r.trials >= 0.05 ? ("moderate" as const) : ("low" as const),
+        note: r.trials < 3 ? "fewer than 3 trials — insufficient evidence" : "tracked gain per trial on this concept",
+      }))
+      .sort((a, b) => b.gainPerTrial - a.gainPerTrial);
   }
 
   // -- Learner controls (preferences on the default profile) ------------------------------

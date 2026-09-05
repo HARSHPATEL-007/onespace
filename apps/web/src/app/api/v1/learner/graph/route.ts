@@ -16,7 +16,10 @@ async function ctx() {
   return requireWorkspace().catch(() => null);
 }
 
-/** GET /v1/learner/graph?conceptId=... — concept history (temporal learner graph). */
+/**
+ * GET /v1/learner/graph?conceptId=... — history | mastery-claim | transfer |
+ * confidence-map | competency-map | changed | decaying | export.
+ */
 export async function GET(req: Request) {
   const c = await ctx();
   if (!c) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -30,6 +33,24 @@ export async function GET(req: Request) {
     }
     if (what === "decaying") {
       return NextResponse.json({ decaying: await svc(c).decayedSkills() });
+    }
+    if (what === "mastery-claim") {
+      if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
+      return NextResponse.json(await svc(c).masteryClaim(conceptId));
+    }
+    if (what === "transfer") {
+      if (!conceptId) return NextResponse.json({ error: "conceptId required" }, { status: 400 });
+      return NextResponse.json(await svc(c).transferProfile(conceptId));
+    }
+    if (what === "confidence-map") {
+      return NextResponse.json({
+        confidence: await svc(c).confidenceMap(url.searchParams.get("setId") ?? undefined),
+      });
+    }
+    if (what === "competency-map") {
+      const setIds = (url.searchParams.get("setIds") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+      if (setIds.length === 0) return NextResponse.json({ error: "setIds required (comma-separated)" }, { status: 400 });
+      return NextResponse.json({ shared: await svc(c).competencyMap(setIds) });
     }
     if (what === "export") {
       const format = url.searchParams.get("format") ?? "jsonld";
