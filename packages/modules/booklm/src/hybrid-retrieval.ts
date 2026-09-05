@@ -17,6 +17,7 @@
  * LearnerConcept/ConceptEdge, LearningItem, SourceDocument).
  */
 import { z } from "zod";
+import { detectSourceGaps } from "./epistemics";
 
 // ---------------------------------------------------------------------------
 // Indexed unit — every indexed unit preserves this shape.
@@ -1322,6 +1323,24 @@ export class HybridRetrievalService {
     // (e.g. current + historical) gets an explicit old-vs-new comparison.
     const temporalComparisons = this.compareVersions(diverse).slice(0, 3);
 
+    // Source-gap detection: recommend what KIND of evidence is missing
+    // instead of generating more text. Approved = present in the curated
+    // citation index (citation_id set), the codebase's reviewed-evidence
+    // path; fresh = currently valid; opposition = contradiction surfaced.
+    const sourceGaps = detectSourceGaps({
+      query: req.query,
+      intent: plan.intent,
+      evidence: diverse.map((c) => ({
+        modality: c.unit.modality,
+        authority: c.unit.source_reliability,
+        approved: c.unit.citation_id.length > 0,
+        fresh: c.validity === "current",
+        hasContradiction: c.contradictions !== "None flagged",
+        documentId: c.unit.document_id,
+      })),
+      contradictionsPresent: citeGraph.contradictions.length > 0,
+    });
+
     return {
       query_id: queryId,
       plan,
@@ -1338,6 +1357,7 @@ export class HybridRetrievalService {
       study_path: studyPath,
       cross_language_fallback: crossLanguageFallback,
       temporal_comparisons: temporalComparisons,
+      source_gaps: sourceGaps,
       federated: federated.slice(0, req.limit).map((h) => ({
         repository: h.repository, document_id: h.document_id, title: h.title,
         availability: h.availability, rights: h.rights, last_indexed: h.last_indexed, citation: h.citation,
@@ -1353,6 +1373,7 @@ export class HybridRetrievalService {
         citation_path_count: citeGraph.paths.length,
         contradiction_count: citeGraph.contradictions.length,
         cross_language_fallback: crossLanguageFallback,
+        source_gap_count: sourceGaps.length,
         secrets_redacted: secretsRedacted,
         federated_duplicates_collapsed: federatedDuplicatesCollapsed,
         validation,

@@ -1,5 +1,6 @@
 import { auth } from "@n0va/auth";
 import { EvidenceService } from "@n0va/modules-booklm/evidence";
+import { auditQualifierDrift } from "@n0va/modules-booklm/epistemics";
 import { requireWorkspace } from "@/lib/context";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
         access_scope: r.citation.accessScope,
         epistemic_state: r.citation.epistemicState,
         verification_label: r.citation.verificationLabel,
+        qualifier_audit: auditQualifierDrift(r.citation.claim, r.citation.quote),
         stages: { lexical: r.lexical, semantic: r.semantic, structural: r.structural, temporal: r.temporal, authority: r.authority, coverage: r.coverage },
         score: r.score,
         policy: r.policyCheck,

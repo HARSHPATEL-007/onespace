@@ -164,8 +164,11 @@ export {
   compositeRerank, DEFAULT_WEIGHTS, detectQueryType, policyForQueryType,
   deriveVerificationLabel, epistemicStateFor, scoreEvidenceQuality,
   classifyContradiction, MODE_RULES, examHints,
+  auditQualifierDrift, detectSourceGaps, buildEvidenceCredential,
   type EpistemicState, type VerificationLabel, type AnswerMode, type QueryType,
   type ContradictionKind, type AtomicClaim, type EvidenceQualityScores,
+  type QualifierDrift, type SourceGap, type SourceGapInput,
+  type CredentialClaim, type EvidenceCredential,
 } from "./epistemics";
 export { KnowledgeService, conceptSchema, edgeSchema } from "./knowledge";
 export { TutorService, sessionSchema, memorySchema, decisionSchema, TUTOR_MODES } from "./tutor";

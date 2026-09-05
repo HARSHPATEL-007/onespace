@@ -108,6 +108,227 @@ export function detectCausalOverreach(claim: string, excerpt: string): { overrea
 }
 
 // ---------------------------------------------------------------------------
+// Qualifier-drift audit: per-qualifier accounting of what the claim kept,
+// dropped, or strengthened relative to the excerpt. "may" must never
+// silently become "will".
+// ---------------------------------------------------------------------------
+
+const STRENGTHENER_WORDS = [
+  "will", "always", "never", "all", "none", "every", "must", "cannot",
+  "impossible", "certain", "definitively", "conclusively", "proves",
+  "guarantees", "causes", "demonstrates",
+];
+
+export interface QualifierDrift {
+  dropped: string[];
+  added: string[];
+  strengtheners: string[];
+  verdict: "preserved" | "weakened" | "strengthened";
+  note: string;
+}
+
+export function auditQualifierDrift(claim: string, excerpt: string): QualifierDrift {
+  const claimQ = detectQualifiers(claim);
+  const excerptQ = detectQualifiers(excerpt);
+  const dropped = excerptQ.filter((q) => !claimQ.includes(q));
+  const added = claimQ.filter((q) => !excerptQ.includes(q));
+  const lowClaim = claim.toLowerCase();
+  const lowExcerpt = excerpt.toLowerCase();
+  const strengtheners = STRENGTHENER_WORDS.filter((w) => lowClaim.includes(w) && !lowExcerpt.includes(w));
+  const verdict = dropped.length > 0 || strengtheners.length > 0
+    ? "strengthened"
+    : added.length > 0 ? "weakened" : "preserved";
+  const note = verdict === "preserved"
+    ? "Claim preserves source hedging."
+    : verdict === "strengthened"
+      ? `Claim overstates the source${dropped.length > 0 ? ` (dropped: ${dropped.join(", ")})` : ""}${strengtheners.length > 0 ? ` (added strength: ${strengtheners.join(", ")})` : ""}.`
+      : `Claim hedges beyond the source (added: ${added.join(", ")}).`;
+  return { dropped, added, strengtheners, verdict, note };
+}
+
+// ---------------------------------------------------------------------------
+// Source-gap detection: recommend what KIND of evidence is missing instead
+// of generating more text.
+// ---------------------------------------------------------------------------
+
+export interface SourceGapInput {
+  query: string;
+  intent: string;
+  domain?: string;
+  evidence: {
+    modality: string;
+    authority: number;
+    approved: boolean;
+    fresh: boolean;
+    hasContradiction?: boolean;
+    documentId?: string;
+  }[];
+  contradictionsPresent: boolean;
+  highDecayDomain?: boolean;
+}
+
+export interface SourceGap {
+  kind: string;
+  why: string;
+  query_hint: string;
+}
+
+const GAP_CAP = 6;
+
+/**
+ * Recommend missing evidence kinds from the shape of what was retrieved:
+ * corroboration, approval, currency, opposition, definition, procedure,
+ * timestamped media, or tabular proof. Never invents sources — every gap
+ * names the query that would close it.
+ */
+export function detectSourceGaps(input: SourceGapInput): SourceGap[] {
+  const gaps: SourceGap[] = [];
+  const push = (kind: string, why: string, query_hint: string) => {
+    if (gaps.length < GAP_CAP && !gaps.some((g) => g.kind === kind)) {
+      gaps.push({ kind, why, query_hint });
+    }
+  };
+  const ev = input.evidence;
+  if (ev.length === 0) {
+    return [{
+      kind: "any_evidence",
+      why: "No retrievable evidence for this query under current filters and access scope.",
+      query_hint: `Broaden the query, check access scope, or confirm the material is indexed: "${input.query.slice(0, 120)}"`,
+    }];
+  }
+  const distinctDocs = new Set(ev.map((e) => e.documentId ?? e.modality).filter(Boolean)).size;
+  if (ev.length === 1 || distinctDocs <= 1) {
+    push(
+      "independent_corroboration",
+      distinctDocs <= 1
+        ? "All evidence comes from a single document; independent corroboration is missing."
+        : "A single evidence span supports the answer; independent corroboration is missing.",
+      `Find a second independent source for: "${input.query.slice(0, 120)}"`,
+    );
+  }
+  if (!ev.some((e) => e.approved)) {
+    push(
+      "approved_source",
+      "No instructor-approved or course-authoritative source addresses the question.",
+      `Restrict to approved course materials for: "${input.query.slice(0, 120)}"`,
+    );
+  }
+  if (input.highDecayDomain && !ev.some((e) => e.fresh)) {
+    push(
+      "current_data",
+      `No current evidence in a fast-decay domain${input.domain ? ` (${input.domain})` : ""}.`,
+      `Find evidence valid now for: "${input.query.slice(0, 120)}"`,
+    );
+  }
+  if (input.contradictionsPresent && !ev.some((e) => e.hasContradiction)) {
+    push(
+      "opposing_view",
+      "Contradicting evidence exists but is not represented in this result set.",
+      `Retrieve the opposing position with citations for: "${input.query.slice(0, 120)}"`,
+    );
+  }
+  if (input.intent === "exact_definition" && !ev.some((e) => e.modality === "text" || e.modality === "glossary")) {
+    push(
+      "authoritative_definition",
+      "A definition question without a glossary or definitional passage.",
+      `Find the course glossary definition for: "${input.query.slice(0, 120)}"`,
+    );
+  }
+  if ((input.intent === "calculation" || /how (do|to|can) i\b/i.test(input.query)) &&
+    !ev.some((e) => e.modality === "table" || e.modality === "formula" || e.modality === "procedure")) {
+    push(
+      "worked_procedure",
+      "A how-to/calculation question without tabular, formula, or procedural evidence.",
+      `Find a worked example or procedure for: "${input.query.slice(0, 120)}"`,
+    );
+  }
+  if ((input.intent === "lecture_location" || input.intent === "find_diagram") &&
+    !ev.some((e) => e.modality === "video" || e.modality === "audio" || e.modality === "image")) {
+    push(
+      "timestamped_media",
+      "A media-seeking question with no timestamped audio/video/image evidence.",
+      `Find the lecture timestamp or figure for: "${input.query.slice(0, 120)}"`,
+    );
+  }
+  return gaps;
+}
+
+// ---------------------------------------------------------------------------
+// Evidence-aware credentials: what a learner can support, not just complete.
+// ---------------------------------------------------------------------------
+
+export interface CredentialClaim {
+  text: string;
+  evidenceRefs: string[];
+  verdict: string;
+  sourceVersions?: string[];
+}
+
+export interface EvidenceCredential {
+  minted: boolean;
+  learnerId: string;
+  conceptId: string;
+  supportedClaims: { text: string; evidenceRefs: string[]; verdict: string }[];
+  unsupportedClaims: { text: string; verdict: string; reason: string }[];
+  coverage: number;
+  sourceVersions: string[];
+  modelVersion: string;
+  retrievalVersion: string;
+  issuedAt: string;
+  refusal: string | null;
+}
+
+const CREDENTIAL_SUPPORTING = new Set(["DIRECTLY_SUPPORTED", "QUALIFIED_SUPPORT", "SYNTHESIZED"]);
+
+/**
+ * Mint a credential only from verified claims: each supported claim needs a
+ * supporting verdict AND at least one evidence ref. Unsupported claims are
+ * listed explicitly as not credentialed — completion alone mints nothing.
+ */
+export function buildEvidenceCredential(args: {
+  learnerId: string;
+  conceptId: string;
+  claims: CredentialClaim[];
+  sourceVersions?: string[];
+  modelVersion?: string;
+  retrievalVersion?: string;
+  issuedAt?: string;
+}): EvidenceCredential {
+  const supported: EvidenceCredential["supportedClaims"] = [];
+  const unsupported: EvidenceCredential["unsupportedClaims"] = [];
+  for (const c of args.claims) {
+    if (CREDENTIAL_SUPPORTING.has(c.verdict) && c.evidenceRefs.length > 0) {
+      supported.push({ text: c.text, evidenceRefs: c.evidenceRefs, verdict: c.verdict });
+    } else {
+      unsupported.push({
+        text: c.text,
+        verdict: c.verdict,
+        reason: c.evidenceRefs.length === 0
+          ? "No evidence references — not credentialed."
+          : `Verdict ${c.verdict} does not support credentialing.`,
+      });
+    }
+  }
+  const coverage = args.claims.length
+    ? Math.round((supported.length / args.claims.length) * 100) / 100
+    : 0;
+  const minted = supported.length > 0;
+  return {
+    minted,
+    learnerId: args.learnerId,
+    conceptId: args.conceptId,
+    supportedClaims: supported,
+    unsupportedClaims: unsupported,
+    coverage,
+    sourceVersions: args.sourceVersions ?? [],
+    modelVersion: args.modelVersion ?? "unknown",
+    retrievalVersion: args.retrievalVersion ?? "unknown",
+    issuedAt: args.issuedAt ?? new Date().toISOString(),
+    refusal: minted ? null : "No verified claims — credential refused rather than minted on completion alone.",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Freshness: F(t) = e^(-λΔt), domain-specific decay.
 // ---------------------------------------------------------------------------
 
