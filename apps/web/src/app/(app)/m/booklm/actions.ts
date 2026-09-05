@@ -227,6 +227,10 @@ export async function graphUndoAction(formData: FormData) {
   await (await graphSvc()).undoCorrection(String(formData.get("id") ?? ""));
 }
 
+export async function graphCorrectionPreviewAction(targetType: string, targetId: string) {
+  return (await graphSvc()).correctionImpactPreview(targetType, targetId);
+}
+
 export async function graphClaimAction(conceptId: string) {
   return (await graphSvc()).masteryClaim(conceptId);
 }
@@ -269,6 +273,18 @@ export async function misAdvanceAction(id: string, to: string) {
 
 export async function misAcknowledgeAction(id: string, acknowledged: boolean) {
   await (await misSvc()).acknowledge(id, acknowledged);
+}
+
+export async function misClustersAction() {
+  return (await misSvc()).clusters();
+}
+
+export async function misRootCauseAction(conceptId: string) {
+  return (await misSvc()).rootCauseHints(conceptId);
+}
+
+export async function misCounterevidenceAction(id: string, evidenceIds: string[]) {
+  return (await misSvc()).attachCounterevidence(id, evidenceIds.slice(0, 30));
 }
 
 export async function getGraphDataAction(setId: string) {

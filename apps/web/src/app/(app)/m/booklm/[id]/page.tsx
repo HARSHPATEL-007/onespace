@@ -10,7 +10,8 @@ import { BooklmEnhancements } from "@n0va/modules-booklm/enhanced";
 import { RetrievalWorkbench } from "@n0va/modules-booklm/retrieval-workbench";
 import { getRetrievalPlanAction, runRetrievalQueryAction, submitRetrievalFeedbackAction } from "../retrieval-actions";
 import { requireWorkspace } from "@/lib/context";
-import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction,   getGraphDataAction, getConceptDetailAction, getGraphExportAction,
+import { updateLearningSetAction, addLearningItemAction, removeLearningItemAction, moveLearningItemAction, askGroundedAction, askGroundedActionV2, addCitationAction, challengeEvidenceAction, resolveChallengeAction, upsertPolicyAction, getEvalAction, seedConceptsAction, recordRetrievalAction, startTutorSessionAction, rememberMemoryAction, forgetMemoryAction, logDecisionAction, createAssessmentAction, submitGradeAction, appealGradeAction, recordQuizAttemptAction, getMaterialsAction, graphObserveAction, graphGoalAction, graphProfileAction, graphCorrectionAction, graphUndoAction, recGenerateAction, recStatusAction, misReportAction, misAdvanceAction, misAcknowledgeAction,   getGraphDataAction, getConceptDetailAction, getGraphExportAction, graphCorrectionPreviewAction,
+  misClustersAction, misRootCauseAction, misCounterevidenceAction,
   graphConfidenceMapAction, graphCompetencyMapAction, adaptPlanAction, adaptRespondAction, adaptStateAction, adaptSessionAction, adaptSessionAcceptAction, adaptDueAction, adaptAnswerRetrievalAction, adaptElaborateAction, adaptControlAction, adaptControlsAction, adaptOverrideAction, adaptInterleaveAction, adaptResetLevelAction, adaptModalityEffectsAction, tutorAgentsAction, tutorTurnAction, tutorSessionDetailAction, tutorEscalationsAction, tutorResolveEscalationAction, tutorProgressAction, tutorModePolicyAction, tutorModeQualityAction, tutorReplayAction, memoryListAction, memoryCreateAction, memoryConfirmAction, memoryCorrectAction, memoryDeleteAction, memoryPauseAction, memoryScopeAction, memoryForgetAction, memoryForgetScopeAction, memoryProposeAction, memoryClassroomConflictAction, memoryDoNotInferAction, memoryClassroomAction, memoryClassroomProposeAction, memoryClassroomApproveAction, memoryExportAction, memoryScanAction, decisionListAction, decisionCardAction, decisionControlAction, decisionDetailAction, decisionEducatorAction, decisionMetricsAction, assessProfileAction, assessLogEvidenceAction, assessReportsAction, assessBlueprintAction, assessBlueprintsAction, assessBlueprintCheckAction, integrityStatusAction, integrityAppealAction, integrityAppealsAction, integrityQueueAction, integrityReviewAction, integrityAppealResolveAction, integrityOverviewAction, integrityMetricsAction, integritySimilarityAction, integrityItemAction, integrityVariantAction, integrityItemStatusAction, integrityExposureAction, integrityAccommodationsAction, integrityAccommodationAction, integrityDefenseAction, integrityDefensesAction, integrityDefenseScoreAction, integrityPacketAction, integrityTechnicalEventAction, integrityCodeProcessAction } from "../actions";
 import { PolicyService } from "@n0va/modules-booklm/policies";
 import {
@@ -162,9 +163,14 @@ export default async function LearningSetPage({ params }: { params: Promise<{ id
             recStatus: recStatusAction,
             reportMisconception: misReportAction,
             acknowledge: misAcknowledgeAction,
+            advanceMisconception: misAdvanceAction,
+            misClusters: misClustersAction,
+            misRootCause: misRootCauseAction,
+            misCounterevidence: misCounterevidenceAction,
             addGoal: graphGoalAction,
             observe: graphObserveAction,
             correct: graphCorrectionAction,
+            correctionPreview: graphCorrectionPreviewAction,
             undo: graphUndoAction,
             conceptDetail: getConceptDetailAction,
             exportGraph: getGraphExportAction,

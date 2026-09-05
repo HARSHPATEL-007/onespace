@@ -49,14 +49,27 @@ export interface GraphData {
   decaying: GraphDecaying[];
 }
 
+export interface GraphCluster {
+  size: number; conceptIds: string[];
+  statements: { id: string; statement: string; status: string; severity: string }[];
+  learnerLabel: string;
+}
+export interface RootCauseHint { withConcept: string; hint: string; confidence: number }
+export interface CorrectionPreview { affectedRecommendations: { id: string; action: string }[]; note: string }
+
 export interface GraphActions {
   generate: (setId: string) => Promise<unknown>;
   recStatus: (id: string, status: "ACCEPTED" | "REJECTED" | "DISMISSED") => Promise<void>;
   reportMisconception: (input: { conceptId: string; statement: string }) => Promise<unknown>;
   acknowledge: (id: string, acknowledged: boolean) => Promise<void>;
+  advanceMisconception: (id: string, to: string) => Promise<unknown>;
+  misClusters: () => Promise<GraphCluster[]>;
+  misRootCause: (conceptId: string) => Promise<RootCauseHint[]>;
+  misCounterevidence: (id: string, evidenceIds: string[]) => Promise<unknown>;
   addGoal: (fd: FormData) => Promise<void>;
   observe: (input: { conceptId: string; dimension: string; value: number; sourceType: string }) => Promise<unknown>;
   correct: (fd: FormData) => Promise<void>;
+  correctionPreview: (targetType: string, targetId: string) => Promise<CorrectionPreview>;
   undo: (fd: FormData) => Promise<void>;
   conceptDetail: (conceptId: string) => Promise<{ history: unknown; cohort: unknown; claim: ClaimView | null; transfer: TransferView | null }>;
   confidenceMap: (setId: string) => Promise<ConfidenceRow[]>;
@@ -76,6 +89,20 @@ const REASON_LABEL: Record<string, string> = {
   prerequisite_gap: "Prerequisite gap", misconception_detected: "Interpretation to revisit",
   mastery_decay: "Memory decay", goal_alignment: "Goal alignment",
   transfer_opportunity: "Transfer opportunity", recent_struggle: "Recent struggle",
+};
+
+/** Allowed lifecycle moves, mirroring the server transition table. */
+const NEXT_STAGES: Record<string, string[]> = {
+  CANDIDATE: ["EVIDENCE_GATHERING", "DISMISSED"],
+  EVIDENCE_GATHERING: ["TESTING", "DISMISSED"],
+  TESTING: ["CLARIFICATION", "CONFIRMED", "DISMISSED"],
+  CLARIFICATION: ["CONFIRMED", "DISMISSED"],
+  CONFIRMED: ["REMEDIATION", "DORMANT"],
+  REMEDIATION: ["REASSESSED", "PERSISTENT"],
+  REASSESSED: ["RESOLVED", "PERSISTENT", "REMEDIATION"],
+  PERSISTENT: ["REMEDIATION", "DORMANT"],
+  DORMANT: ["EVIDENCE_GATHERING", "RESOLVED"],
+  RESOLVED: [], DISMISSED: [],
 };
 
 export function LearnerGraphPanel({ setId, concepts, data, actions }: {
@@ -190,19 +217,11 @@ export function LearnerGraphPanel({ setId, concepts, data, actions }: {
         </div>
       )}
 
-      {/* Misconceptions — learner-safe language */}
+      {/* Misconceptions — learner-safe language, full lifecycle */}
       <div className="nv-card" style={{ fontSize: 13 }}>
         <div style={{ fontWeight: 800, marginBottom: 6 }}>🔍 Interpretations to revisit ({data.misconceptions.length})</div>
         {data.misconceptions.map((m) => (
-          <div key={m.id} style={{ fontSize: 12, borderTop: "1px solid var(--nv-color-border)", paddingTop: 6, marginTop: 6 }}>
-            <div>“{m.statement}” — <i>{STAGE_LABEL[m.status] ?? m.status}</i> ({m.concept.label})</div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
-              <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                <input type="checkbox" checked={m.learnerAcknowledged} onChange={(e) => void actions.acknowledge(m.id, e.target.checked).then(refresh)} />
-                I see why this needs a look
-              </label>
-            </div>
-          </div>
+          <MisconceptionCard key={m.id} m={m} actions={actions} refresh={refresh} />
         ))}
         {data.misconceptions.length === 0 && <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)" }}>None active.</div>}
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
@@ -215,6 +234,7 @@ export function LearnerGraphPanel({ setId, concepts, data, actions }: {
             void actions.reportMisconception({ conceptId, statement: misText.trim() }).then(() => { setMisText(""); refresh(); });
           }}>Report</Button>
         </div>
+        <ClusterView actions={actions} />
       </div>
 
       {/* Decay */}
@@ -330,19 +350,7 @@ export function LearnerGraphPanel({ setId, concepts, data, actions }: {
         </div>
         <details style={{ marginTop: 8 }}>
           <summary style={{ fontSize: 12, cursor: "pointer" }}>Correct an assumption (scoped, reversible)</summary>
-          <form action={(fd) => void actions.correct(fd).then(refresh)} style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-            <input type="hidden" name="targetType" value="mastery" />
-            <input type="hidden" name="targetId" value={conceptId} />
-            <input className="nv-input" name="field" placeholder="dimension (e.g. transfer)" required style={{ width: 170 }} />
-            <input className="nv-input" name="newValue" placeholder="new value 0..1" required style={{ width: 130 }} />
-            <select className="nv-input" name="scope" defaultValue="profile" style={{ width: 150 }}>
-              <option value="profile">This profile only</option>
-              <option value="course">This course</option>
-              <option value="all">All learning</option>
-            </select>
-            <input className="nv-input" name="reason" placeholder="reason (optional)" style={{ flex: 1, minWidth: 140 }} />
-            <Button size="sm" type="submit">Apply correction</Button>
-          </form>
+          <CorrectionForm conceptId={conceptId} actions={actions} refresh={refresh} />
         </details>
       </div>
 
@@ -357,6 +365,107 @@ export function LearnerGraphPanel({ setId, concepts, data, actions }: {
         </div>
       </div>
     </div>
+  );
+}
+
+function MisconceptionCard({ m, actions, refresh }: { m: GraphMisconception; actions: GraphActions; refresh: () => void }) {
+  const [err, setErr] = useState("");
+  const [hints, setHints] = useState<RootCauseHint[] | null>(null);
+  const [ceText, setCeText] = useState("");
+  const next = NEXT_STAGES[m.status] ?? [];
+  const go = (to: string) => {
+    setErr("");
+    void actions.advanceMisconception(m.id, to).then(refresh).catch((e) => setErr(e instanceof Error ? e.message : "Move not allowed"));
+  };
+  return (
+    <div style={{ fontSize: 12, borderTop: "1px solid var(--nv-color-border)", paddingTop: 6, marginTop: 6 }}>
+      <div>“{m.statement}” — <i>{STAGE_LABEL[m.status] ?? m.status}</i> ({m.concept.label})</div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+        <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <input type="checkbox" checked={m.learnerAcknowledged} onChange={(e) => void actions.acknowledge(m.id, e.target.checked).then(refresh)} />
+          I see why this needs a look
+        </label>
+        {next.map((s) => (
+          <Button key={s} variant="ghost" size="sm" onClick={() => go(s)}>
+            → {STAGE_LABEL[s] ?? s.toLowerCase()}
+          </Button>
+        ))}
+      </div>
+      {err && <div style={{ color: "var(--nv-color-danger)", marginTop: 4 }}>{err} (confirming or resolving needs an instructor)</div>}
+      <details style={{ marginTop: 4 }}>
+        <summary style={{ cursor: "pointer" }}>Why might this seem plausible?</summary>
+        <div style={{ marginTop: 4, display: "flex", gap: 6 }}>
+          <Button variant="secondary" size="sm" onClick={() => void actions.misRootCause(m.concept.id).then(setHints).catch(() => undefined)}>Check confusions</Button>
+        </div>
+        {(hints ?? []).map((h, i) => (
+          <div key={i} style={{ color: "var(--nv-color-text-faint)", marginTop: 2 }}>
+            Often confused with <b>{h.withConcept}</b>: {h.hint}
+          </div>
+        ))}
+        {hints !== null && hints.length === 0 && (
+          <div style={{ color: "var(--nv-color-text-faint)", marginTop: 2 }}>No known confusion pairs for this concept.</div>
+        )}
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <input className="nv-input" value={ceText} onChange={(e) => setCeText(e.target.value)} placeholder="counterevidence id (e.g. ev_…)" style={{ flex: 1, minWidth: 140 }} />
+          <Button variant="secondary" size="sm" onClick={() => {
+            if (!ceText.trim()) return;
+            void actions.misCounterevidence(m.id, [ceText.trim()]).then(() => { setCeText(""); refresh(); }).catch((e) => setErr(e instanceof Error ? e.message : "Attach failed"));
+          }}>Attach counterexample</Button>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function ClusterView({ actions }: { actions: GraphActions }) {
+  const [clusters, setClusters] = useState<GraphCluster[] | null>(null);
+  return (
+    <details style={{ marginTop: 8 }}>
+      <summary style={{ fontSize: 12, cursor: "pointer" }}>Patterns across concepts (clusters)</summary>
+      <div style={{ marginTop: 4 }}>
+        <Button variant="secondary" size="sm" onClick={() => void actions.misClusters().then(setClusters).catch(() => undefined)}>Find related patterns</Button>
+      </div>
+      {(clusters ?? []).map((g, i) => (
+        <div key={i} style={{ fontSize: 12, marginTop: 4 }}>
+          <b>{g.size} {g.learnerLabel}</b>
+          {g.statements.map((s) => <div key={s.id} style={{ color: "var(--nv-color-text-faint)" }}>• “{s.statement}” ({s.severity})</div>)}
+        </div>
+      ))}
+      {clusters !== null && clusters.length === 0 && (
+        <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", marginTop: 4 }}>No cross-concept clusters — patterns are isolated.</div>
+      )}
+    </details>
+  );
+}
+
+function CorrectionForm({ conceptId, actions, refresh }: { conceptId: string; actions: GraphActions; refresh: () => void }) {
+  const [preview, setPreview] = useState<CorrectionPreview | null>(null);
+  return (
+    <form action={(fd) => void actions.correct(fd).then(() => { setPreview(null); refresh(); })} style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+      <input type="hidden" name="targetType" value="mastery" />
+      <input type="hidden" name="targetId" value={conceptId} />
+      <input className="nv-input" name="field" placeholder="dimension (e.g. transfer)" required style={{ width: 170 }} />
+      <input className="nv-input" name="newValue" placeholder="new value 0..1" required style={{ width: 130 }} />
+      <select className="nv-input" name="scope" defaultValue="profile" style={{ width: 150 }}>
+        <option value="profile">This profile only</option>
+        <option value="course">This course</option>
+        <option value="all">All learning</option>
+      </select>
+      <input className="nv-input" name="reason" placeholder="reason (optional)" style={{ flex: 1, minWidth: 140 }} />
+      <Button variant="secondary" size="sm" type="button" onClick={() => {
+        if (!conceptId) return;
+        void actions.correctionPreview("mastery", conceptId).then(setPreview).catch(() => undefined);
+      }}>Preview impact</Button>
+      <Button size="sm" type="submit">Apply correction</Button>
+      {preview && (
+        <div style={{ fontSize: 12, color: "var(--nv-color-text-faint)", width: "100%" }}>
+          {preview.affectedRecommendations.length === 0
+            ? "No open recommendations depend on this — safe to apply."
+            : `Will recalculate ${preview.affectedRecommendations.length}: ${preview.affectedRecommendations.map((r) => r.action.replace(/_/g, " ")).join("; ")}.`}{" "}
+          {preview.note}
+        </div>
+      )}
+    </form>
   );
 }
 
